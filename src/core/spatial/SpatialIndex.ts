@@ -31,12 +31,6 @@ export class SpatialIndex<T> {
     this.cellSize = cellSize;
   }
 
-  private getCellKey(x: number, y: number): string {
-    const cellX = Math.floor(x / this.cellSize);
-    const cellY = Math.floor(y / this.cellSize);
-    return `${cellX},${cellY}`;
-  }
-
   private getCellsForBounds(bounds: BoundingBox): string[] {
     const cells: string[] = [];
     const startX = Math.floor(bounds.minX / this.cellSize);

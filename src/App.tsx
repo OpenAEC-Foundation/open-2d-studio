@@ -1,12 +1,11 @@
 import { useEffect } from 'react';
 import { MenuBar } from './components/MenuBar/MenuBar';
-import { Toolbar } from './components/Toolbar/Toolbar';
+import { Ribbon } from './components/Ribbon/Ribbon';
 import { Canvas } from './components/Canvas/Canvas';
 import { PropertiesPanel } from './components/Panels/PropertiesPanel';
 import { LayersPanel } from './components/Panels/LayersPanel';
 import { StatusBar } from './components/StatusBar/StatusBar';
 import { CommandLine } from './components/CommandLine/CommandLine';
-import { ToolPalette } from './components/ToolPalette/ToolPalette';
 import { PrintDialog } from './components/PrintDialog/PrintDialog';
 import { AboutDialog } from './components/AboutDialog/AboutDialog';
 import { SnapSettingsDialog } from './components/SnapSettingsDialog/SnapSettingsDialog';
@@ -37,14 +36,11 @@ function App() {
       {/* Menu Bar */}
       <MenuBar />
 
-      {/* Top Toolbar */}
-      <Toolbar />
+      {/* Ribbon */}
+      <Ribbon />
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Tools */}
-        <ToolPalette />
-
         {/* Center - Canvas */}
         <div className="flex-1 flex flex-col overflow-hidden">
           <Canvas />

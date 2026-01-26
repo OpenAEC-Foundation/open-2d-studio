@@ -801,6 +801,8 @@ export const useAppStore = create<AppState>()(
             visible: true,
             locked: false,
             color: '#ffffff',
+            lineStyle: 'solid',
+            lineWidth: 1,
           },
         ];
         state.activeLayerId = 'default-layer';

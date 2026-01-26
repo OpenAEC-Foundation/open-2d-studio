@@ -80,9 +80,6 @@ export function findObjectTrackingLines(
       const dir = LineUtils.direction(line);
       const perpDir = LineUtils.perpendicularDirection(line);
 
-      // Check if base point is near the line for parallel tracking
-      const distToLine = LineUtils.distanceToLine(line, basePoint);
-
       // Add parallel tracking line
       lines.push({
         origin: basePoint,

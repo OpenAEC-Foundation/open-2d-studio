@@ -752,11 +752,7 @@ export class CADRenderer {
   ): void {
     const ctx = this.ctx;
 
-    // Calculate visible area in world coordinates
-    const left = -viewport.offsetX / viewport.zoom;
-    const top = -viewport.offsetY / viewport.zoom;
-    const right = left + this.width / viewport.zoom;
-    const bottom = top + this.height / viewport.zoom;
+    // Calculate max distance for tracking line extension
     const maxDistance = Math.max(this.width, this.height) / viewport.zoom * 2;
 
     ctx.save();

@@ -16,7 +16,6 @@ export function StatusBar() {
     objectTrackingEnabled,
     polarAngleIncrement,
     // Tracking actions
-    toggleTracking,
     togglePolarTracking,
     toggleOrthoMode,
     toggleObjectTracking,

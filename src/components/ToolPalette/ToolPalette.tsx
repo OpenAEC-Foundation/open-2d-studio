@@ -164,14 +164,6 @@ export function ToolPalette() {
     { type: 'pan', icon: <Move size={18} />, label: 'Pan', shortcut: 'H' },
   ];
 
-  const drawToolsSimple: { type: ToolType; icon: React.ReactNode; label: string; shortcut: string }[] = [
-    { type: 'line', icon: <Minus size={18} />, label: 'Line', shortcut: 'L' },
-    { type: 'rectangle', icon: <Square size={18} />, label: 'Rectangle', shortcut: 'R' },
-    { type: 'arc', icon: <ArrowUpRight size={18} />, label: 'Arc', shortcut: 'A' },
-    { type: 'polyline', icon: <Spline size={18} />, label: 'Polyline', shortcut: 'P' },
-    { type: 'text', icon: <Type size={18} />, label: 'Text', shortcut: 'T' },
-  ];
-
   const circleOptions: DropdownOption[] = [
     { id: 'center-radius', label: 'Center, Radius', shortcut: 'C' },
     { id: 'center-diameter', label: 'Center, Diameter' },

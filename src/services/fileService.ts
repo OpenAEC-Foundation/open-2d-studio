@@ -64,6 +64,8 @@ export function createNewProject(): ProjectFile {
         visible: true,
         locked: false,
         color: '#ffffff',
+        lineStyle: 'solid',
+        lineWidth: 1,
       },
     ],
     activeLayerId: 'default-layer',

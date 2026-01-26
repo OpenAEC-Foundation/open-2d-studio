@@ -12,7 +12,6 @@ import {
   confirmUnsavedChanges,
   showError,
   showInfo,
-  createNewProject,
   type ProjectFile,
 } from '../../services/fileService';
 import { writeTextFile } from '@tauri-apps/plugin-fs';
@@ -259,20 +258,11 @@ export function MenuBar() {
   const {
     undo,
     redo,
-    selectAll,
-    deselectAll,
-    deleteSelectedShapes,
-    selectedShapeIds,
-    toggleGrid,
-    toggleSnap,
+    historyStack,
+    historyIndex,
     gridVisible,
     snapEnabled,
-    zoomIn,
-    zoomOut,
-    zoomToFit,
-    setActiveTool,
     setPrintDialogOpen,
-    setAboutDialogOpen,
     // File state
     shapes,
     layers,
@@ -289,6 +279,9 @@ export function MenuBar() {
     setProjectName,
     setModified,
   } = useAppStore();
+
+  const canUndo = historyStack.length > 0 && historyIndex > 0;
+  const canRedo = historyStack.length > 0 && historyIndex < historyStack.length - 1;
 
   // File operations
   const handleNew = useCallback(async () => {
@@ -444,55 +437,6 @@ export function MenuBar() {
     { label: 'Exit', shortcut: 'Alt+F4', onClick: () => getCurrentWindow().close() },
   ];
 
-  const editMenu: MenuItem[] = [
-    { label: 'Undo', shortcut: 'Ctrl+Z', onClick: undo },
-    { label: 'Redo', shortcut: 'Ctrl+Y', onClick: redo },
-    { separator: true },
-    { label: 'Select All', shortcut: 'Ctrl+A', onClick: selectAll },
-    { label: 'Deselect All', shortcut: 'Ctrl+D', onClick: deselectAll },
-    { separator: true },
-    { label: 'Delete', shortcut: 'Del', onClick: deleteSelectedShapes, disabled: selectedShapeIds.length === 0 },
-  ];
-
-  const viewMenu: MenuItem[] = [
-    { label: 'Zoom In', shortcut: '+', onClick: zoomIn },
-    { label: 'Zoom Out', shortcut: '-', onClick: zoomOut },
-    { label: 'Zoom to Fit', shortcut: 'F', onClick: zoomToFit },
-    { separator: true },
-    { label: `${gridVisible ? '✓ ' : ''}Show Grid`, shortcut: 'G', onClick: toggleGrid },
-    { label: `${snapEnabled ? '✓ ' : ''}Snap to Grid`, shortcut: 'S', onClick: toggleSnap },
-  ];
-
-  const drawMenu: MenuItem[] = [
-    { label: 'Line', shortcut: 'L', onClick: () => setActiveTool('line') },
-    { label: 'Polyline', onClick: () => setActiveTool('polyline') },
-    { separator: true },
-    { label: 'Rectangle', shortcut: 'R', onClick: () => setActiveTool('rectangle') },
-    { label: 'Circle', shortcut: 'C', onClick: () => setActiveTool('circle') },
-    { separator: true },
-    { label: 'Arc', onClick: () => setActiveTool('arc') },
-    { label: 'Ellipse', onClick: () => setActiveTool('ellipse') },
-  ];
-
-  const modifyMenu: MenuItem[] = [
-    { label: 'Move', shortcut: 'M', onClick: () => console.log('Move command') },
-    { label: 'Copy', shortcut: 'CO', onClick: () => console.log('Copy command') },
-    { label: 'Rotate', shortcut: 'RO', onClick: () => console.log('Rotate command') },
-    { label: 'Scale', shortcut: 'SC', onClick: () => console.log('Scale command') },
-    { separator: true },
-    { label: 'Mirror', shortcut: 'MI', onClick: () => console.log('Mirror command') },
-    { label: 'Offset', shortcut: 'O', onClick: () => console.log('Offset command') },
-    { separator: true },
-    { label: 'Fillet', shortcut: 'F', onClick: () => console.log('Fillet command') },
-    { label: 'Chamfer', shortcut: 'CHA', onClick: () => console.log('Chamfer command') },
-  ];
-
-  const helpMenu: MenuItem[] = [
-    { label: 'Keyboard Shortcuts', onClick: () => console.log('Shortcuts') },
-    { separator: true },
-    { label: 'About Open 2D Studio', onClick: () => setAboutDialogOpen(true) },
-  ];
-
   return (
     <div className="h-8 bg-cad-surface border-b border-cad-border flex items-center select-none">
       {/* Menu items */}
@@ -505,46 +449,43 @@ export function MenuBar() {
           onClose={handleMenuClose}
           menuBarHovered={menuBarHovered}
         />
-        <Menu
-          label="Edit"
-          items={editMenu}
-          isOpen={openMenu === 'edit'}
-          onOpen={() => handleMenuOpen('edit')}
-          onClose={handleMenuClose}
-          menuBarHovered={menuBarHovered}
-        />
-        <Menu
-          label="View"
-          items={viewMenu}
-          isOpen={openMenu === 'view'}
-          onOpen={() => handleMenuOpen('view')}
-          onClose={handleMenuClose}
-          menuBarHovered={menuBarHovered}
-        />
-        <Menu
-          label="Draw"
-          items={drawMenu}
-          isOpen={openMenu === 'draw'}
-          onOpen={() => handleMenuOpen('draw')}
-          onClose={handleMenuClose}
-          menuBarHovered={menuBarHovered}
-        />
-        <Menu
-          label="Modify"
-          items={modifyMenu}
-          isOpen={openMenu === 'modify'}
-          onOpen={() => handleMenuOpen('modify')}
-          onClose={handleMenuClose}
-          menuBarHovered={menuBarHovered}
-        />
-        <Menu
-          label="Help"
-          items={helpMenu}
-          isOpen={openMenu === 'help'}
-          onOpen={() => handleMenuOpen('help')}
-          onClose={handleMenuClose}
-          menuBarHovered={menuBarHovered}
-        />
+      </div>
+
+      {/* Quick Access Toolbar */}
+      <div className="flex items-center gap-0.5 px-2 border-l border-cad-border ml-1">
+        <button
+          onClick={handleSave}
+          className="p-1.5 rounded hover:bg-cad-border transition-colors text-cad-text-dim hover:text-cad-text"
+          title="Save (Ctrl+S)"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+            <polyline points="17 21 17 13 7 13 7 21"/>
+            <polyline points="7 3 7 8 15 8"/>
+          </svg>
+        </button>
+        <button
+          onClick={undo}
+          disabled={!canUndo}
+          className={`p-1.5 rounded transition-colors ${canUndo ? 'hover:bg-cad-border text-cad-text-dim hover:text-cad-text' : 'text-cad-text-dim opacity-40 cursor-not-allowed'}`}
+          title="Undo (Ctrl+Z)"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 7v6h6"/>
+            <path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/>
+          </svg>
+        </button>
+        <button
+          onClick={redo}
+          disabled={!canRedo}
+          className={`p-1.5 rounded transition-colors ${canRedo ? 'hover:bg-cad-border text-cad-text-dim hover:text-cad-text' : 'text-cad-text-dim opacity-40 cursor-not-allowed'}`}
+          title="Redo (Ctrl+Y)"
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M21 7v6h-6"/>
+            <path d="M3 17a9 9 0 0 1 9-9 9 9 0 0 1 6 2.3l3 2.7"/>
+          </svg>
+        </button>
       </div>
 
       {/* Draggable area with app title */}
