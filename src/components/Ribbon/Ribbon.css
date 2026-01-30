@@ -30,7 +30,11 @@
   position: relative;
   border: 1px solid transparent;
   border-bottom: none;
-  cursor: pointer;
+  cursor: default;
+}
+
+.ribbon-tab:focus {
+  outline: none;
 }
 
 .ribbon-tab:hover {
@@ -130,11 +134,15 @@
   background: transparent;
   border: 1px solid transparent;
   border-radius: 4px;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.15s ease;
   min-width: 54px;
   gap: 2px;
   height: 66px;
+}
+
+.ribbon-btn:focus {
+  outline: none;
 }
 
 .ribbon-btn:hover {
@@ -245,9 +253,13 @@
   border: 1px solid transparent;
   border-top: none;
   border-radius: 0 0 4px 4px;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.15s ease;
   color: #94a3b8;
+}
+
+.ribbon-dropdown-trigger:focus {
+  outline: none;
 }
 
 .ribbon-dropdown-trigger:hover {
@@ -286,7 +298,7 @@
   color: #94a3b8;
   font-size: 11px;
   text-align: left;
-  cursor: pointer;
+  cursor: default;
   transition: all 0.15s ease;
   gap: 8px;
 }
@@ -381,7 +393,7 @@
   border: 1px solid #334155;
   border-radius: 3px;
   background: transparent;
-  cursor: pointer;
+  cursor: default;
 }
 
 .ribbon-color-input::-webkit-color-swatch-wrapper {

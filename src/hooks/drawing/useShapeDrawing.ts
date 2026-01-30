@@ -1,11 +1,12 @@
 /**
- * useShapeDrawing - Handles shape drawing (line, rectangle, circle, arc, polyline)
+ * useShapeDrawing - Handles shape drawing (line, rectangle, circle, arc, polyline, dimension)
  */
 
 import { useCallback } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
-import type { Point, LineShape, RectangleShape, CircleShape, ArcShape, PolylineShape, EllipseShape } from '../../types/geometry';
+import type { Point, LineShape, RectangleShape, CircleShape, ArcShape, PolylineShape, EllipseShape, SnapPoint } from '../../types/geometry';
 import { snapToAngle, calculateCircleFrom3Points } from '../../utils/geometryUtils';
+import { useDimensionDrawing } from './useDimensionDrawing';
 
 /**
  * Calculate angle from center to point (in radians, 0 = right, counter-clockwise positive)
@@ -85,6 +86,9 @@ export function useShapeDrawing() {
     arcMode,
     ellipseMode,
   } = useAppStore();
+
+  // Dimension drawing hook
+  const dimensionDrawing = useDimensionDrawing();
 
   /**
    * Create a line shape
@@ -585,7 +589,7 @@ export function useShapeDrawing() {
    * Handle shape drawing click (dispatch to appropriate handler)
    */
   const handleDrawingClick = useCallback(
-    (snappedPos: Point, shiftKey: boolean): boolean => {
+    (snappedPos: Point, shiftKey: boolean, snapInfo?: SnapPoint): boolean => {
       switch (activeTool) {
         case 'line':
           handleLineClick(snappedPos, shiftKey);
@@ -605,11 +609,14 @@ export function useShapeDrawing() {
         case 'ellipse':
           handleEllipseClick(snappedPos);
           return true;
+        case 'dimension':
+          dimensionDrawing.handleDimensionClick(snappedPos, snapInfo);
+          return true;
         default:
           return false;
       }
     },
-    [activeTool, handleLineClick, handleRectangleClick, handleCircleClick, handleArcClick, handlePolylineClick, handleEllipseClick]
+    [activeTool, handleLineClick, handleRectangleClick, handleCircleClick, handleArcClick, handlePolylineClick, handleEllipseClick, dimensionDrawing]
   );
 
   /**
@@ -971,9 +978,12 @@ export function useShapeDrawing() {
         case 'ellipse':
           updateEllipsePreview(snappedPos);
           break;
+        case 'dimension':
+          dimensionDrawing.updateDimensionPreview(snappedPos);
+          break;
       }
     },
-    [activeTool, drawingPoints, updateLinePreview, updateRectanglePreview, updateCirclePreview, updateArcPreview, updatePolylinePreview, updateEllipsePreview]
+    [activeTool, drawingPoints, updateLinePreview, updateRectanglePreview, updateCirclePreview, updateArcPreview, updatePolylinePreview, updateEllipsePreview, dimensionDrawing]
   );
 
   /**
@@ -983,11 +993,14 @@ export function useShapeDrawing() {
     if (drawingPoints.length > 0) {
       if (activeTool === 'polyline' && drawingPoints.length >= 2) {
         createPolyline(drawingPoints, false);
+      } else if (activeTool === 'dimension') {
+        dimensionDrawing.cancelDimensionDrawing();
+        return;
       }
       clearDrawingPoints();
       setDrawingPreview(null);
     }
-  }, [drawingPoints, activeTool, createPolyline, clearDrawingPoints, setDrawingPreview]);
+  }, [drawingPoints, activeTool, createPolyline, clearDrawingPoints, setDrawingPreview, dimensionDrawing]);
 
   /**
    * Check if currently drawing
@@ -1013,5 +1026,6 @@ export function useShapeDrawing() {
     createArc,
     createPolyline,
     createEllipse,
+    getDimensionStatus: dimensionDrawing.getDimensionStatus,
   };
 }

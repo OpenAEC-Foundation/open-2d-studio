@@ -59,6 +59,10 @@ export function useGlobalKeyboard() {
     viewportEditState,
     cancelViewportDrag,
     selectViewport,
+    deselectAll,
+    // Command state
+    hasActiveModifyCommand,
+    requestCommandCancel,
   } = useAppStore();
 
   const handleNew = useCallback(async () => {
@@ -220,8 +224,15 @@ export function useGlobalKeyboard() {
         }
       }
 
-      // Escape key - cancel drag or deselect (works in both draft and sheet modes)
+      // Escape key - cancel active command, drag, or deselect
       if (e.key === 'Escape') {
+        // Cancel active modify command (e.g. Move) first
+        if (hasActiveModifyCommand) {
+          e.preventDefault();
+          requestCommandCancel();
+          return;
+        }
+
         // Sheet mode: viewport editing
         if (editorMode === 'sheet') {
           if (viewportEditState.isDragging) {
@@ -240,6 +251,9 @@ export function useGlobalKeyboard() {
           } else if (boundaryEditState.isSelected) {
             e.preventDefault();
             deselectBoundary();
+          } else if (selectedShapeIds.length > 0) {
+            e.preventDefault();
+            deselectAll();
           }
         }
       }
@@ -253,5 +267,5 @@ export function useGlobalKeyboard() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNew, handleOpen, handleSave, handleSaveAs, undo, redo, deleteSelectedShapes, selectedShapeIds, boundaryEditState, cancelBoundaryDrag, deselectBoundary, editorMode, viewportEditState, cancelViewportDrag, selectViewport]);
+  }, [handleNew, handleOpen, handleSave, handleSaveAs, undo, redo, deleteSelectedShapes, selectedShapeIds, boundaryEditState, cancelBoundaryDrag, deselectBoundary, editorMode, viewportEditState, cancelViewportDrag, selectViewport, deselectAll, hasActiveModifyCommand, requestCommandCancel]);
 }

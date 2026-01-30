@@ -11,6 +11,7 @@ import type { SelectionBox, Shape, Layer } from './types';
 export interface SelectionState {
   selectedShapeIds: string[];
   selectionBox: SelectionBox | null;
+  hoveredShapeId: string | null;
 }
 
 // ============================================================================
@@ -23,6 +24,7 @@ export interface SelectionActions {
   deselectAll: () => void;
   selectAll: () => void;
   setSelectionBox: (box: SelectionBox | null) => void;
+  setHoveredShapeId: (id: string | null) => void;
 }
 
 export type SelectionSlice = SelectionState & SelectionActions;
@@ -34,6 +36,7 @@ export type SelectionSlice = SelectionState & SelectionActions;
 export const initialSelectionState: SelectionState = {
   selectedShapeIds: [],
   selectionBox: null,
+  hoveredShapeId: null,
 };
 
 // ============================================================================
@@ -89,5 +92,10 @@ export const createSelectionSlice = (
   setSelectionBox: (box) =>
     set((state) => {
       state.selectionBox = box;
+    }),
+
+  setHoveredShapeId: (id) =>
+    set((state) => {
+      state.hoveredShapeId = id;
     }),
 });

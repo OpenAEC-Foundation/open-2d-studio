@@ -178,6 +178,7 @@ export const COLORS = {
   gridMajor: '#3a3a5a',
   axisX: '#ff4444',
   axisY: '#44ff44',
+  hover: '#00bfff',
   selection: '#e94560',
   selectionHandle: '#e94560',
   selectionHandleStroke: '#ffffff',

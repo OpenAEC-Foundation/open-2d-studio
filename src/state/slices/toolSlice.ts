@@ -3,6 +3,7 @@
  */
 
 import type { ToolType, ShapeStyle, Point, DrawingPreview, DefaultTextStyle } from './types';
+import type { DimensionType } from '../../types/dimension';
 import { defaultStyle } from './types';
 
 // ============================================================================
@@ -15,6 +16,7 @@ export interface ToolState {
   rectangleMode: 'corner' | 'center' | '3point';
   arcMode: '3point' | 'center-start-end';
   ellipseMode: 'center-axes' | 'corner';
+  dimensionMode: DimensionType;
   currentStyle: ShapeStyle;
   isDrawing: boolean;
   drawingPreview: DrawingPreview;
@@ -35,6 +37,7 @@ export interface ToolActions {
   setRectangleMode: (mode: 'corner' | 'center' | '3point') => void;
   setArcMode: (mode: '3point' | 'center-start-end') => void;
   setEllipseMode: (mode: 'center-axes' | 'corner') => void;
+  setDimensionMode: (mode: DimensionType) => void;
   setCurrentStyle: (style: Partial<ShapeStyle>) => void;
   setIsDrawing: (isDrawing: boolean) => void;
   setDrawingPreview: (preview: DrawingPreview) => void;
@@ -61,6 +64,7 @@ export const initialToolState: ToolState = {
   rectangleMode: 'corner',
   arcMode: '3point',
   ellipseMode: 'center-axes',
+  dimensionMode: 'aligned',
   currentStyle: defaultStyle,
   isDrawing: false,
   drawingPreview: null,
@@ -125,6 +129,15 @@ export const createToolSlice = (
   setEllipseMode: (mode) =>
     set((state) => {
       state.ellipseMode = mode;
+      // Reset drawing state when changing mode
+      state.isDrawing = false;
+      state.drawingPreview = null;
+      state.drawingPoints = [];
+    }),
+
+  setDimensionMode: (mode) =>
+    set((state) => {
+      state.dimensionMode = mode;
       // Reset drawing state when changing mode
       state.isDrawing = false;
       state.drawingPreview = null;

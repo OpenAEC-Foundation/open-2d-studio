@@ -40,6 +40,7 @@ export function useKeyboardShortcuts() {
     activeSheetId,
     viewportEditState,
     deleteSheetViewport,
+    setPendingCommand,
   } = useAppStore();
 
   useEffect(() => {
@@ -126,6 +127,9 @@ export function useKeyboardShortcuts() {
             break;
           case 't':
             setActiveTool('text');
+            break;
+          case 'm':
+            setPendingCommand('MOVE');
             break;
           case 'delete':
           case 'backspace':

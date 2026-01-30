@@ -27,8 +27,10 @@ import {
   DEFAULT_DRAWING_BOUNDARY,
   createDefaultTitleBlock,
   getShapeBounds,
-  cloneShapes,
 } from './types';
+
+import { produceWithPatches, current } from 'immer';
+import type { HistoryEntry } from './historySlice';
 
 import {
   BUILT_IN_TEMPLATES,
@@ -85,8 +87,11 @@ export interface ModelState {
 export interface ModelActions {
   // Shape actions
   addShape: (shape: Shape) => void;
+  addShapes: (shapes: Shape[]) => void;
   updateShape: (id: string, updates: Partial<Shape>) => void;
+  updateShapes: (updates: { id: string; updates: Partial<Shape> }[]) => void;
   deleteShape: (id: string) => void;
+  deleteShapes: (ids: string[]) => void;
   deleteSelectedShapes: () => void;
 
   // Drawing actions
@@ -188,16 +193,37 @@ export const initialModelState: ModelState = {
 
 // Type for the full store that this slice needs access to
 interface StoreWithHistory {
-  historyStack: Shape[][];
+  historyStack: HistoryEntry[];
   historyIndex: number;
   maxHistorySize: number;
   isModified: boolean;
   selectedShapeIds: string[];
   viewport: Viewport;
   viewportEditState: { selectedViewportId: string | null };
+  canvasSize: { width: number; height: number };
 }
 
 type FullStore = ModelState & StoreWithHistory;
+
+function withHistory(state: FullStore, mutate: (draft: Shape[]) => void): void {
+  const [nextShapes, patches, inversePatches] = produceWithPatches(
+    current(state.shapes),
+    mutate
+  );
+  if (patches.length === 0) return; // No changes
+
+  // Truncate future entries if we're not at the end
+  if (state.historyIndex >= 0 && state.historyIndex < state.historyStack.length - 1) {
+    state.historyStack = state.historyStack.slice(0, state.historyIndex + 1);
+  }
+  state.historyStack.push({ patches, inversePatches });
+  if (state.historyStack.length > state.maxHistorySize) {
+    state.historyStack.shift();
+  }
+  state.historyIndex = state.historyStack.length - 1;
+  state.shapes = nextShapes as any;
+  state.isModified = true;
+}
 
 export const createModelSlice = (
   set: (fn: (state: FullStore) => void) => void,
@@ -209,83 +235,71 @@ export const createModelSlice = (
 
   addShape: (shape) =>
     set((state) => {
-      // Push history before change
-      const snapshot = cloneShapes(state.shapes);
-      if (state.historyIndex >= 0 && state.historyIndex < state.historyStack.length - 1) {
-        state.historyStack = state.historyStack.slice(0, state.historyIndex + 1);
-      }
-      state.historyStack.push(snapshot);
-      if (state.historyStack.length > state.maxHistorySize) {
-        state.historyStack.shift();
-      }
-      state.historyIndex = state.historyStack.length - 1;
+      withHistory(state, (draft) => { draft.push(shape); });
+    }),
 
-      // Make the change
-      state.shapes.push(shape);
-      state.isModified = true;
+  addShapes: (shapes) =>
+    set((state) => {
+      if (shapes.length === 0) return;
+      withHistory(state, (draft) => {
+        for (const shape of shapes) draft.push(shape);
+      });
     }),
 
   updateShape: (id, updates) =>
     set((state) => {
-      const index = state.shapes.findIndex((s) => s.id === id);
-      if (index !== -1) {
-        // Push history before change
-        const snapshot = cloneShapes(state.shapes);
-        if (state.historyIndex >= 0 && state.historyIndex < state.historyStack.length - 1) {
-          state.historyStack = state.historyStack.slice(0, state.historyIndex + 1);
+      withHistory(state, (draft) => {
+        const index = draft.findIndex((s) => s.id === id);
+        if (index !== -1) {
+          draft[index] = { ...draft[index], ...updates } as Shape;
         }
-        state.historyStack.push(snapshot);
-        if (state.historyStack.length > state.maxHistorySize) {
-          state.historyStack.shift();
-        }
-        state.historyIndex = state.historyStack.length - 1;
+      });
+    }),
 
-        // Make the change
-        state.shapes[index] = { ...state.shapes[index], ...updates } as Shape;
-        state.isModified = true;
-      }
+  updateShapes: (updates) =>
+    set((state) => {
+      if (updates.length === 0) return;
+      withHistory(state, (draft) => {
+        for (const { id, updates: u } of updates) {
+          const index = draft.findIndex((s) => s.id === id);
+          if (index !== -1) {
+            draft[index] = { ...draft[index], ...u } as Shape;
+          }
+        }
+      });
     }),
 
   deleteShape: (id) =>
     set((state) => {
-      // Push history before change
-      const snapshot = cloneShapes(state.shapes);
-      if (state.historyIndex >= 0 && state.historyIndex < state.historyStack.length - 1) {
-        state.historyStack = state.historyStack.slice(0, state.historyIndex + 1);
-      }
-      state.historyStack.push(snapshot);
-      if (state.historyStack.length > state.maxHistorySize) {
-        state.historyStack.shift();
-      }
-      state.historyIndex = state.historyStack.length - 1;
-
-      // Make the change
-      state.shapes = state.shapes.filter((s) => s.id !== id);
+      withHistory(state, (draft) => {
+        const idx = draft.findIndex((s) => s.id === id);
+        if (idx !== -1) draft.splice(idx, 1);
+      });
       state.selectedShapeIds = state.selectedShapeIds.filter((sid) => sid !== id);
-      state.isModified = true;
+    }),
+
+  deleteShapes: (ids) =>
+    set((state) => {
+      if (ids.length === 0) return;
+      const idSet = new Set(ids);
+      withHistory(state, (draft) => {
+        for (let i = draft.length - 1; i >= 0; i--) {
+          if (idSet.has(draft[i].id)) draft.splice(i, 1);
+        }
+      });
+      state.selectedShapeIds = state.selectedShapeIds.filter((sid) => !idSet.has(sid));
     }),
 
   deleteSelectedShapes: () =>
     set((state) => {
       if (state.selectedShapeIds.length === 0) return;
-
-      // Push history before change
-      const snapshot = cloneShapes(state.shapes);
-      if (state.historyIndex >= 0 && state.historyIndex < state.historyStack.length - 1) {
-        state.historyStack = state.historyStack.slice(0, state.historyIndex + 1);
-      }
-      state.historyStack.push(snapshot);
-      if (state.historyStack.length > state.maxHistorySize) {
-        state.historyStack.shift();
-      }
-      state.historyIndex = state.historyStack.length - 1;
-
-      // Make the change
-      state.shapes = state.shapes.filter(
-        (s) => !state.selectedShapeIds.includes(s.id)
-      );
+      const selected = new Set(state.selectedShapeIds);
+      withHistory(state, (draft) => {
+        for (let i = draft.length - 1; i >= 0; i--) {
+          if (selected.has(draft[i].id)) draft.splice(i, 1);
+        }
+      });
       state.selectedShapeIds = [];
-      state.isModified = true;
     }),
 
   // ============================================================================
@@ -317,8 +331,15 @@ export const createModelSlice = (
       };
       state.layers.push(newLayer);
 
-      // Initialize viewport for this drawing
-      state.drawingViewports[id] = { offsetX: 0, offsetY: 0, zoom: 1 };
+      // Initialize viewport centered on boundary
+      const b = newDrawing.boundary;
+      const centerX = b.x + b.width / 2;
+      const centerY = b.y + b.height / 2;
+      state.drawingViewports[id] = {
+        offsetX: state.canvasSize.width / 2 - centerX,
+        offsetY: state.canvasSize.height / 2 - centerY,
+        zoom: 1,
+      };
 
       // Switch to the new drawing
       state.activeDrawingId = id;
@@ -443,7 +464,20 @@ export const createModelSlice = (
       state.activeDrawingId = id;
       state.editorMode = 'drawing';
       state.activeSheetId = null;
-      state.viewport = state.drawingViewports[id] || { offsetX: 0, offsetY: 0, zoom: 1 };
+      if (state.drawingViewports[id]) {
+        state.viewport = state.drawingViewports[id];
+      } else {
+        // Center on drawing boundary
+        const b = drawing.boundary;
+        const centerX = b.x + b.width / 2;
+        const centerY = b.y + b.height / 2;
+        const zoom = 1;
+        state.viewport = {
+          offsetX: state.canvasSize.width / 2 - centerX * zoom,
+          offsetY: state.canvasSize.height / 2 - centerY * zoom,
+          zoom,
+        };
+      }
 
       // Set active layer to a layer in this drawing
       const layerInDrawing = state.layers.find((l) => l.drawingId === id);

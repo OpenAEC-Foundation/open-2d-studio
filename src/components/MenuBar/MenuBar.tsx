@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useAppStore } from '../../state/appStore';
 import {
@@ -55,7 +55,7 @@ function Menu({ label, items, isOpen, onOpen, onClose, menuBarHovered }: MenuPro
   return (
     <div className="relative" ref={menuRef}>
       <button
-        className={`px-3 py-1 text-sm hover:bg-cad-border rounded transition-colors ${
+        className={`px-3 py-1 text-sm hover:bg-cad-border rounded transition-colors cursor-default ${
           isOpen ? 'bg-cad-border' : ''
         }`}
         onClick={() => (isOpen ? onClose() : onOpen())}
@@ -73,7 +73,7 @@ function Menu({ label, items, isOpen, onOpen, onClose, menuBarHovered }: MenuPro
               <button
                 key={index}
                 className={`w-full px-4 py-1.5 text-sm text-left flex justify-between items-center hover:bg-cad-border transition-colors ${
-                  item.disabled ? 'opacity-50 cursor-not-allowed' : ''
+                  item.disabled ? 'opacity-50 cursor-not-allowed' : 'cursor-default'
                 }`}
                 onClick={() => {
                   if (!item.disabled && item.onClick) {
@@ -122,7 +122,7 @@ function WindowsControls({
     <div className="flex items-center h-full">
       <button
         onClick={onMinimize}
-        className="w-[46px] h-full flex items-center justify-center hover:bg-[#3d3d3d] transition-colors"
+        className="w-[46px] h-full flex items-center justify-center hover:bg-[#3d3d3d] transition-colors cursor-default"
         title="Minimize"
       >
         <svg width="10" height="1" viewBox="0 0 10 1" fill="currentColor">
@@ -131,7 +131,7 @@ function WindowsControls({
       </button>
       <button
         onClick={onMaximize}
-        className="w-[46px] h-full flex items-center justify-center hover:bg-[#3d3d3d] transition-colors"
+        className="w-[46px] h-full flex items-center justify-center hover:bg-[#3d3d3d] transition-colors cursor-default"
         title={isMaximized ? 'Restore Down' : 'Maximize'}
       >
         {isMaximized ? (
@@ -147,7 +147,7 @@ function WindowsControls({
       </button>
       <button
         onClick={onClose}
-        className="w-[46px] h-full flex items-center justify-center hover:bg-[#c42b1c] transition-colors group"
+        className="w-[46px] h-full flex items-center justify-center hover:bg-[#c42b1c] transition-colors group cursor-default"
         title="Close"
       >
         <svg width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" strokeWidth="1.2" className="group-hover:stroke-white">
@@ -176,7 +176,7 @@ function LinuxControls({
       {/* Minimize - yellow/amber */}
       <button
         onClick={onMinimize}
-        className="w-3 h-3 rounded-full bg-[#f5c211] hover:bg-[#d9a900] transition-colors flex items-center justify-center group"
+        className="w-3 h-3 rounded-full bg-[#f5c211] hover:bg-[#d9a900] transition-colors flex items-center justify-center group cursor-default"
         title="Minimize"
       >
         <svg width="6" height="1" viewBox="0 0 6 1" className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -186,7 +186,7 @@ function LinuxControls({
       {/* Maximize - green */}
       <button
         onClick={onMaximize}
-        className="w-3 h-3 rounded-full bg-[#2ecc71] hover:bg-[#27ae60] transition-colors flex items-center justify-center group"
+        className="w-3 h-3 rounded-full bg-[#2ecc71] hover:bg-[#27ae60] transition-colors flex items-center justify-center group cursor-default"
         title={isMaximized ? 'Restore' : 'Maximize'}
       >
         {isMaximized ? (
@@ -203,7 +203,7 @@ function LinuxControls({
       {/* Close - red/orange */}
       <button
         onClick={onClose}
-        className="w-3 h-3 rounded-full bg-[#e95420] hover:bg-[#c44117] transition-colors flex items-center justify-center group"
+        className="w-3 h-3 rounded-full bg-[#e95420] hover:bg-[#c44117] transition-colors flex items-center justify-center group cursor-default"
         title="Close"
       >
         <svg width="6" height="6" viewBox="0 0 6 6" className="opacity-0 group-hover:opacity-100 transition-opacity">
@@ -253,52 +253,36 @@ function WindowControls() {
   return <WindowsControls {...controlProps} />;
 }
 
-export function MenuBar() {
+export const MenuBar = memo(function MenuBar() {
   const [openMenu, setOpenMenu] = useState<string | null>(null);
-  const {
-    undo,
-    redo,
-    historyStack,
-    historyIndex,
-    gridVisible,
-    snapEnabled,
-    setPrintDialogOpen,
-    // File state
-    shapes,
-    layers,
-    activeLayerId,
-    gridSize,
-    currentFilePath,
-    projectName,
-    isModified,
-    // Drawings & Sheets state
-    drawings,
-    sheets,
-    activeDrawingId,
-    activeSheetId,
-    drawingViewports,
-    // File actions
-    newProject,
-    loadProject,
-    setFilePath,
-    setProjectName,
-    setModified,
-  } = useAppStore();
 
-  const canUndo = historyStack.length > 0 && historyIndex > 0;
-  const canRedo = historyStack.length > 0 && historyIndex < historyStack.length - 1;
+  // Only subscribe to render-affecting state
+  const canUndo = useAppStore(s => s.canUndo());
+  const canRedo = useAppStore(s => s.canRedo());
+  const isModified = useAppStore(s => s.isModified);
+  const projectName = useAppStore(s => s.projectName);
+
+  // Actions (stable references)
+  const undo = useAppStore(s => s.undo);
+  const redo = useAppStore(s => s.redo);
+  const setPrintDialogOpen = useAppStore(s => s.setPrintDialogOpen);
+  const newProject = useAppStore(s => s.newProject);
+  const loadProject = useAppStore(s => s.loadProject);
+  const setFilePath = useAppStore(s => s.setFilePath);
+  const setProjectName = useAppStore(s => s.setProjectName);
+  const setModified = useAppStore(s => s.setModified);
 
   // File operations
   const handleNew = useCallback(async () => {
-    if (isModified) {
+    if (useAppStore.getState().isModified) {
       const proceed = await confirmUnsavedChanges();
       if (!proceed) return;
     }
     newProject();
-  }, [isModified, newProject]);
+  }, [newProject]);
 
   const handleOpenFile = useCallback(async () => {
-    if (isModified) {
+    if (useAppStore.getState().isModified) {
       const proceed = await confirmUnsavedChanges();
       if (!proceed) return;
     }
@@ -330,31 +314,32 @@ export function MenuBar() {
   }, [isModified, loadProject]);
 
   const handleSave = useCallback(async () => {
-    let filePath = currentFilePath;
+    const s = useAppStore.getState();
+    let filePath = s.currentFilePath;
 
     if (!filePath) {
-      filePath = await showSaveDialog(projectName);
+      filePath = await showSaveDialog(s.projectName);
       if (!filePath) return;
     }
 
     try {
       const project: ProjectFile = {
         version: 2,
-        name: projectName,
+        name: s.projectName,
         createdAt: new Date().toISOString(),
         modifiedAt: new Date().toISOString(),
-        drawings,
-        sheets,
-        activeDrawingId,
-        activeSheetId,
-        drawingViewports,
-        shapes,
-        layers,
-        activeLayerId,
+        drawings: s.drawings,
+        sheets: s.sheets,
+        activeDrawingId: s.activeDrawingId,
+        activeSheetId: s.activeSheetId,
+        drawingViewports: s.drawingViewports,
+        shapes: s.shapes,
+        layers: s.layers,
+        activeLayerId: s.activeLayerId,
         settings: {
-          gridSize,
-          gridVisible,
-          snapEnabled,
+          gridSize: s.gridSize,
+          gridVisible: s.gridVisible,
+          snapEnabled: s.snapEnabled,
         },
       };
 
@@ -362,36 +347,36 @@ export function MenuBar() {
       setFilePath(filePath);
       setModified(false);
 
-      // Extract filename for project name
       const fileName = filePath.split(/[/\\]/).pop()?.replace('.o2d', '') || 'Untitled';
       setProjectName(fileName);
     } catch (err) {
       await showError(`Failed to save file: ${err}`);
     }
-  }, [currentFilePath, projectName, shapes, layers, activeLayerId, gridSize, gridVisible, snapEnabled, drawings, sheets, activeDrawingId, activeSheetId, drawingViewports, setFilePath, setModified, setProjectName]);
+  }, [setFilePath, setModified, setProjectName]);
 
   const handleSaveAs = useCallback(async () => {
-    const filePath = await showSaveDialog(projectName);
+    const s = useAppStore.getState();
+    const filePath = await showSaveDialog(s.projectName);
     if (!filePath) return;
 
     try {
       const project: ProjectFile = {
         version: 2,
-        name: projectName,
+        name: s.projectName,
         createdAt: new Date().toISOString(),
         modifiedAt: new Date().toISOString(),
-        drawings,
-        sheets,
-        activeDrawingId,
-        activeSheetId,
-        drawingViewports,
-        shapes,
-        layers,
-        activeLayerId,
+        drawings: s.drawings,
+        sheets: s.sheets,
+        activeDrawingId: s.activeDrawingId,
+        activeSheetId: s.activeSheetId,
+        drawingViewports: s.drawingViewports,
+        shapes: s.shapes,
+        layers: s.layers,
+        activeLayerId: s.activeLayerId,
         settings: {
-          gridSize,
-          gridVisible,
-          snapEnabled,
+          gridSize: s.gridSize,
+          gridVisible: s.gridVisible,
+          snapEnabled: s.snapEnabled,
         },
       };
 
@@ -399,22 +384,21 @@ export function MenuBar() {
       setFilePath(filePath);
       setModified(false);
 
-      // Extract filename for project name
       const fileName = filePath.split(/[/\\]/).pop()?.replace('.o2d', '') || 'Untitled';
       setProjectName(fileName);
     } catch (err) {
       await showError(`Failed to save file: ${err}`);
     }
-  }, [projectName, shapes, layers, activeLayerId, gridSize, gridVisible, snapEnabled, drawings, sheets, activeDrawingId, activeSheetId, drawingViewports, setFilePath, setModified, setProjectName]);
+  }, [setFilePath, setModified, setProjectName]);
 
   const handleExport = useCallback(async () => {
-    if (shapes.length === 0) {
+    const s = useAppStore.getState();
+    if (s.shapes.length === 0) {
       await showInfo('Nothing to export. Draw some shapes first.');
       return;
     }
 
-    // For now, default to SVG export. Could show a dialog to choose format
-    const filePath = await showExportDialog('svg', projectName);
+    const filePath = await showExportDialog('svg', s.projectName);
     if (!filePath) return;
 
     try {
@@ -422,12 +406,11 @@ export function MenuBar() {
       let content: string;
 
       if (extension === 'dxf') {
-        content = exportToDXF(shapes);
+        content = exportToDXF(s.shapes);
       } else if (extension === 'json') {
-        content = JSON.stringify({ shapes, layers }, null, 2);
+        content = JSON.stringify({ shapes: s.shapes, layers: s.layers }, null, 2);
       } else {
-        // Default to SVG
-        content = exportToSVG(shapes);
+        content = exportToSVG(s.shapes);
       }
 
       await writeTextFile(filePath, content);
@@ -435,7 +418,7 @@ export function MenuBar() {
     } catch (err) {
       await showError(`Failed to export: ${err}`);
     }
-  }, [shapes, layers, projectName]);
+  }, []);
 
   const handleMenuOpen = (menu: string) => setOpenMenu(menu);
   const handleMenuClose = () => setOpenMenu(null);
@@ -473,7 +456,7 @@ export function MenuBar() {
       <div className="flex items-center gap-0.5 px-2 border-l border-cad-border ml-1">
         <button
           onClick={handleSave}
-          className="p-1.5 rounded hover:bg-cad-border transition-colors text-cad-text-dim hover:text-cad-text"
+          className="p-1.5 rounded hover:bg-cad-border transition-colors text-cad-text-dim hover:text-cad-text cursor-default"
           title="Save (Ctrl+S)"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -485,7 +468,7 @@ export function MenuBar() {
         <button
           onClick={undo}
           disabled={!canUndo}
-          className={`p-1.5 rounded transition-colors ${canUndo ? 'hover:bg-cad-border text-cad-text-dim hover:text-cad-text' : 'text-cad-text-dim opacity-40 cursor-not-allowed'}`}
+          className={`p-1.5 rounded transition-colors cursor-default ${canUndo ? 'hover:bg-cad-border text-cad-text-dim hover:text-cad-text' : 'text-cad-text-dim opacity-40 !cursor-not-allowed'}`}
           title="Undo (Ctrl+Z)"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -496,7 +479,7 @@ export function MenuBar() {
         <button
           onClick={redo}
           disabled={!canRedo}
-          className={`p-1.5 rounded transition-colors ${canRedo ? 'hover:bg-cad-border text-cad-text-dim hover:text-cad-text' : 'text-cad-text-dim opacity-40 cursor-not-allowed'}`}
+          className={`p-1.5 rounded transition-colors cursor-default ${canRedo ? 'hover:bg-cad-border text-cad-text-dim hover:text-cad-text' : 'text-cad-text-dim opacity-40 !cursor-not-allowed'}`}
           title="Redo (Ctrl+Y)"
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -521,4 +504,4 @@ export function MenuBar() {
       <WindowControls />
     </div>
   );
-}
+});

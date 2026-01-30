@@ -317,8 +317,8 @@ function getPolylineEndpoints(shape: PolylineShape): SnapPoint[] {
   const endpoints: SnapPoint[] = [];
 
   // All vertices are endpoints
-  points.forEach((point) => {
-    endpoints.push({ point, type: 'endpoint', sourceShapeId: shape.id });
+  points.forEach((point, index) => {
+    endpoints.push({ point, type: 'endpoint', sourceShapeId: shape.id, pointIndex: index });
   });
 
   return endpoints;

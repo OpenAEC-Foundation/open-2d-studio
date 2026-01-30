@@ -1,6 +1,6 @@
 [package]
 name = "open-2d-modeler"
-version = "0.3.0"
+version = "0.4.0"
 description = "A cross-platform 2D CAD application"
 authors = ["Open 2D Modeler Contributors"]
 license = "MIT"
@@ -19,6 +19,8 @@ tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 dxf = "0.6"
+tiny_http = "0.12"
+clap = { version = "4", features = ["derive"] }
 
 [features]
 default = ["custom-protocol"]

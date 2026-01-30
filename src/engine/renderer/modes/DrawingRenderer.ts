@@ -16,6 +16,7 @@ import { COLORS } from '../types';
 export interface DrawingRenderOptions {
   shapes: Shape[];
   selectedShapeIds: string[];
+  hoveredShapeId?: string | null;
   viewport: Viewport;
   gridVisible: boolean;
   gridSize: number;
@@ -29,6 +30,7 @@ export interface DrawingRenderOptions {
   drawingBoundary?: DrawingBoundary | null;
   boundarySelected?: boolean;
   boundaryDragging?: boolean;
+  whiteBackground?: boolean;
 }
 
 // Legacy alias
@@ -85,7 +87,9 @@ export class DrawingRenderer extends BaseRenderer {
       trackingPoint,
       drawingBoundary,
       boundarySelected,
-      boundaryDragging
+      boundaryDragging,
+      hoveredShapeId,
+      whiteBackground,
     } = options;
 
     const ctx = this.ctx;
@@ -93,15 +97,17 @@ export class DrawingRenderer extends BaseRenderer {
     // Clear canvas
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.fillStyle = COLORS.canvasBackground;
+    ctx.fillStyle = whiteBackground ? '#ffffff' : COLORS.canvasBackground;
     ctx.fillRect(0, 0, this.width, this.height);
 
     // Apply viewport transform
     this.applyViewportTransform(viewport);
 
-    // Draw grid
+    // Draw grid and axes
     if (gridVisible) {
-      this.gridLayer.drawGrid(viewport, gridSize);
+      this.gridLayer.drawGrid(viewport, gridSize, whiteBackground);
+    } else {
+      this.gridLayer.drawAxes(viewport);
     }
 
     // Draw drawing boundary (region)
@@ -118,7 +124,8 @@ export class DrawingRenderer extends BaseRenderer {
     for (const shape of shapes) {
       if (!shape.visible) continue;
       const isSelected = selectedShapeIds.includes(shape.id);
-      this.shapeRenderer.drawShape(shape, isSelected);
+      const isHovered = hoveredShapeId === shape.id;
+      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground);
     }
 
     // Draw command preview shapes (move/copy preview)
@@ -128,7 +135,7 @@ export class DrawingRenderer extends BaseRenderer {
 
     // Draw preview shape while drawing
     if (drawingPreview) {
-      this.shapeRenderer.drawPreview(drawingPreview, currentStyle);
+      this.shapeRenderer.drawPreview(drawingPreview, currentStyle, viewport);
     }
 
     // Draw tracking lines

@@ -1,17 +1,15 @@
-import { useMemo } from 'react';
+import { useMemo, memo } from 'react';
 import { Eye, EyeOff, Lock, Unlock, Plus, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../state/appStore';
 
-export function LayersPanel() {
-  const {
-    layers,
-    activeLayerId,
-    activeDrawingId,
-    setActiveLayer,
-    addLayer,
-    updateLayer,
-    deleteLayer,
-  } = useAppStore();
+export const LayersPanel = memo(function LayersPanel() {
+  const layers = useAppStore(s => s.layers);
+  const activeLayerId = useAppStore(s => s.activeLayerId);
+  const activeDrawingId = useAppStore(s => s.activeDrawingId);
+  const setActiveLayer = useAppStore(s => s.setActiveLayer);
+  const addLayer = useAppStore(s => s.addLayer);
+  const updateLayer = useAppStore(s => s.updateLayer);
+  const deleteLayer = useAppStore(s => s.deleteLayer);
 
   // Filter layers by active drawing
   const filteredLayers = useMemo(() => {
@@ -105,4 +103,4 @@ export function LayersPanel() {
       </div>
     </div>
   );
-}
+});

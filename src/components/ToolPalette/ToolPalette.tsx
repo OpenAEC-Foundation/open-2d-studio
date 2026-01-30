@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import {
   MousePointer2,
   Hand,
@@ -35,6 +35,7 @@ import {
   FilledRegionIcon,
   DetailComponentIcon,
   InsulationIcon,
+  AlignedDimensionIcon,
 } from '../shared/CadIcons';
 import type { ToolType } from '../../types/geometry';
 
@@ -50,9 +51,9 @@ interface ToolButtonProps {
 function ToolButton({ icon, label, shortcut, active, disabled, onClick }: ToolButtonProps) {
   return (
     <button
-      className={`w-10 h-10 flex items-center justify-center rounded transition-colors ${
+      className={`w-10 h-10 flex items-center justify-center rounded transition-colors cursor-default ${
         disabled
-          ? 'text-cad-text-dim opacity-40 cursor-not-allowed'
+          ? 'text-cad-text-dim opacity-40 !cursor-not-allowed'
           : active
             ? 'bg-cad-accent text-white'
             : 'text-cad-text hover:bg-cad-border'
@@ -119,7 +120,7 @@ function ToolButtonWithDropdown({
   return (
     <div className="relative" ref={dropdownRef}>
       <button
-        className={`w-10 h-10 flex items-center justify-center rounded transition-colors relative ${
+        className={`w-10 h-10 flex items-center justify-center rounded transition-colors relative cursor-default ${
           active
             ? 'bg-cad-accent text-white'
             : 'text-cad-text hover:bg-cad-border'
@@ -140,7 +141,7 @@ function ToolButtonWithDropdown({
           {options.map((option) => (
             <button
               key={option.id}
-              className={`w-full px-3 py-1.5 text-xs text-left flex justify-between items-center hover:bg-cad-border transition-colors ${
+              className={`w-full px-3 py-1.5 text-xs text-left flex justify-between items-center hover:bg-cad-border transition-colors cursor-default ${
                 selectedOption === option.id ? 'text-cad-accent' : 'text-cad-text'
               }`}
               onClick={() => {
@@ -179,8 +180,8 @@ function ToolSection({ title, children }: { title: string; children: React.React
   );
 }
 
-export function ToolPalette() {
-  const { activeTool, switchToDrawingTool, switchToolAndCancelCommand, setPendingCommand, circleMode, setCircleMode, rectangleMode, setRectangleMode, arcMode, setArcMode, editorMode, activeCommandName } = useAppStore();
+export const ToolPalette = memo(function ToolPalette() {
+  const { activeTool, switchToDrawingTool, switchToolAndCancelCommand, setPendingCommand, circleMode, setCircleMode, rectangleMode, setRectangleMode, arcMode, setArcMode, dimensionMode, setDimensionMode, editorMode, activeCommandName } = useAppStore();
 
   const selectionTools: { type: ToolType; icon: React.ReactNode; label: string; shortcut: string }[] = [
     { type: 'select', icon: <MousePointer2 size={18} />, label: 'Select', shortcut: 'V' },
@@ -205,10 +206,18 @@ export function ToolPalette() {
     { id: 'center-start-end', label: 'Center, Start, End' },
   ];
 
+  const dimensionOptions: DropdownOption[] = [
+    { id: 'aligned', label: 'Aligned', shortcut: 'D' },
+    { id: 'linear', label: 'Linear (H/V)' },
+    { id: 'angular', label: 'Angular' },
+    { id: 'radius', label: 'Radius' },
+    { id: 'diameter', label: 'Diameter' },
+  ];
+
   // Modify tools trigger commands, not persistent tool modes
   // Primary modify commands (most used - displayed with slightly larger emphasis)
   const primaryModifyCommands: { command: string; icon: React.ReactNode; label: string; shortcut: string; disabled?: boolean }[] = [
-    { command: 'MOVE', icon: <ArrowRight size={18} />, label: 'Move', shortcut: 'M', disabled: true },
+    { command: 'MOVE', icon: <ArrowRight size={18} />, label: 'Move', shortcut: 'M' },
     { command: 'COPY', icon: <Copy size={18} />, label: 'Copy', shortcut: 'CO', disabled: true },
     { command: 'ROTATE', icon: <RotateCw size={18} />, label: 'Rotate', shortcut: 'RO', disabled: true },
     { command: 'ARRAY', icon: <ArrayIcon size={18} />, label: 'Array', shortcut: 'AR', disabled: true },
@@ -328,6 +337,17 @@ export function ToolPalette() {
           active={activeTool === 'text' && !activeCommandName}
           onClick={() => switchToDrawingTool('text')}
         />
+        {/* Dimension with dropdown */}
+        <ToolButtonWithDropdown
+          icon={<AlignedDimensionIcon size={18} />}
+          label="Dimension"
+          shortcut="D"
+          active={activeTool === 'dimension' && !activeCommandName}
+          onClick={() => switchToDrawingTool('dimension')}
+          options={dimensionOptions}
+          selectedOption={dimensionMode}
+          onOptionSelect={(mode) => setDimensionMode(mode as 'aligned' | 'linear' | 'angular' | 'radius' | 'diameter')}
+        />
       </ToolSection>
 
       <ToolDivider />
@@ -418,4 +438,4 @@ export function ToolPalette() {
       )}
     </div>
   );
-}
+});

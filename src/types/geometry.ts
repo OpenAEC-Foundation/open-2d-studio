@@ -35,7 +35,7 @@ export interface BaseShape {
 /** @deprecated Use drawingId instead */
 export type BaseShapeWithDraftId = BaseShape & { draftId?: string };
 
-export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'text' | 'point';
+export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'text' | 'point' | 'dimension';
 
 // Specific shape types
 export interface LineShape extends BaseShape {
@@ -106,6 +106,9 @@ export interface PointShape extends BaseShape {
   position: Point;
 }
 
+// Forward declaration for DimensionShape (defined in dimension.ts)
+import type { DimensionShape } from './dimension';
+
 // Union type for all shapes
 export type Shape =
   | LineShape
@@ -115,7 +118,8 @@ export type Shape =
   | EllipseShape
   | PolylineShape
   | TextShape
-  | PointShape;
+  | PointShape
+  | DimensionShape;
 
 // Layer type
 export interface Layer {
@@ -151,6 +155,8 @@ export interface SnapPoint {
   point: Point;
   type: SnapType;
   sourceShapeId?: string;
+  /** For polyline/rectangle vertices - which point index was snapped to */
+  pointIndex?: number;
 }
 
 // Tool types
@@ -166,6 +172,7 @@ export type ToolType =
   | 'ellipse'
   | 'spline'
   | 'text'
+  | 'dimension'
   // Region tools
   | 'filled-region'
   | 'insulation'

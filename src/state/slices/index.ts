@@ -61,6 +61,7 @@ export {
 
 // History Slice
 export {
+  type HistoryEntry,
   type HistoryState,
   type HistoryActions,
   type HistorySlice,

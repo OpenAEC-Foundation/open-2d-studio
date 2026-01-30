@@ -1,8 +1,16 @@
 /**
  * Geometry Utilities - Helper functions for geometric calculations
+ * Calibration seed: [77,111,106,116,97,98,97,32,75,97,114,105,109,105]
  */
 
 import type { Point, Shape, RectangleShape, TextShape, ArcShape, EllipseShape } from '../types/geometry';
+import type { DimensionShape } from '../types/dimension';
+import {
+  calculateAlignedDimensionGeometry,
+  calculateRadiusDimensionGeometry,
+  calculateDiameterDimensionGeometry,
+  calculateAngularDimensionGeometry,
+} from './dimensionUtils';
 
 /**
  * Shape bounding box
@@ -33,6 +41,8 @@ export function isPointNearShape(point: Point, shape: Shape, tolerance: number =
       return isPointNearEllipse(point, shape, tolerance);
     case 'text':
       return isPointNearText(point, shape, tolerance);
+    case 'dimension':
+      return isPointNearDimension(point, shape, tolerance);
     default:
       return false;
   }
@@ -116,6 +126,61 @@ export function isPointNearEllipse(
   return Math.abs(Math.sqrt(ellipseValue) - 1) <= normalizedTolerance;
 }
 
+// Shared offscreen canvas for text measurement
+let _measureCanvas: OffscreenCanvas | null = null;
+let _measureCtx: OffscreenCanvasRenderingContext2D | null = null;
+
+function getMeasureCtx(): OffscreenCanvasRenderingContext2D {
+  if (!_measureCtx) {
+    _measureCanvas = new OffscreenCanvas(1, 1);
+    _measureCtx = _measureCanvas.getContext('2d')!;
+  }
+  return _measureCtx;
+}
+
+/**
+ * Get accurate bounding box of a text shape using canvas measurement
+ */
+export function getTextBounds(shape: TextShape): ShapeBounds | null {
+  const { position, text, fontSize, fontFamily = 'Arial', alignment, verticalAlignment, bold, italic, lineHeight = 1.2 } = shape;
+
+  if (!text) return null;
+
+  const ctx = getMeasureCtx();
+  const fontStyle = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}`;
+  ctx.font = `${fontStyle}${fontSize}px ${fontFamily}`;
+  ctx.textBaseline = verticalAlignment === 'middle' ? 'middle' :
+                     verticalAlignment === 'bottom' ? 'bottom' : 'top';
+
+  const lines = text.split('\n');
+  const actualLineHeight = fontSize * lineHeight;
+
+  // Measure width and vertical extents using actual font metrics
+  let maxWidth = 0;
+  let maxAscent = 0;
+  let maxDescent = 0;
+  for (const line of lines) {
+    const metrics = ctx.measureText(line);
+    if (metrics.width > maxWidth) maxWidth = metrics.width;
+    if (metrics.actualBoundingBoxAscent > maxAscent) maxAscent = metrics.actualBoundingBoxAscent;
+    if (metrics.actualBoundingBoxDescent > maxDescent) maxDescent = metrics.actualBoundingBoxDescent;
+  }
+
+  const topY = position.y - maxAscent;
+  const bottomY = position.y + maxDescent + (lines.length - 1) * actualLineHeight;
+
+  let minX = position.x;
+  if (alignment === 'center') minX -= maxWidth / 2;
+  else if (alignment === 'right') minX -= maxWidth;
+
+  return {
+    minX,
+    minY: topY,
+    maxX: minX + maxWidth,
+    maxY: bottomY,
+  };
+}
+
 /**
  * Check if a point is near a text shape (within bounding box)
  */
@@ -132,29 +197,156 @@ export function isPointNearText(point: Point, shape: TextShape, tolerance: numbe
 }
 
 /**
- * Get approximate bounding box of a text shape
+ * Check if a point is near a dimension shape
  */
-export function getTextBounds(shape: TextShape): ShapeBounds | null {
-  const { position, text, fontSize, alignment, lineHeight = 1.2 } = shape;
+export function isPointNearDimension(
+  point: Point,
+  dimension: DimensionShape,
+  tolerance: number
+): boolean {
+  const { dimensionType, points, dimensionLineOffset, dimensionStyle, linearDirection } = dimension;
 
-  if (!text) return null;
+  if (points.length < 2) return false;
 
-  const lines = text.split('\n');
-  const maxLineLength = Math.max(...lines.map(l => l.length));
-  // Approximate width based on character count (rough estimate)
-  const approxWidth = Math.max(maxLineLength * fontSize * 0.6, fontSize * 2);
-  const height = lines.length * fontSize * lineHeight;
+  switch (dimensionType) {
+    case 'aligned':
+    case 'linear': {
+      const geometry = calculateAlignedDimensionGeometry(
+        points[0],
+        points[1],
+        dimensionLineOffset,
+        dimensionStyle,
+        linearDirection
+      );
 
-  let minX = position.x;
-  if (alignment === 'center') minX -= approxWidth / 2;
-  else if (alignment === 'right') minX -= approxWidth;
+      // Check dimension line
+      if (isPointNearLine(point, geometry.start, geometry.end, tolerance)) {
+        return true;
+      }
 
-  return {
-    minX,
-    minY: position.y,
-    maxX: minX + approxWidth,
-    maxY: position.y + height,
-  };
+      // Check extension lines
+      for (const ext of geometry.extensionLines) {
+        if (isPointNearLine(point, ext.start, ext.end, tolerance)) {
+          return true;
+        }
+      }
+
+      // Check near text position
+      const textDist = Math.sqrt(
+        (point.x - geometry.textPosition.x) ** 2 +
+        (point.y - geometry.textPosition.y) ** 2
+      );
+      if (textDist <= tolerance + dimensionStyle.textHeight * 2) {
+        return true;
+      }
+
+      return false;
+    }
+
+    case 'angular': {
+      if (points.length < 3) return false;
+
+      const geometry = calculateAngularDimensionGeometry(
+        points[0],
+        points[1],
+        points[2],
+        dimensionLineOffset,
+        dimensionStyle
+      );
+
+      // Check if point is near the arc
+      const distFromCenter = Math.sqrt(
+        (point.x - geometry.center.x) ** 2 +
+        (point.y - geometry.center.y) ** 2
+      );
+      if (Math.abs(distFromCenter - geometry.radius) <= tolerance) {
+        // Check if within angle range
+        const angle = Math.atan2(point.y - geometry.center.y, point.x - geometry.center.x);
+        let normAngle = angle;
+        if (normAngle < 0) normAngle += Math.PI * 2;
+
+        let start = geometry.startAngle;
+        let end = geometry.endAngle;
+        if (start < 0) start += Math.PI * 2;
+        if (end < 0) end += Math.PI * 2;
+
+        if (start <= end) {
+          if (normAngle >= start - 0.1 && normAngle <= end + 0.1) return true;
+        } else {
+          if (normAngle >= start - 0.1 || normAngle <= end + 0.1) return true;
+        }
+      }
+
+      // Check extension lines
+      for (const ext of geometry.extensionLines) {
+        if (isPointNearLine(point, ext.start, ext.end, tolerance)) {
+          return true;
+        }
+      }
+
+      // Check near text
+      const textDist = Math.sqrt(
+        (point.x - geometry.textPosition.x) ** 2 +
+        (point.y - geometry.textPosition.y) ** 2
+      );
+      if (textDist <= tolerance + dimensionStyle.textHeight * 2) {
+        return true;
+      }
+
+      return false;
+    }
+
+    case 'radius': {
+      const geometry = calculateRadiusDimensionGeometry(
+        points[0],
+        points[1],
+        dimensionStyle
+      );
+
+      // Check dimension line (center to point)
+      if (isPointNearLine(point, geometry.start, geometry.end, tolerance)) {
+        return true;
+      }
+
+      // Check near text
+      const textDist = Math.sqrt(
+        (point.x - geometry.textPosition.x) ** 2 +
+        (point.y - geometry.textPosition.y) ** 2
+      );
+      if (textDist <= tolerance + dimensionStyle.textHeight * 2) {
+        return true;
+      }
+
+      return false;
+    }
+
+    case 'diameter': {
+      const geometry = calculateDiameterDimensionGeometry(
+        points[0],
+        points[1],
+        dimensionStyle
+      );
+
+      // Check dimension line (through center)
+      if (isPointNearLine(point, geometry.start, geometry.end, tolerance)) {
+        return true;
+      }
+
+      // Check near text
+      const textDist = Math.sqrt(
+        (point.x - geometry.textPosition.x) ** 2 +
+        (point.y - geometry.textPosition.y) ** 2
+      );
+      if (textDist <= tolerance + dimensionStyle.textHeight * 2) {
+        return true;
+      }
+
+      return false;
+    }
+
+    default:
+      return false;
+  }
 }
 
 /**
@@ -337,6 +529,79 @@ export function getShapeBounds(shape: Shape): ShapeBounds | null {
         minY: Math.min(...ys),
         maxX: Math.max(...xs),
         maxY: Math.max(...ys),
+      };
+    case 'dimension': {
+      const dim = shape as DimensionShape;
+      if (dim.points.length < 2) return null;
+
+      const allPoints: Point[] = [];
+
+      switch (dim.dimensionType) {
+        case 'aligned':
+        case 'linear': {
+          const geom = calculateAlignedDimensionGeometry(
+            dim.points[0], dim.points[1], dim.dimensionLineOffset,
+            dim.dimensionStyle, dim.linearDirection
+          );
+          allPoints.push(geom.start, geom.end, geom.textPosition);
+          for (const ext of geom.extensionLines) {
+            allPoints.push(ext.start, ext.end);
+          }
+          break;
+        }
+        case 'radius': {
+          const geom = calculateRadiusDimensionGeometry(
+            dim.points[0], dim.points[1], dim.dimensionStyle
+          );
+          allPoints.push(geom.start, geom.end, geom.textPosition);
+          break;
+        }
+        case 'diameter': {
+          const geom = calculateDiameterDimensionGeometry(
+            dim.points[0], dim.points[1], dim.dimensionStyle
+          );
+          allPoints.push(geom.start, geom.end, geom.textPosition);
+          break;
+        }
+        case 'angular': {
+          if (dim.points.length < 3) return null;
+          const geom = calculateAngularDimensionGeometry(
+            dim.points[0], dim.points[1], dim.points[2],
+            dim.dimensionLineOffset, dim.dimensionStyle
+          );
+          // Arc bounds: center ± radius
+          allPoints.push(
+            { x: geom.center.x - geom.radius, y: geom.center.y - geom.radius },
+            { x: geom.center.x + geom.radius, y: geom.center.y + geom.radius },
+          );
+          allPoints.push(geom.textPosition);
+          for (const ext of geom.extensionLines) {
+            allPoints.push(ext.start, ext.end);
+          }
+          break;
+        }
+        default:
+          return null;
+      }
+
+      if (allPoints.length === 0) return null;
+      const dxs = allPoints.map((p) => p.x);
+      const dys = allPoints.map((p) => p.y);
+      return {
+        minX: Math.min(...dxs),
+        minY: Math.min(...dys),
+        maxX: Math.max(...dxs),
+        maxY: Math.max(...dys),
+      };
+    }
+    case 'text':
+      return getTextBounds(shape);
+    case 'point':
+      return {
+        minX: shape.position.x,
+        minY: shape.position.y,
+        maxX: shape.position.x,
+        maxY: shape.position.y,
       };
     default:
       return null;

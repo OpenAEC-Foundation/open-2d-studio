@@ -1,18 +1,27 @@
 /**
- * History Slice - Manages undo/redo functionality
+ * History Slice - Manages undo/redo functionality using Immer patches
  */
 
+import { type Patch, applyPatches, current } from 'immer';
 import type { Shape } from './types';
-import { cloneShapes } from './types';
+
+// ============================================================================
+// Types
+// ============================================================================
+
+export interface HistoryEntry {
+  patches: Patch[];
+  inversePatches: Patch[];
+}
 
 // ============================================================================
 // State Interface
 // ============================================================================
 
 export interface HistoryState {
-  historyStack: Shape[][];  // Stack of shape snapshots
-  historyIndex: number;     // Current position in history (-1 means at latest)
-  maxHistorySize: number;   // Maximum number of history entries
+  historyStack: HistoryEntry[];
+  historyIndex: number;     // Points to last applied entry (-1 means none)
+  maxHistorySize: number;
 }
 
 // ============================================================================
@@ -20,11 +29,11 @@ export interface HistoryState {
 // ============================================================================
 
 export interface HistoryActions {
-  undo: () => boolean;  // Returns true if undo was performed
-  redo: () => boolean;  // Returns true if redo was performed
-  pushHistory: () => void;  // Save current state to history
+  undo: () => boolean;
+  redo: () => boolean;
   canUndo: () => boolean;
   canRedo: () => boolean;
+  collapseEntries: (fromIndex: number) => void;
 }
 
 export type HistorySlice = HistoryState & HistoryActions;
@@ -43,7 +52,6 @@ export const initialHistoryState: HistoryState = {
 // Slice Creator
 // ============================================================================
 
-// Type for the full store that this slice needs access to
 interface StoreWithShapes {
   shapes: Shape[];
   selectedShapeIds: string[];
@@ -55,52 +63,18 @@ export const createHistorySlice = (
   set: (fn: (state: FullStore) => void) => void,
   get: () => FullStore
 ): HistoryActions => ({
-  pushHistory: () =>
-    set((state) => {
-      // Clone current shapes
-      const snapshot = cloneShapes(state.shapes);
-
-      // If we're not at the end of history, truncate future states
-      if (state.historyIndex >= 0 && state.historyIndex < state.historyStack.length - 1) {
-        state.historyStack = state.historyStack.slice(0, state.historyIndex + 1);
-      }
-
-      // Add new snapshot
-      state.historyStack.push(snapshot);
-
-      // Trim history if it exceeds max size
-      if (state.historyStack.length > state.maxHistorySize) {
-        state.historyStack.shift();
-      }
-
-      // Update index to point to latest
-      state.historyIndex = state.historyStack.length - 1;
-    }),
-
   undo: () => {
     let success = false;
 
     set((state) => {
-      // If no history, can't undo
-      if (state.historyStack.length === 0) return;
+      if (state.historyIndex < 0) return;
 
-      // If this is the first undo (we're at the latest state), save current state first
-      if (state.historyIndex === state.historyStack.length - 1) {
-        // Save current state so we can redo back to it
-        const currentSnapshot = cloneShapes(state.shapes);
-        state.historyStack.push(currentSnapshot);
-        // historyIndex now points to the saved "current" state
-        state.historyIndex = state.historyStack.length - 1;
-      }
+      const entry = state.historyStack[state.historyIndex];
+      if (!entry) return;
 
-      // Calculate new index
-      const newIndex = state.historyIndex - 1;
-      if (newIndex < 0) return;
-
-      // Restore the previous state
-      state.shapes = cloneShapes(state.historyStack[newIndex]);
-      state.historyIndex = newIndex;
-      state.selectedShapeIds = []; // Clear selection on undo
+      state.shapes = applyPatches(current(state.shapes), entry.inversePatches) as any;
+      state.historyIndex--;
+      state.selectedShapeIds = [];
       success = true;
     });
 
@@ -111,16 +85,15 @@ export const createHistorySlice = (
     let success = false;
 
     set((state) => {
-      // If no history or at the end, can't redo
-      if (state.historyStack.length === 0) return;
+      const nextIndex = state.historyIndex + 1;
+      if (nextIndex >= state.historyStack.length) return;
 
-      const newIndex = state.historyIndex + 1;
-      if (newIndex >= state.historyStack.length) return;
+      const entry = state.historyStack[nextIndex];
+      if (!entry) return;
 
-      // Restore the next state
-      state.shapes = cloneShapes(state.historyStack[newIndex]);
-      state.historyIndex = newIndex;
-      state.selectedShapeIds = []; // Clear selection on redo
+      state.shapes = applyPatches(current(state.shapes), entry.patches) as any;
+      state.historyIndex = nextIndex;
+      state.selectedShapeIds = [];
       success = true;
     });
 
@@ -129,11 +102,36 @@ export const createHistorySlice = (
 
   canUndo: () => {
     const state = get();
-    return state.historyStack.length > 0 && state.historyIndex > 0;
+    return state.historyIndex >= 0;
   },
 
   canRedo: () => {
     const state = get();
-    return state.historyStack.length > 0 && state.historyIndex < state.historyStack.length - 1;
+    return state.historyIndex < state.historyStack.length - 1;
   },
+
+  collapseEntries: (fromIndex: number) =>
+    set((state) => {
+      if (fromIndex > state.historyIndex || fromIndex < 0) return;
+      if (fromIndex === state.historyIndex) return; // Only one entry, nothing to collapse
+
+      // Merge entries [fromIndex..historyIndex] into one
+      const mergedPatches: Patch[] = [];
+      const mergedInversePatches: Patch[] = [];
+
+      for (let i = fromIndex; i <= state.historyIndex; i++) {
+        mergedPatches.push(...state.historyStack[i].patches);
+        // Inverse patches need to be in reverse order for correct undo
+        mergedInversePatches.unshift(...state.historyStack[i].inversePatches);
+      }
+
+      const collapsed: HistoryEntry = {
+        patches: mergedPatches,
+        inversePatches: mergedInversePatches,
+      };
+
+      // Replace the range with the single collapsed entry
+      state.historyStack.splice(fromIndex, state.historyIndex - fromIndex + 1, collapsed);
+      state.historyIndex = fromIndex;
+    }),
 });

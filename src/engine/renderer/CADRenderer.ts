@@ -28,6 +28,7 @@ export type { BoundaryHandleType, ViewportHandleType };
 interface RenderOptions {
   shapes: Shape[];
   selectedShapeIds: string[];
+  hoveredShapeId?: string | null;
   viewport: Viewport;
   gridVisible: boolean;
   gridSize: number;
@@ -42,6 +43,7 @@ interface RenderOptions {
   drawingBoundary?: DrawingBoundary | null;
   boundarySelected?: boolean;
   boundaryDragging?: boolean;
+  whiteBackground?: boolean;
 }
 
 // Interface for sheet mode rendering (supports both new and legacy property names)
@@ -102,6 +104,7 @@ export class CADRenderer {
     const drawingOptions: DrawingRenderOptions = {
       shapes: options.shapes,
       selectedShapeIds: options.selectedShapeIds,
+      hoveredShapeId: options.hoveredShapeId,
       viewport: options.viewport,
       gridVisible: options.gridVisible,
       gridSize: options.gridSize,
@@ -115,6 +118,7 @@ export class CADRenderer {
       drawingBoundary: options.drawingBoundary,
       boundarySelected: options.boundarySelected,
       boundaryDragging: options.boundaryDragging,
+      whiteBackground: options.whiteBackground,
     };
 
     this.drawingRenderer.render(drawingOptions);

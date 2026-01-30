@@ -31,6 +31,10 @@ export interface SnapState {
 
   // Direct distance entry - stores the current tracking angle for typed distance input
   directDistanceAngle: number | null;  // radians
+
+  // Display settings
+  whiteBackground: boolean;
+  boundaryVisible: boolean;
 }
 
 // ============================================================================
@@ -54,6 +58,8 @@ export interface SnapActions {
   setCurrentTrackingLines: (lines: TrackingLine[]) => void;
   setTrackingPoint: (point: Point | null) => void;
   setDirectDistanceAngle: (angle: number | null) => void;
+  toggleWhiteBackground: () => void;
+  toggleBoundaryVisible: () => void;
 }
 
 export type SnapSlice = SnapState & SnapActions;
@@ -78,6 +84,8 @@ export const initialSnapState: SnapState = {
   currentTrackingLines: [],
   trackingPoint: null,
   directDistanceAngle: null,
+  whiteBackground: false,
+  boundaryVisible: true,
 };
 
 // ============================================================================
@@ -175,5 +183,15 @@ export const createSnapSlice = (
   setDirectDistanceAngle: (angle) =>
     set((state) => {
       state.directDistanceAngle = angle;
+    }),
+
+  toggleWhiteBackground: () =>
+    set((state) => {
+      state.whiteBackground = !state.whiteBackground;
+    }),
+
+  toggleBoundaryVisible: () =>
+    set((state) => {
+      state.boundaryVisible = !state.boundaryVisible;
     }),
 });

@@ -254,6 +254,18 @@ function moveShape(shape: Shape, dx: number, dy: number): Partial<Shape> {
       return {
         points: shape.points.map((p) => ({ x: p.x + dx, y: p.y + dy })),
       };
+    case 'text':
+      return {
+        position: { x: shape.position.x + dx, y: shape.position.y + dy },
+      };
+    case 'point':
+      return {
+        position: { x: shape.position.x + dx, y: shape.position.y + dy },
+      };
+    case 'dimension':
+      return {
+        points: shape.points.map((p: { x: number; y: number }) => ({ x: p.x + dx, y: p.y + dy })),
+      };
     default:
       return {};
   }

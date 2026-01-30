@@ -10,7 +10,7 @@ export class GridLayer extends BaseRenderer {
   /**
    * Draw grid with adaptive sizing
    */
-  drawGrid(viewport: Viewport, gridSize: number): void {
+  drawGrid(viewport: Viewport, gridSize: number, whiteBackground: boolean = false): void {
     const ctx = this.ctx;
     const { left, top, right, bottom } = this.getVisibleArea(viewport);
 
@@ -26,7 +26,7 @@ export class GridLayer extends BaseRenderer {
     const majorGridSize = adjustedGridSize * 5;
 
     // Draw minor grid lines
-    ctx.strokeStyle = COLORS.gridMinor;
+    ctx.strokeStyle = whiteBackground ? '#d0d0d0' : COLORS.gridMinor;
     ctx.lineWidth = 0.5 / viewport.zoom;
     ctx.beginPath();
 
@@ -48,7 +48,7 @@ export class GridLayer extends BaseRenderer {
     ctx.stroke();
 
     // Draw major grid lines
-    ctx.strokeStyle = COLORS.gridMajor;
+    ctx.strokeStyle = whiteBackground ? '#b0b0b0' : COLORS.gridMajor;
     ctx.lineWidth = 1 / viewport.zoom;
     ctx.beginPath();
 
@@ -68,13 +68,18 @@ export class GridLayer extends BaseRenderer {
     ctx.stroke();
 
     // Draw origin axes
-    this.drawAxes(viewport, left, top, right, bottom);
+    this.drawAxesInternal(viewport, left, top, right, bottom);
   }
 
   /**
    * Draw origin axes
    */
-  private drawAxes(viewport: Viewport, left: number, top: number, right: number, bottom: number): void {
+  drawAxes(viewport: Viewport): void {
+    const { left, top, right, bottom } = this.getVisibleArea(viewport);
+    this.drawAxesInternal(viewport, left, top, right, bottom);
+  }
+
+  private drawAxesInternal(viewport: Viewport, left: number, top: number, right: number, bottom: number): void {
     const ctx = this.ctx;
     ctx.lineWidth = 2 / viewport.zoom;
 

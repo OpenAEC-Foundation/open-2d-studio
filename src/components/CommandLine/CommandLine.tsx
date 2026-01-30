@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, memo } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
 import { parseCoordinateInput } from '../../utils/coordinateParser';
 import type { LineShape, RectangleShape, CircleShape } from '../../types/geometry';
@@ -15,92 +15,83 @@ import {
 
 type DrawingOption = 'Undo' | 'Close' | 'Cancel';
 
-export function CommandLine() {
+export const CommandLine = memo(function CommandLine() {
   const inputRef = useRef<HTMLInputElement>(null);
   const historyRef = useRef<HTMLDivElement>(null);
   const [historyIndex, setHistoryIndex] = useState(-1);
   const [messages, setMessages] = useState<string[]>(['Ready']);
   const [commandState, setCommandState] = useState<CommandState>(createInitialCommandState());
 
-  const {
-    commandHistory,
-    currentCommand,
-    setCurrentCommand,
-    activeTool,
-    drawingPoints,
-    isDrawing,
-    addDrawingPoint,
-    undoDrawingPoint,
-    clearDrawingPoints,
-    setDrawingPreview,
-    addShape,
-    updateShape,
-    deleteShape,
-    shapes,
-    selectedShapeIds,
-    deselectAll,
-    activeLayerId,
-    activeDrawingId,
-    currentStyle,
-    setActiveTool,
-    pendingCommand,
-    setPendingCommand,
-    pendingCommandPoint,
-    setPendingCommandPoint,
-    pendingCommandSelection,
-    setPendingCommandSelection,
-    setHasActiveModifyCommand,
-    setCommandIsSelecting,
-    mousePosition,
-    viewport,
-    setCommandPreviewShapes,
-    snapEnabled,
-    gridSize,
-    setPrintDialogOpen,
-    directDistanceAngle,
-    pendingCommandCancel,
-    clearCommandCancelRequest,
-    setActiveCommandName,
-  } = useAppStore();
+  // Subscribe only to render-affecting state
+  const currentCommand = useAppStore(s => s.currentCommand);
+  const setCurrentCommand = useAppStore(s => s.setCurrentCommand);
+  const activeTool = useAppStore(s => s.activeTool);
+  const drawingPointsLength = useAppStore(s => s.drawingPoints.length);
+  const isDrawing = useAppStore(s => s.isDrawing);
+  const pendingCommand = useAppStore(s => s.pendingCommand);
+  const pendingCommandPoint = useAppStore(s => s.pendingCommandPoint);
+  const pendingCommandSelection = useAppStore(s => s.pendingCommandSelection);
+  const pendingCommandCancel = useAppStore(s => s.pendingCommandCancel);
+  const mousePosition = useAppStore(s => s.mousePosition);
+  const commandHistory = useAppStore(s => s.commandHistory);
+
+  // Actions (stable references from store)
+  const addDrawingPoint = useAppStore(s => s.addDrawingPoint);
+  const undoDrawingPoint = useAppStore(s => s.undoDrawingPoint);
+  const clearDrawingPoints = useAppStore(s => s.clearDrawingPoints);
+  const setDrawingPreview = useAppStore(s => s.setDrawingPreview);
+  const addShape = useAppStore(s => s.addShape);
+  const updateShape = useAppStore(s => s.updateShape);
+  const deleteShape = useAppStore(s => s.deleteShape);
+  const deselectAll = useAppStore(s => s.deselectAll);
+  const setActiveTool = useAppStore(s => s.setActiveTool);
+  const setPendingCommand = useAppStore(s => s.setPendingCommand);
+  const setPendingCommandPoint = useAppStore(s => s.setPendingCommandPoint);
+  const setPendingCommandSelection = useAppStore(s => s.setPendingCommandSelection);
+  const setHasActiveModifyCommand = useAppStore(s => s.setHasActiveModifyCommand);
+  const setCommandIsSelecting = useAppStore(s => s.setCommandIsSelecting);
+  const setCommandPreviewShapes = useAppStore(s => s.setCommandPreviewShapes);
+  const setPrintDialogOpen = useAppStore(s => s.setPrintDialogOpen);
+  const clearCommandCancelRequest = useAppStore(s => s.clearCommandCancelRequest);
+  const setActiveCommandName = useAppStore(s => s.setActiveCommandName);
 
   // Check if we have an active modify command
   const hasActiveCommand = commandState.activeCommand !== null;
 
   // Get current prompt based on tool, drawing state, or command state
   const getPrompt = useCallback((): string => {
-    // If there's an active command, use its prompt
     if (hasActiveCommand) {
       return commandState.prompt;
     }
 
     switch (activeTool) {
       case 'line':
-        if (drawingPoints.length === 0) {
+        if (drawingPointsLength === 0) {
           return 'LINE Specify first point:';
-        } else if (drawingPoints.length === 1) {
+        } else if (drawingPointsLength === 1) {
           return 'Specify next point, distance, or [Undo]:';
         } else {
           return 'Specify next point, distance, or [Close/Undo]:';
         }
 
       case 'polyline':
-        if (drawingPoints.length === 0) {
+        if (drawingPointsLength === 0) {
           return 'POLYLINE Specify first point:';
-        } else if (drawingPoints.length === 1) {
+        } else if (drawingPointsLength === 1) {
           return 'Specify next point, distance, or [Undo]:';
         } else {
           return 'Specify next point, distance, or [Close/Undo]:';
         }
 
       case 'rectangle':
-        if (drawingPoints.length === 0) {
+        if (drawingPointsLength === 0) {
           return 'RECTANG Specify first corner point:';
         } else {
           return 'Specify other corner point:';
         }
 
       case 'circle':
-        if (drawingPoints.length === 0) {
+        if (drawingPointsLength === 0) {
           return 'CIRCLE Specify center point:';
         } else {
           return 'Specify radius or [Diameter]:';
@@ -115,7 +106,7 @@ export function CommandLine() {
       default:
         return 'Command:';
     }
-  }, [activeTool, drawingPoints.length, hasActiveCommand, commandState.prompt]);
+  }, [activeTool, drawingPointsLength, hasActiveCommand, commandState.prompt]);
 
   // Get available options based on current state
   const getOptions = useCallback((): string[] => {
@@ -128,16 +119,16 @@ export function CommandLine() {
 
     const options: DrawingOption[] = ['Cancel'];
 
-    if (drawingPoints.length > 0) {
+    if (drawingPointsLength > 0) {
       options.unshift('Undo');
     }
 
-    if ((activeTool === 'line' || activeTool === 'polyline') && drawingPoints.length >= 2) {
+    if ((activeTool === 'line' || activeTool === 'polyline') && drawingPointsLength >= 2) {
       options.unshift('Close');
     }
 
     return options;
-  }, [isDrawing, drawingPoints.length, activeTool, hasActiveCommand, commandState.options]);
+  }, [isDrawing, drawingPointsLength, activeTool, hasActiveCommand, commandState.options]);
 
   // Add message to history
   const addMessage = useCallback((msg: string) => {
@@ -150,52 +141,45 @@ export function CommandLine() {
       addMessage(result.message);
     }
 
-    // Add new shapes
     if (result.shapesToAdd) {
       result.shapesToAdd.forEach((shape) => addShape(shape));
     }
 
-    // Update existing shapes
     if (result.shapesToUpdate) {
       result.shapesToUpdate.forEach(({ id, updates }) => updateShape(id, updates));
     }
 
-    // Delete shapes
     if (result.shapesToDelete) {
       result.shapesToDelete.forEach((id) => deleteShape(id));
     }
 
-    // Update command state
     if (result.newState) {
       setCommandState((prev) => ({ ...prev, ...result.newState }));
 
-      // If command ended, deselect and reset
       if (result.newState.phase === 'idle' && result.newState.activeCommand === null) {
         deselectAll();
       }
     }
 
-    // Open print dialog if requested
     if (result.openPrintDialog) {
       setPrintDialogOpen(true);
     }
 
-    // If command should continue (like COPY multiple mode)
     if (!result.continue && result.newState?.activeCommand === null) {
-      // Reset to initial state
       setCommandState(createInitialCommandState());
     }
-  }, [addMessage, addShape, updateShape, deleteShape, deselectAll]);
+  }, [addMessage, addShape, updateShape, deleteShape, deselectAll, setPrintDialogOpen]);
 
-  // Create shapes
+  // Create shapes - read layer/drawing/style from store at call time
   const createLine = useCallback(
     (start: { x: number; y: number }, end: { x: number; y: number }) => {
+      const s = useAppStore.getState();
       const lineShape: LineShape = {
         id: generateId(),
         type: 'line',
-        layerId: activeLayerId,
-        drawingId: activeDrawingId,
-        style: { ...currentStyle },
+        layerId: s.activeLayerId,
+        drawingId: s.activeDrawingId,
+        style: { ...s.currentStyle },
         visible: true,
         locked: false,
         start,
@@ -203,19 +187,20 @@ export function CommandLine() {
       };
       addShape(lineShape);
     },
-    [activeLayerId, activeDrawingId, currentStyle, addShape]
+    [addShape]
   );
 
   const createRectangle = useCallback(
     (start: { x: number; y: number }, end: { x: number; y: number }) => {
+      const s = useAppStore.getState();
       const width = end.x - start.x;
       const height = end.y - start.y;
       const rectShape: RectangleShape = {
         id: generateId(),
         type: 'rectangle',
-        layerId: activeLayerId,
-        drawingId: activeDrawingId,
-        style: { ...currentStyle },
+        layerId: s.activeLayerId,
+        drawingId: s.activeDrawingId,
+        style: { ...s.currentStyle },
         visible: true,
         locked: false,
         topLeft: {
@@ -228,17 +213,18 @@ export function CommandLine() {
       };
       addShape(rectShape);
     },
-    [activeLayerId, activeDrawingId, currentStyle, addShape]
+    [addShape]
   );
 
   const createCircle = useCallback(
     (center: { x: number; y: number }, radius: number) => {
+      const s = useAppStore.getState();
       const circleShape: CircleShape = {
         id: generateId(),
         type: 'circle',
-        layerId: activeLayerId,
-        drawingId: activeDrawingId,
-        style: { ...currentStyle },
+        layerId: s.activeLayerId,
+        drawingId: s.activeDrawingId,
+        style: { ...s.currentStyle },
         visible: true,
         locked: false,
         center,
@@ -246,7 +232,7 @@ export function CommandLine() {
       };
       addShape(circleShape);
     },
-    [activeLayerId, activeDrawingId, currentStyle, addShape]
+    [addShape]
   );
 
   // Handle option click (for drawing tools)
@@ -258,16 +244,18 @@ export function CommandLine() {
           addMessage('*Undo*');
           break;
 
-        case 'Close':
-          if (activeTool === 'line' && drawingPoints.length >= 2) {
-            const firstPoint = drawingPoints[0];
-            const lastPoint = drawingPoints[drawingPoints.length - 1];
+        case 'Close': {
+          const s = useAppStore.getState();
+          if (s.activeTool === 'line' && s.drawingPoints.length >= 2) {
+            const firstPoint = s.drawingPoints[0];
+            const lastPoint = s.drawingPoints[s.drawingPoints.length - 1];
             createLine(lastPoint, firstPoint);
             addMessage('Line closed');
             clearDrawingPoints();
             setDrawingPreview(null);
           }
           break;
+        }
 
         case 'Cancel':
           clearDrawingPoints();
@@ -276,25 +264,17 @@ export function CommandLine() {
           break;
       }
     },
-    [
-      activeTool,
-      drawingPoints,
-      undoDrawingPoint,
-      clearDrawingPoints,
-      setDrawingPreview,
-      createLine,
-      addMessage,
-    ]
+    [undoDrawingPoint, clearDrawingPoints, setDrawingPreview, createLine, addMessage]
   );
 
   // Handle option click (for commands)
   const handleCommandOption = useCallback(
     (option: string) => {
       const input: CommandInput = { type: 'option', option };
-      const result = processCommandInput(commandState, input, shapes);
+      const result = processCommandInput(commandState, input, useAppStore.getState().shapes);
       applyCommandResult(result);
     },
-    [commandState, shapes, applyCommandResult]
+    [commandState, applyCommandResult]
   );
 
   // Handle option click (generic)
@@ -314,12 +294,12 @@ export function CommandLine() {
     (input: string) => {
       const trimmed = input.trim();
       const lowerInput = trimmed.toLowerCase();
+      const s = useAppStore.getState();
 
       // If there's an active command, process input through command system
       if (hasActiveCommand) {
         let cmdInput: CommandInput;
 
-        // Check if it's an option
         const matchedOption = commandState.options?.find(
           (o) => o.toLowerCase() === lowerInput || o.toLowerCase().startsWith(lowerInput)
         );
@@ -329,24 +309,21 @@ export function CommandLine() {
         } else if (trimmed === '') {
           cmdInput = { type: 'enter' };
         } else {
-          // Try parsing as number (value)
           const numValue = parseFloat(trimmed);
           if (!isNaN(numValue) && trimmed.match(/^-?[\d.]+$/)) {
             cmdInput = { type: 'value', value: numValue };
           } else {
-            // Try parsing as coordinate
             const lastPoint = commandState.basePoint || { x: 0, y: 0 };
             const parsed = parseCoordinateInput(trimmed, lastPoint);
             if (parsed) {
               cmdInput = { type: 'point', point: parsed.point };
             } else {
-              // Treat as text
               cmdInput = { type: 'text', text: trimmed };
             }
           }
         }
 
-        const result = processCommandInput(commandState, cmdInput, shapes);
+        const result = processCommandInput(commandState, cmdInput, s.shapes);
         applyCommandResult(result);
         return;
       }
@@ -354,7 +331,6 @@ export function CommandLine() {
       // Check for tool/command shortcuts
       const commandName = resolveCommandName(trimmed);
       if (commandName) {
-        // Check if it's a drawing tool
         const drawingTools = ['LINE', 'RECTANGLE', 'CIRCLE', 'ARC', 'POLYLINE', 'ELLIPSE'];
         if (drawingTools.includes(commandName)) {
           const toolMap: Record<string, 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse'> = {
@@ -370,15 +346,14 @@ export function CommandLine() {
           return;
         }
 
-        // Start modify command
-        const newState = startCommand(commandName, createInitialCommandState(), selectedShapeIds);
+        const newState = startCommand(commandName, createInitialCommandState(), s.selectedShapeIds);
         setCommandState(newState);
         addMessage(commandName);
         return;
       }
 
       // Legacy tool commands
-      if (!isDrawing) {
+      if (!s.isDrawing) {
         switch (lowerInput) {
           case 'l':
           case 'line':
@@ -408,22 +383,21 @@ export function CommandLine() {
       switch (lowerInput) {
         case 'u':
         case 'undo':
-          if (isDrawing && drawingPoints.length > 0) {
+          if (s.isDrawing && s.drawingPoints.length > 0) {
             handleDrawingOption('Undo');
             return;
           }
           break;
 
         case 'close':
-          if ((activeTool === 'line' || activeTool === 'polyline') && drawingPoints.length >= 2) {
+          if ((s.activeTool === 'line' || s.activeTool === 'polyline') && s.drawingPoints.length >= 2) {
             handleDrawingOption('Close');
             return;
           }
           break;
 
         case '':
-          // Enter with no input - end drawing or cancel
-          if (isDrawing) {
+          if (s.isDrawing) {
             clearDrawingPoints();
             setDrawingPreview(null);
             addMessage('');
@@ -433,27 +407,24 @@ export function CommandLine() {
       }
 
       // Try to parse as coordinates for drawing tools
-      if (activeTool === 'line' || activeTool === 'polyline' || activeTool === 'rectangle' || activeTool === 'circle') {
-        const lastPoint = drawingPoints.length > 0 ? drawingPoints[drawingPoints.length - 1] : null;
+      if (s.activeTool === 'line' || s.activeTool === 'polyline' || s.activeTool === 'rectangle' || s.activeTool === 'circle') {
+        const lastPoint = s.drawingPoints.length > 0 ? s.drawingPoints[s.drawingPoints.length - 1] : null;
         const parsed = parseCoordinateInput(trimmed, lastPoint);
 
         if (parsed) {
           let point = parsed.point;
 
-          // Handle direct distance entry - use tracking angle to calculate endpoint
           if (parsed.isDirectDistance && lastPoint) {
-            const distance = parsed.point.x; // Distance is stored in x
+            const distance = parsed.point.x;
 
-            if (directDistanceAngle !== null) {
-              // Use the snapped/tracking angle
+            if (s.directDistanceAngle !== null) {
               point = {
-                x: lastPoint.x + distance * Math.cos(directDistanceAngle),
-                y: lastPoint.y + distance * Math.sin(directDistanceAngle),
+                x: lastPoint.x + distance * Math.cos(s.directDistanceAngle),
+                y: lastPoint.y + distance * Math.sin(s.directDistanceAngle),
               };
             } else {
-              // No tracking angle - use the current mouse direction
-              const worldX = (mousePosition.x - viewport.offsetX) / viewport.zoom;
-              const worldY = (mousePosition.y - viewport.offsetY) / viewport.zoom;
+              const worldX = (s.mousePosition.x - s.viewport.offsetX) / s.viewport.zoom;
+              const worldY = (s.mousePosition.y - s.viewport.offsetY) / s.viewport.zoom;
               const dx = worldX - lastPoint.x;
               const dy = worldY - lastPoint.y;
               const mouseAngle = Math.atan2(dy, dx);
@@ -464,11 +435,10 @@ export function CommandLine() {
             }
           }
 
-          switch (activeTool) {
+          switch (s.activeTool) {
             case 'line':
             case 'polyline':
-              if (drawingPoints.length === 0) {
-                // For first point, direct distance doesn't make sense - use as absolute
+              if (s.drawingPoints.length === 0) {
                 if (parsed.isDirectDistance) {
                   addMessage('Cannot use direct distance for first point. Enter coordinates.');
                   return;
@@ -476,21 +446,21 @@ export function CommandLine() {
                 addDrawingPoint(point);
                 addMessage(`First point: ${point.x.toFixed(2)}, ${point.y.toFixed(2)}`);
               } else {
-                const prevPoint = drawingPoints[drawingPoints.length - 1];
-                if (activeTool === 'line') {
+                const prevPoint = s.drawingPoints[s.drawingPoints.length - 1];
+                if (s.activeTool === 'line') {
                   createLine(prevPoint, point);
                 }
                 addDrawingPoint(point);
-                addMessage(`${activeTool === 'line' ? 'Line' : 'Polyline'} to: ${point.x.toFixed(2)}, ${point.y.toFixed(2)}`);
+                addMessage(`${s.activeTool === 'line' ? 'Line' : 'Polyline'} to: ${point.x.toFixed(2)}, ${point.y.toFixed(2)}`);
               }
               break;
 
             case 'rectangle':
-              if (drawingPoints.length === 0) {
+              if (s.drawingPoints.length === 0) {
                 addDrawingPoint(point);
                 addMessage(`First corner: ${point.x.toFixed(2)}, ${point.y.toFixed(2)}`);
               } else {
-                const startPoint = drawingPoints[0];
+                const startPoint = s.drawingPoints[0];
                 createRectangle(startPoint, point);
                 clearDrawingPoints();
                 setDrawingPreview(null);
@@ -499,19 +469,17 @@ export function CommandLine() {
               break;
 
             case 'circle':
-              if (drawingPoints.length === 0) {
+              if (s.drawingPoints.length === 0) {
                 addDrawingPoint(point);
                 addMessage(`Center: ${point.x.toFixed(2)}, ${point.y.toFixed(2)}`);
               } else {
-                const center = drawingPoints[0];
+                const center = s.drawingPoints[0];
                 let radius: number;
 
-                // Check if input was just a number (radius)
                 const radiusValue = parseFloat(trimmed);
                 if (!isNaN(radiusValue) && trimmed.match(/^[\d.]+$/)) {
                   radius = radiusValue;
                 } else {
-                  // Calculate radius from point
                   const dx = point.x - center.x;
                   const dy = point.y - center.y;
                   radius = Math.sqrt(dx * dx + dy * dy);
@@ -528,7 +496,6 @@ export function CommandLine() {
         }
       }
 
-      // Unknown command
       if (trimmed) {
         addMessage(`Unknown command: ${trimmed}`);
       }
@@ -536,11 +503,6 @@ export function CommandLine() {
     [
       hasActiveCommand,
       commandState,
-      shapes,
-      selectedShapeIds,
-      isDrawing,
-      activeTool,
-      drawingPoints,
       addDrawingPoint,
       clearDrawingPoints,
       setDrawingPreview,
@@ -551,9 +513,6 @@ export function CommandLine() {
       applyCommandResult,
       addMessage,
       setActiveTool,
-      directDistanceAngle,
-      mousePosition,
-      viewport,
     ]
   );
 
@@ -582,7 +541,7 @@ export function CommandLine() {
     } else if (e.key === 'Escape') {
       if (hasActiveCommand) {
         const input: CommandInput = { type: 'escape' };
-        const result = processCommandInput(commandState, input, shapes);
+        const result = processCommandInput(commandState, input, useAppStore.getState().shapes);
         applyCommandResult(result);
         setCommandState(createInitialCommandState());
       } else if (isDrawing) {
@@ -594,26 +553,21 @@ export function CommandLine() {
   };
 
   // Watch for pending commands from ToolPalette/Ribbon
-  // This bypasses handleCommand to properly switch between commands
   useEffect(() => {
     if (pendingCommand) {
-      // Resolve the command name
       const commandName = resolveCommandName(pendingCommand);
 
       if (commandName) {
-        // Cancel any active command first (reset state)
-        // Then start the new command from a fresh state
-        const newState = startCommand(commandName, createInitialCommandState(), selectedShapeIds);
+        const newState = startCommand(commandName, createInitialCommandState(), useAppStore.getState().selectedShapeIds);
         setCommandState(newState);
         addMessage(commandName);
       } else {
-        // Not a recognized command, fall back to handleCommand
         handleCommand(pendingCommand);
       }
 
       setPendingCommand(null);
     }
-  }, [pendingCommand, setPendingCommand, selectedShapeIds, addMessage, handleCommand]);
+  }, [pendingCommand, setPendingCommand, addMessage, handleCommand]);
 
   // Update hasActiveModifyCommand, activeCommandName, and commandIsSelecting when command state changes
   useEffect(() => {
@@ -631,42 +585,41 @@ export function CommandLine() {
       return;
     }
 
-    // Convert screen coordinates to world coordinates
-    const worldX = (mousePosition.x - viewport.offsetX) / viewport.zoom;
-    const worldY = (mousePosition.y - viewport.offsetY) / viewport.zoom;
+    const s = useAppStore.getState();
+    const worldX = (mousePosition.x - s.viewport.offsetX) / s.viewport.zoom;
+    const worldY = (mousePosition.y - s.viewport.offsetY) / s.viewport.zoom;
 
-    // Snap to grid if enabled
     let snappedX = worldX;
     let snappedY = worldY;
-    if (snapEnabled) {
-      snappedX = Math.round(worldX / gridSize) * gridSize;
-      snappedY = Math.round(worldY / gridSize) * gridSize;
+    if (s.snapEnabled) {
+      snappedX = Math.round(worldX / s.gridSize) * s.gridSize;
+      snappedY = Math.round(worldY / s.gridSize) * s.gridSize;
     }
 
     const currentPoint = { x: snappedX, y: snappedY };
-    const previewShapes = getCommandPreview(commandState, currentPoint, shapes);
+    const previewShapes = getCommandPreview(commandState, currentPoint, s.shapes);
     setCommandPreviewShapes(previewShapes);
-  }, [hasActiveCommand, mousePosition, viewport, commandState, shapes, snapEnabled, gridSize, setCommandPreviewShapes]);
+  }, [hasActiveCommand, mousePosition, commandState, setCommandPreviewShapes]);
 
   // Process pending points from canvas clicks
   useEffect(() => {
     if (pendingCommandPoint && hasActiveCommand) {
       const input: CommandInput = { type: 'point', point: pendingCommandPoint };
-      const result = processCommandInput(commandState, input, shapes);
+      const result = processCommandInput(commandState, input, useAppStore.getState().shapes);
       applyCommandResult(result);
       setPendingCommandPoint(null);
     }
-  }, [pendingCommandPoint, hasActiveCommand, commandState, shapes, applyCommandResult, setPendingCommandPoint]);
+  }, [pendingCommandPoint, hasActiveCommand, commandState, applyCommandResult, setPendingCommandPoint]);
 
   // Process pending selections from canvas clicks during command selection phase
   useEffect(() => {
     if (pendingCommandSelection && hasActiveCommand && commandState.phase === 'selecting') {
       const input: CommandInput = { type: 'selection', ids: pendingCommandSelection };
-      const result = processCommandInput(commandState, input, shapes);
+      const result = processCommandInput(commandState, input, useAppStore.getState().shapes);
       applyCommandResult(result);
       setPendingCommandSelection(null);
     }
-  }, [pendingCommandSelection, hasActiveCommand, commandState, shapes, applyCommandResult, setPendingCommandSelection]);
+  }, [pendingCommandSelection, hasActiveCommand, commandState, applyCommandResult, setPendingCommandSelection]);
 
   // Watch for command cancel requests (e.g., when user switches to drawing tool)
   useEffect(() => {
@@ -765,4 +718,4 @@ export function CommandLine() {
       </div>
     </div>
   );
-}
+});

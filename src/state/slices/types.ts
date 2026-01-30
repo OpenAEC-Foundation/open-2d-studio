@@ -50,6 +50,8 @@ export type {
 export type Draft = Drawing;
 export type DraftBoundary = DrawingBoundary;
 
+import type { DimensionType } from '../../types/dimension';
+
 // Preview shape while drawing (before mouse up)
 export type DrawingPreview =
   | { type: 'line'; start: Point; end: Point }
@@ -60,6 +62,7 @@ export type DrawingPreview =
   | { type: 'arc'; center: Point; radius: number; startAngle: number; endAngle: number }
   | { type: 'polyline'; points: Point[]; currentPoint: Point }
   | { type: 'text'; position: Point }
+  | { type: 'dimension'; dimensionType: DimensionType; points: Point[]; dimensionLineOffset: number; linearDirection?: 'horizontal' | 'vertical'; value: string }
   | null;
 
 // Default text style for new text shapes
@@ -252,6 +255,18 @@ export const getShapeBounds = (shape: Shape): { minX: number; minY: number; maxX
         minY: shape.position.y,
         maxX: shape.position.x,
         maxY: shape.position.y,
+      };
+    case 'dimension':
+      if (shape.points.length === 0) return null;
+      const dimXs = shape.points.map(p => p.x);
+      const dimYs = shape.points.map(p => p.y);
+      // Include offset for dimension line
+      const offset = Math.abs(shape.dimensionLineOffset || 0);
+      return {
+        minX: Math.min(...dimXs) - offset,
+        minY: Math.min(...dimYs) - offset,
+        maxX: Math.max(...dimXs) + offset,
+        maxY: Math.max(...dimYs) + offset,
       };
     default:
       return null;

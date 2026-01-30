@@ -24,9 +24,9 @@ interface ToolButtonProps {
 function ToolButton({ icon, label, active, onClick, disabled }: ToolButtonProps) {
   return (
     <button
-      className={`p-2 rounded hover:bg-cad-border transition-colors ${
+      className={`p-2 rounded hover:bg-cad-border transition-colors cursor-default ${
         active ? 'bg-cad-accent text-white' : 'text-cad-text'
-      } ${disabled ? 'opacity-50 cursor-not-allowed' : ''}`}
+      } ${disabled ? 'opacity-50 !cursor-not-allowed' : ''}`}
       onClick={onClick}
       disabled={disabled}
       title={label}
@@ -51,14 +51,12 @@ export function Toolbar() {
     selectedShapeIds,
     undo,
     redo,
-    historyStack,
-    historyIndex,
     setPrintDialogOpen,
     setSnapSettingsOpen,
   } = useAppStore();
 
-  const canUndo = historyStack.length > 0 && historyIndex > 0;
-  const canRedo = historyStack.length > 0 && historyIndex < historyStack.length - 1;
+  const canUndo = useAppStore(s => s.canUndo());
+  const canRedo = useAppStore(s => s.canRedo());
 
   return (
     <div className="h-12 bg-cad-surface border-b border-cad-border flex items-center px-2 gap-1">

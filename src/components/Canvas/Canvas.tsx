@@ -1,4 +1,4 @@
-import { useRef, useEffect, useCallback, useMemo } from 'react';
+import { useRef, useEffect, useCallback } from 'react';
 import { useAppStore } from '../../state/appStore';
 import { CADRenderer } from '../../engine/renderer/CADRenderer';
 import { useCanvasEvents } from '../../hooks/useCanvasEvents';
@@ -13,64 +13,18 @@ export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<CADRenderer | null>(null);
 
-  const {
-    shapes,
-    selectedShapeIds,
-    viewport,
-    gridVisible,
-    gridSize,
-    setCanvasSize,
-    setMousePosition,
-    activeTool,
-    drawingPreview,
-    currentStyle,
-    selectionBox,
-    commandPreviewShapes,
-    currentSnapPoint,
-    currentTrackingLines,
-    trackingPoint,
-    activeDrawingId,
-    editorMode,
-    layers,
-    // Sheet mode state
-    drawings,
-    sheets,
-    activeSheetId,
-    drawingViewports,
-    // Boundary editing state
-    boundaryEditState,
-    // Viewport editing state
-    viewportEditState,
-    // Crop region editing state
-    cropRegionEditState,
-    // Annotation state
-    selectedAnnotationIds,
-    // Text editing state
-    textEditingId,
-    endTextEditing,
-    updateShape,
-    deleteShape,
-    // Drawing placement state
-    isPlacing,
-    placingDrawingId,
-    previewPosition,
-    placementScale,
-    updatePlacementPreview,
-    confirmPlacement,
-  } = useAppStore();
-
-  // Filter shapes and layers by active drawing
-  const filteredShapes = useMemo(() => {
-    if (editorMode === 'drawing') {
-      return shapes.filter(shape => shape.drawingId === activeDrawingId);
-    }
-    // In sheet mode, shapes are rendered through viewports (handled by CADRenderer)
-    return shapes;
-  }, [shapes, activeDrawingId, editorMode]);
-
-  const filteredLayers = useMemo(() => {
-    return layers.filter(layer => layer.drawingId === activeDrawingId);
-  }, [layers, activeDrawingId]);
+  // Only subscribe to state needed for React DOM rendering
+  const activeTool = useAppStore(s => s.activeTool);
+  const hasActiveModifyCommand = useAppStore(s => s.hasActiveModifyCommand);
+  const whiteBackground = useAppStore(s => s.whiteBackground);
+  const setCanvasSize = useAppStore(s => s.setCanvasSize);
+  const setMousePosition = useAppStore(s => s.setMousePosition);
+  const endTextEditing = useAppStore(s => s.endTextEditing);
+  const updateShape = useAppStore(s => s.updateShape);
+  const deleteShape = useAppStore(s => s.deleteShape);
+  const updatePlacementPreview = useAppStore(s => s.updatePlacementPreview);
+  const confirmPlacement = useAppStore(s => s.confirmPlacement);
+  const setViewport = useAppStore(s => s.setViewport);
 
   // Initialize renderer
   useEffect(() => {
@@ -106,97 +60,137 @@ export function Canvas() {
     return () => resizeObserver.disconnect();
   }, [setCanvasSize]);
 
+  // Center viewport on drawing boundary when canvas first gets sized
+  const hasCenteredRef = useRef(false);
+  useEffect(() => {
+    if (hasCenteredRef.current) return;
+    const s = useAppStore.getState();
+    if (!s.canvasSize || s.canvasSize.width === 0 || s.canvasSize.height === 0) return;
+    if (s.editorMode !== 'drawing') return;
 
-  // Get active sheet for rendering
-  const activeSheet = useMemo(() => {
-    if (editorMode === 'sheet' && activeSheetId) {
-      return sheets.find(s => s.id === activeSheetId) || null;
-    }
-    return null;
-  }, [editorMode, activeSheetId, sheets]);
+    const drawing = s.drawings.find(d => d.id === s.activeDrawingId);
+    if (!drawing?.boundary) return;
 
-  // Get active drawing for boundary rendering
-  const activeDrawing = useMemo(() => {
-    return drawings.find(d => d.id === activeDrawingId) || null;
-  }, [drawings, activeDrawingId]);
+    const b = drawing.boundary;
+    const centerX = b.x + b.width / 2;
+    const centerY = b.y + b.height / 2;
+    const zoom = s.viewport.zoom;
 
-  // Get text shape being edited
-  const editingTextShape = useMemo(() => {
-    if (!textEditingId) return null;
-    return shapes.find(s => s.id === textEditingId && s.type === 'text') as TextShape | undefined;
-  }, [textEditingId, shapes]);
+    setViewport({
+      offsetX: s.canvasSize.width / 2 - centerX * zoom,
+      offsetY: s.canvasSize.height / 2 - centerY * zoom,
+      zoom,
+    });
+    hasCenteredRef.current = true;
+  });
+
+  // Get text shape being edited (needs React re-render for overlay)
+  const editingTextShape = useAppStore(s => {
+    if (!s.textEditingId) return null;
+    return (s.shapes.find(sh => sh.id === s.textEditingId && sh.type === 'text') as TextShape | undefined) || null;
+  });
 
   // Handle text save
   const handleTextSave = useCallback((newText: string) => {
-    if (textEditingId && newText.trim()) {
-      updateShape(textEditingId, { text: newText });
-    } else if (textEditingId && !newText.trim()) {
-      // Delete empty text
-      deleteShape(textEditingId);
+    const tid = useAppStore.getState().textEditingId;
+    if (tid && newText.trim()) {
+      updateShape(tid, { text: newText });
+    } else if (tid && !newText.trim()) {
+      deleteShape(tid);
     }
     endTextEditing();
-  }, [textEditingId, updateShape, deleteShape, endTextEditing]);
+  }, [updateShape, deleteShape, endTextEditing]);
 
   // Handle text cancel
   const handleTextCancel = useCallback(() => {
-    if (textEditingId) {
-      const shape = shapes.find(s => s.id === textEditingId);
-      // Delete if text was never entered
+    const s = useAppStore.getState();
+    if (s.textEditingId) {
+      const shape = s.shapes.find(sh => sh.id === s.textEditingId);
       if (shape && shape.type === 'text' && !shape.text) {
-        deleteShape(textEditingId);
+        deleteShape(s.textEditingId);
       }
     }
     endTextEditing();
-  }, [textEditingId, shapes, deleteShape, endTextEditing]);
+  }, [deleteShape, endTextEditing]);
 
-  // Render loop
+  // rAF render loop — reads state directly from Zustand, no deps array
   useEffect(() => {
     const renderer = rendererRef.current;
     if (!renderer) return;
 
-    if (editorMode === 'sheet' && activeSheet) {
-      // Render sheet (Paper Space)
-      renderer.renderSheet({
-        sheet: activeSheet,
-        drawings,
-        shapes,  // All shapes, filtering happens in renderer
-        layers,  // All layers for per-viewport filtering
-        viewport,
-        selectedViewportId: viewportEditState.selectedViewportId,
-        viewportDragging: viewportEditState.isDragging,
-        drawingViewports,
-        cropRegionEditing: cropRegionEditState?.isEditing || false,
-        cropRegionViewportId: cropRegionEditState?.viewportId || null,
-        selectedAnnotationIds,
-        placementPreview: {
-          isPlacing,
-          placingDrawingId,
-          previewPosition,
-          placementScale,
-        },
-      });
-    } else {
-      // Render drawing (Model Space)
-      renderer.render({
-        shapes: filteredShapes,
-        selectedShapeIds,
-        viewport,
-        gridVisible,
-        gridSize,
-        drawingPreview,
-        currentStyle,
-        selectionBox,
-        commandPreviewShapes,
-        currentSnapPoint,
-        currentTrackingLines,
-        trackingPoint,
-        layers: filteredLayers,
-        drawingBoundary: activeDrawing?.boundary || null,
-        boundarySelected: boundaryEditState.isSelected,
-        boundaryDragging: boundaryEditState.activeHandle !== null,
-      });
-    }
-  }, [editorMode, activeSheet, drawings, shapes, layers, filteredShapes, selectedShapeIds, viewport, gridVisible, gridSize, drawingPreview, currentStyle, selectionBox, commandPreviewShapes, currentSnapPoint, currentTrackingLines, trackingPoint, filteredLayers, drawingViewports, activeDrawing, boundaryEditState, viewportEditState, cropRegionEditState, selectedAnnotationIds, isPlacing, placingDrawingId, previewPosition, placementScale]);
+    let rafId = 0;
+    let dirty = true;
+
+    const unsub = useAppStore.subscribe(() => { dirty = true; });
+
+    const tick = () => {
+      if (dirty) {
+        // Skip rendering if a transaction is suppressing renders
+        const cadApi = (window as any).cad;
+        if (cadApi?.transactions?.renderSuppressed) {
+          rafId = requestAnimationFrame(tick);
+          return;
+        }
+
+        dirty = false;
+        const s = useAppStore.getState();
+
+        if (s.editorMode === 'sheet') {
+          const activeSheet = s.sheets.find(sh => sh.id === s.activeSheetId) || null;
+          if (activeSheet) {
+            renderer.renderSheet({
+              sheet: activeSheet,
+              drawings: s.drawings,
+              shapes: s.shapes,
+              layers: s.layers,
+              viewport: s.viewport,
+              selectedViewportId: s.viewportEditState.selectedViewportId,
+              viewportDragging: s.viewportEditState.isDragging,
+              drawingViewports: s.drawingViewports,
+              cropRegionEditing: s.cropRegionEditState?.isEditing || false,
+              cropRegionViewportId: s.cropRegionEditState?.viewportId || null,
+              selectedAnnotationIds: s.selectedAnnotationIds,
+              placementPreview: {
+                isPlacing: s.isPlacing,
+                placingDrawingId: s.placingDrawingId,
+                previewPosition: s.previewPosition,
+                placementScale: s.placementScale,
+              },
+            });
+          }
+        } else {
+          const filteredShapes = s.shapes.filter(shape => shape.drawingId === s.activeDrawingId);
+          const filteredLayers = s.layers.filter(layer => layer.drawingId === s.activeDrawingId);
+          const activeDrawing = s.drawings.find(d => d.id === s.activeDrawingId) || null;
+
+          renderer.render({
+            shapes: filteredShapes,
+            selectedShapeIds: s.selectedShapeIds,
+            hoveredShapeId: s.hoveredShapeId,
+            viewport: s.viewport,
+            gridVisible: s.gridVisible,
+            gridSize: s.gridSize,
+            drawingPreview: s.drawingPreview,
+            currentStyle: s.currentStyle,
+            selectionBox: s.selectionBox,
+            commandPreviewShapes: s.commandPreviewShapes,
+            currentSnapPoint: s.currentSnapPoint,
+            currentTrackingLines: s.currentTrackingLines,
+            trackingPoint: s.trackingPoint,
+            layers: filteredLayers,
+            drawingBoundary: s.boundaryVisible ? (activeDrawing?.boundary || null) : null,
+            boundarySelected: s.boundaryEditState.isSelected,
+            boundaryDragging: s.boundaryEditState.activeHandle !== null,
+            whiteBackground: s.whiteBackground,
+          });
+        }
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
+    return () => { cancelAnimationFrame(rafId); unsub(); };
+  }, []);
 
   // Handle mouse events
   const { handleMouseDown, handleMouseMove, handleMouseUp, handleWheel, handleClick, handleDoubleClick, handleContextMenu, isPanning } =
@@ -217,34 +211,33 @@ export function Canvas() {
       setMousePosition({ x, y });
 
       // Update placement preview if in placement mode
-      if (isPlacing && editorMode === 'sheet') {
-        // Convert screen coordinates to sheet coordinates (in mm)
+      const s = useAppStore.getState();
+      if (s.isPlacing && s.editorMode === 'sheet') {
         const sheetPos = {
-          x: (x - viewport.offsetX) / viewport.zoom / MM_TO_PIXELS,
-          y: (y - viewport.offsetY) / viewport.zoom / MM_TO_PIXELS,
+          x: (x - s.viewport.offsetX) / s.viewport.zoom / MM_TO_PIXELS,
+          y: (y - s.viewport.offsetY) / s.viewport.zoom / MM_TO_PIXELS,
         };
         updatePlacementPreview(sheetPos);
       }
 
       handleMouseMove(e);
     },
-    [setMousePosition, handleMouseMove, isPlacing, editorMode, viewport, updatePlacementPreview]
+    [setMousePosition, handleMouseMove, updatePlacementPreview]
   );
 
   // Handle click for placement confirmation
   const onCanvasClick = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      // If in placement mode, confirm placement on click
-      if (isPlacing && editorMode === 'sheet' && previewPosition) {
+      const s = useAppStore.getState();
+      if (s.isPlacing && s.editorMode === 'sheet' && s.previewPosition) {
         e.stopPropagation();
         confirmPlacement();
         return;
       }
 
-      // Otherwise, use normal click handler
       handleClick(e);
     },
-    [isPlacing, editorMode, previewPosition, confirmPlacement, handleClick]
+    [confirmPlacement, handleClick]
   );
 
   // Cursor based on active tool and panning state
@@ -252,6 +245,9 @@ export function Canvas() {
     // Show grabbing cursor when actively panning
     if (isPanning) {
       return 'cursor-grabbing';
+    }
+    if (hasActiveModifyCommand) {
+      return 'cursor-crosshair';
     }
     switch (activeTool) {
       case 'pan':
@@ -266,11 +262,11 @@ export function Canvas() {
   return (
     <div
       ref={containerRef}
-      className="flex-1 relative overflow-hidden bg-cad-bg"
+      className={`flex-1 relative overflow-hidden ${whiteBackground ? 'bg-white' : 'bg-cad-bg'}`}
     >
       <canvas
         ref={canvasRef}
-        className={`absolute inset-0 ${getCursor()} ${isPlacing ? 'cursor-copy' : ''}`}
+        className={`absolute inset-0 ${getCursor()} ${useAppStore.getState().isPlacing ? 'cursor-copy' : ''}`}
         onMouseDown={handleMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={handleMouseUp}

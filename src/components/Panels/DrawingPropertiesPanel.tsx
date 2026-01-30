@@ -1,7 +1,7 @@
 import { useCallback } from 'react';
 import { useAppStore } from '../../state/appStore';
 
-export function DrawingPropertiesPanel() {
+export function DrawingPropertiesPanel({ showHeader = true }: { showHeader?: boolean }) {
   const {
     drawings,
     activeDrawingId,
@@ -43,10 +43,15 @@ export function DrawingPropertiesPanel() {
   }
 
   return (
-    <div className="flex flex-col h-full text-sm">
+    <div className="flex flex-col text-sm">
+      {showHeader && (
+        <div className="p-3 border-b border-cad-border">
+          <h3 className="font-medium text-cad-text">Drawing Properties</h3>
+        </div>
+      )}
+
       {/* Drawing Info */}
       <div className="p-3 border-b border-cad-border">
-        <h3 className="font-medium text-cad-text mb-2">Drawing Properties</h3>
         <div className="space-y-2">
           <div>
             <label className="block text-xs text-cad-text-dim mb-1">Name:</label>
@@ -145,7 +150,7 @@ export function DrawingPropertiesPanel() {
       </div>
 
       {/* Info Section */}
-      <div className="p-3 flex-1">
+      <div className="p-3">
         <h4 className="font-medium text-cad-text mb-2">Information</h4>
         <div className="space-y-1 text-xs text-cad-text-dim">
           <div>Created: {new Date(activeDrawing.createdAt).toLocaleDateString()}</div>

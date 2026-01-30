@@ -10,11 +10,12 @@
  * - useViewportEditing: Sheet viewport editing
  */
 
-import { useCallback } from 'react';
+import { useCallback, useMemo } from 'react';
 import { useAppStore } from '../../state/appStore';
 import type { Point } from '../../types/geometry';
 import { screenToWorld } from '../../utils/geometryUtils';
 import { isPointNearShape } from '../../utils/geometryUtils';
+import { QuadTree } from '../../engine/spatial/QuadTree';
 
 import { usePanZoom } from '../navigation/usePanZoom';
 import { useBoxSelection } from '../selection/useBoxSelection';
@@ -24,6 +25,7 @@ import { useTextDrawing } from '../drawing/useTextDrawing';
 import { useBoundaryEditing } from '../editing/useBoundaryEditing';
 import { useViewportEditing } from '../editing/useViewportEditing';
 import { useAnnotationEditing } from '../editing/useAnnotationEditing';
+import { useGripEditing } from '../editing/useGripEditing';
 
 export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
   // Compose specialized hooks
@@ -35,6 +37,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
   const boundaryEditing = useBoundaryEditing();
   const viewportEditing = useViewportEditing();
   const annotationEditing = useAnnotationEditing();
+  const gripEditing = useGripEditing();
 
   const {
     viewport,
@@ -49,24 +52,32 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     setPendingCommandSelection,
     editorMode,
     activeDrawingId,
+    dimensionMode,
+    setHoveredShapeId,
   } = useAppStore();
 
+  // Build spatial index for efficient shape lookup
+  const quadTree = useMemo(() => {
+    return QuadTree.buildFromShapes(shapes, activeDrawingId);
+  }, [shapes, activeDrawingId]);
+
   /**
-   * Find shape at point (only shapes in active drawing)
+   * Find shape at point using spatial index (only shapes in active drawing)
    */
   const findShapeAtPoint = useCallback(
     (worldPoint: Point): string | null => {
-      for (let i = shapes.length - 1; i >= 0; i--) {
-        const shape = shapes[i];
-        if (!shape.visible) continue;
-        if (shape.drawingId !== activeDrawingId) continue;  // Only check shapes in active drawing
-        if (isPointNearShape(worldPoint, shape)) {
+      const tolerance = 5 / viewport.zoom;
+      const candidates = quadTree.queryPoint(worldPoint, tolerance);
+      // Iterate in reverse to match z-order (last inserted = on top)
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const shape = shapes.find(s => s.id === candidates[i].id);
+        if (shape && isPointNearShape(worldPoint, shape)) {
           return shape.id;
         }
       }
       return null;
     },
-    [shapes, activeDrawingId]
+    [quadTree, shapes, viewport.zoom]
   );
 
   /**
@@ -103,6 +114,14 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         }
       }
 
+      // Drawing mode: grip (handle) dragging on selected shapes
+      if (editorMode === 'drawing' && e.button === 0) {
+        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
+        if (gripEditing.handleGripMouseDown(worldPos)) {
+          return;
+        }
+      }
+
       // Drawing mode: start box selection if clicking on empty space
       if (editorMode === 'drawing' && e.button === 0) {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
@@ -113,7 +132,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         }
       }
     },
-    [panZoom, editorMode, viewport, annotationEditing, viewportEditing, boundaryEditing, findShapeAtPoint, boxSelection]
+    [panZoom, editorMode, viewport, annotationEditing, viewportEditing, boundaryEditing, gripEditing, findShapeAtPoint, boxSelection]
   );
 
   /**
@@ -143,7 +162,8 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Drawing mode
       const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
       const basePoint = shapeDrawing.getLastDrawingPoint();
-      const snappedPos = snapDetection.snapPoint(worldPos, basePoint);
+      const snapResult = snapDetection.snapPoint(worldPos, basePoint);
+      const snappedPos = snapResult.point;
 
       // Command selection phase
       if (hasActiveModifyCommand && commandIsSelecting) {
@@ -186,8 +206,13 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         case 'arc':
         case 'polyline':
         case 'ellipse':
-          shapeDrawing.handleDrawingClick(snappedPos, e.shiftKey);
+          shapeDrawing.handleDrawingClick(snappedPos, e.shiftKey, snapResult.snapInfo);
           // Clear snap/tracking indicators after click - they'll be recalculated on next mouse move
+          snapDetection.clearTracking();
+          break;
+
+        case 'dimension':
+          shapeDrawing.handleDrawingClick(snappedPos, e.shiftKey, snapResult.snapInfo);
           snapDetection.clearTracking();
           break;
 
@@ -253,21 +278,57 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         }
       }
 
+      // Drawing mode: grip dragging
+      if (editorMode === 'drawing') {
+        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
+        if (gripEditing.handleGripMouseMove(worldPos)) {
+          return;
+        }
+      }
+
       // Box selection
       if (boxSelection.isSelecting()) {
         boxSelection.updateBoxSelection(screenPos);
         return;
       }
 
-      // Drawing preview
-      if (shapeDrawing.isDrawing()) {
+      // Modify commands (MOVE etc.) - detect snaps during point-picking phases
+      if (hasActiveModifyCommand && editorMode === 'drawing') {
+        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
+        snapDetection.snapPoint(worldPos, undefined);
+      }
+
+      // Drawing tools - always detect snaps when hovering (even before first click)
+      const isDrawingTool = ['line', 'rectangle', 'circle', 'arc', 'polyline', 'ellipse', 'dimension'].includes(activeTool);
+
+      if (isDrawingTool && editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
         const basePoint = shapeDrawing.getLastDrawingPoint();
-        const snappedPos = snapDetection.snapPoint(worldPos, basePoint);
-        shapeDrawing.updateDrawingPreview(snappedPos, e.shiftKey);
+        const snapResult = snapDetection.snapPoint(worldPos, basePoint);
+
+        // Update drawing preview if actively drawing
+        if (shapeDrawing.isDrawing()) {
+          shapeDrawing.updateDrawingPreview(snapResult.point, e.shiftKey);
+        }
+
+        // Hover highlight for dimension tools that require clicking on geometry
+        if (activeTool === 'dimension') {
+          const needsHover =
+            (dimensionMode === 'radius' || dimensionMode === 'diameter' || dimensionMode === 'angular');
+          if (needsHover) {
+            const hoveredShape = findShapeAtPoint(worldPos);
+            setHoveredShapeId(hoveredShape);
+          } else {
+            setHoveredShapeId(null);
+          }
+        } else {
+          setHoveredShapeId(null);
+        }
+      } else {
+        setHoveredShapeId(null);
       }
     },
-    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, boxSelection, shapeDrawing, snapDetection]
+    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, gripEditing, boxSelection, shapeDrawing, snapDetection, activeTool, dimensionMode, findShapeAtPoint, setHoveredShapeId, hasActiveModifyCommand]
   );
 
   /**
@@ -292,13 +353,18 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         return;
       }
 
+      // Drawing mode: grip drag end
+      if (gripEditing.handleGripMouseUp()) {
+        return;
+      }
+
       // Box selection end
       if (boxSelection.isSelecting()) {
         const screenPos = panZoom.getMousePos(e);
         boxSelection.endBoxSelection(screenPos, e.shiftKey);
       }
     },
-    [panZoom, annotationEditing, viewportEditing, boundaryEditing, boxSelection]
+    [panZoom, annotationEditing, viewportEditing, boundaryEditing, gripEditing, boxSelection]
   );
 
   /**

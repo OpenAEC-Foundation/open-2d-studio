@@ -4,9 +4,14 @@
 
 import { useCallback } from 'react';
 import { useAppStore } from '../../state/appStore';
-import type { Point } from '../../types/geometry';
+import type { Point, SnapPoint } from '../../types/geometry';
 import { findNearestSnapPoint } from '../../utils/snapUtils';
 import { applyTracking, type TrackingSettings } from '../../core/geometry/Tracking';
+
+export interface SnapResult {
+  point: Point;
+  snapInfo?: SnapPoint;
+}
 
 export function useSnapDetection() {
   const {
@@ -30,9 +35,10 @@ export function useSnapDetection() {
 
   /**
    * Find and snap to the nearest snap point (geometry or grid), with tracking support
+   * Returns both the snapped point and the snap info (for dimension associativity)
    */
   const snapPoint = useCallback(
-    (point: Point, basePoint?: Point): Point => {
+    (point: Point, basePoint?: Point): SnapResult => {
       let resultPoint = point;
       let usedTracking = false;
 
@@ -105,12 +111,12 @@ export function useSnapDetection() {
         if (nearestSnap) {
           // Object snap takes priority over tracking
           setCurrentSnapPoint(nearestSnap);
-          return nearestSnap.point;
+          return { point: nearestSnap.point, snapInfo: nearestSnap };
         }
       }
 
       setCurrentSnapPoint(null);
-      return resultPoint;
+      return { point: resultPoint };
     },
     [
       snapEnabled,

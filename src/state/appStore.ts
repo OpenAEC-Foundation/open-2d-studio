@@ -17,8 +17,11 @@
  * - viewportEditSlice: sheet viewport editing
  */
 
+import { enablePatches } from 'immer';
 import { create } from 'zustand';
 import { immer } from 'zustand/middleware/immer';
+
+enablePatches();
 
 // Import slice types and creators
 import {

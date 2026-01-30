@@ -1,9 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
+import { useState, useCallback, useRef, memo } from 'react';
 import { ChevronDown, ChevronRight } from 'lucide-react';
 import { DrawingsTab } from './DrawingsTab';
 import { SheetsTab } from './SheetsTab';
 
-export function NavigationPanel() {
+export const NavigationPanel = memo(function NavigationPanel() {
   const [drawingsCollapsed, setDrawingsCollapsed] = useState(false);
   const [sheetsCollapsed, setSheetsCollapsed] = useState(false);
   const [drawingsHeight, setDrawingsHeight] = useState(50); // percentage
@@ -113,4 +113,4 @@ export function NavigationPanel() {
       </div>
     </div>
   );
-}
+});

@@ -2,20 +2,41 @@
  * ShapeRenderer - Renders individual shapes
  */
 
-import type { Shape, DrawingPreview, CurrentStyle } from '../types';
+import type { Shape, DrawingPreview, CurrentStyle, Viewport } from '../types';
 import { BaseRenderer } from './BaseRenderer';
 import { COLORS } from '../types';
+import { DimensionRenderer } from './DimensionRenderer';
+import type { DimensionShape } from '../../../types/dimension';
 
 export class ShapeRenderer extends BaseRenderer {
+  private dimensionRenderer: DimensionRenderer;
+
+  constructor(ctx: CanvasRenderingContext2D, width: number = 0, height: number = 0, dpr?: number) {
+    super(ctx, width, height, dpr);
+    this.dimensionRenderer = new DimensionRenderer(ctx, width, height, dpr);
+  }
+
+  /**
+   * Update dimensions and also update dimension renderer
+   */
+  setDimensions(width: number, height: number): void {
+    super.setDimensions(width, height);
+    this.dimensionRenderer.setDimensions(width, height);
+  }
+
   /**
    * Draw a shape with selection state
    */
-  drawShape(shape: Shape, isSelected: boolean): void {
+  drawShape(shape: Shape, isSelected: boolean, isHovered: boolean = false, invertColors: boolean = false): void {
     const ctx = this.ctx;
     const { style } = shape;
 
     // Set line style
-    ctx.strokeStyle = isSelected ? COLORS.selection : style.strokeColor;
+    let strokeColor = style.strokeColor;
+    if (invertColors && strokeColor === '#ffffff') {
+      strokeColor = '#000000';
+    }
+    ctx.strokeStyle = isSelected ? COLORS.selection : isHovered ? COLORS.hover : strokeColor;
     ctx.lineWidth = style.strokeWidth;
     ctx.setLineDash(this.getLineDash(style.lineStyle));
 
@@ -43,7 +64,10 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawEllipse(shape);
         break;
       case 'text':
-        this.drawText(shape, isSelected);
+        this.drawText(shape, isSelected, invertColors);
+        break;
+      case 'dimension':
+        this.dimensionRenderer.drawDimension(shape as DimensionShape, isSelected, isHovered);
         break;
       default:
         break;
@@ -101,6 +125,9 @@ export class ShapeRenderer extends BaseRenderer {
       case 'text':
         this.drawText(shape, false, invertColors);
         break;
+      case 'dimension':
+        this.dimensionRenderer.drawDimension(shape as DimensionShape, false);
+        break;
     }
 
     ctx.setLineDash([]);
@@ -109,7 +136,7 @@ export class ShapeRenderer extends BaseRenderer {
   /**
    * Draw drawing preview
    */
-  drawPreview(preview: DrawingPreview, style?: CurrentStyle): void {
+  drawPreview(preview: DrawingPreview, style?: CurrentStyle, viewport?: Viewport): void {
     if (!preview) return;
 
     const ctx = this.ctx;
@@ -196,6 +223,12 @@ export class ShapeRenderer extends BaseRenderer {
         ctx.stroke();
         break;
       }
+
+      case 'dimension':
+        if (viewport) {
+          this.dimensionRenderer.drawDimensionPreview(preview, viewport);
+        }
+        break;
     }
   }
 
@@ -433,22 +466,31 @@ export class ShapeRenderer extends BaseRenderer {
     if (shape.type !== 'text') return;
     const ctx = this.ctx;
 
-    const { position, text, fontSize, fontFamily, alignment, bold, italic, lineHeight = 1.2 } = shape;
+    const { position, text, fontSize, fontFamily, alignment, verticalAlignment, bold, italic, lineHeight = 1.2 } = shape;
 
-    // Temporarily set font to measure text
+    // Set font and baseline to match drawText rendering
     const fontStyle = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}`;
     ctx.font = `${fontStyle}${fontSize}px ${fontFamily}`;
+    ctx.textBaseline = verticalAlignment === 'middle' ? 'middle' :
+                       verticalAlignment === 'bottom' ? 'bottom' : 'top';
 
     const lines = text.split('\n');
     const actualLineHeight = fontSize * lineHeight;
-    const height = lines.length * actualLineHeight;
 
-    // Find the widest line
+    // Use actual font metrics for accurate bounds
     let maxWidth = 0;
+    let maxAscent = 0;
+    let maxDescent = 0;
     for (const line of lines) {
       const metrics = ctx.measureText(line);
       if (metrics.width > maxWidth) maxWidth = metrics.width;
+      if (metrics.actualBoundingBoxAscent > maxAscent) maxAscent = metrics.actualBoundingBoxAscent;
+      if (metrics.actualBoundingBoxDescent > maxDescent) maxDescent = metrics.actualBoundingBoxDescent;
     }
+
+    // First line top/bottom from actual metrics, remaining lines offset by lineHeight
+    const topY = position.y - maxAscent;
+    const bottomY = position.y + maxDescent + (lines.length - 1) * actualLineHeight;
 
     // Calculate bounding box based on alignment
     let minX = position.x;
@@ -459,17 +501,21 @@ export class ShapeRenderer extends BaseRenderer {
     ctx.strokeStyle = COLORS.selection;
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
-    ctx.strokeRect(minX - 2, position.y - 2, maxWidth + 4, height + 4);
+    ctx.strokeRect(minX - 2, topY - 2, maxWidth + 4, (bottomY - topY) + 4);
     ctx.setLineDash([]);
   }
 
   private drawSelectionHandles(shape: Shape): void {
     const ctx = this.ctx;
-    const handleSize = 6;
+    // Keep handles at a constant screen-pixel size, but never smaller than the shape's stroke
+    const zoom = ctx.getTransform().a / this.dpr;
+    const screenSize = 6 / zoom;
+    const strokeWidth = shape.style?.strokeWidth ?? 1;
+    const handleSize = Math.max(screenSize, strokeWidth + 4 / zoom);
 
     ctx.fillStyle = COLORS.selectionHandle;
     ctx.strokeStyle = COLORS.selectionHandleStroke;
-    ctx.lineWidth = 1;
+    ctx.lineWidth = 1 / zoom;
 
     const points = this.getShapeHandlePoints(shape);
 
@@ -482,14 +528,27 @@ export class ShapeRenderer extends BaseRenderer {
   private getShapeHandlePoints(shape: Shape): { x: number; y: number }[] {
     switch (shape.type) {
       case 'line':
-        return [shape.start, shape.end];
-      case 'rectangle':
         return [
-          shape.topLeft,
-          { x: shape.topLeft.x + shape.width, y: shape.topLeft.y },
-          { x: shape.topLeft.x + shape.width, y: shape.topLeft.y + shape.height },
-          { x: shape.topLeft.x, y: shape.topLeft.y + shape.height },
+          shape.start,
+          shape.end,
+          { x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 },
         ];
+      case 'rectangle': {
+        const tl = shape.topLeft;
+        const w = shape.width;
+        const h = shape.height;
+        return [
+          tl,
+          { x: tl.x + w, y: tl.y },
+          { x: tl.x + w, y: tl.y + h },
+          { x: tl.x, y: tl.y + h },
+          { x: tl.x + w / 2, y: tl.y },
+          { x: tl.x + w, y: tl.y + h / 2 },
+          { x: tl.x + w / 2, y: tl.y + h },
+          { x: tl.x, y: tl.y + h / 2 },
+          { x: tl.x + w / 2, y: tl.y + h / 2 },
+        ];
+      }
       case 'circle':
         return [
           shape.center,
@@ -498,15 +557,36 @@ export class ShapeRenderer extends BaseRenderer {
           { x: shape.center.x, y: shape.center.y + shape.radius },
           { x: shape.center.x, y: shape.center.y - shape.radius },
         ];
-      case 'arc':
-        // Arc handles: center, start point, end point
+      case 'arc': {
+        // Arc handles: center, start point, end point, midpoint (on curve)
+        const midAngle = shape.startAngle + ((shape.endAngle - shape.startAngle + 2 * Math.PI) % (2 * Math.PI)) / 2;
         return [
           shape.center,
           { x: shape.center.x + shape.radius * Math.cos(shape.startAngle), y: shape.center.y + shape.radius * Math.sin(shape.startAngle) },
           { x: shape.center.x + shape.radius * Math.cos(shape.endAngle), y: shape.center.y + shape.radius * Math.sin(shape.endAngle) },
+          { x: shape.center.x + shape.radius * Math.cos(midAngle), y: shape.center.y + shape.radius * Math.sin(midAngle) },
         ];
-      case 'polyline':
-        return shape.points;
+      }
+      case 'ellipse':
+        return [
+          shape.center,
+          { x: shape.center.x + shape.radiusX, y: shape.center.y },
+          { x: shape.center.x - shape.radiusX, y: shape.center.y },
+          { x: shape.center.x, y: shape.center.y + shape.radiusY },
+          { x: shape.center.x, y: shape.center.y - shape.radiusY },
+        ];
+      case 'polyline': {
+        const pts: { x: number; y: number }[] = [...shape.points];
+        const segCount = shape.closed ? shape.points.length : shape.points.length - 1;
+        for (let i = 0; i < segCount; i++) {
+          const j = (i + 1) % shape.points.length;
+          pts.push({
+            x: (shape.points[i].x + shape.points[j].x) / 2,
+            y: (shape.points[i].y + shape.points[j].y) / 2,
+          });
+        }
+        return pts;
+      }
       case 'text':
         // Text uses selection box instead of handles
         return [shape.position];

@@ -1,13 +1,11 @@
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 import { MenuBar } from './components/MenuBar/MenuBar';
 import { Ribbon } from './components/Ribbon/Ribbon';
 import { Canvas } from './components/Canvas/Canvas';
 import { NavigationPanel } from './components/NavigationPanel';
 import { ToolPalette } from './components/ToolPalette/ToolPalette';
-import { PropertiesPanel } from './components/Panels/PropertiesPanel';
-import { LayersPanel } from './components/Panels/LayersPanel';
 import { SheetPropertiesPanel } from './components/Panels/SheetPropertiesPanel';
-import { DrawingPropertiesPanel } from './components/Panels/DrawingPropertiesPanel';
+import { RightPanelLayout } from './components/Panels/RightPanelLayout';
 import { StatusBar } from './components/StatusBar/StatusBar';
 import { CommandLine } from './components/CommandLine/CommandLine';
 import { PrintDialog } from './components/PrintDialog/PrintDialog';
@@ -18,11 +16,67 @@ import { NewSheetDialog } from './components/NewSheetDialog';
 import { useKeyboardShortcuts } from './hooks/useKeyboardShortcuts';
 import { useGlobalKeyboard } from './hooks/useGlobalKeyboard';
 import { useAppStore } from './state/appStore';
+import { CadApi } from './api';
 
 function App() {
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
   useGlobalKeyboard();
+
+  // Block browser shortcuts in production (F5, Ctrl+R, Ctrl+Shift+I, Ctrl+U, etc.)
+  useEffect(() => {
+    if (import.meta.env.DEV) return;
+
+    const handler = (e: KeyboardEvent) => {
+      // F5 / Ctrl+R / Ctrl+Shift+R - refresh
+      if (e.key === 'F5' || (e.ctrlKey && e.key === 'r')) {
+        e.preventDefault();
+      }
+      // Ctrl+Shift+I - dev tools
+      if (e.ctrlKey && e.shiftKey && e.key === 'I') {
+        e.preventDefault();
+      }
+      // Ctrl+U - view source
+      if (e.ctrlKey && e.key === 'u') {
+        e.preventDefault();
+      }
+      // Ctrl+Shift+J - console
+      if (e.ctrlKey && e.shiftKey && e.key === 'J') {
+        e.preventDefault();
+      }
+      // F7 - caret browsing
+      if (e.key === 'F7') {
+        e.preventDefault();
+      }
+    };
+
+    const contextHandler = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+
+    window.addEventListener('keydown', handler, true);
+    window.addEventListener('contextmenu', contextHandler, true);
+    return () => {
+      window.removeEventListener('keydown', handler, true);
+      window.removeEventListener('contextmenu', contextHandler, true);
+    };
+  }, []);
+
+  // Initialize CAD API
+  const cadApiRef = useRef<CadApi | null>(null);
+  useEffect(() => {
+    if (!cadApiRef.current) {
+      cadApiRef.current = new CadApi(useAppStore);
+      (window as any).cad = cadApiRef.current;
+    }
+    return () => {
+      if (cadApiRef.current) {
+        cadApiRef.current.dispose();
+        cadApiRef.current = null;
+        delete (window as any).cad;
+      }
+    };
+  }, []);
 
   // Disable browser context menu in production
   useEffect(() => {
@@ -77,17 +131,7 @@ function App() {
           {editorMode === 'sheet' ? (
             <SheetPropertiesPanel />
           ) : (
-            <>
-              <div className="flex-shrink-0 max-h-[40%] overflow-y-auto border-b border-cad-border">
-                <DrawingPropertiesPanel />
-              </div>
-              <div className="flex-shrink-0 max-h-[30%] overflow-y-auto border-b border-cad-border">
-                <PropertiesPanel />
-              </div>
-              <div className="flex-1 overflow-y-auto">
-                <LayersPanel />
-              </div>
-            </>
+            <RightPanelLayout />
           )}
         </div>
       </div>

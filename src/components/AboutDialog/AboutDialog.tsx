@@ -25,7 +25,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
         {/* Content */}
         <div className="p-6 flex flex-col items-center text-center">
           <h1 className="text-xl font-bold text-cad-text mb-1">Open 2D Studio</h1>
-          <p className="text-sm text-cad-text-dim mb-4">Version 0.3.0</p>
+          <p className="text-sm text-cad-text-dim mb-4">Version 0.4.0</p>
 
           <p className="text-sm text-cad-text-dim mb-4">
             A cross-platform 2D CAD application

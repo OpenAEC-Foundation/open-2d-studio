@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react';
+import { useState, useRef, useEffect, memo } from 'react';
 import {
   MousePointer2,
   Hand,
@@ -23,6 +23,7 @@ import {
   Info,
   CheckSquare,
   XSquare,
+  Sun,
 } from 'lucide-react';
 import { useAppStore } from '../../state/appStore';
 import {
@@ -42,6 +43,11 @@ import {
   FilledRegionIcon,
   DetailComponentIcon,
   InsulationIcon,
+  AlignedDimensionIcon,
+  LinearDimensionIcon,
+  AngularDimensionIcon,
+  RadiusDimensionIcon,
+  DiameterDimensionIcon,
 } from '../shared/CadIcons';
 import './Ribbon.css';
 
@@ -186,7 +192,7 @@ function RibbonButtonStack({ children }: { children: React.ReactNode }) {
   return <div className="ribbon-btn-stack">{children}</div>;
 }
 
-export function Ribbon() {
+export const Ribbon = memo(function Ribbon() {
   const [activeTab, setActiveTab] = useState<RibbonTab>('home');
 
   const {
@@ -199,8 +205,12 @@ export function Ribbon() {
     setRectangleMode,
     arcMode,
     setArcMode,
+    dimensionMode,
+    setDimensionMode,
     gridVisible,
     toggleGrid,
+    whiteBackground,
+    toggleWhiteBackground,
     zoomIn,
     zoomOut,
     zoomToFit,
@@ -212,6 +222,7 @@ export function Ribbon() {
     selectAll,
     deselectAll,
     activeCommandName,
+    setPendingCommand,
   } = useAppStore();
 
   const circleOptions: DropdownOption[] = [
@@ -378,25 +389,80 @@ export function Ribbon() {
               />
             </RibbonGroup>
 
+            {/* Annotate Group */}
+            <RibbonGroup label="Annotate">
+              <RibbonButton
+                icon={<AlignedDimensionIcon size={24} />}
+                label="Aligned"
+                onClick={() => {
+                  setDimensionMode('aligned');
+                  switchToDrawingTool('dimension');
+                }}
+                active={activeTool === 'dimension' && dimensionMode === 'aligned' && !activeCommandName}
+              />
+              <RibbonButtonStack>
+                <RibbonSmallButton
+                  icon={<LinearDimensionIcon size={14} />}
+                  label="Linear"
+                  onClick={() => {
+                    setDimensionMode('linear');
+                    switchToDrawingTool('dimension');
+                  }}
+                  active={activeTool === 'dimension' && dimensionMode === 'linear' && !activeCommandName}
+                />
+                <RibbonSmallButton
+                  icon={<AngularDimensionIcon size={14} />}
+                  label="Angular"
+                  onClick={() => {
+                    setDimensionMode('angular');
+                    switchToDrawingTool('dimension');
+                  }}
+                  active={activeTool === 'dimension' && dimensionMode === 'angular' && !activeCommandName}
+                />
+              </RibbonButtonStack>
+              <RibbonButtonStack>
+                <RibbonSmallButton
+                  icon={<RadiusDimensionIcon size={14} />}
+                  label="Radius"
+                  onClick={() => {
+                    setDimensionMode('radius');
+                    switchToDrawingTool('dimension');
+                  }}
+                  active={activeTool === 'dimension' && dimensionMode === 'radius' && !activeCommandName}
+                />
+                <RibbonSmallButton
+                  icon={<DiameterDimensionIcon size={14} />}
+                  label="Diameter"
+                  onClick={() => {
+                    setDimensionMode('diameter');
+                    switchToDrawingTool('dimension');
+                  }}
+                  active={activeTool === 'dimension' && dimensionMode === 'diameter' && !activeCommandName}
+                />
+              </RibbonButtonStack>
+            </RibbonGroup>
+
             {/* Modify Group */}
             <RibbonGroup label="Modify">
               <RibbonButtonStack>
                 <RibbonSmallButton
                   icon={<ArrowRight size={14} />}
                   label="Move"
-                  onClick={() => {}}
-                  disabled={true}
+                  onClick={() => setPendingCommand('MOVE')}
+                  active={activeCommandName === 'MOVE'}
                 />
                 <RibbonSmallButton
                   icon={<Copy size={14} />}
                   label="Copy"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('COPY')}
+                  active={activeCommandName === 'COPY'}
                   disabled={true}
                 />
                 <RibbonSmallButton
                   icon={<RotateCw size={14} />}
                   label="Rotate"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('ROTATE')}
+                  active={activeCommandName === 'ROTATE'}
                   disabled={true}
                 />
               </RibbonButtonStack>
@@ -404,19 +470,22 @@ export function Ribbon() {
                 <RibbonSmallButton
                   icon={<FlipHorizontal size={14} />}
                   label="Mirror"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('MIRROR')}
+                  active={activeCommandName === 'MIRROR'}
                   disabled={true}
                 />
                 <RibbonSmallButton
                   icon={<ArrayIcon size={14} />}
                   label="Array"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('ARRAY')}
+                  active={activeCommandName === 'ARRAY'}
                   disabled={true}
                 />
                 <RibbonSmallButton
                   icon={<ScaleIcon size={14} />}
                   label="Scale"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('SCALE')}
+                  active={activeCommandName === 'SCALE'}
                   disabled={true}
                 />
               </RibbonButtonStack>
@@ -428,19 +497,22 @@ export function Ribbon() {
                 <RibbonSmallButton
                   icon={<OffsetIcon size={14} />}
                   label="Offset"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('OFFSET')}
+                  active={activeCommandName === 'OFFSET'}
                   disabled={true}
                 />
                 <RibbonSmallButton
                   icon={<Scissors size={14} />}
                   label="Trim"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('TRIM')}
+                  active={activeCommandName === 'TRIM'}
                   disabled={true}
                 />
                 <RibbonSmallButton
                   icon={<ExtendIcon size={14} />}
                   label="Extend"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('EXTEND')}
+                  active={activeCommandName === 'EXTEND'}
                   disabled={true}
                 />
               </RibbonButtonStack>
@@ -448,26 +520,30 @@ export function Ribbon() {
                 <RibbonSmallButton
                   icon={<SplitIcon size={14} />}
                   label="Split"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('SPLIT')}
+                  active={activeCommandName === 'SPLIT'}
                   disabled={true}
                 />
                 <RibbonSmallButton
                   icon={<FilletIcon size={14} />}
                   label="Fillet"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('FILLET')}
+                  active={activeCommandName === 'FILLET'}
                   disabled={true}
                 />
                 <RibbonSmallButton
                   icon={<ChamferIcon size={14} />}
                   label="Chamfer"
-                  onClick={() => {}}
+                  onClick={() => setPendingCommand('CHAMFER')}
+                  active={activeCommandName === 'CHAMFER'}
                   disabled={true}
                 />
               </RibbonButtonStack>
               <RibbonSmallButton
                 icon={<AlignIcon size={14} />}
                 label="Align"
-                onClick={() => {}}
+                onClick={() => setPendingCommand('ALIGN')}
+                active={activeCommandName === 'ALIGN'}
                 disabled={true}
               />
             </RibbonGroup>
@@ -546,6 +622,12 @@ export function Ribbon() {
                 onClick={toggleGrid}
                 active={gridVisible}
               />
+              <RibbonButton
+                icon={<Sun size={24} />}
+                label="White Background"
+                onClick={toggleWhiteBackground}
+                active={whiteBackground}
+              />
             </RibbonGroup>
           </div>
         </div>
@@ -597,4 +679,4 @@ export function Ribbon() {
       </div>
     </div>
   );
-}
+});

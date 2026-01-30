@@ -3,6 +3,7 @@
  */
 
 import type { Shape, Layer, Drawing, Sheet, Viewport } from './types';
+import type { HistoryEntry } from './historySlice';
 import { generateId, DEFAULT_DRAWING_BOUNDARY } from './types';
 
 // Legacy type alias
@@ -101,7 +102,7 @@ interface FullStore {
   selectedShapeIds: string[];
 
   // History state
-  historyStack: Shape[][];
+  historyStack: HistoryEntry[];
   historyIndex: number;
 
   // Tool state

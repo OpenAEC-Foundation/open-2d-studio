@@ -125,7 +125,7 @@ export class DraftRenderer extends BaseRenderer {
 
     // Draw preview shape while drawing
     if (drawingPreview) {
-      this.shapeRenderer.drawPreview(drawingPreview, currentStyle);
+      this.shapeRenderer.drawPreview(drawingPreview, currentStyle, viewport);
     }
 
     // Draw tracking lines
