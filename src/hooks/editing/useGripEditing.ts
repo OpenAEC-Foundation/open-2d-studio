@@ -20,6 +20,46 @@ interface GripDragState {
   originalRectGripIndex: number;
   /** For polyline/rect edge midpoint drags: the two vertex indices to move together. */
   polylineMidpointIndices?: [number, number];
+  /** Axis constraint when dragging an axis arrow. */
+  axisConstraint: 'x' | 'y' | null;
+  /** The original grip point position (used to lock the unconstrained axis). */
+  originalGripPoint?: Point;
+}
+
+/** Length of axis arrows in screen pixels (must match ShapeRenderer). */
+const AXIS_ARROW_SCREEN_LEN = 20;
+
+/**
+ * Check if a world-space point is near an axis arrow extending from a grip point.
+ * Returns 'x', 'y', or null.
+ */
+function hitTestAxisArrow(worldPos: Point, gripPoint: Point, zoom: number): 'x' | 'y' | null {
+  const arrowLen = AXIS_ARROW_SCREEN_LEN / zoom;
+  const tolerance = 5 / zoom;
+
+  // Y-axis arrow (grip → grip.y - arrowLen)
+  // Check if point is within tolerance of the vertical segment
+  if (
+    Math.abs(worldPos.x - gripPoint.x) <= tolerance &&
+    worldPos.y >= gripPoint.y - arrowLen - tolerance &&
+    worldPos.y <= gripPoint.y + tolerance
+  ) {
+    // Make sure it's actually along the arrow, not just near the grip center
+    const dist = gripPoint.y - worldPos.y;
+    if (dist > tolerance * 0.5) return 'y';
+  }
+
+  // X-axis arrow (grip → grip.x + arrowLen)
+  if (
+    Math.abs(worldPos.y - gripPoint.y) <= tolerance &&
+    worldPos.x >= gripPoint.x - tolerance &&
+    worldPos.x <= gripPoint.x + arrowLen + tolerance
+  ) {
+    const dist = worldPos.x - gripPoint.x;
+    if (dist > tolerance * 0.5) return 'x';
+  }
+
+  return null;
 }
 
 function getGripPoints(shape: Shape): Point[] {
@@ -349,6 +389,66 @@ export function useGripEditing() {
 
       const tolerance = 10 / viewport.zoom;
 
+      // First pass: check axis arrows on all grips (arrows take priority)
+      // Skip arc midpoint (grip 3) — its circumcenter algorithm can't handle axis constraint
+      for (let i = 0; i < grips.length; i++) {
+        if (shape.type === 'arc' && i === 3) continue;
+        const axisHit = hitTestAxisArrow(worldPos, grips[i], viewport.zoom);
+        if (axisHit) {
+          setCurrentSnapPoint(null);
+
+          // Handle shape conversions same as regular grip drag
+          if (shape.type === 'circle' && i >= 1) {
+            const ellipse = circleToEllipse(shape);
+            if (!ellipse) return false;
+            useAppStore.setState((state) => {
+              const idx = state.shapes.findIndex(s => s.id === shapeId);
+              if (idx !== -1) state.shapes[idx] = ellipse as Shape;
+            });
+            dragRef.current = {
+              shapeId, gripIndex: i,
+              originalShape: JSON.parse(JSON.stringify(shape)),
+              convertedToPolyline: false, originalRectGripIndex: i,
+              axisConstraint: axisHit, originalGripPoint: { ...grips[i] },
+            };
+            return true;
+          }
+
+          if (shape.type === 'rectangle' && i < 8) {
+            const polyline = rectangleToPolyline(shape);
+            if (!polyline) return false;
+            useAppStore.setState((state) => {
+              const idx = state.shapes.findIndex(s => s.id === shapeId);
+              if (idx !== -1) state.shapes[idx] = polyline as Shape;
+            });
+            dragRef.current = {
+              shapeId, gripIndex: i,
+              originalShape: JSON.parse(JSON.stringify(shape)),
+              convertedToPolyline: true, originalRectGripIndex: i,
+              axisConstraint: axisHit, originalGripPoint: { ...grips[i] },
+            };
+            return true;
+          }
+
+          let polylineMidpointIndices: [number, number] | undefined;
+          if ((shape.type === 'polyline' || shape.type === 'spline') && i >= shape.points.length) {
+            const segIdx = i - shape.points.length;
+            const j = (segIdx + 1) % shape.points.length;
+            polylineMidpointIndices = [segIdx, j];
+          }
+
+          dragRef.current = {
+            shapeId, gripIndex: i,
+            originalShape: JSON.parse(JSON.stringify(shape)),
+            convertedToPolyline: false, originalRectGripIndex: i,
+            polylineMidpointIndices,
+            axisConstraint: axisHit, originalGripPoint: { ...grips[i] },
+          };
+          return true;
+        }
+      }
+
+      // Second pass: check grip squares (unconstrained drag)
       for (let i = 0; i < grips.length; i++) {
         const dx = worldPos.x - grips[i].x;
         const dy = worldPos.y - grips[i].y;
@@ -375,6 +475,7 @@ export function useGripEditing() {
               originalShape: JSON.parse(JSON.stringify(shape)),
               convertedToPolyline: false,
               originalRectGripIndex: i,
+              axisConstraint: null,
             };
             return true;
           }
@@ -399,6 +500,7 @@ export function useGripEditing() {
               originalShape: JSON.parse(JSON.stringify(shape)),
               convertedToPolyline: true,
               originalRectGripIndex: i,
+              axisConstraint: null,
             };
           } else {
             // For polyline midpoint grips, compute the two vertex indices
@@ -416,6 +518,7 @@ export function useGripEditing() {
               convertedToPolyline: false,
               originalRectGripIndex: i,
               polylineMidpointIndices,
+              axisConstraint: null,
             };
           }
           return true;
@@ -436,8 +539,16 @@ export function useGripEditing() {
       const currentShape = useAppStore.getState().shapes.find(s => s.id === drag.shapeId);
       if (!currentShape) return true;
 
+      // Apply axis constraint
+      let constrainedPos = worldPos;
+      if (drag.axisConstraint && drag.originalGripPoint) {
+        constrainedPos = { ...worldPos };
+        if (drag.axisConstraint === 'x') constrainedPos.y = drag.originalGripPoint.y;
+        if (drag.axisConstraint === 'y') constrainedPos.x = drag.originalGripPoint.x;
+      }
+
       const edgeIndices = drag.polylineMidpointIndices ?? (drag.convertedToPolyline ? getRectEdgeMidpointIndices(drag.originalRectGripIndex) : undefined);
-      const updates = computeGripUpdates(currentShape, drag.gripIndex, worldPos, edgeIndices);
+      const updates = computeGripUpdates(currentShape, drag.gripIndex, constrainedPos, edgeIndices);
       if (updates) {
         useAppStore.setState((state) => {
           const idx = state.shapes.findIndex(s => s.id === drag.shapeId);
@@ -484,10 +595,31 @@ export function useGripEditing() {
 
   const isDragging = useCallback(() => dragRef.current !== null, []);
 
+  /**
+   * Check if a world position is hovering over an axis arrow on any selected grip.
+   * Returns 'x', 'y', or null.
+   */
+  const getHoveredAxis = useCallback(
+    (worldPos: Point): 'x' | 'y' | null => {
+      if (selectedShapeIds.length !== 1) return null;
+      const shape = shapes.find(s => s.id === selectedShapeIds[0]);
+      if (!shape) return null;
+      const grips = getGripPoints(shape);
+      for (let i = 0; i < grips.length; i++) {
+        if (shape.type === 'arc' && i === 3) continue;
+        const axis = hitTestAxisArrow(worldPos, grips[i], viewport.zoom);
+        if (axis) return axis;
+      }
+      return null;
+    },
+    [selectedShapeIds, shapes, viewport.zoom]
+  );
+
   return {
     handleGripMouseDown,
     handleGripMouseMove,
     handleGripMouseUp,
     isDragging,
+    getHoveredAxis,
   };
 }

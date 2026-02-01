@@ -47,6 +47,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     selectShape,
     deselectAll,
     hasActiveModifyCommand,
+    commandBasePoint,
     commandIsSelecting,
     setPendingCommandPoint,
     setPendingCommandSelection,
@@ -285,6 +286,19 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         if (gripEditing.handleGripMouseMove(worldPos)) {
           return;
         }
+
+        // Update cursor for axis arrow hover
+        const canvas = canvasRef.current;
+        if (canvas && activeTool === 'select') {
+          const axis = gripEditing.getHoveredAxis(worldPos);
+          if (axis === 'x') {
+            canvas.style.cursor = 'ew-resize';
+          } else if (axis === 'y') {
+            canvas.style.cursor = 'ns-resize';
+          } else {
+            canvas.style.cursor = '';
+          }
+        }
       }
 
       // Box selection
@@ -296,7 +310,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Modify commands (MOVE etc.) - detect snaps during point-picking phases
       if (hasActiveModifyCommand && editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        snapDetection.snapPoint(worldPos, undefined);
+        snapDetection.snapPoint(worldPos, commandBasePoint ?? undefined);
       }
 
       // Drawing tools - always detect snaps when hovering (even before first click)
@@ -329,7 +343,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         setHoveredShapeId(null);
       }
     },
-    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, gripEditing, boxSelection, shapeDrawing, snapDetection, activeTool, dimensionMode, findShapeAtPoint, setHoveredShapeId, hasActiveModifyCommand]
+    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, gripEditing, boxSelection, shapeDrawing, snapDetection, activeTool, dimensionMode, findShapeAtPoint, setHoveredShapeId, hasActiveModifyCommand, commandBasePoint, canvasRef]
   );
 
   /**

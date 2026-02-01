@@ -54,6 +54,7 @@ export const CommandLine = memo(function CommandLine() {
   const setPrintDialogOpen = useAppStore(s => s.setPrintDialogOpen);
   const clearCommandCancelRequest = useAppStore(s => s.clearCommandCancelRequest);
   const setActiveCommandName = useAppStore(s => s.setActiveCommandName);
+  const setCommandBasePoint = useAppStore(s => s.setCommandBasePoint);
 
   // Check if we have an active modify command
   const hasActiveCommand = commandState.activeCommand !== null;
@@ -584,10 +585,11 @@ export const CommandLine = memo(function CommandLine() {
     setHasActiveModifyCommand(hasActiveCommand);
     setActiveCommandName(hasActiveCommand ? commandState.activeCommand : null);
     setCommandIsSelecting(hasActiveCommand && commandState.phase === 'selecting');
+    setCommandBasePoint(hasActiveCommand ? commandState.basePoint : null);
     if (!hasActiveCommand) {
       setCommandPreviewShapes([]);
     }
-  }, [hasActiveCommand, commandState.activeCommand, commandState.phase, setHasActiveModifyCommand, setActiveCommandName, setCommandIsSelecting, setCommandPreviewShapes]);
+  }, [hasActiveCommand, commandState.activeCommand, commandState.phase, commandState.basePoint, setHasActiveModifyCommand, setActiveCommandName, setCommandIsSelecting, setCommandPreviewShapes, setCommandBasePoint]);
 
   // Update command preview shapes on mouse move
   useEffect(() => {
@@ -599,14 +601,12 @@ export const CommandLine = memo(function CommandLine() {
     const worldX = (mousePosition.x - s.viewport.offsetX) / s.viewport.zoom;
     const worldY = (mousePosition.y - s.viewport.offsetY) / s.viewport.zoom;
 
-    let snappedX = worldX;
-    let snappedY = worldY;
-    if (s.snapEnabled) {
-      snappedX = Math.round(worldX / s.gridSize) * s.gridSize;
-      snappedY = Math.round(worldY / s.gridSize) * s.gridSize;
-    }
-
-    const currentPoint = { x: snappedX, y: snappedY };
+    // Use the full snap detection result if available (set by useCanvasEvents mouse move)
+    const currentPoint = s.currentSnapPoint
+      ? s.currentSnapPoint.point
+      : s.snapEnabled
+        ? { x: Math.round(worldX / s.gridSize) * s.gridSize, y: Math.round(worldY / s.gridSize) * s.gridSize }
+        : { x: worldX, y: worldY };
     const previewShapes = getCommandPreview(commandState, currentPoint, s.shapes);
     setCommandPreviewShapes(previewShapes);
   }, [hasActiveCommand, mousePosition, commandState, setCommandPreviewShapes]);

@@ -48,10 +48,11 @@ import {
   AngularDimensionIcon,
   RadiusDimensionIcon,
   DiameterDimensionIcon,
+  SteelSectionIcon,
 } from '../shared/CadIcons';
 import './Ribbon.css';
 
-type RibbonTab = 'home' | 'modify' | 'view' | 'tools' | 'help';
+type RibbonTab = 'home' | 'modify' | 'structural' | 'view' | 'tools' | 'help';
 
 interface RibbonButtonProps {
   icon: React.ReactNode;
@@ -246,6 +247,7 @@ export const Ribbon = memo(function Ribbon() {
   const tabs: { id: RibbonTab; label: string }[] = [
     { id: 'home', label: 'Home' },
     { id: 'modify', label: 'Modify' },
+    { id: 'structural', label: 'Structural' },
     { id: 'view', label: 'View' },
     { id: 'tools', label: 'Tools' },
     { id: 'help', label: 'Help' },
@@ -470,7 +472,6 @@ export const Ribbon = memo(function Ribbon() {
                   label="Mirror"
                   onClick={() => setPendingCommand('MIRROR')}
                   active={activeCommandName === 'MIRROR'}
-                  disabled={true}
                 />
                 <RibbonSmallButton
                   icon={<ArrayIcon size={14} />}
@@ -578,6 +579,20 @@ export const Ribbon = memo(function Ribbon() {
                 label="Delete"
                 onClick={deleteSelectedShapes}
                 disabled={selectedShapeIds.length === 0}
+              />
+            </RibbonGroup>
+          </div>
+        </div>
+
+        {/* Structural Tab */}
+        <div className={`ribbon-content ${activeTab === 'structural' ? 'active' : ''}`}>
+          <div className="ribbon-groups">
+            <RibbonGroup label="Section">
+              <RibbonButton
+                icon={<SteelSectionIcon size={24} />}
+                label="Section"
+                onClick={() => console.log('Section')}
+                disabled={true}
               />
             </RibbonGroup>
           </div>

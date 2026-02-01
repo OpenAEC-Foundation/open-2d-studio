@@ -553,10 +553,62 @@ export class ShapeRenderer extends BaseRenderer {
 
     const points = this.getShapeHandlePoints(shape);
 
-    for (const point of points) {
+    for (let i = 0; i < points.length; i++) {
+      const point = points[i];
       ctx.fillRect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
       ctx.strokeRect(point.x - handleSize / 2, point.y - handleSize / 2, handleSize, handleSize);
+      // Skip axis arrows on arc midpoint grip (circumcenter algorithm can't handle axis constraint)
+      if (!(shape.type === 'arc' && i === 3)) {
+        this.drawAxisArrows(point, zoom);
+      }
     }
+  }
+
+  /**
+   * Draw X (red) and Y (green) axis-constraint arrows at a grip point.
+   * Arrow length is constant in screen space (~20px).
+   */
+  private drawAxisArrows(point: { x: number; y: number }, zoom: number): void {
+    const ctx = this.ctx;
+    const arrowLen = 20 / zoom;
+    const headLen = 5 / zoom;
+    const headWidth = 3 / zoom;
+
+    ctx.save();
+
+    // X-axis arrow (red, pointing right)
+    ctx.strokeStyle = COLORS.axisX;
+    ctx.fillStyle = COLORS.axisX;
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    ctx.lineTo(point.x + arrowLen, point.y);
+    ctx.stroke();
+    // Arrowhead
+    ctx.beginPath();
+    ctx.moveTo(point.x + arrowLen, point.y);
+    ctx.lineTo(point.x + arrowLen - headLen, point.y - headWidth);
+    ctx.lineTo(point.x + arrowLen - headLen, point.y + headWidth);
+    ctx.closePath();
+    ctx.fill();
+
+    // Y-axis arrow (green, pointing up i.e. negative Y in screen space)
+    ctx.strokeStyle = COLORS.axisY;
+    ctx.fillStyle = COLORS.axisY;
+    ctx.lineWidth = 1.5 / zoom;
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y);
+    ctx.lineTo(point.x, point.y - arrowLen);
+    ctx.stroke();
+    // Arrowhead
+    ctx.beginPath();
+    ctx.moveTo(point.x, point.y - arrowLen);
+    ctx.lineTo(point.x - headWidth, point.y - arrowLen + headLen);
+    ctx.lineTo(point.x + headWidth, point.y - arrowLen + headLen);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.restore();
   }
 
   private getShapeHandlePoints(shape: Shape): { x: number; y: number }[] {

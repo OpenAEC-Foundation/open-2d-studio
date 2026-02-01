@@ -29,7 +29,7 @@ Open 2D Studio is a free, open-source 2D CAD (Computer-Aided Design) application
 
 | Technology | Purpose | Why We Chose It |
 |------------|---------|-----------------|
-| **Tauri 2.0** | Application framework | 10MB app size (vs 100MB+ Electron), 30MB RAM usage, native performance |
+| **Tauri 2.0** | Application framework | ~10MB app size, ~30MB RAM usage, native performance |
 | **React 18** | UI framework | Component-based architecture, huge ecosystem, TypeScript support |
 | **TypeScript** | Language | Type safety, better tooling, catch bugs at compile time |
 | **Canvas 2D** | Rendering | Fast 2D rendering, simple API, handles 10k+ elements smoothly |

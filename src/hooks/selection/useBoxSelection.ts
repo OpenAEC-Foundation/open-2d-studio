@@ -4,9 +4,194 @@
 
 import { useCallback, useRef } from 'react';
 import { useAppStore, type SelectionBox } from '../../state/appStore';
-import type { Point } from '../../types/geometry';
+import type { Point, Shape } from '../../types/geometry';
 import { getShapeBounds } from '../../utils/geometryUtils';
 import { screenToWorld } from '../../utils/geometryUtils';
+
+/**
+ * Test if a line segment intersects an axis-aligned rectangle.
+ * Uses Liang-Barsky algorithm.
+ */
+function lineSegmentIntersectsRect(
+  x1: number, y1: number, x2: number, y2: number,
+  minX: number, minY: number, maxX: number, maxY: number
+): boolean {
+  // Check if either endpoint is inside the rect
+  if (x1 >= minX && x1 <= maxX && y1 >= minY && y1 <= maxY) return true;
+  if (x2 >= minX && x2 <= maxX && y2 >= minY && y2 <= maxY) return true;
+
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+
+  // Check intersection with each edge of the rectangle
+  const edges = [
+    { ex1: minX, ey1: minY, ex2: maxX, ey2: minY }, // bottom
+    { ex1: maxX, ey1: minY, ex2: maxX, ey2: maxY }, // right
+    { ex1: minX, ey1: maxY, ex2: maxX, ey2: maxY }, // top
+    { ex1: minX, ey1: minY, ex2: minX, ey2: maxY }, // left
+  ];
+
+  for (const edge of edges) {
+    const edx = edge.ex2 - edge.ex1;
+    const edy = edge.ey2 - edge.ey1;
+    const denom = dx * edy - dy * edx;
+    if (Math.abs(denom) < 1e-10) continue; // parallel
+
+    const t = ((edge.ex1 - x1) * edy - (edge.ey1 - y1) * edx) / denom;
+    const u = ((edge.ex1 - x1) * dy - (edge.ey1 - y1) * dx) / denom;
+
+    if (t >= 0 && t <= 1 && u >= 0 && u <= 1) return true;
+  }
+
+  return false;
+}
+
+interface Edge { x1: number; y1: number; x2: number; y2: number; }
+
+/**
+ * Decompose a shape into line segment edges for precise intersection testing.
+ */
+function getShapeEdges(shape: Shape): Edge[] {
+  switch (shape.type) {
+    case 'line':
+      return [{ x1: shape.start.x, y1: shape.start.y, x2: shape.end.x, y2: shape.end.y }];
+
+    case 'rectangle': {
+      const { topLeft, width, height, rotation } = shape;
+      const cx = topLeft.x + width / 2;
+      const cy = topLeft.y + height / 2;
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+      const hw = width / 2;
+      const hh = height / 2;
+      // 4 corners relative to center, rotated
+      const corners = [
+        { x: cx + (-hw) * cos - (-hh) * sin, y: cy + (-hw) * sin + (-hh) * cos },
+        { x: cx + ( hw) * cos - (-hh) * sin, y: cy + ( hw) * sin + (-hh) * cos },
+        { x: cx + ( hw) * cos - ( hh) * sin, y: cy + ( hw) * sin + ( hh) * cos },
+        { x: cx + (-hw) * cos - ( hh) * sin, y: cy + (-hw) * sin + ( hh) * cos },
+      ];
+      return [
+        { x1: corners[0].x, y1: corners[0].y, x2: corners[1].x, y2: corners[1].y },
+        { x1: corners[1].x, y1: corners[1].y, x2: corners[2].x, y2: corners[2].y },
+        { x1: corners[2].x, y1: corners[2].y, x2: corners[3].x, y2: corners[3].y },
+        { x1: corners[3].x, y1: corners[3].y, x2: corners[0].x, y2: corners[0].y },
+      ];
+    }
+
+    case 'circle': {
+      // Approximate circle with 32 segments
+      const { center, radius } = shape;
+      const segments = 32;
+      const edges: Edge[] = [];
+      for (let i = 0; i < segments; i++) {
+        const a1 = (i / segments) * Math.PI * 2;
+        const a2 = ((i + 1) / segments) * Math.PI * 2;
+        edges.push({
+          x1: center.x + radius * Math.cos(a1), y1: center.y + radius * Math.sin(a1),
+          x2: center.x + radius * Math.cos(a2), y2: center.y + radius * Math.sin(a2),
+        });
+      }
+      return edges;
+    }
+
+    case 'arc': {
+      const { center, radius, startAngle, endAngle } = shape;
+      const segments = 32;
+      let start = startAngle;
+      let end = endAngle;
+      if (end < start) end += Math.PI * 2;
+      const edges: Edge[] = [];
+      for (let i = 0; i < segments; i++) {
+        const a1 = start + (i / segments) * (end - start);
+        const a2 = start + ((i + 1) / segments) * (end - start);
+        edges.push({
+          x1: center.x + radius * Math.cos(a1), y1: center.y + radius * Math.sin(a1),
+          x2: center.x + radius * Math.cos(a2), y2: center.y + radius * Math.sin(a2),
+        });
+      }
+      return edges;
+    }
+
+    case 'ellipse': {
+      const { center, radiusX, radiusY, rotation } = shape;
+      const segments = 32;
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+      const edges: Edge[] = [];
+      for (let i = 0; i < segments; i++) {
+        const a1 = (i / segments) * Math.PI * 2;
+        const a2 = ((i + 1) / segments) * Math.PI * 2;
+        const px1 = radiusX * Math.cos(a1), py1 = radiusY * Math.sin(a1);
+        const px2 = radiusX * Math.cos(a2), py2 = radiusY * Math.sin(a2);
+        edges.push({
+          x1: center.x + px1 * cos - py1 * sin, y1: center.y + px1 * sin + py1 * cos,
+          x2: center.x + px2 * cos - py2 * sin, y2: center.y + px2 * sin + py2 * cos,
+        });
+      }
+      return edges;
+    }
+
+    case 'polyline': {
+      const edges: Edge[] = [];
+      for (let i = 0; i < shape.points.length - 1; i++) {
+        edges.push({
+          x1: shape.points[i].x, y1: shape.points[i].y,
+          x2: shape.points[i + 1].x, y2: shape.points[i + 1].y,
+        });
+      }
+      if (shape.closed && shape.points.length >= 3) {
+        const last = shape.points[shape.points.length - 1];
+        const first = shape.points[0];
+        edges.push({ x1: last.x, y1: last.y, x2: first.x, y2: first.y });
+      }
+      return edges;
+    }
+
+    case 'spline': {
+      const edges: Edge[] = [];
+      for (let i = 0; i < shape.points.length - 1; i++) {
+        edges.push({
+          x1: shape.points[i].x, y1: shape.points[i].y,
+          x2: shape.points[i + 1].x, y2: shape.points[i + 1].y,
+        });
+      }
+      return edges;
+    }
+
+    default:
+      return [];
+  }
+}
+
+/**
+ * Test if a shape's actual geometry intersects or is contained in a rectangle (for crossing selection).
+ * Falls back to bounding box overlap for shapes where edge decomposition isn't available.
+ */
+function shapeCrossesRect(shape: Shape, minX: number, minY: number, maxX: number, maxY: number): boolean {
+  const bounds = getShapeBounds(shape);
+  if (!bounds) return false;
+
+  // Quick reject: if bounding boxes don't overlap at all, no intersection possible
+  if (bounds.maxX < minX || bounds.minX > maxX || bounds.maxY < minY || bounds.minY > maxY) {
+    return false;
+  }
+
+  // Helper: get edges of a shape as line segments for precise crossing test
+  const edges = getShapeEdges(shape);
+  if (edges.length > 0) {
+    // Check if any edge crosses the selection rectangle
+    for (const edge of edges) {
+      if (lineSegmentIntersectsRect(edge.x1, edge.y1, edge.x2, edge.y2, minX, minY, maxX, maxY)) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  // For shapes without edge decomposition, bounding box overlap is sufficient
+  return true;
+}
 
 interface SelectionState {
   isSelecting: boolean;
@@ -114,12 +299,8 @@ export function useBoxSelection() {
           }
         } else {
           // Crossing selection: shape can be inside or crossing
-          if (
-            bounds.maxX >= minX &&
-            bounds.minX <= maxX &&
-            bounds.maxY >= minY &&
-            bounds.minY <= maxY
-          ) {
+          // Use precise geometry test to avoid false positives from bounding box overlap
+          if (shapeCrossesRect(shape, minX, minY, maxX, maxY)) {
             selectedIds.push(shape.id);
           }
         }

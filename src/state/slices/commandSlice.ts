@@ -19,6 +19,7 @@ export interface CommandState {
   commandIsSelecting: boolean;  // True when a command is in 'selecting' phase (waiting for object selection)
   commandPreviewShapes: Shape[];  // Preview shapes for active modify commands (move/copy preview)
   pendingCommandCancel: boolean;  // Signal to cancel active command (set by coordinating actions, consumed by CommandLine)
+  commandBasePoint: Point | null;  // Base point of active command (for snap tracking)
 }
 
 // ============================================================================
@@ -37,6 +38,7 @@ export interface CommandActions {
   setCommandPreviewShapes: (shapes: Shape[]) => void;
   requestCommandCancel: () => void;  // Request cancellation of active command
   clearCommandCancelRequest: () => void;  // Clear the cancel request (called by CommandLine after processing)
+  setCommandBasePoint: (point: Point | null) => void;
 }
 
 export type CommandSlice = CommandState & CommandActions;
@@ -56,6 +58,7 @@ export const initialCommandState: CommandState = {
   commandIsSelecting: false,
   commandPreviewShapes: [],
   pendingCommandCancel: false,
+  commandBasePoint: null,
 };
 
 // ============================================================================
@@ -121,5 +124,10 @@ export const createCommandSlice = (
   clearCommandCancelRequest: () =>
     set((state) => {
       state.pendingCommandCancel = false;
+    }),
+
+  setCommandBasePoint: (point) =>
+    set((state) => {
+      state.commandBasePoint = point;
     }),
 });
