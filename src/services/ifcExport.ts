@@ -8,6 +8,8 @@
  */
 
 import type { Shape, Layer } from '../types/geometry';
+import type { CustomHatchPattern } from '../types/hatch';
+import { isSvgHatchPattern } from '../types/hatch';
 
 // ============================================================================
 // IFC GUID Generation
@@ -115,8 +117,9 @@ function hexToRgb01(hex: string): [number, number, number] {
  * - All 2D shapes as IfcAnnotation with appropriate geometry types
  * - Curve/text styling via IfcStyledItem
  * - Layer assignments via IfcPresentationLayerAssignment
+ * - Custom hatch patterns with line families
  */
-export function exportToIFC(shapes: Shape[], layers: Layer[]): string {
+export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: CustomHatchPattern[]): string {
   const b = new IfcBuilder();
   const timestamp = new Date().toISOString().replace(/\.\d+Z$/, '');
 
@@ -354,8 +357,54 @@ export function exportToIFC(shapes: Shape[], layers: Layer[]): string {
           // Solid fill: IfcFillAreaStyleColour
           const fillColourStyle = b.add(`IFCFILLAREASTYLECOLOUR('Fill',${fillColor})`);
           fillStyles.push(fillColourStyle);
+        } else if (shape.patternType === 'custom' && shape.customPatternId && customPatterns) {
+          // Custom pattern: look up and convert line families to IFC hatching
+          const customPattern = customPatterns.find(p => p.id === shape.customPatternId);
+
+          if (customPattern && !isSvgHatchPattern(customPattern)) {
+            // Line-based custom pattern
+            const curveStyle = b.add(`IFCCURVESTYLE($,$,IFCPOSITIVELENGTHMEASURE(${b.f(shape.style.strokeWidth)}),${fillColor},$)`);
+            const hatchOrigin = b.point2d(0, 0);
+            const hatchStartPt = b.point2d(0, 0);
+
+            for (const family of customPattern.lineFamilies) {
+              const spacing = (family.deltaY || 10) * shape.patternScale;
+              const hatchEndPt = b.point2d(0, spacing);
+              const totalAngle = family.angle + shape.patternAngle;
+              const rad = totalAngle * Math.PI / 180;
+              const hatchDir = b.direction2d(Math.cos(rad), Math.sin(rad));
+              const hatchPlacement = b.axis2placement2d(hatchOrigin, hatchDir);
+
+              const hatching = b.add(
+                `IFCFILLAREASTYLEHATCHING(${curveStyle},${hatchPlacement},${hatchStartPt},${hatchEndPt},$)`
+              );
+              fillStyles.push(hatching);
+            }
+          } else if (customPattern && isSvgHatchPattern(customPattern)) {
+            // SVG patterns cannot be directly represented in IFC
+            // Fall back to a diagonal hatch pattern as a placeholder
+            const spacing = 10 * shape.patternScale;
+            const curveStyle = b.add(`IFCCURVESTYLE($,$,IFCPOSITIVELENGTHMEASURE(${b.f(shape.style.strokeWidth)}),${fillColor},$)`);
+            const hatchOrigin = b.point2d(0, 0);
+            const hatchStartPt = b.point2d(0, 0);
+            const hatchEndPt = b.point2d(0, spacing);
+            const rad = (45 + shape.patternAngle) * Math.PI / 180;
+            const hatchDir = b.direction2d(Math.cos(rad), Math.sin(rad));
+            const hatchPlacement = b.axis2placement2d(hatchOrigin, hatchDir);
+            const hatching = b.add(
+              `IFCFILLAREASTYLEHATCHING(${curveStyle},${hatchPlacement},${hatchStartPt},${hatchEndPt},$)`
+            );
+            fillStyles.push(hatching);
+          }
+
+          // Add background color if specified
+          if (shape.backgroundColor) {
+            const bgColor = getOrCreateColor(shape.backgroundColor);
+            const bgFill = b.add(`IFCFILLAREASTYLECOLOUR('Background',${bgColor})`);
+            fillStyles.push(bgFill);
+          }
         } else {
-          // Hatching patterns: IfcFillAreaStyleHatching
+          // Built-in hatching patterns: IfcFillAreaStyleHatching
           const spacing = 10 * shape.patternScale;
           const curveStyle = b.add(`IFCCURVESTYLE($,$,IFCPOSITIVELENGTHMEASURE(${b.f(shape.style.strokeWidth)}),${fillColor},$)`);
 

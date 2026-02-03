@@ -4,6 +4,8 @@ import { catmullRomToBezier } from '../../engine/geometry/SplineUtils';
 import { bulgeToArc } from '../../engine/geometry/GeometryUtils';
 import type { HatchShape } from '../../types/geometry';
 import type { DimensionShape } from '../../types/dimension';
+import type { CustomHatchPattern, LineFamily } from '../../types/hatch';
+import { BUILTIN_PATTERNS, isSvgHatchPattern } from '../../types/hatch';
 
 export function toGrayscale(color: string): string {
   const ctx = document.createElement('canvas').getContext('2d')!;
@@ -45,6 +47,10 @@ export interface RenderOptions {
   offsetY: number;
   appearance: PrintAppearance;
   plotLineweights: boolean;
+  /** DPI for calculating minimum visible line width */
+  dpi?: number;
+  /** Custom hatch patterns for rendering */
+  customPatterns?: CustomHatchPattern[];
 }
 
 export function renderShapesToCanvas(
@@ -52,16 +58,20 @@ export function renderShapesToCanvas(
   shapes: Shape[],
   opts: RenderOptions
 ): void {
-  const { scale, offsetX, offsetY, appearance, plotLineweights } = opts;
+  const { scale, offsetX, offsetY, appearance, plotLineweights, dpi = 150 } = opts;
   const tx = (x: number) => x * scale + offsetX;
   const ty = (y: number) => y * scale + offsetY;
+
+  // Calculate minimum visible line width (0.25mm minimum for print visibility)
+  const minLineWidthMM = 0.25;
+  const minLineWidthPx = minLineWidthMM * (dpi / 25.4);
 
   for (const shape of shapes) {
     if (!shape.visible) continue;
 
     const strokeColor = transformColor(shape.style.strokeColor, appearance, true);
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = plotLineweights ? Math.max(shape.style.strokeWidth * scale, 0.5) : 1;
+    ctx.lineWidth = plotLineweights ? Math.max(shape.style.strokeWidth * scale, minLineWidthPx) : minLineWidthPx;
 
     switch (shape.style.lineStyle) {
       case 'dashed':
@@ -333,10 +343,10 @@ function renderDimensionToPrint(ctx: CanvasRenderingContext2D, dim: DimensionSha
 }
 
 function renderHatchToPrint(ctx: CanvasRenderingContext2D, hatch: HatchShape, opts: RenderOptions): void {
-  const { scale, offsetX, offsetY, appearance, plotLineweights } = opts;
+  const { scale, offsetX, offsetY, appearance, plotLineweights, customPatterns = [] } = opts;
   const tx = (x: number) => x * scale + offsetX;
   const ty = (y: number) => y * scale + offsetY;
-  const { points, patternType, patternAngle, patternScale, fillColor, backgroundColor } = hatch;
+  const { points, patternType, patternAngle, patternScale, fillColor, backgroundColor, customPatternId } = hatch;
 
   if (points.length < 3) return;
 
@@ -370,7 +380,30 @@ function renderHatchToPrint(ctx: CanvasRenderingContext2D, hatch: HatchShape, op
   buildPath();
   ctx.clip();
 
-  if (patternType === 'solid') {
+  if (patternType === 'custom' && customPatternId) {
+    // Look up custom pattern
+    const customPattern = BUILTIN_PATTERNS.find(p => p.id === customPatternId) ||
+                          customPatterns.find(p => p.id === customPatternId);
+    if (customPattern) {
+      if (isSvgHatchPattern(customPattern)) {
+        // For SVG patterns in print, render as solid (SVG async loading is complex for print)
+        // A more complete implementation would pre-load SVG images
+        ctx.fillStyle = patternColor;
+        ctx.globalAlpha = 0.3;
+        ctx.fill();
+        ctx.globalAlpha = 1;
+      } else if (customPattern.lineFamilies.length > 0) {
+        // Render line families
+        renderLineFamiliesToPrint(ctx, customPattern.lineFamilies, minX, minY, maxX, maxY,
+          patternScale * scale, patternAngle, patternColor,
+          plotLineweights ? hatch.style.strokeWidth * scale * 0.5 : 0.5);
+      } else {
+        // Empty line families = solid fill
+        ctx.fillStyle = patternColor;
+        ctx.fill();
+      }
+    }
+  } else if (patternType === 'solid') {
     ctx.fillStyle = patternColor;
     ctx.fill();
   } else if (patternType === 'dots') {
@@ -423,4 +456,126 @@ function renderHatchToPrint(ctx: CanvasRenderingContext2D, hatch: HatchShape, op
   ctx.strokeStyle = transformColor(hatch.style.strokeColor, appearance, true);
   ctx.lineWidth = plotLineweights ? Math.max(hatch.style.strokeWidth * scale, 0.5) : 1;
   ctx.stroke();
+}
+
+/**
+ * Render line families for custom patterns in print
+ */
+function renderLineFamiliesToPrint(
+  ctx: CanvasRenderingContext2D,
+  lineFamilies: LineFamily[],
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+  scale: number,
+  rotationOffset: number,
+  defaultColor: string,
+  defaultStrokeWidth: number
+): void {
+  for (const family of lineFamilies) {
+    const spacing = (family.deltaY || 10) * scale;
+    const deltaX = (family.deltaX || 0) * scale;
+    const angleDeg = family.angle + rotationOffset;
+    const strokeWidth = family.strokeWidth ?? defaultStrokeWidth;
+    const strokeColor = family.strokeColor ?? defaultColor;
+
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = strokeWidth;
+
+    // Handle dash pattern
+    if (family.dashPattern && family.dashPattern.length > 0) {
+      if (family.dashPattern.includes(0)) {
+        // Dots pattern
+        renderDotsToPrint(ctx, angleDeg, spacing, deltaX, minX, minY, maxX, maxY, scale, strokeColor);
+        continue;
+      }
+      const scaledDashPattern = family.dashPattern.map(d => Math.abs(d) * scale);
+      ctx.setLineDash(scaledDashPattern);
+    } else {
+      ctx.setLineDash([]);
+    }
+
+    // Draw line family
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const cosA = Math.cos(angleRad);
+    const sinA = Math.sin(angleRad);
+
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const diagonal = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
+    const halfDiag = diagonal / 2 + spacing * 2;
+    const numLines = Math.ceil((halfDiag * 2) / spacing) + 2;
+
+    ctx.beginPath();
+    for (let i = -numLines; i <= numLines; i++) {
+      const perpOffset = i * spacing;
+      const staggerOffset = deltaX !== 0 ? (i * deltaX) : 0;
+
+      const baseX = cx + perpOffset * (-sinA);
+      const baseY = cy + perpOffset * cosA;
+
+      const ox = baseX + staggerOffset * cosA;
+      const oy = baseY + staggerOffset * sinA;
+
+      const x1 = ox - halfDiag * cosA;
+      const y1 = oy - halfDiag * sinA;
+      const x2 = ox + halfDiag * cosA;
+      const y2 = oy + halfDiag * sinA;
+
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
+  }
+
+  ctx.setLineDash([]);
+}
+
+/**
+ * Render dots pattern for print
+ */
+function renderDotsToPrint(
+  ctx: CanvasRenderingContext2D,
+  angleDeg: number,
+  spacing: number,
+  deltaX: number,
+  minX: number,
+  minY: number,
+  maxX: number,
+  maxY: number,
+  scale: number,
+  color: string
+): void {
+  const angleRad = (angleDeg * Math.PI) / 180;
+  const cosA = Math.cos(angleRad);
+  const sinA = Math.sin(angleRad);
+
+  const cx = (minX + maxX) / 2;
+  const cy = (minY + maxY) / 2;
+  const diagonal = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
+  const halfDiag = diagonal / 2 + spacing * 2;
+
+  const dotRadius = 1 * scale;
+  const numLines = Math.ceil((halfDiag * 2) / spacing) + 2;
+  const dotsPerLine = Math.ceil((halfDiag * 2) / (deltaX || spacing)) + 2;
+  const dotSpacing = deltaX || spacing;
+
+  ctx.fillStyle = color;
+
+  for (let i = -numLines; i <= numLines; i++) {
+    const perpOffset = i * spacing;
+    const baseX = cx + perpOffset * (-sinA);
+    const baseY = cy + perpOffset * cosA;
+
+    for (let j = -dotsPerLine; j <= dotsPerLine; j++) {
+      const alongOffset = j * dotSpacing;
+      const dx = baseX + alongOffset * cosA;
+      const dy = baseY + alongOffset * sinA;
+
+      ctx.beginPath();
+      ctx.arc(dx, dy, dotRadius, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
 }

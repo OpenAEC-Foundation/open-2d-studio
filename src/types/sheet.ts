@@ -379,6 +379,96 @@ export interface SheetTemplate {
 }
 
 // ============================================================================
+// SVG-Based Title Block Templates
+// ============================================================================
+
+/**
+ * Field mapping for SVG title block placeholder
+ */
+export interface SVGFieldMapping {
+  /** Internal field ID (e.g., "project", "scale") */
+  fieldId: string;
+  /** The SVG element ID or placeholder text pattern */
+  svgSelector: string;
+  /** Display label for the field */
+  label: string;
+  /** Default value */
+  defaultValue: string;
+  /** Whether this is an auto-calculated field */
+  isAutoField?: boolean;
+  /** Auto-field type if applicable */
+  autoFieldType?: 'date' | 'sheetNumber' | 'scale' | 'projectName';
+}
+
+/**
+ * SVG-based title block template
+ * Allows complex visual designs with logos, colors, and custom graphics
+ */
+export interface SVGTitleBlockTemplate {
+  id: string;
+  name: string;
+  description: string;
+  /** Compatible paper sizes */
+  paperSizes: string[];
+  /** The full SVG content as a string */
+  svgContent: string;
+  /** Width in mm */
+  width: number;
+  /** Height in mm */
+  height: number;
+  /** Field mappings - connects SVG placeholders to editable fields */
+  fieldMappings: SVGFieldMapping[];
+  /** Whether this is a built-in template */
+  isBuiltIn: boolean;
+  /** Whether this is a full-page template (covers entire sheet like Revit) */
+  isFullPage?: boolean;
+  /** Creation timestamp */
+  createdAt: string;
+  /** Last modified timestamp */
+  modifiedAt: string;
+  /** Optional preview thumbnail (base64 PNG) */
+  thumbnail?: string;
+}
+
+/**
+ * Enhanced title block that can use either grid-based or SVG template
+ */
+export interface SVGEnhancedTitleBlock {
+  visible: boolean;
+  /** Grid-based template ID (legacy) */
+  templateId?: string;
+  /** SVG-based template ID */
+  svgTemplateId?: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  /** Field values (used by both template types) */
+  fields: {
+    id: string;
+    label: string;
+    value: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    fontSize: number;
+    fontFamily: string;
+    align: 'left' | 'center' | 'right';
+  }[];
+  /** Optional company logo (for grid-based templates) */
+  logo?: {
+    data: string;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  };
+  /** Revision table */
+  revisionTable?: RevisionTable;
+}
+
+// ============================================================================
 // Sheet Set
 // ============================================================================
 

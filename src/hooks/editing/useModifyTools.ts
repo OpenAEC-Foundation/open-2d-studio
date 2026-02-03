@@ -7,6 +7,7 @@
 import { useCallback } from 'react';
 import { useAppStore } from '../../state/appStore';
 import type { Point, Shape, ToolType } from '../../types/geometry';
+import type { ParametricShape } from '../../types/parametric';
 import {
   transformShape,
   translateTransform,
@@ -29,12 +30,17 @@ export function useModifyTools() {
   const drawingPoints = useAppStore((s) => s.drawingPoints);
   const selectedShapeIds = useAppStore((s) => s.selectedShapeIds);
   const shapes = useAppStore((s) => s.shapes);
+  const parametricShapes = useAppStore((s) => s.parametricShapes);
   const addDrawingPoint = useAppStore((s) => s.addDrawingPoint);
   const clearDrawingPoints = useAppStore((s) => s.clearDrawingPoints);
   const setDrawingPreview = useAppStore((s) => s.setDrawingPreview);
   const addShapes = useAppStore((s) => s.addShapes);
   const updateShapes = useAppStore((s) => s.updateShapes);
   const selectShape = useAppStore((s) => s.selectShape);
+  const cloneParametricShapes = useAppStore((s) => s.cloneParametricShapes);
+  const updateProfilePosition = useAppStore((s) => s.updateProfilePosition);
+  const updateProfileRotation = useAppStore((s) => s.updateProfileRotation);
+  const updateProfileScale = useAppStore((s) => s.updateProfileScale);
 
   // Modify options
   const modifyCopy = useAppStore((s) => s.modifyCopy);
@@ -60,6 +66,10 @@ export function useModifyTools() {
   const getSelectedShapes = useCallback((): Shape[] => {
     return shapes.filter((s) => selectedShapeIds.includes(s.id));
   }, [shapes, selectedShapeIds]);
+
+  const getSelectedParametricShapes = useCallback((): ParametricShape[] => {
+    return parametricShapes.filter((s) => selectedShapeIds.includes(s.id));
+  }, [parametricShapes, selectedShapeIds]);
 
   /**
    * Handle click for modify tools. Returns true if handled.
@@ -94,15 +104,37 @@ export function useModifyTools() {
           const dy = worldPos.y - basePoint.y;
           const transform = translateTransform(dx, dy);
           const selected = getSelectedShapes();
+          const selectedParametric = getSelectedParametricShapes();
+
           if (modifyCopy) {
-            const copies = selected.map((s) => transformShape(s, transform));
-            addShapes(copies);
+            // Copy regular shapes
+            if (selected.length > 0) {
+              const copies = selected.map((s) => transformShape(s, transform));
+              addShapes(copies);
+            }
+            // Copy parametric shapes
+            if (selectedParametric.length > 0) {
+              cloneParametricShapes(
+                selectedParametric.map(s => s.id),
+                { x: dx, y: dy }
+              );
+            }
           } else {
-            const updates = selected.map((s) => ({
-              id: s.id,
-              updates: getShapeTransformUpdates(s, transform),
-            }));
-            updateShapes(updates);
+            // Move regular shapes
+            if (selected.length > 0) {
+              const updates = selected.map((s) => ({
+                id: s.id,
+                updates: getShapeTransformUpdates(s, transform),
+              }));
+              updateShapes(updates);
+            }
+            // Move parametric shapes
+            for (const ps of selectedParametric) {
+              updateProfilePosition(ps.id, {
+                x: ps.position.x + dx,
+                y: ps.position.y + dy,
+              });
+            }
           }
           clearDrawingPoints();
           return true;
@@ -128,8 +160,22 @@ export function useModifyTools() {
           const dx = worldPos.x - basePoint.x;
           const dy = worldPos.y - basePoint.y;
           const transform = translateTransform(dx, dy);
-          const copies = getSelectedShapes().map((s) => transformShape(s, transform));
-          addShapes(copies);
+
+          // Copy regular shapes
+          const regularCopies = getSelectedShapes().map((s) => transformShape(s, transform));
+          if (regularCopies.length > 0) {
+            addShapes(regularCopies);
+          }
+
+          // Copy parametric shapes
+          const selectedParametric = getSelectedParametricShapes();
+          if (selectedParametric.length > 0) {
+            cloneParametricShapes(
+              selectedParametric.map(s => s.id),
+              { x: dx, y: dy }
+            );
+          }
+
           if (!modifyMultiple) {
             clearDrawingPoints();
           }
@@ -157,10 +203,42 @@ export function useModifyTools() {
               const angleRad = (rotateAngle * Math.PI) / 180;
               const transform = rotateTransform(center, angleRad);
               const selected = getSelectedShapes();
+              const selectedParametric = getSelectedParametricShapes();
+
               if (modifyCopy) {
-                addShapes(selected.map((s) => transformShape(s, transform)));
+                if (selected.length > 0) {
+                  addShapes(selected.map((s) => transformShape(s, transform)));
+                }
+                // Copy and rotate parametric shapes
+                if (selectedParametric.length > 0) {
+                  const clones = cloneParametricShapes(selectedParametric.map(s => s.id), { x: 0, y: 0 });
+                  for (const clone of clones) {
+                    // Rotate position around center
+                    const cos = Math.cos(angleRad);
+                    const sin = Math.sin(angleRad);
+                    const dx = clone.position.x - center.x;
+                    const dy = clone.position.y - center.y;
+                    const newX = center.x + dx * cos - dy * sin;
+                    const newY = center.y + dx * sin + dy * cos;
+                    updateProfilePosition(clone.id, { x: newX, y: newY });
+                    updateProfileRotation(clone.id, clone.rotation + angleRad);
+                  }
+                }
               } else {
-                updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+                if (selected.length > 0) {
+                  updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+                }
+                // Rotate parametric shapes
+                for (const ps of selectedParametric) {
+                  const cos = Math.cos(angleRad);
+                  const sin = Math.sin(angleRad);
+                  const dx = ps.position.x - center.x;
+                  const dy = ps.position.y - center.y;
+                  const newX = center.x + dx * cos - dy * sin;
+                  const newY = center.y + dx * sin + dy * cos;
+                  updateProfilePosition(ps.id, { x: newX, y: newY });
+                  updateProfileRotation(ps.id, ps.rotation + angleRad);
+                }
               }
               clearDrawingPoints();
             }
@@ -178,10 +256,41 @@ export function useModifyTools() {
           const angle = endAngle - startAngle;
           const transform = rotateTransform(center, angle);
           const selected = getSelectedShapes();
+          const selectedParametric = getSelectedParametricShapes();
+
           if (modifyCopy) {
-            addShapes(selected.map((s) => transformShape(s, transform)));
+            if (selected.length > 0) {
+              addShapes(selected.map((s) => transformShape(s, transform)));
+            }
+            // Copy and rotate parametric shapes
+            if (selectedParametric.length > 0) {
+              const clones = cloneParametricShapes(selectedParametric.map(s => s.id), { x: 0, y: 0 });
+              for (const clone of clones) {
+                const cos = Math.cos(angle);
+                const sin = Math.sin(angle);
+                const dx = clone.position.x - center.x;
+                const dy = clone.position.y - center.y;
+                const newX = center.x + dx * cos - dy * sin;
+                const newY = center.y + dx * sin + dy * cos;
+                updateProfilePosition(clone.id, { x: newX, y: newY });
+                updateProfileRotation(clone.id, clone.rotation + angle);
+              }
+            }
           } else {
-            updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+            if (selected.length > 0) {
+              updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+            }
+            // Rotate parametric shapes
+            for (const ps of selectedParametric) {
+              const cos = Math.cos(angle);
+              const sin = Math.sin(angle);
+              const dx = ps.position.x - center.x;
+              const dy = ps.position.y - center.y;
+              const newX = center.x + dx * cos - dy * sin;
+              const newY = center.y + dx * sin + dy * cos;
+              updateProfilePosition(ps.id, { x: newX, y: newY });
+              updateProfileRotation(ps.id, ps.rotation + angle);
+            }
           }
           clearDrawingPoints();
           return true;
@@ -206,10 +315,37 @@ export function useModifyTools() {
               const origin = worldPos;
               const transform = scaleTransform(origin, scaleFactor);
               const selected = getSelectedShapes();
+              const selectedParametric = getSelectedParametricShapes();
+
               if (modifyCopy) {
-                addShapes(selected.map((s) => transformShape(s, transform)));
+                if (selected.length > 0) {
+                  addShapes(selected.map((s) => transformShape(s, transform)));
+                }
+                // Copy and scale parametric shapes
+                if (selectedParametric.length > 0) {
+                  const clones = cloneParametricShapes(selectedParametric.map(s => s.id), { x: 0, y: 0 });
+                  for (const clone of clones) {
+                    const dx = clone.position.x - origin.x;
+                    const dy = clone.position.y - origin.y;
+                    const newX = origin.x + dx * scaleFactor;
+                    const newY = origin.y + dy * scaleFactor;
+                    updateProfilePosition(clone.id, { x: newX, y: newY });
+                    updateProfileScale(clone.id, clone.scale * scaleFactor);
+                  }
+                }
               } else {
-                updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+                if (selected.length > 0) {
+                  updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+                }
+                // Scale parametric shapes
+                for (const ps of selectedParametric) {
+                  const dx = ps.position.x - origin.x;
+                  const dy = ps.position.y - origin.y;
+                  const newX = origin.x + dx * scaleFactor;
+                  const newY = origin.y + dy * scaleFactor;
+                  updateProfilePosition(ps.id, { x: newX, y: newY });
+                  updateProfileScale(ps.id, ps.scale * scaleFactor);
+                }
               }
               clearDrawingPoints();
             }
@@ -228,10 +364,37 @@ export function useModifyTools() {
             const factor = refDist > 0.001 ? newDist / refDist : 1;
             const transform = scaleTransform(origin, factor);
             const selected = getSelectedShapes();
+            const selectedParametric = getSelectedParametricShapes();
+
             if (modifyCopy) {
-              addShapes(selected.map((s) => transformShape(s, transform)));
+              if (selected.length > 0) {
+                addShapes(selected.map((s) => transformShape(s, transform)));
+              }
+              // Copy and scale parametric shapes
+              if (selectedParametric.length > 0) {
+                const clones = cloneParametricShapes(selectedParametric.map(s => s.id), { x: 0, y: 0 });
+                for (const clone of clones) {
+                  const dx = clone.position.x - origin.x;
+                  const dy = clone.position.y - origin.y;
+                  const newX = origin.x + dx * factor;
+                  const newY = origin.y + dy * factor;
+                  updateProfilePosition(clone.id, { x: newX, y: newY });
+                  updateProfileScale(clone.id, clone.scale * factor);
+                }
+              }
             } else {
-              updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+              if (selected.length > 0) {
+                updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+              }
+              // Scale parametric shapes
+              for (const ps of selectedParametric) {
+                const dx = ps.position.x - origin.x;
+                const dy = ps.position.y - origin.y;
+                const newX = origin.x + dx * factor;
+                const newY = origin.y + dy * factor;
+                updateProfilePosition(ps.id, { x: newX, y: newY });
+                updateProfileScale(ps.id, ps.scale * factor);
+              }
             }
             clearDrawingPoints();
           }
@@ -258,10 +421,46 @@ export function useModifyTools() {
           const axisP2 = worldPos;
           const transform = mirrorTransform(axisP1, axisP2);
           const selected = getSelectedShapes();
+          const selectedParametric = getSelectedParametricShapes();
+
+          // Calculate axis angle for mirroring parametric shapes
+          const axisAngle = Math.atan2(axisP2.y - axisP1.y, axisP2.x - axisP1.x);
+
           if (modifyCopy) {
-            addShapes(selected.map((s) => transformShape(s, transform)));
+            if (selected.length > 0) {
+              addShapes(selected.map((s) => transformShape(s, transform)));
+            }
+            // Copy and mirror parametric shapes
+            if (selectedParametric.length > 0) {
+              const clones = cloneParametricShapes(selectedParametric.map(s => s.id), { x: 0, y: 0 });
+              for (const clone of clones) {
+                // Mirror position across axis
+                const dx = clone.position.x - axisP1.x;
+                const dy = clone.position.y - axisP1.y;
+                const cos2a = Math.cos(2 * axisAngle);
+                const sin2a = Math.sin(2 * axisAngle);
+                const newX = axisP1.x + dx * cos2a + dy * sin2a;
+                const newY = axisP1.y + dx * sin2a - dy * cos2a;
+                updateProfilePosition(clone.id, { x: newX, y: newY });
+                // Mirror rotation: reflect around axis
+                updateProfileRotation(clone.id, 2 * axisAngle - clone.rotation);
+              }
+            }
           } else {
-            updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+            if (selected.length > 0) {
+              updateShapes(selected.map((s) => ({ id: s.id, updates: getShapeTransformUpdates(s, transform) })));
+            }
+            // Mirror parametric shapes
+            for (const ps of selectedParametric) {
+              const dx = ps.position.x - axisP1.x;
+              const dy = ps.position.y - axisP1.y;
+              const cos2a = Math.cos(2 * axisAngle);
+              const sin2a = Math.sin(2 * axisAngle);
+              const newX = axisP1.x + dx * cos2a + dy * sin2a;
+              const newY = axisP1.y + dx * sin2a - dy * cos2a;
+              updateProfilePosition(ps.id, { x: newX, y: newY });
+              updateProfileRotation(ps.id, 2 * axisAngle - ps.rotation);
+            }
           }
           clearDrawingPoints();
           return true;
@@ -293,6 +492,9 @@ export function useModifyTools() {
             const ux = dx / dist;
             const uy = dy / dist;
             const selected = getSelectedShapes();
+            const selectedParametric = getSelectedParametricShapes();
+
+            // Array regular shapes
             const allCopies: Shape[] = [];
             for (let i = 1; i < arrayCount; i++) {
               const offset = arraySpacing * i;
@@ -302,6 +504,18 @@ export function useModifyTools() {
               }
             }
             if (allCopies.length > 0) addShapes(allCopies);
+
+            // Array parametric shapes
+            if (selectedParametric.length > 0) {
+              for (let i = 1; i < arrayCount; i++) {
+                const offset = arraySpacing * i;
+                cloneParametricShapes(
+                  selectedParametric.map(s => s.id),
+                  { x: ux * offset, y: uy * offset }
+                );
+              }
+            }
+
             clearDrawingPoints();
             return true;
           } else {
@@ -309,8 +523,11 @@ export function useModifyTools() {
             if (numPts === 0) {
               const center = worldPos;
               const selected = getSelectedShapes();
+              const selectedParametric = getSelectedParametricShapes();
               const totalAngleRad = (arrayAngle * Math.PI) / 180;
               const angleStep = totalAngleRad / arrayCount;
+
+              // Array regular shapes
               const allCopies: Shape[] = [];
               for (let i = 1; i < arrayCount; i++) {
                 const angle = angleStep * i;
@@ -320,6 +537,25 @@ export function useModifyTools() {
                 }
               }
               if (allCopies.length > 0) addShapes(allCopies);
+
+              // Array parametric shapes (radial)
+              if (selectedParametric.length > 0) {
+                for (let i = 1; i < arrayCount; i++) {
+                  const angle = angleStep * i;
+                  const clones = cloneParametricShapes(selectedParametric.map(s => s.id), { x: 0, y: 0 });
+                  for (const clone of clones) {
+                    const cos = Math.cos(angle);
+                    const sin = Math.sin(angle);
+                    const dx = clone.position.x - center.x;
+                    const dy = clone.position.y - center.y;
+                    const newX = center.x + dx * cos - dy * sin;
+                    const newY = center.y + dx * sin + dy * cos;
+                    updateProfilePosition(clone.id, { x: newX, y: newY });
+                    updateProfileRotation(clone.id, clone.rotation + angle);
+                  }
+                }
+              }
+
               clearDrawingPoints();
               return true;
             }
@@ -550,12 +786,41 @@ export function useModifyTools() {
           return false;
       }
     },
-    [activeTool, drawingPoints, selectedShapeIds, shapes, addDrawingPoint, clearDrawingPoints,
+    [activeTool, drawingPoints, selectedShapeIds, shapes, parametricShapes, addDrawingPoint, clearDrawingPoints,
      addShapes, updateShapes, selectShape, modifyCopy, modifyMultiple, scaleMode, scaleFactor,
      filletRadius, chamferDistance1, chamferDistance2, offsetDistance, rotateAngle, modifyRefShapeId, setModifyRefShapeId,
-     getSelectedShapes, activeDrawingId, activeLayerId,
-     arrayMode, arrayCount, arraySpacing, arrayAngle]
+     getSelectedShapes, getSelectedParametricShapes, activeDrawingId, activeLayerId,
+     arrayMode, arrayCount, arraySpacing, arrayAngle,
+     cloneParametricShapes, updateProfilePosition, updateProfileRotation, updateProfileScale]
   );
+
+  /**
+   * Convert parametric shapes to temporary polyline shapes for preview
+   */
+  const parametricShapesToGhosts = useCallback((parametrics: ParametricShape[]): Shape[] => {
+    const ghosts: Shape[] = [];
+    for (const ps of parametrics) {
+      if (!ps.generatedGeometry?.outlines || ps.generatedGeometry.outlines.length === 0) continue;
+      // Create a closed polyline for each outline
+      for (let i = 0; i < ps.generatedGeometry.outlines.length; i++) {
+        const outline = ps.generatedGeometry.outlines[i];
+        if (outline.length < 2) continue;
+        const isClosed = ps.generatedGeometry.closed[i] ?? true;
+        ghosts.push({
+          id: `preview-${ps.id}-${i}`,
+          type: 'polyline',
+          layerId: ps.layerId,
+          drawingId: ps.drawingId,
+          style: ps.style,
+          visible: true,
+          locked: false,
+          points: outline,
+          closed: isClosed,
+        } as Shape);
+      }
+    }
+    return ghosts;
+  }, []);
 
   /**
    * Update preview ghost shapes as cursor moves.
@@ -573,6 +838,9 @@ export function useModifyTools() {
       }
 
       const selected = getSelectedShapes();
+      const selectedParametric = getSelectedParametricShapes();
+      // Convert parametric shapes to ghost polylines for preview
+      const parametricGhosts = parametricShapesToGhosts(selectedParametric);
 
       switch (activeTool) {
         case 'move':
@@ -581,8 +849,9 @@ export function useModifyTools() {
             const dx = worldPos.x - pts[0].x;
             const dy = worldPos.y - pts[0].y;
             const transform = translateTransform(dx, dy);
-            const ghosts = selected.map((s) => transformShape(s, transform));
-            setDrawingPreview({ type: 'modifyPreview', shapes: ghosts });
+            const regularGhosts = selected.map((s) => transformShape(s, transform));
+            const paramGhosts = parametricGhosts.map((s) => transformShape(s, transform));
+            setDrawingPreview({ type: 'modifyPreview', shapes: [...regularGhosts, ...paramGhosts] });
           }
           break;
         }
@@ -601,14 +870,15 @@ export function useModifyTools() {
             const endAngle = Math.atan2(worldPos.y - center.y, worldPos.x - center.x);
             const angle = endAngle - startAngle;
             const transform = rotateTransform(center, angle);
-            const ghosts = selected.map((s) => transformShape(s, transform));
+            const regularGhosts = selected.map((s) => transformShape(s, transform));
+            const paramGhosts = parametricGhosts.map((s) => transformShape(s, transform));
             setDrawingPreview({
               type: 'rotateGuide',
               center: pts[0],
               startRay: pts[1],
               endRay: worldPos,
               angle: angle * (180 / Math.PI),
-              shapes: ghosts,
+              shapes: [...regularGhosts, ...paramGhosts],
             });
           }
           break;
@@ -629,14 +899,15 @@ export function useModifyTools() {
               const newDist = Math.hypot(worldPos.x - origin.x, worldPos.y - origin.y);
               const factor = refDist > 0.001 ? newDist / refDist : 1;
               const transform = scaleTransform(origin, factor);
-              const ghosts = selected.map((s) => transformShape(s, transform));
+              const regularGhosts = selected.map((s) => transformShape(s, transform));
+              const paramGhosts = parametricGhosts.map((s) => transformShape(s, transform));
               setDrawingPreview({
                 type: 'scaleGuide',
                 origin: pts[0],
                 refPoint: pts[1],
                 currentPoint: worldPos,
                 factor,
-                shapes: ghosts,
+                shapes: [...regularGhosts, ...paramGhosts],
               });
             }
           }
@@ -645,8 +916,9 @@ export function useModifyTools() {
         case 'mirror': {
           if (pts.length === 1) {
             const transform = mirrorTransform(pts[0], worldPos);
-            const ghosts = selected.map((s) => transformShape(s, transform));
-            setDrawingPreview({ type: 'mirrorAxis', start: pts[0], end: worldPos, shapes: ghosts });
+            const regularGhosts = selected.map((s) => transformShape(s, transform));
+            const paramGhosts = parametricGhosts.map((s) => transformShape(s, transform));
+            setDrawingPreview({ type: 'mirrorAxis', start: pts[0], end: worldPos, shapes: [...regularGhosts, ...paramGhosts] });
           }
           break;
         }
@@ -666,10 +938,13 @@ export function useModifyTools() {
                 for (const s of selected) {
                   ghosts.push(transformShape(s, transform));
                 }
+                for (const s of parametricGhosts) {
+                  ghosts.push(transformShape(s, transform));
+                }
               }
               setDrawingPreview({ type: 'modifyPreview', shapes: ghosts });
             }
-          } else if (arrayMode === 'radial' && pts.length === 0 && selected.length > 0) {
+          } else if (arrayMode === 'radial' && pts.length === 0 && (selected.length > 0 || parametricGhosts.length > 0)) {
             // Preview radial array around cursor as center
             const center = worldPos;
             const totalAngleRad = (arrayAngle * Math.PI) / 180;
@@ -679,6 +954,9 @@ export function useModifyTools() {
               const angle = angleStep * i;
               const transform = rotateTransform(center, angle);
               for (const s of selected) {
+                ghosts.push(transformShape(s, transform));
+              }
+              for (const s of parametricGhosts) {
                 ghosts.push(transformShape(s, transform));
               }
             }
@@ -691,8 +969,8 @@ export function useModifyTools() {
           break;
       }
     },
-    [activeTool, drawingPoints, selectedShapeIds, getSelectedShapes, setDrawingPreview, scaleMode,
-     arrayMode, arrayCount, arraySpacing, arrayAngle]
+    [activeTool, drawingPoints, selectedShapeIds, getSelectedShapes, getSelectedParametricShapes,
+     parametricShapesToGhosts, setDrawingPreview, scaleMode, arrayMode, arrayCount, arraySpacing, arrayAngle]
   );
 
   /**

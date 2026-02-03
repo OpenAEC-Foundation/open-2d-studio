@@ -4,19 +4,84 @@
 
 import type { Shape, DrawingPreview, CurrentStyle, Viewport } from '../types';
 import type { HatchShape } from '../../../types/geometry';
+import type { CustomHatchPattern, LineFamily, SvgHatchPattern } from '../../../types/hatch';
+import { BUILTIN_PATTERNS, isSvgHatchPattern } from '../../../types/hatch';
 import { BaseRenderer } from './BaseRenderer';
 import { COLORS } from '../types';
 import { DimensionRenderer } from './DimensionRenderer';
 import type { DimensionShape } from '../../../types/dimension';
 import { drawSplinePath } from '../../geometry/SplineUtils';
 import { bulgeToArc, bulgeArcMidpoint } from '../../geometry/GeometryUtils';
+import { svgToImage } from '../../../services/svgPatternService';
 
 export class ShapeRenderer extends BaseRenderer {
   private dimensionRenderer: DimensionRenderer;
+  private customPatterns: CustomHatchPattern[] = [];
+  // Cache for loaded SVG pattern images
+  private svgImageCache: Map<string, HTMLImageElement> = new Map();
+  private svgLoadingPromises: Map<string, Promise<HTMLImageElement | null>> = new Map();
 
   constructor(ctx: CanvasRenderingContext2D, width: number = 0, height: number = 0, dpr?: number) {
     super(ctx, width, height, dpr);
     this.dimensionRenderer = new DimensionRenderer(ctx, width, height, dpr);
+  }
+
+  /**
+   * Set available custom patterns for rendering
+   */
+  setCustomPatterns(userPatterns: CustomHatchPattern[], projectPatterns: CustomHatchPattern[]): void {
+    this.customPatterns = [...userPatterns, ...projectPatterns];
+    // Preload SVG patterns
+    this.preloadSvgPatterns();
+  }
+
+  /**
+   * Preload SVG patterns into image cache for faster rendering
+   */
+  private preloadSvgPatterns(): void {
+    for (const pattern of this.customPatterns) {
+      if (isSvgHatchPattern(pattern) && !this.svgImageCache.has(pattern.id)) {
+        this.loadSvgPattern(pattern);
+      }
+    }
+  }
+
+  /**
+   * Load an SVG pattern into the cache
+   */
+  private loadSvgPattern(pattern: SvgHatchPattern): void {
+    // Don't start another load if one is in progress
+    if (this.svgLoadingPromises.has(pattern.id)) return;
+
+    const loadPromise = svgToImage(pattern.svgTile)
+      .then(img => {
+        this.svgImageCache.set(pattern.id, img);
+        this.svgLoadingPromises.delete(pattern.id);
+        return img;
+      })
+      .catch(() => {
+        this.svgLoadingPromises.delete(pattern.id);
+        return null;
+      });
+
+    this.svgLoadingPromises.set(pattern.id, loadPromise);
+  }
+
+  /**
+   * Get cached SVG image for a pattern
+   */
+  private getSvgPatternImage(patternId: string): HTMLImageElement | null {
+    return this.svgImageCache.get(patternId) || null;
+  }
+
+  /**
+   * Look up a pattern by ID (checks builtin, user, and project patterns)
+   */
+  private getPatternById(patternId: string): CustomHatchPattern | undefined {
+    return (
+      BUILTIN_PATTERNS.find(p => p.id === patternId) ||
+      this.customPatterns.find(p => p.id === patternId)
+    );
   }
 
   /**
@@ -1001,7 +1066,7 @@ export class ShapeRenderer extends BaseRenderer {
 
   private drawHatch(shape: HatchShape, invertColors: boolean = false): void {
     const ctx = this.ctx;
-    const { points, patternType, patternAngle, patternScale, fillColor, backgroundColor } = shape;
+    const { points, patternType, patternAngle, patternScale, fillColor, backgroundColor, customPatternId } = shape;
 
     if (points.length < 3) return;
 
@@ -1040,7 +1105,23 @@ export class ShapeRenderer extends BaseRenderer {
     buildPath();
     ctx.clip();
 
-    if (patternType === 'solid') {
+    // Handle custom patterns
+    if (patternType === 'custom' && customPatternId) {
+      const customPattern = this.getPatternById(customPatternId);
+      if (customPattern) {
+        // Check if it's an SVG pattern
+        if (isSvgHatchPattern(customPattern)) {
+          this.drawSvgPattern(customPattern, minX, minY, maxX, maxY, patternScale, patternAngle);
+        } else if (customPattern.lineFamilies.length > 0) {
+          // Line-based pattern
+          this.drawCustomPatternLines(customPattern.lineFamilies, minX, minY, maxX, maxY, patternScale, patternAngle, patternColor, shape.style.strokeWidth);
+        } else {
+          // Empty line families = solid fill
+          ctx.fillStyle = patternColor;
+          ctx.fill();
+        }
+      }
+    } else if (patternType === 'solid') {
       ctx.fillStyle = patternColor;
       ctx.fill();
     } else if (patternType === 'dots') {
@@ -1055,7 +1136,7 @@ export class ShapeRenderer extends BaseRenderer {
         }
       }
     } else {
-      // Line patterns
+      // Built-in line patterns
       const spacing = 10 * patternScale;
       const angles: number[] = [];
 
@@ -1080,34 +1161,7 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.setLineDash([]);
 
       for (const angleDeg of angles) {
-        const angleRad = (angleDeg * Math.PI) / 180;
-        const cosA = Math.cos(angleRad);
-        const sinA = Math.sin(angleRad);
-
-        // Expand bounding box to cover rotated lines
-        const cx = (minX + maxX) / 2;
-        const cy = (minY + maxY) / 2;
-        const diagonal = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
-        const halfDiag = diagonal / 2 + spacing;
-
-        // Draw parallel lines perpendicular to the angle direction
-        const numLines = Math.ceil((halfDiag * 2) / spacing);
-
-        ctx.beginPath();
-        for (let i = -numLines; i <= numLines; i++) {
-          const offset = i * spacing;
-          // Line perpendicular offset from center
-          const ox = cx + offset * (-sinA);
-          const oy = cy + offset * cosA;
-          // Line extends along the angle direction
-          const x1 = ox - halfDiag * cosA;
-          const y1 = oy - halfDiag * sinA;
-          const x2 = ox + halfDiag * cosA;
-          const y2 = oy + halfDiag * sinA;
-          ctx.moveTo(x1, y1);
-          ctx.lineTo(x2, y2);
-        }
-        ctx.stroke();
+        this.drawLineFamilySimple(angleDeg, spacing, minX, minY, maxX, maxY);
       }
     }
 
@@ -1116,5 +1170,268 @@ export class ShapeRenderer extends BaseRenderer {
     // Stroke boundary
     buildPath();
     ctx.stroke();
+  }
+
+  /**
+   * Draw an SVG-based pattern using canvas pattern fill
+   */
+  private drawSvgPattern(
+    pattern: SvgHatchPattern,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+    scale: number,
+    rotationOffset: number
+  ): void {
+    const ctx = this.ctx;
+    const img = this.getSvgPatternImage(pattern.id);
+
+    if (!img) {
+      // Image not loaded yet - trigger load and draw placeholder
+      this.loadSvgPattern(pattern);
+      // Draw a light gray placeholder
+      ctx.fillStyle = 'rgba(128, 128, 128, 0.1)';
+      ctx.fill();
+      return;
+    }
+
+    // Calculate scaled tile dimensions
+    const tileWidth = pattern.tileWidth * scale;
+    const tileHeight = pattern.tileHeight * scale;
+
+    // Create off-screen canvas for the scaled tile
+    const tileCanvas = document.createElement('canvas');
+    tileCanvas.width = tileWidth;
+    tileCanvas.height = tileHeight;
+    const tileCtx = tileCanvas.getContext('2d');
+
+    if (!tileCtx) {
+      ctx.fillStyle = 'rgba(128, 128, 128, 0.1)';
+      ctx.fill();
+      return;
+    }
+
+    // Draw the SVG image scaled to tile size
+    tileCtx.drawImage(img, 0, 0, tileWidth, tileHeight);
+
+    // Create canvas pattern
+    const canvasPattern = ctx.createPattern(tileCanvas, 'repeat');
+    if (!canvasPattern) {
+      ctx.fillStyle = 'rgba(128, 128, 128, 0.1)';
+      ctx.fill();
+      return;
+    }
+
+    // Apply rotation if needed
+    if (rotationOffset !== 0) {
+      const cx = (minX + maxX) / 2;
+      const cy = (minY + maxY) / 2;
+
+      // Transform the pattern (rotateSelf uses degrees)
+      const matrix = new DOMMatrix()
+        .translateSelf(cx, cy)
+        .rotateSelf(rotationOffset)
+        .translateSelf(-cx, -cy);
+      canvasPattern.setTransform(matrix);
+    }
+
+    ctx.fillStyle = canvasPattern;
+    ctx.fill();
+  }
+
+  /**
+   * Draw simple line family (for built-in patterns)
+   */
+  private drawLineFamilySimple(angleDeg: number, spacing: number, minX: number, minY: number, maxX: number, maxY: number): void {
+    const ctx = this.ctx;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const cosA = Math.cos(angleRad);
+    const sinA = Math.sin(angleRad);
+
+    // Expand bounding box to cover rotated lines
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const diagonal = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
+    const halfDiag = diagonal / 2 + spacing;
+
+    // Draw parallel lines perpendicular to the angle direction
+    const numLines = Math.ceil((halfDiag * 2) / spacing);
+
+    ctx.beginPath();
+    for (let i = -numLines; i <= numLines; i++) {
+      const offset = i * spacing;
+      // Line perpendicular offset from center
+      const ox = cx + offset * (-sinA);
+      const oy = cy + offset * cosA;
+      // Line extends along the angle direction
+      const x1 = ox - halfDiag * cosA;
+      const y1 = oy - halfDiag * sinA;
+      const x2 = ox + halfDiag * cosA;
+      const y2 = oy + halfDiag * sinA;
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
+  }
+
+  /**
+   * Draw custom pattern line families with full support for origins, offsets, and dash patterns
+   */
+  private drawCustomPatternLines(
+    lineFamilies: LineFamily[],
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+    scale: number,
+    rotationOffset: number,
+    defaultColor: string,
+    defaultStrokeWidth: number
+  ): void {
+    const ctx = this.ctx;
+
+    for (const family of lineFamilies) {
+      // Apply scale to all dimensions
+      const spacing = (family.deltaY || 10) * scale;
+      const deltaX = (family.deltaX || 0) * scale;
+      const originX = (family.originX || 0) * scale;
+      const originY = (family.originY || 0) * scale;
+      const angleDeg = family.angle + rotationOffset;
+      const strokeWidth = family.strokeWidth ?? defaultStrokeWidth * 0.5;
+      const strokeColor = family.strokeColor ?? defaultColor;
+
+      // Set line style
+      ctx.strokeStyle = strokeColor;
+      ctx.lineWidth = strokeWidth;
+
+      // Handle dash pattern
+      if (family.dashPattern && family.dashPattern.length > 0) {
+        // Convert dash pattern with scale
+        const scaledDashPattern = family.dashPattern.map(d => Math.abs(d) * scale);
+        // Check for dot (0 value means dot)
+        if (family.dashPattern.includes(0)) {
+          // Render as dots
+          this.drawLineFamilyDots(angleDeg, spacing, deltaX, originX, originY, minX, minY, maxX, maxY, scale, strokeColor);
+          continue;
+        }
+        ctx.setLineDash(scaledDashPattern);
+      } else {
+        ctx.setLineDash([]);
+      }
+
+      // Draw the line family
+      this.drawLineFamilyWithOffset(angleDeg, spacing, deltaX, originX, originY, minX, minY, maxX, maxY);
+    }
+
+    // Reset dash
+    ctx.setLineDash([]);
+  }
+
+  /**
+   * Draw a line family with origin offset and stagger (deltaX)
+   */
+  private drawLineFamilyWithOffset(
+    angleDeg: number,
+    spacing: number,
+    deltaX: number,
+    originX: number,
+    originY: number,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number
+  ): void {
+    const ctx = this.ctx;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const cosA = Math.cos(angleRad);
+    const sinA = Math.sin(angleRad);
+
+    // Calculate coverage area
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const diagonal = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
+    const halfDiag = diagonal / 2 + spacing * 2;
+
+    // Number of lines needed
+    const numLines = Math.ceil((halfDiag * 2) / spacing) + 2;
+
+    ctx.beginPath();
+    for (let i = -numLines; i <= numLines; i++) {
+      // Perpendicular offset from center
+      const perpOffset = i * spacing;
+
+      // Apply stagger (deltaX) - shifts line along its direction based on perpendicular position
+      const staggerOffset = deltaX !== 0 ? (i * deltaX) : 0;
+
+      // Calculate line origin point
+      // Start from center, move perpendicular to line direction
+      const baseX = cx + perpOffset * (-sinA);
+      const baseY = cy + perpOffset * cosA;
+
+      // Apply origin offset and stagger
+      const ox = baseX + originX + staggerOffset * cosA;
+      const oy = baseY + originY + staggerOffset * sinA;
+
+      // Line endpoints extend along the angle direction
+      const x1 = ox - halfDiag * cosA;
+      const y1 = oy - halfDiag * sinA;
+      const x2 = ox + halfDiag * cosA;
+      const y2 = oy + halfDiag * sinA;
+
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+    }
+    ctx.stroke();
+  }
+
+  /**
+   * Draw dots for line families with dash pattern containing 0 (dot indicator)
+   */
+  private drawLineFamilyDots(
+    angleDeg: number,
+    spacing: number,
+    deltaX: number,
+    originX: number,
+    originY: number,
+    minX: number,
+    minY: number,
+    maxX: number,
+    maxY: number,
+    scale: number,
+    color: string
+  ): void {
+    const ctx = this.ctx;
+    const angleRad = (angleDeg * Math.PI) / 180;
+    const cosA = Math.cos(angleRad);
+    const sinA = Math.sin(angleRad);
+
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    const diagonal = Math.sqrt((maxX - minX) ** 2 + (maxY - minY) ** 2);
+    const halfDiag = diagonal / 2 + spacing * 2;
+
+    const dotRadius = 1 * scale;
+    const numLines = Math.ceil((halfDiag * 2) / spacing) + 2;
+    const dotsPerLine = Math.ceil((halfDiag * 2) / (deltaX || spacing)) + 2;
+    const dotSpacing = deltaX || spacing;
+
+    ctx.fillStyle = color;
+
+    for (let i = -numLines; i <= numLines; i++) {
+      const perpOffset = i * spacing;
+      const baseX = cx + perpOffset * (-sinA);
+      const baseY = cy + perpOffset * cosA;
+
+      for (let j = -dotsPerLine; j <= dotsPerLine; j++) {
+        const alongOffset = j * dotSpacing;
+        const dx = baseX + originX + alongOffset * cosA;
+        const dy = baseY + originY + alongOffset * sinA;
+
+        ctx.beginPath();
+        ctx.arc(dx, dy, dotRadius, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
   }
 }

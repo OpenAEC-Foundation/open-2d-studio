@@ -25,8 +25,10 @@ import type {
 import {
   generateId,
   DEFAULT_DRAWING_BOUNDARY,
+  DEFAULT_DRAWING_SCALE,
   createDefaultTitleBlock,
   getShapeBounds,
+  PAPER_SIZES,
 } from './types';
 
 import { produceWithPatches, current } from 'immer';
@@ -49,6 +51,46 @@ import {
   type SheetNumberingScheme,
 } from '../../services/sheetTemplateService';
 
+// mm to pixels conversion (same as renderer)
+const MM_TO_PIXELS = 3.78;
+
+// Assumed canvas dimensions for initial viewport calculation
+// These are reasonable defaults for most screen sizes
+const ASSUMED_CANVAS_WIDTH = 1200;
+const ASSUMED_CANVAS_HEIGHT = 800;
+const FIT_PADDING = 40; // Padding around the sheet in pixels
+
+/**
+ * Calculate initial viewport to fit a sheet to view
+ */
+function calculateSheetFitViewport(
+  paperSize: PaperSize,
+  orientation: PaperOrientation
+): Viewport {
+  const paper = PAPER_SIZES[paperSize] || PAPER_SIZES['A4'];
+
+  // Get paper dimensions in pixels based on orientation
+  const paperWidthMM = orientation === 'landscape' ? paper.height : paper.width;
+  const paperHeightMM = orientation === 'landscape' ? paper.width : paper.height;
+  const paperWidthPx = paperWidthMM * MM_TO_PIXELS;
+  const paperHeightPx = paperHeightMM * MM_TO_PIXELS;
+
+  // Calculate zoom to fit paper in canvas with padding
+  const availableWidth = ASSUMED_CANVAS_WIDTH - FIT_PADDING * 2;
+  const availableHeight = ASSUMED_CANVAS_HEIGHT - FIT_PADDING * 2;
+  const zoomX = availableWidth / paperWidthPx;
+  const zoomY = availableHeight / paperHeightPx;
+  const zoom = Math.min(zoomX, zoomY, 1.0); // Don't zoom in beyond 1.0
+
+  // Calculate offset to center the paper
+  const scaledPaperWidth = paperWidthPx * zoom;
+  const scaledPaperHeight = paperHeightPx * zoom;
+  const offsetX = (ASSUMED_CANVAS_WIDTH - scaledPaperWidth) / 2;
+  const offsetY = (ASSUMED_CANVAS_HEIGHT - scaledPaperHeight) / 2;
+
+  return { zoom, offsetX, offsetY };
+}
+
 // ============================================================================
 // State Interface
 // ============================================================================
@@ -65,6 +107,9 @@ export interface ModelState {
 
   // Per-drawing viewport state (stores zoom/pan for each drawing)
   drawingViewports: Record<string, Viewport>;
+
+  // Per-sheet viewport state (stores zoom/pan for each sheet)
+  sheetViewports: Record<string, Viewport>;
 
   // Shapes
   shapes: Shape[];
@@ -99,11 +144,12 @@ export interface ModelActions {
   deleteDrawing: (id: string) => void;
   renameDrawing: (id: string, name: string) => void;
   updateDrawingBoundary: (id: string, boundary: Partial<DrawingBoundary>) => void;
+  updateDrawingScale: (id: string, scale: number) => void;
   fitBoundaryToContent: (id: string, padding?: number) => void;
   switchToDrawing: (id: string) => void;
 
   // Sheet actions
-  addSheet: (name?: string, paperSize?: PaperSize, orientation?: PaperOrientation) => void;
+  addSheet: (name?: string, paperSize?: PaperSize, orientation?: PaperOrientation, svgTitleBlockId?: string) => void;
   deleteSheet: (id: string) => void;
   renameSheet: (id: string, name: string) => void;
   updateSheet: (id: string, updates: Partial<Sheet>) => void;
@@ -113,6 +159,7 @@ export interface ModelActions {
   // Sheet Viewport actions
   addSheetViewport: (sheetId: string, drawingId: string, bounds: { x: number; y: number; width: number; height: number }) => void;
   updateSheetViewport: (sheetId: string, viewportId: string, updates: Partial<SheetViewport>) => void;
+  setViewportScale: (viewportId: string, scale: number) => void;
   deleteSheetViewport: (sheetId: string, viewportId: string) => void;
   centerViewportOnDrawing: (viewportId: string) => void;
   fitViewportToDrawing: (viewportId: string) => void;
@@ -158,6 +205,7 @@ const defaultDrawing: Drawing = {
   id: defaultDrawingId,
   name: 'Drawing 1',
   boundary: { ...DEFAULT_DRAWING_BOUNDARY },
+  scale: DEFAULT_DRAWING_SCALE,
   createdAt: new Date().toISOString(),
   modifiedAt: new Date().toISOString(),
 };
@@ -180,6 +228,7 @@ export const initialModelState: ModelState = {
   activeSheetId: null,
   editorMode: 'drawing',
   drawingViewports: { [defaultDrawingId]: { offsetX: 0, offsetY: 0, zoom: 1 } },
+  sheetViewports: {},
   shapes: [],
   layers: [defaultLayer],
   activeLayerId: defaultLayer.id,
@@ -203,7 +252,11 @@ interface StoreWithHistory {
   canvasSize: { width: number; height: number };
 }
 
-type FullStore = ModelState & StoreWithHistory;
+// Extended FullStore to include parametric shapes for cross-slice operations
+type FullStore = ModelState & StoreWithHistory & {
+  parametricShapes: import('../../types/parametric').ParametricShape[];
+  deleteParametricShapes: (ids: string[]) => void;
+};
 
 function withHistory(state: FullStore, mutate: (draft: Shape[]) => void): void {
   const [nextShapes, patches, inversePatches] = produceWithPatches(
@@ -227,7 +280,7 @@ function withHistory(state: FullStore, mutate: (draft: Shape[]) => void): void {
 
 export const createModelSlice = (
   set: (fn: (state: FullStore) => void) => void,
-  _get: () => FullStore
+  get: () => FullStore
 ): ModelActions => ({
   // ============================================================================
   // Shape Actions
@@ -290,17 +343,31 @@ export const createModelSlice = (
       state.selectedShapeIds = state.selectedShapeIds.filter((sid) => !idSet.has(sid));
     }),
 
-  deleteSelectedShapes: () =>
+  deleteSelectedShapes: () => {
+    const store = get();
+    if (store.selectedShapeIds.length === 0) return;
+
+    const selectedIds = [...store.selectedShapeIds];
+
+    // Delete regular shapes
     set((state) => {
-      if (state.selectedShapeIds.length === 0) return;
-      const selected = new Set(state.selectedShapeIds);
+      const selected = new Set(selectedIds);
       withHistory(state, (draft) => {
         for (let i = draft.length - 1; i >= 0; i--) {
           if (selected.has(draft[i].id)) draft.splice(i, 1);
         }
       });
       state.selectedShapeIds = [];
-    }),
+    });
+
+    // Delete parametric shapes using the parametric slice's action
+    const parametricIds = store.parametricShapes
+      .filter(s => selectedIds.includes(s.id))
+      .map(s => s.id);
+    if (parametricIds.length > 0) {
+      store.deleteParametricShapes(parametricIds);
+    }
+  },
 
   // ============================================================================
   // Drawing Actions
@@ -313,6 +380,7 @@ export const createModelSlice = (
         id,
         name: name || `Drawing ${state.drawings.length + 1}`,
         boundary: { ...DEFAULT_DRAWING_BOUNDARY },
+        scale: DEFAULT_DRAWING_SCALE,
         createdAt: new Date().toISOString(),
         modifiedAt: new Date().toISOString(),
       };
@@ -410,6 +478,41 @@ export const createModelSlice = (
       }
     }),
 
+  updateDrawingScale: (id, scale) =>
+    set((state) => {
+      const drawing = state.drawings.find((d) => d.id === id);
+      if (!drawing) return;
+
+      // Clamp scale to reasonable values (1:1 to 1:1000)
+      const clampedScale = Math.max(0.001, Math.min(1, scale));
+      drawing.scale = clampedScale;
+      drawing.modifiedAt = new Date().toISOString();
+
+      // Update all viewports showing this drawing (Revit-style: viewport uses drawing's scale)
+      for (const sheet of state.sheets) {
+        for (const viewport of sheet.viewports) {
+          if (viewport.drawingId === id) {
+            // Calculate new size from drawing boundary × scale
+            const newWidth = drawing.boundary.width * clampedScale;
+            const newHeight = drawing.boundary.height * clampedScale;
+
+            // Keep viewport centered at same position
+            const centerX = viewport.x + viewport.width / 2;
+            const centerY = viewport.y + viewport.height / 2;
+
+            viewport.scale = clampedScale;
+            viewport.width = newWidth;
+            viewport.height = newHeight;
+            viewport.x = centerX - newWidth / 2;
+            viewport.y = centerY - newHeight / 2;
+          }
+        }
+        sheet.modifiedAt = new Date().toISOString();
+      }
+
+      state.isModified = true;
+    }),
+
   fitBoundaryToContent: (id, padding = 50) =>
     set((state) => {
       const drawing = state.drawings.find((d) => d.id === id);
@@ -492,21 +595,38 @@ export const createModelSlice = (
   // Sheet Actions
   // ============================================================================
 
-  addSheet: (name, paperSize = 'A4', orientation = 'landscape') =>
+  addSheet: (name, paperSize = 'A4', orientation = 'landscape', svgTitleBlockId) =>
     set((state) => {
       const id = generateId();
+      const titleBlock = createDefaultTitleBlock();
+
+      // If SVG title block ID is provided, store it for rendering
+      if (svgTitleBlockId) {
+        (titleBlock as unknown as { svgTemplateId?: string }).svgTemplateId = svgTitleBlockId;
+      }
+
       const newSheet: Sheet = {
         id,
         name: name || `Sheet ${state.sheets.length + 1}`,
         paperSize,
         orientation,
         viewports: [],
-        titleBlock: createDefaultTitleBlock(),
+        titleBlock,
         annotations: [],
         createdAt: new Date().toISOString(),
         modifiedAt: new Date().toISOString(),
       };
       state.sheets.push(newSheet);
+
+      // Select the newly created sheet and switch to sheet mode
+      state.activeSheetId = id;
+      state.editorMode = 'sheet';
+
+      // Calculate initial viewport to fit the sheet to view
+      const initialViewport = calculateSheetFitViewport(paperSize, orientation);
+      state.sheetViewports[id] = initialViewport;
+      state.viewport = initialViewport;
+
       state.isModified = true;
     }),
 
@@ -549,15 +669,17 @@ export const createModelSlice = (
       const sheet = state.sheets.find((s) => s.id === id);
       if (!sheet) return;
 
-      // Save current viewport if in drawing mode
+      // Save current viewport based on current mode
       if (state.editorMode === 'drawing' && state.activeDrawingId) {
         state.drawingViewports[state.activeDrawingId] = { ...state.viewport };
+      } else if (state.editorMode === 'sheet' && state.activeSheetId) {
+        state.sheetViewports[state.activeSheetId] = { ...state.viewport };
       }
 
       state.activeSheetId = id;
       state.editorMode = 'sheet';
-      // Reset viewport for sheet mode (will be handled by sheet renderer)
-      state.viewport = { offsetX: 0, offsetY: 0, zoom: 1 };
+      // Restore sheet viewport or use default
+      state.viewport = state.sheetViewports[id] || { offsetX: 0, offsetY: 0, zoom: 1 };
       state.selectedShapeIds = [];
 
       // Auto-update title block fields (Sheet X of Y, etc.)
@@ -597,6 +719,10 @@ export const createModelSlice = (
 
   switchToDrawingMode: () =>
     set((state) => {
+      // Save current sheet viewport if in sheet mode
+      if (state.editorMode === 'sheet' && state.activeSheetId) {
+        state.sheetViewports[state.activeSheetId] = { ...state.viewport };
+      }
       state.editorMode = 'drawing';
       state.activeSheetId = null;
       state.viewport = state.drawingViewports[state.activeDrawingId] || { offsetX: 0, offsetY: 0, zoom: 1 };
@@ -640,6 +766,40 @@ export const createModelSlice = (
         sheet.modifiedAt = new Date().toISOString();
         state.isModified = true;
       }
+    }),
+
+  setViewportScale: (viewportId, scale) =>
+    set((state) => {
+      if (!state.activeSheetId) return;
+
+      const sheet = state.sheets.find((s) => s.id === state.activeSheetId);
+      if (!sheet) return;
+
+      const viewport = sheet.viewports.find((vp) => vp.id === viewportId);
+      if (!viewport) return;
+
+      const drawing = state.drawings.find((d) => d.id === viewport.drawingId);
+      if (!drawing) return;
+
+      // Clamp scale to reasonable values
+      const clampedScale = Math.max(0.001, Math.min(1, scale));
+
+      // Calculate new size from drawing boundary × scale (Revit-style)
+      const newWidth = drawing.boundary.width * clampedScale;
+      const newHeight = drawing.boundary.height * clampedScale;
+
+      // Keep viewport centered at same position
+      const centerX = viewport.x + viewport.width / 2;
+      const centerY = viewport.y + viewport.height / 2;
+
+      viewport.scale = clampedScale;
+      viewport.width = newWidth;
+      viewport.height = newHeight;
+      viewport.x = centerX - newWidth / 2;
+      viewport.y = centerY - newHeight / 2;
+
+      sheet.modifiedAt = new Date().toISOString();
+      state.isModified = true;
     }),
 
   deleteSheetViewport: (sheetId, viewportId) =>

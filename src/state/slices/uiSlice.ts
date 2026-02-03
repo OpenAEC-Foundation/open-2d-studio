@@ -4,7 +4,7 @@
 
 import type { Shape, Layer, Drawing, Sheet, Viewport } from './types';
 import type { HistoryEntry } from './historySlice';
-import { generateId, DEFAULT_DRAWING_BOUNDARY } from './types';
+import { generateId, DEFAULT_DRAWING_BOUNDARY, DEFAULT_DRAWING_SCALE } from './types';
 
 // Legacy type alias
 type Draft = Drawing;
@@ -65,6 +65,10 @@ export interface UIState {
   titleBlockEditorOpen: boolean;
   newSheetDialogOpen: boolean;
 
+  // Terminal
+  terminalOpen: boolean;
+  terminalHeight: number;
+
   // File state
   currentFilePath: string | null;
   projectName: string;
@@ -84,6 +88,9 @@ export interface UIActions {
   setAboutDialogOpen: (open: boolean) => void;
   setTitleBlockEditorOpen: (open: boolean) => void;
   setNewSheetDialogOpen: (open: boolean) => void;
+  setTerminalOpen: (open: boolean) => void;
+  toggleTerminal: () => void;
+  setTerminalHeight: (height: number) => void;
   setFilePath: (path: string | null) => void;
   setProjectName: (name: string) => void;
   setModified: (modified: boolean) => void;
@@ -107,6 +114,7 @@ export interface UIActions {
     activeSheetId?: string | null;
     drawingViewports?: Record<string, Viewport>;
     draftViewports?: Record<string, Viewport>;  // Legacy support
+    sheetViewports?: Record<string, Viewport>;
   }, filePath?: string, projectName?: string) => void;
 }
 
@@ -121,6 +129,8 @@ export const initialUIState: UIState = {
   aboutDialogOpen: false,
   titleBlockEditorOpen: false,
   newSheetDialogOpen: false,
+  terminalOpen: false,
+  terminalHeight: 200,
   currentFilePath: null,
   projectName: 'Untitled',
   isModified: false,
@@ -139,6 +149,8 @@ interface FullStore {
   aboutDialogOpen: boolean;
   titleBlockEditorOpen: boolean;
   newSheetDialogOpen: boolean;
+  terminalOpen: boolean;
+  terminalHeight: number;
   currentFilePath: string | null;
   projectName: string;
   isModified: boolean;
@@ -155,6 +167,7 @@ interface FullStore {
   activeLayerId: string;
   editorMode: 'drawing' | 'sheet';
   drawingViewports: Record<string, Viewport>;
+  sheetViewports: Record<string, Viewport>;
   viewport: Viewport;
   selectedShapeIds: string[];
 
@@ -194,6 +207,21 @@ export const createUISlice = (
   setNewSheetDialogOpen: (open) =>
     set((state) => {
       state.newSheetDialogOpen = open;
+    }),
+
+  setTerminalOpen: (open) =>
+    set((state) => {
+      state.terminalOpen = open;
+    }),
+
+  toggleTerminal: () =>
+    set((state) => {
+      state.terminalOpen = !state.terminalOpen;
+    }),
+
+  setTerminalHeight: (height) =>
+    set((state) => {
+      state.terminalHeight = height;
     }),
 
   setFilePath: (path) =>
@@ -244,6 +272,7 @@ export const createUISlice = (
         id: newDrawingId,
         name: 'Drawing 1',
         boundary: { ...DEFAULT_DRAWING_BOUNDARY },
+        scale: DEFAULT_DRAWING_SCALE,
         createdAt: new Date().toISOString(),
         modifiedAt: new Date().toISOString(),
       }];
@@ -297,6 +326,7 @@ export const createUISlice = (
         activeSheetId?: string | null;
         drawingViewports?: Record<string, Viewport>;
         draftViewports?: Record<string, Viewport>;  // Legacy support
+        sheetViewports?: Record<string, Viewport>;
       };
 
       // Use drawings if available, fall back to drafts for legacy files
@@ -310,11 +340,13 @@ export const createUISlice = (
         state.drawings = loadedDrawings.map(drawing => ({
           ...drawing,
           boundary: drawing.boundary || { ...DEFAULT_DRAWING_BOUNDARY },
+          scale: drawing.scale || DEFAULT_DRAWING_SCALE,
         }));
         state.sheets = dataWithDrawings.sheets || [];
         state.activeDrawingId = loadedActiveDrawingId || loadedDrawings[0].id;
         state.activeSheetId = dataWithDrawings.activeSheetId || null;
         state.drawingViewports = loadedDrawingViewports || {};
+        state.sheetViewports = dataWithDrawings.sheetViewports || {};
         state.editorMode = dataWithDrawings.activeSheetId ? 'sheet' : 'drawing';
       } else {
         // V1 format - create a default drawing and assign all shapes/layers to it
@@ -323,6 +355,7 @@ export const createUISlice = (
           id: newDrawingId,
           name: 'Drawing 1',
           boundary: { ...DEFAULT_DRAWING_BOUNDARY },
+          scale: DEFAULT_DRAWING_SCALE,
           createdAt: new Date().toISOString(),
           modifiedAt: new Date().toISOString(),
         }];
@@ -330,6 +363,7 @@ export const createUISlice = (
         state.activeDrawingId = newDrawingId;
         state.activeSheetId = null;
         state.drawingViewports = { [newDrawingId]: data.viewport || { offsetX: 0, offsetY: 0, zoom: 1 } };
+        state.sheetViewports = {};
         state.editorMode = 'drawing';
 
         // Assign drawingId to all shapes and layers if they don't have one

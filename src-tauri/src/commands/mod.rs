@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs;
+use std::process::Command;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SaveResult {
@@ -185,4 +186,103 @@ struct ShapeData {
 struct PointData {
     x: f64,
     y: f64,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct ShellResult {
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+    pub code: i32,
+}
+
+/// Open a file with the system's default application
+#[tauri::command]
+pub fn open_file_with_default_app(path: String) -> SaveResult {
+    #[cfg(target_os = "windows")]
+    {
+        match Command::new("cmd")
+            .args(["/C", "start", "", &path])
+            .spawn()
+        {
+            Ok(_) => SaveResult {
+                success: true,
+                message: format!("Opened {}", path),
+            },
+            Err(e) => SaveResult {
+                success: false,
+                message: format!("Failed to open file: {}", e),
+            },
+        }
+    }
+    #[cfg(target_os = "macos")]
+    {
+        match Command::new("open").arg(&path).spawn() {
+            Ok(_) => SaveResult {
+                success: true,
+                message: format!("Opened {}", path),
+            },
+            Err(e) => SaveResult {
+                success: false,
+                message: format!("Failed to open file: {}", e),
+            },
+        }
+    }
+    #[cfg(target_os = "linux")]
+    {
+        match Command::new("xdg-open").arg(&path).spawn() {
+            Ok(_) => SaveResult {
+                success: true,
+                message: format!("Opened {}", path),
+            },
+            Err(e) => SaveResult {
+                success: false,
+                message: format!("Failed to open file: {}", e),
+            },
+        }
+    }
+}
+
+/// Execute a shell command (git, claude, or other allowed commands)
+/// This is async to prevent blocking the UI while waiting for the command to complete
+#[tauri::command]
+pub async fn execute_shell(program: String, args: Vec<String>) -> ShellResult {
+    // Only allow specific programs for security
+    let allowed_programs = ["git", "claude", "cmd"];
+    let program_name = program.to_lowercase();
+
+    if !allowed_programs.iter().any(|&p| program_name == p || program_name.ends_with(&format!("\\{}", p)) || program_name.ends_with(&format!("/{}", p))) {
+        return ShellResult {
+            success: false,
+            stdout: String::new(),
+            stderr: format!("Program '{}' is not allowed. Allowed: git, claude, cmd", program),
+            code: -1,
+        };
+    }
+
+    // Run the blocking command in a separate thread to avoid blocking the async runtime
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        Command::new(&program).args(&args).output()
+    }).await;
+
+    match result {
+        Ok(Ok(output)) => ShellResult {
+            success: output.status.success(),
+            stdout: String::from_utf8_lossy(&output.stdout).to_string(),
+            stderr: String::from_utf8_lossy(&output.stderr).to_string(),
+            code: output.status.code().unwrap_or(-1),
+        },
+        Ok(Err(e)) => ShellResult {
+            success: false,
+            stdout: String::new(),
+            stderr: format!("Failed to execute command: {}", e),
+            code: -1,
+        },
+        Err(e) => ShellResult {
+            success: false,
+            stdout: String::new(),
+            stderr: format!("Task failed: {}", e),
+            code: -1,
+        },
+    }
 }

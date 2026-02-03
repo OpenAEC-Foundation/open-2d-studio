@@ -1,6 +1,6 @@
 [package]
 name = "open-2d-studio"
-version = "0.8.0"
+version = "0.9.0"
 description = "A cross-platform 2D CAD application"
 authors = ["Open 2D Studio Contributors"]
 license = "MIT"

@@ -4,11 +4,14 @@
  * Currently supports:
  * - Line: drag start/end points
  * - Rectangle: drag corners/edges to resize, preserving cornerRadius
+ * - Parametric shapes: drag center to move
  */
 
 import { useCallback, useRef } from 'react';
 import { useAppStore } from '../../state/appStore';
 import type { Point, Shape, EllipseShape } from '../../types/geometry';
+import type { ParametricShape } from '../../types/parametric';
+import { updateParametricPosition } from '../../services/parametricService';
 
 interface GripDragState {
   shapeId: string;
@@ -24,6 +27,14 @@ interface GripDragState {
   axisConstraint: 'x' | 'y' | null;
   /** The original grip point position (used to lock the unconstrained axis). */
   originalGripPoint?: Point;
+}
+
+interface ParametricGripDragState {
+  shapeId: string;
+  isParametric: true;
+  originalPosition: Point;
+  originalGripPoint: Point;
+  axisConstraint: 'x' | 'y' | null;
 }
 
 /** Length of axis arrows in screen pixels (must match ShapeRenderer). */
@@ -147,6 +158,22 @@ function getGripPoints(shape: Shape): Point[] {
     default:
       return [];
   }
+}
+
+/**
+ * Get grip points for parametric shapes (center only for moving).
+ */
+function getParametricGripPoints(shape: ParametricShape): Point[] {
+  const bounds = shape.generatedGeometry?.bounds;
+  if (!bounds) {
+    // Fallback to position if no bounds available
+    return [shape.position];
+  }
+  // Return center of bounding box
+  return [{
+    x: (bounds.minX + bounds.maxX) / 2,
+    y: (bounds.minY + bounds.maxY) / 2,
+  }];
 }
 
 
@@ -388,18 +415,63 @@ export function useGripEditing() {
   const {
     viewport,
     shapes,
+    parametricShapes,
     selectedShapeIds,
     updateShape,
+    updateProfilePosition,
     setCurrentSnapPoint,
   } = useAppStore();
 
   const dragRef = useRef<GripDragState | null>(null);
+  const parametricDragRef = useRef<ParametricGripDragState | null>(null);
 
   const handleGripMouseDown = useCallback(
     (worldPos: Point): boolean => {
       if (selectedShapeIds.length !== 1) return false;
 
       const shapeId = selectedShapeIds[0];
+
+      // Check if it's a parametric shape first
+      const parametricShape = parametricShapes.find(s => s.id === shapeId);
+      if (parametricShape) {
+        const grips = getParametricGripPoints(parametricShape);
+        if (grips.length === 0) return false;
+
+        const tolerance = 10 / viewport.zoom;
+        const grip = grips[0]; // Center grip
+
+        // Check axis arrows first
+        const axisHit = hitTestAxisArrow(worldPos, grip, viewport.zoom);
+        if (axisHit) {
+          setCurrentSnapPoint(null);
+          parametricDragRef.current = {
+            shapeId,
+            isParametric: true,
+            originalPosition: { ...parametricShape.position },
+            originalGripPoint: { ...grip },
+            axisConstraint: axisHit,
+          };
+          return true;
+        }
+
+        // Check grip square
+        const dx = worldPos.x - grip.x;
+        const dy = worldPos.y - grip.y;
+        if (Math.sqrt(dx * dx + dy * dy) <= tolerance) {
+          setCurrentSnapPoint(null);
+          parametricDragRef.current = {
+            shapeId,
+            isParametric: true,
+            originalPosition: { ...parametricShape.position },
+            originalGripPoint: { ...grip },
+            axisConstraint: null,
+          };
+          return true;
+        }
+
+        return false;
+      }
+
       const shape = shapes.find(s => s.id === shapeId);
       if (!shape) return false;
 
@@ -508,11 +580,44 @@ export function useGripEditing() {
 
       return false;
     },
-    [selectedShapeIds, shapes, viewport.zoom]
+    [selectedShapeIds, shapes, parametricShapes, viewport.zoom, setCurrentSnapPoint]
   );
 
   const handleGripMouseMove = useCallback(
     (worldPos: Point): boolean => {
+      // Check parametric shape drag first
+      const parametricDrag = parametricDragRef.current;
+      if (parametricDrag) {
+        // Apply axis constraint
+        let constrainedPos = worldPos;
+        if (parametricDrag.axisConstraint) {
+          constrainedPos = { ...worldPos };
+          if (parametricDrag.axisConstraint === 'x') constrainedPos.y = parametricDrag.originalGripPoint.y;
+          if (parametricDrag.axisConstraint === 'y') constrainedPos.x = parametricDrag.originalGripPoint.x;
+        }
+
+        // Calculate delta from original grip point
+        const dx = constrainedPos.x - parametricDrag.originalGripPoint.x;
+        const dy = constrainedPos.y - parametricDrag.originalGripPoint.y;
+
+        // Update position directly (without history for smooth dragging)
+        const newPosition = {
+          x: parametricDrag.originalPosition.x + dx,
+          y: parametricDrag.originalPosition.y + dy,
+        };
+
+        useAppStore.setState((state) => {
+          const idx = state.parametricShapes.findIndex(s => s.id === parametricDrag.shapeId);
+          if (idx !== -1) {
+            // Update position and regenerate geometry for live preview
+            const updated = updateParametricPosition(state.parametricShapes[idx], newPosition);
+            state.parametricShapes[idx] = updated;
+          }
+        });
+
+        return true;
+      }
+
       const drag = dragRef.current;
       if (!drag) return false;
 
@@ -544,6 +649,29 @@ export function useGripEditing() {
   );
 
   const handleGripMouseUp = useCallback((): boolean => {
+    // Check parametric shape drag first
+    const parametricDrag = parametricDragRef.current;
+    if (parametricDrag) {
+      const currentShape = useAppStore.getState().parametricShapes.find(s => s.id === parametricDrag.shapeId);
+      if (currentShape) {
+        const newPosition = { ...currentShape.position };
+
+        // Restore original position first (for proper history)
+        useAppStore.setState((state) => {
+          const idx = state.parametricShapes.findIndex(s => s.id === parametricDrag.shapeId);
+          if (idx !== -1) {
+            state.parametricShapes[idx].position = { ...parametricDrag.originalPosition };
+          }
+        });
+
+        // Commit through updateProfilePosition (creates history entry)
+        updateProfilePosition(parametricDrag.shapeId, newPosition);
+      }
+
+      parametricDragRef.current = null;
+      return true;
+    }
+
     const drag = dragRef.current;
     if (!drag) return false;
 
@@ -572,9 +700,9 @@ export function useGripEditing() {
 
     dragRef.current = null;
     return true;
-  }, [updateShape]);
+  }, [updateShape, updateProfilePosition]);
 
-  const isDragging = useCallback(() => dragRef.current !== null, []);
+  const isDragging = useCallback(() => dragRef.current !== null || parametricDragRef.current !== null, []);
 
   /**
    * Check if a world position is hovering over an axis arrow on any selected grip.
@@ -583,6 +711,18 @@ export function useGripEditing() {
   const getHoveredAxis = useCallback(
     (worldPos: Point): 'x' | 'y' | null => {
       if (selectedShapeIds.length !== 1) return null;
+
+      // Check parametric shapes first
+      const parametricShape = parametricShapes.find(s => s.id === selectedShapeIds[0]);
+      if (parametricShape) {
+        const grips = getParametricGripPoints(parametricShape);
+        for (const grip of grips) {
+          const axis = hitTestAxisArrow(worldPos, grip, viewport.zoom);
+          if (axis) return axis;
+        }
+        return null;
+      }
+
       const shape = shapes.find(s => s.id === selectedShapeIds[0]);
       if (!shape) return null;
       const grips = getGripPoints(shape);
@@ -593,7 +733,7 @@ export function useGripEditing() {
       }
       return null;
     },
-    [selectedShapeIds, shapes, viewport.zoom]
+    [selectedShapeIds, shapes, parametricShapes, viewport.zoom]
   );
 
   return {

@@ -37,7 +37,7 @@ export type BaseShapeWithDraftId = BaseShape & { draftId?: string };
 
 export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch';
 
-export type HatchPatternType = 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots';
+export type HatchPatternType = 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots' | 'custom';
 
 export interface HatchShape extends BaseShape {
   type: 'hatch';
@@ -47,6 +47,7 @@ export interface HatchShape extends BaseShape {
   patternScale: number;     // Spacing multiplier (1 = default)
   fillColor: string;        // Pattern line/fill color
   backgroundColor?: string; // Optional background (undefined = transparent)
+  customPatternId?: string; // ID of custom pattern (when patternType is 'custom')
 }
 
 // Specific shape types
@@ -252,6 +253,7 @@ export interface Drawing {
   id: string;
   name: string;
   boundary: DrawingBoundary;  // Defines the region/extent visible on sheets
+  scale: number;              // View scale (e.g., 0.02 for 1:50, 0.01 for 1:100)
   createdAt: string;
   modifiedAt: string;
 }

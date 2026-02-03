@@ -3,7 +3,7 @@
  */
 
 import type { AppState } from '../state/appStore';
-import type { Shape, ShapeType, ShapeStyle } from '../types/geometry';
+import type { Shape, ShapeType, ShapeStyle, HatchPatternType } from '../types/geometry';
 import type { CadEventBus } from './events';
 import type { TransactionManager } from './transactions';
 import { toPoint, type ApiPoint, type EntityFilter } from './types';
@@ -144,6 +144,23 @@ export class EntitiesApi {
             extensionLineOvershoot: 2, textHeight: 3, textPlacement: 'above',
             lineColor: '#00ffff', textColor: '#00ffff', precision: 2,
           },
+        } as any;
+      }
+      case 'hatch': {
+        const hatchParams = params as any;
+        return {
+          id: generateId(),
+          type: 'hatch',
+          layerId, drawingId,
+          style: { strokeColor: '#ffffff', strokeWidth: 1, lineStyle: 'solid' as const, ...style },
+          visible: true, locked: false,
+          points: (hatchParams.points as ApiPoint[]).map(toPoint),
+          patternType: (hatchParams.patternType || 'solid') as HatchPatternType,
+          patternAngle: hatchParams.patternAngle || 0,
+          patternScale: hatchParams.patternScale || 1,
+          fillColor: hatchParams.fillColor || '#ffffff',
+          backgroundColor: hatchParams.backgroundColor,
+          customPatternId: hatchParams.customPatternId,
         } as any;
       }
       default:

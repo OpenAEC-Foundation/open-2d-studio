@@ -13,8 +13,12 @@ import { PrintDialog } from './components/PrintDialog/PrintDialog';
 import { SnapSettingsDialog } from './components/SnapSettingsDialog/SnapSettingsDialog';
 import { Backstage, type BackstageView } from './components/Backstage/Backstage';
 import { TitleBlockEditor } from './components/TitleBlockEditor';
+import { TitleBlockImportDialog } from './components/TitleBlockImportDialog';
 import { NewSheetDialog } from './components/NewSheetDialog';
+import { SectionDialog } from './components/SectionDialog';
+import { PatternManagerDialog } from './components/PatternManager';
 import { OptionsBar } from './components/OptionsBar/OptionsBar';
+import { TerminalPanel } from './components/TerminalPanel';
 import { useKeyboardShortcuts } from './hooks/keyboard/useKeyboardShortcuts';
 import { useGlobalKeyboard } from './hooks/keyboard/useGlobalKeyboard';
 import { useAppStore } from './state/appStore';
@@ -31,6 +35,10 @@ function App() {
   const openBackstage = useCallback(() => setBackstageOpen(true), []);
   const closeBackstage = useCallback(() => { setBackstageOpen(false); setBackstageInitialView(undefined); }, []);
   const onSendFeedback = useCallback(() => { setBackstageInitialView('feedback'); setBackstageOpen(true); }, []);
+
+  // Sheet Template Import dialog (opened from Backstage > Import)
+  const [sheetTemplateImportOpen, setSheetTemplateImportOpen] = useState(false);
+  const openSheetTemplateImport = useCallback(() => setSheetTemplateImportOpen(true), []);
 
   // Right panel resizing
   const [rightPanelWidth, setRightPanelWidth] = useState(256);
@@ -132,20 +140,29 @@ function App() {
   const {
     printDialogOpen,
     setPrintDialogOpen,
-snapSettingsOpen,
+    snapSettingsOpen,
     setSnapSettingsOpen,
     titleBlockEditorOpen,
     setTitleBlockEditorOpen,
     newSheetDialogOpen,
     setNewSheetDialogOpen,
+    terminalOpen,
+    setTerminalOpen,
+    terminalHeight,
+    setTerminalHeight,
     activeSheetId,
     editorMode,
+    sectionDialogOpen,
+    closeSectionDialog,
+    setPendingSection,
+    patternManagerOpen,
+    setPatternManagerOpen,
   } = useAppStore();
 
   return (
     <div className="flex flex-col h-full w-full bg-cad-bg text-cad-text no-select">
       {/* Menu Bar */}
-      <MenuBar />
+      <MenuBar onSendFeedback={onSendFeedback} />
 
       {/* Ribbon */}
       <Ribbon onOpenBackstage={openBackstage} />
@@ -187,8 +204,16 @@ snapSettingsOpen,
         </div>
       </div>
 
+      {/* Terminal Panel */}
+      <TerminalPanel
+        isOpen={terminalOpen}
+        onClose={() => setTerminalOpen(false)}
+        height={terminalHeight}
+        onHeightChange={setTerminalHeight}
+      />
+
       {/* Bottom Status Bar */}
-      <StatusBar onSendFeedback={onSendFeedback} />
+      <StatusBar />
 
       {/* Print Dialog */}
       <PrintDialog
@@ -212,12 +237,45 @@ snapSettingsOpen,
       )}
 
       {/* Backstage View */}
-      <Backstage isOpen={backstageOpen} onClose={closeBackstage} initialView={backstageInitialView} />
+      <Backstage
+        isOpen={backstageOpen}
+        onClose={closeBackstage}
+        initialView={backstageInitialView}
+        onOpenSheetTemplateImport={openSheetTemplateImport}
+      />
+
+      {/* Sheet Template Import Dialog */}
+      <TitleBlockImportDialog
+        isOpen={sheetTemplateImportOpen}
+        onClose={() => setSheetTemplateImportOpen(false)}
+      />
 
       {/* New Sheet Dialog */}
       <NewSheetDialog
         isOpen={newSheetDialogOpen}
         onClose={() => setNewSheetDialogOpen(false)}
+      />
+
+      {/* Section Dialog - for inserting structural profiles */}
+      <SectionDialog
+        isOpen={sectionDialogOpen}
+        onClose={closeSectionDialog}
+        onInsert={(profileType, parameters, presetId, rotation) => {
+          // Set pending section - user will click on canvas to place it
+          setPendingSection({
+            profileType,
+            parameters,
+            presetId,
+            rotation: rotation ? rotation * (Math.PI / 180) : 0,
+          });
+          closeSectionDialog();
+        }}
+      />
+
+      {/* Pattern Manager Dialog */}
+      <PatternManagerDialog
+        isOpen={patternManagerOpen}
+        onClose={() => setPatternManagerOpen(false)}
       />
     </div>
   );

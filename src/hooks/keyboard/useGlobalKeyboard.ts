@@ -18,6 +18,7 @@ import {
  * - Ctrl+Shift+S: Save As
  * - Ctrl+Z: Undo
  * - Ctrl+Y: Redo
+ * - Ctrl+`: Toggle terminal
  * - Delete: Delete selected shapes
  * - Escape: Cancel drag / deselect (works for both draft boundary and sheet viewport)
  */
@@ -39,6 +40,7 @@ export function useGlobalKeyboard() {
     activeDrawingId,
     activeSheetId,
     drawingViewports,
+    sheetViewports,
     // File actions
     newProject,
     loadProject,
@@ -60,6 +62,8 @@ export function useGlobalKeyboard() {
     cancelViewportDrag,
     selectViewport,
     deselectAll,
+    // Terminal
+    toggleTerminal,
   } = useAppStore();
 
   const handleNew = useCallback(async () => {
@@ -92,6 +96,7 @@ export function useGlobalKeyboard() {
           activeDrawingId: project.activeDrawingId,
           activeSheetId: project.activeSheetId,
           drawingViewports: project.drawingViewports,
+          sheetViewports: project.sheetViewports,
         },
         filePath,
         project.name
@@ -120,6 +125,7 @@ export function useGlobalKeyboard() {
         activeDrawingId: activeDrawingId || '',
         activeSheetId,
         drawingViewports,
+        sheetViewports,
         shapes,
         layers,
         activeLayerId,
@@ -139,7 +145,7 @@ export function useGlobalKeyboard() {
     } catch (err) {
       await showError(`Failed to save file: ${err}`);
     }
-  }, [currentFilePath, projectName, shapes, layers, activeLayerId, drawings, sheets, activeDrawingId, activeSheetId, drawingViewports, gridSize, gridVisible, snapEnabled, setFilePath, setModified, setProjectName]);
+  }, [currentFilePath, projectName, shapes, layers, activeLayerId, drawings, sheets, activeDrawingId, activeSheetId, drawingViewports, sheetViewports, gridSize, gridVisible, snapEnabled, setFilePath, setModified, setProjectName]);
 
   const handleSaveAs = useCallback(async () => {
     const filePath = await showSaveDialog(projectName);
@@ -156,6 +162,7 @@ export function useGlobalKeyboard() {
         activeDrawingId: activeDrawingId || '',
         activeSheetId,
         drawingViewports,
+        sheetViewports,
         shapes,
         layers,
         activeLayerId,
@@ -175,7 +182,7 @@ export function useGlobalKeyboard() {
     } catch (err) {
       await showError(`Failed to save file: ${err}`);
     }
-  }, [projectName, shapes, layers, activeLayerId, drawings, sheets, activeDrawingId, activeSheetId, drawingViewports, gridSize, gridVisible, snapEnabled, setFilePath, setModified, setProjectName]);
+  }, [projectName, shapes, layers, activeLayerId, drawings, sheets, activeDrawingId, activeSheetId, drawingViewports, sheetViewports, gridSize, gridVisible, snapEnabled, setFilePath, setModified, setProjectName]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -218,6 +225,11 @@ export function useGlobalKeyboard() {
             e.preventDefault();
             redo();
             break;
+
+          case '`':
+            e.preventDefault();
+            toggleTerminal();
+            break;
         }
       }
 
@@ -257,5 +269,5 @@ export function useGlobalKeyboard() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNew, handleOpen, handleSave, handleSaveAs, undo, redo, deleteSelectedShapes, selectedShapeIds, boundaryEditState, cancelBoundaryDrag, deselectBoundary, editorMode, viewportEditState, cancelViewportDrag, selectViewport, deselectAll]);
+  }, [handleNew, handleOpen, handleSave, handleSaveAs, undo, redo, deleteSelectedShapes, selectedShapeIds, boundaryEditState, cancelBoundaryDrag, deselectBoundary, editorMode, viewportEditState, cancelViewportDrag, selectViewport, deselectAll, toggleTerminal]);
 }

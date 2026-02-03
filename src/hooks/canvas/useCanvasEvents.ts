@@ -10,11 +10,10 @@
  * - useViewportEditing: Sheet viewport editing
  */
 
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAppStore } from '../../state/appStore';
 import type { Point } from '../../types/geometry';
-import { screenToWorld } from '../../engine/geometry/GeometryUtils';
-import { isPointNearShape } from '../../engine/geometry/GeometryUtils';
+import { screenToWorld, isPointNearShape, isPointNearParametricShape } from '../../engine/geometry/GeometryUtils';
 import { QuadTree } from '../../engine/spatial/QuadTree';
 
 import { usePanZoom } from '../navigation/usePanZoom';
@@ -46,14 +45,23 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     activeTool,
     setActiveTool,
     shapes,
+    parametricShapes,
     selectShape,
     deselectAll,
     editorMode,
     activeDrawingId,
+    activeLayerId,
     dimensionMode,
     setHoveredShapeId,
     pickLinesMode,
     setPrintDialogOpen,
+    pendingSection,
+    clearPendingSection,
+    insertProfile,
+    setSectionPlacementPreview,
+    explodeParametricShapes,
+    addShapes,
+    selectedShapeIds,
   } = useAppStore();
 
   // Build spatial index for efficient shape lookup
@@ -67,6 +75,29 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
   const findShapeAtPoint = useCallback(
     (worldPoint: Point): string | null => {
       const tolerance = 5 / viewport.zoom;
+
+      // Check parametric shapes first (they render on top)
+      const drawingParametricShapes = parametricShapes.filter(s => s.drawingId === activeDrawingId && s.visible);
+      for (let i = drawingParametricShapes.length - 1; i >= 0; i--) {
+        const shape = drawingParametricShapes[i];
+        const bounds = shape.generatedGeometry?.bounds;
+        if (bounds) {
+          // Quick bounding box check first
+          if (
+            worldPoint.x >= bounds.minX - tolerance &&
+            worldPoint.x <= bounds.maxX + tolerance &&
+            worldPoint.y >= bounds.minY - tolerance &&
+            worldPoint.y <= bounds.maxY + tolerance
+          ) {
+            // Precise hit test on actual outline geometry
+            if (isPointNearParametricShape(worldPoint, shape, tolerance)) {
+              return shape.id;
+            }
+          }
+        }
+      }
+
+      // Check regular shapes
       const candidates = quadTree.queryPoint(worldPoint, tolerance);
       // Iterate in reverse to match z-order (last inserted = on top)
       for (let i = candidates.length - 1; i >= 0; i--) {
@@ -77,7 +108,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
       return null;
     },
-    [quadTree, shapes, viewport.zoom]
+    [quadTree, shapes, parametricShapes, activeDrawingId, viewport.zoom]
   );
 
   /**
@@ -165,6 +196,24 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       const snapResult = snapDetection.snapPoint(worldPos, basePoint);
       const snappedPos = snapResult.point;
 
+      // Handle pending section placement first
+      if (pendingSection) {
+        insertProfile(
+          pendingSection.profileType,
+          snappedPos,
+          activeLayerId,
+          activeDrawingId,
+          {
+            parameters: pendingSection.parameters,
+            presetId: pendingSection.presetId,
+            rotation: pendingSection.rotation,
+          }
+        );
+        clearPendingSection();
+        setSectionPlacementPreview(null);
+        return;
+      }
+
       // Tool-specific handling
       switch (activeTool) {
         case 'select': {
@@ -193,17 +242,21 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         case 'spline':
         case 'ellipse':
         case 'hatch':
+          // Clear selection when starting to draw
+          deselectAll();
           shapeDrawing.handleDrawingClick(snappedPos, e.shiftKey, snapResult.snapInfo);
           // Clear snap/tracking indicators after click - they'll be recalculated on next mouse move
           snapDetection.clearTracking();
           break;
 
         case 'dimension':
+          deselectAll();
           shapeDrawing.handleDrawingClick(snappedPos, e.shiftKey, snapResult.snapInfo);
           snapDetection.clearTracking();
           break;
 
         case 'text':
+          deselectAll();
           textDrawing.handleTextClick(snappedPos);
           snapDetection.clearTracking();
           break;
@@ -301,6 +354,15 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Box selection
       if (boxSelection.isSelecting()) {
         boxSelection.updateBoxSelection(screenPos);
+        return;
+      }
+
+      // Pending section placement preview
+      if (pendingSection && editorMode === 'drawing') {
+        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
+        const basePoint = shapeDrawing.getLastDrawingPoint();
+        const snapResult = snapDetection.snapPoint(worldPos, basePoint);
+        setSectionPlacementPreview(snapResult.point);
         return;
       }
 
@@ -402,9 +464,15 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     (e: React.MouseEvent<HTMLCanvasElement>) => {
       e.preventDefault();
 
-      // In sheet mode, finish leader if active, then show context menu
+      // In sheet mode, finish leader if active, deselect annotation tools, then show context menu
       if (editorMode === 'sheet') {
         annotationEditing.finishLeader();
+
+        // If an annotation tool is selected, deselect it (similar to drawing tools behavior)
+        const annotationTools = ['sheet-text', 'sheet-leader', 'sheet-revision-cloud', 'sheet-callout'];
+        if (annotationTools.includes(activeTool)) {
+          setActiveTool('select');
+        }
 
         const menu = document.createElement('div');
         menu.className = 'fixed z-[9999] bg-cad-surface border border-cad-border shadow-lg text-xs';
@@ -438,12 +506,88 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // In drawing mode
+      // Cancel pending section placement
+      if (pendingSection) {
+        clearPendingSection();
+        setSectionPlacementPreview(null);
+        return;
+      }
+
       // If actively drawing, finish the drawing
       if (shapeDrawing.isDrawing()) {
         shapeDrawing.finishDrawing();
         // Clear snap/tracking indicators
         snapDetection.clearTracking();
         return;
+      }
+
+      // Check if right-clicking on a parametric shape - show context menu
+      const screenPos = panZoom.getMousePos(e);
+      const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
+      const clickedShapeId = findShapeAtPoint(worldPos);
+      const clickedParametricShape = clickedShapeId
+        ? parametricShapes.find(s => s.id === clickedShapeId)
+        : null;
+
+      // Check if any selected shapes are parametric
+      const hasSelectedParametric = selectedShapeIds.some(id =>
+        parametricShapes.some(s => s.id === id)
+      );
+
+      if (clickedParametricShape || hasSelectedParametric) {
+        // Build list of parametric shape IDs to operate on
+        const parametricIdsToExplode: string[] = [];
+
+        if (hasSelectedParametric) {
+          // Use selected parametric shapes
+          for (const id of selectedShapeIds) {
+            if (parametricShapes.some(s => s.id === id)) {
+              parametricIdsToExplode.push(id);
+            }
+          }
+        } else if (clickedParametricShape) {
+          // Use clicked parametric shape
+          parametricIdsToExplode.push(clickedParametricShape.id);
+        }
+
+        if (parametricIdsToExplode.length > 0) {
+          const menu = document.createElement('div');
+          menu.className = 'fixed z-[9999] bg-cad-surface border border-cad-border shadow-lg text-xs rounded';
+          menu.style.left = `${e.clientX}px`;
+          menu.style.top = `${e.clientY}px`;
+
+          const onOutsideClick = (ev: MouseEvent) => { if (!menu.contains(ev.target as Node)) cleanup(); };
+          const escHandler = (ev: KeyboardEvent) => { if (ev.key === 'Escape') cleanup(); };
+          function cleanup() { menu.remove(); document.removeEventListener('mousedown', onOutsideClick); document.removeEventListener('keydown', escHandler); }
+
+          const items = [
+            {
+              label: parametricIdsToExplode.length > 1 ? 'Convert to Polylines' : 'Convert to Polyline',
+              action: () => {
+                const exploded = explodeParametricShapes(parametricIdsToExplode);
+                if (exploded.length > 0) {
+                  addShapes(exploded);
+                }
+              }
+            },
+          ];
+
+          items.forEach(item => {
+            const el = document.createElement('div');
+            el.className = 'px-4 py-1.5 hover:bg-cad-hover cursor-pointer text-cad-text';
+            el.textContent = item.label;
+            el.onclick = () => { cleanup(); item.action(); };
+            menu.appendChild(el);
+          });
+
+          document.body.appendChild(menu);
+          setTimeout(() => {
+            document.addEventListener('mousedown', onOutsideClick);
+            document.addEventListener('keydown', escHandler);
+          }, 0);
+
+          return;
+        }
       }
 
       // Modify tools: right-click finishes / cancels
@@ -455,15 +599,17 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         return;
       }
 
-      // If a drawing tool is selected but not actively drawing, deselect it
-      const drawingTools = ['line', 'rectangle', 'circle', 'arc', 'polyline', 'spline', 'ellipse', 'hatch', 'text'];
+      // If a drawing or annotation tool is selected but not actively drawing, deselect it
+      const drawingTools = ['line', 'rectangle', 'circle', 'arc', 'polyline', 'spline', 'ellipse', 'hatch', 'text', 'dimension'];
       if (drawingTools.includes(activeTool)) {
         setActiveTool('select');
         // Clear any lingering snap/tracking indicators
         snapDetection.clearTracking();
       }
     },
-    [editorMode, annotationEditing, shapeDrawing, activeTool, setActiveTool, snapDetection, modifyTools, setPrintDialogOpen]
+    [editorMode, annotationEditing, shapeDrawing, activeTool, setActiveTool, snapDetection, modifyTools, setPrintDialogOpen,
+     panZoom, viewport, findShapeAtPoint, parametricShapes, selectedShapeIds, explodeParametricShapes, addShapes,
+     pendingSection, clearPendingSection, setSectionPlacementPreview]
   );
 
   /**
@@ -494,6 +640,139 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
    * Handle wheel (zoom)
    */
   const handleWheel = panZoom.handleWheel;
+
+  // Store refs to the editing hooks to avoid stale closures in window listeners
+  const editingRefs = useRef({
+    panZoom,
+    annotationEditing,
+    viewportEditing,
+    boundaryEditing,
+    gripEditing,
+    boxSelection,
+    viewport,
+    editorMode,
+    canvasRef,
+  });
+
+  // Keep refs updated on every render
+  editingRefs.current = {
+    panZoom,
+    annotationEditing,
+    viewportEditing,
+    boundaryEditing,
+    gripEditing,
+    boxSelection,
+    viewport,
+    editorMode,
+    canvasRef,
+  };
+
+  // Attach window-level listeners for drag operations (always active)
+  useEffect(() => {
+    const onMouseMove = (e: MouseEvent) => {
+      const refs = editingRefs.current;
+
+      // Check if any drag is active by querying the current state
+      const anyDragActive =
+        refs.panZoom.getIsPanning() ||
+        refs.gripEditing.isDragging() ||
+        refs.boundaryEditing.isDragging() ||
+        refs.viewportEditing.isDragging() ||
+        refs.annotationEditing.isDragging ||
+        refs.boxSelection.isSelecting();
+
+      if (!anyDragActive) return;
+
+      const canvas = refs.canvasRef.current;
+      if (!canvas) return;
+
+      const rect = canvas.getBoundingClientRect();
+      const screenPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+
+      // Sheet mode: annotation dragging
+      if (refs.annotationEditing.handleAnnotationMouseMove(screenPos)) {
+        return;
+      }
+
+      // Sheet mode: viewport dragging
+      if (refs.viewportEditing.handleViewportMouseMove(screenPos)) {
+        return;
+      }
+
+      // Drawing mode: boundary dragging
+      if (refs.editorMode === 'drawing') {
+        const worldPos = screenToWorld(screenPos.x, screenPos.y, refs.viewport);
+        if (refs.boundaryEditing.handleBoundaryMouseMove(worldPos)) {
+          return;
+        }
+      }
+
+      // Drawing mode: grip dragging
+      if (refs.editorMode === 'drawing') {
+        const worldPos = screenToWorld(screenPos.x, screenPos.y, refs.viewport);
+        if (refs.gripEditing.handleGripMouseMove(worldPos)) {
+          return;
+        }
+      }
+
+      // Box selection
+      if (refs.boxSelection.isSelecting()) {
+        refs.boxSelection.updateBoxSelection(screenPos);
+      }
+    };
+
+    const onMouseUp = (e: MouseEvent) => {
+      const refs = editingRefs.current;
+
+      // Check if any drag is active
+      const anyDragActive =
+        refs.panZoom.getIsPanning() ||
+        refs.gripEditing.isDragging() ||
+        refs.boundaryEditing.isDragging() ||
+        refs.viewportEditing.isDragging() ||
+        refs.annotationEditing.isDragging ||
+        refs.boxSelection.isSelecting();
+
+      if (!anyDragActive) return;
+
+      refs.panZoom.handlePanMouseUp();
+
+      // Sheet mode: annotation drag end
+      if (refs.annotationEditing.handleAnnotationMouseUp()) {
+        return;
+      }
+
+      // Sheet mode: viewport drag end
+      if (refs.viewportEditing.handleViewportMouseUp()) {
+        return;
+      }
+
+      // Draft mode: boundary drag end
+      if (refs.boundaryEditing.handleBoundaryMouseUp()) {
+        return;
+      }
+
+      // Drawing mode: grip drag end
+      if (refs.gripEditing.handleGripMouseUp()) {
+        return;
+      }
+
+      // Box selection end
+      if (refs.boxSelection.isSelecting() && refs.canvasRef.current) {
+        const rect = refs.canvasRef.current.getBoundingClientRect();
+        const screenPos = { x: e.clientX - rect.left, y: e.clientY - rect.top };
+        refs.boxSelection.endBoxSelection(screenPos, e.shiftKey);
+      }
+    };
+
+    window.addEventListener('mousemove', onMouseMove);
+    window.addEventListener('mouseup', onMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', onMouseMove);
+      window.removeEventListener('mouseup', onMouseUp);
+    };
+  }, []); // Empty deps - we use refs to get current values
 
   return {
     handleMouseDown,

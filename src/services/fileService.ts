@@ -20,6 +20,9 @@ const DEFAULT_DRAWING_BOUNDARY: DrawingBoundary = {
   height: 1000,
 };
 
+// Default drawing scale (1:50)
+const DEFAULT_DRAWING_SCALE = 0.02;
+
 // File extension for project files
 export const PROJECT_EXTENSION = 'o2d';
 export const PROJECT_FILTER = {
@@ -77,6 +80,7 @@ export interface ProjectFileV2 {
   activeSheetId: string | null;
   draftViewports?: Record<string, Viewport>;
   drawingViewports?: Record<string, Viewport>;  // New name, supported for reading
+  sheetViewports?: Record<string, Viewport>;  // Per-sheet pan/zoom state
   // Shapes & Layers (now with drawingId)
   shapes: Shape[];
   layers: Layer[];
@@ -129,6 +133,7 @@ function migrateV1ToV2(v1: ProjectFileV1): ProjectFileV2 {
       id: drawingId,
       name: 'Drawing 1',
       boundary: { ...DEFAULT_DRAWING_BOUNDARY },
+      scale: DEFAULT_DRAWING_SCALE,
       createdAt: v1.createdAt,
       modifiedAt: now,
     }],
@@ -138,6 +143,7 @@ function migrateV1ToV2(v1: ProjectFileV1): ProjectFileV2 {
     drawingViewports: {
       [drawingId]: v1.viewport,
     },
+    sheetViewports: {},
     shapes: migratedShapes,
     layers: migratedLayers,
     activeLayerId: v1.activeLayerId,
@@ -162,6 +168,7 @@ export function createNewProject(): ProjectFile {
       id: drawingId,
       name: 'Drawing 1',
       boundary: { ...DEFAULT_DRAWING_BOUNDARY },
+      scale: DEFAULT_DRAWING_SCALE,
       createdAt: now,
       modifiedAt: now,
     }],
@@ -171,6 +178,7 @@ export function createNewProject(): ProjectFile {
     drawingViewports: {
       [drawingId]: { zoom: 1, offsetX: 0, offsetY: 0 },
     },
+    sheetViewports: {},
     shapes: [],
     layers: [
       {

@@ -113,6 +113,8 @@ export const createDrawingPlacementSlice = (
       state.isPlacing = true;
       state.placingDrawingId = drawingId;
       state.previewPosition = null;
+      // Use the drawing's scale as the default placement scale
+      state.placementScale = drawing.scale;
     }),
 
   updatePlacementPreview: (sheetPosition) =>

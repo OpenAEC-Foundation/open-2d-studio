@@ -41,6 +41,10 @@ import {
   type AnnotationActions,
   type DrawingPlacementState,
   type DrawingPlacementActions,
+  type ParametricState,
+  type ParametricActions,
+  type HatchState,
+  type HatchActions,
 
   // Initial states
   initialModelState,
@@ -54,6 +58,8 @@ import {
   initialViewportEditState,
   initialAnnotationState,
   initialDrawingPlacementState,
+  initialParametricState,
+  initialHatchState,
 
   // Slice creators
   createModelSlice,
@@ -67,6 +73,8 @@ import {
   createViewportEditSlice,
   createAnnotationSlice,
   createDrawingPlacementSlice,
+  createParametricSlice,
+  createHatchSlice,
 } from './slices';
 
 // Re-export types for backward compatibility
@@ -114,6 +122,7 @@ function extractPerDocState(s: any) {
     activeSheetId: s.activeSheetId,
     editorMode: s.editorMode,
     drawingViewports: s.drawingViewports,
+    sheetViewports: s.sheetViewports,
     shapes: s.shapes,
     layers: s.layers,
     activeLayerId: s.activeLayerId,
@@ -136,6 +145,7 @@ function extractPerDocState(s: any) {
     currentStyle: s.currentStyle,
     textEditingId: s.textEditingId,
     defaultTextStyle: s.defaultTextStyle,
+    hatchCustomPatternId: s.hatchCustomPatternId,
     // UI per-doc fields
     currentFilePath: s.currentFilePath,
     projectName: s.projectName,
@@ -156,6 +166,12 @@ function extractPerDocState(s: any) {
     placingDrawingId: s.placingDrawingId,
     previewPosition: s.previewPosition,
     placementScale: s.placementScale,
+    // Parametric shapes
+    parametricShapes: s.parametricShapes,
+    sectionDialogOpen: s.sectionDialogOpen,
+    pendingSection: s.pendingSection,
+    // Hatch patterns (project-level)
+    projectPatterns: s.projectPatterns,
   };
 }
 
@@ -183,6 +199,7 @@ function restoreDocState(docId: string, set: any) {
     state.activeSheetId = saved.activeSheetId;
     state.editorMode = saved.editorMode;
     state.drawingViewports = saved.drawingViewports;
+    state.sheetViewports = saved.sheetViewports;
     state.shapes = saved.shapes;
     state.layers = saved.layers;
     state.activeLayerId = saved.activeLayerId;
@@ -201,6 +218,7 @@ function restoreDocState(docId: string, set: any) {
     state.currentStyle = saved.currentStyle;
     state.textEditingId = saved.textEditingId;
     state.defaultTextStyle = saved.defaultTextStyle;
+    state.hatchCustomPatternId = saved.hatchCustomPatternId || null;
     state.currentFilePath = saved.filePath;
     state.projectName = saved.projectName;
     state.isModified = saved.isModified;
@@ -215,6 +233,12 @@ function restoreDocState(docId: string, set: any) {
     state.placingDrawingId = saved.placingDrawingId;
     state.previewPosition = saved.previewPosition;
     state.placementScale = saved.placementScale;
+    // Parametric shapes
+    state.parametricShapes = saved.parametricShapes || [];
+    state.sectionDialogOpen = saved.sectionDialogOpen || false;
+    state.pendingSection = saved.pendingSection || null;
+    // Hatch patterns (project-level)
+    state.projectPatterns = saved.projectPatterns || [];
   });
 }
 
@@ -262,6 +286,8 @@ export type AppState =
   & ViewportEditState_Full
   & AnnotationState
   & DrawingPlacementState
+  & ParametricState
+  & HatchState
   & ModelActions
   & ViewActions
   & ToolActions
@@ -273,6 +299,8 @@ export type AppState =
   & ViewportEditActions
   & AnnotationActions
   & DrawingPlacementActions
+  & ParametricActions
+  & HatchActions
   & CoordinatingActions
   & DocumentManagementState
   & DocumentManagementActions;
@@ -293,6 +321,8 @@ const initialState = {
   ...initialViewportEditState,
   ...initialAnnotationState,
   ...initialDrawingPlacementState,
+  ...initialParametricState,
+  ...initialHatchState,
 };
 
 // ============================================================================
@@ -330,6 +360,8 @@ export const useAppStore = create<AppState>()(
       ...createViewportEditSlice(set as any, get as any),
       ...createAnnotationSlice(set as any, get as any),
       ...createDrawingPlacementSlice(set as any, get as any),
+      ...createParametricSlice(set as any, get as any),
+      ...createHatchSlice(set as any, get as any),
 
       // ========================================================================
       // Coordinating Actions (cross-slice operations)

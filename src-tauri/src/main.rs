@@ -4,7 +4,7 @@
 mod commands;
 mod api_server;
 
-use commands::{save_file, load_file, export_dxf, import_dxf};
+use commands::{save_file, load_file, export_dxf, import_dxf, execute_shell, open_file_with_default_app};
 use api_server::{ApiServerState, find_free_port, write_discovery_file, remove_discovery_file, start_server};
 use std::sync::Arc;
 use tauri::Manager;
@@ -46,6 +46,8 @@ fn main() {
             load_file,
             export_dxf,
             import_dxf,
+            execute_shell,
+            open_file_with_default_app,
             api_eval_callback
         ])
         .setup(move |app| {

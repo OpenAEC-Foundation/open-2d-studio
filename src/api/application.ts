@@ -63,6 +63,7 @@ export class ApplicationApi {
       activeDrawingId: state.activeDrawingId,
       activeSheetId: state.activeSheetId,
       drawingViewports: state.drawingViewports,
+      sheetViewports: state.sheetViewports,
       shapes: state.shapes,
       layers: state.layers,
       activeLayerId: state.activeLayerId,
@@ -97,7 +98,8 @@ export class ApplicationApi {
     const filePath = path || await showExportDialog('ifc', this.getState().projectName);
     if (!filePath) return;
     const state = this.getState();
-    const ifc = exportToIFC(state.shapes, state.layers);
+    const customPatterns = [...state.userPatterns, ...state.projectPatterns];
+    const ifc = exportToIFC(state.shapes, state.layers, customPatterns);
     await writeTextFile(filePath, ifc);
   }
 

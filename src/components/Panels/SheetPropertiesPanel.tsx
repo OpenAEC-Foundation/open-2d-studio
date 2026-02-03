@@ -11,6 +11,7 @@ export function SheetPropertiesPanel() {
     layers,
     addSheetViewport,
     updateSheetViewport,
+    updateDrawingScale,
     deleteSheetViewport,
     updateTitleBlockField,
     setTitleBlockVisible,
@@ -194,17 +195,23 @@ export function SheetPropertiesPanel() {
           </div>
 
           <div className="space-y-2">
-            {/* Scale */}
+            {/* Scale - changes the drawing's scale (affects all viewports of this drawing) */}
             <div>
-              <label className="block text-xs text-cad-text-dim mb-1">Scale:</label>
+              <label className="block text-xs text-cad-text-dim mb-1">
+                Drawing Scale:
+              </label>
               <ScaleSelector
                 value={selectedViewport.scale}
-                onChange={(scale) => updateSheetViewport(activeSheetId!, selectedViewport.id, { scale })}
+                onChange={(scale) => updateDrawingScale(selectedViewport.drawingId, scale)}
                 disabled={selectedViewport.locked}
                 showCategories={true}
                 allowCustom={true}
                 className="w-full"
               />
+              <div className="text-[10px] text-cad-text-dim mt-1">
+                Size: {Math.round(selectedViewport.width)}mm × {Math.round(selectedViewport.height)}mm
+                <span className="ml-2 text-yellow-500/80">(all viewports of this drawing)</span>
+              </div>
             </div>
 
             {/* Position */}
@@ -225,32 +232,6 @@ export function SheetPropertiesPanel() {
                   type="number"
                   value={Math.round(selectedViewport.y)}
                   onChange={(e) => updateSheetViewport(activeSheetId!, selectedViewport.id, { y: parseFloat(e.target.value) || 0 })}
-                  className="w-full px-2 py-1 text-xs bg-cad-input border border-cad-border text-cad-text"
-                  disabled={selectedViewport.locked}
-                />
-              </div>
-            </div>
-
-            {/* Size */}
-            <div className="grid grid-cols-2 gap-2">
-              <div>
-                <label className="block text-xs text-cad-text-dim mb-1">Width (mm):</label>
-                <input
-                  type="number"
-                  min="20"
-                  value={Math.round(selectedViewport.width)}
-                  onChange={(e) => updateSheetViewport(activeSheetId!, selectedViewport.id, { width: Math.max(20, parseFloat(e.target.value) || 20) })}
-                  className="w-full px-2 py-1 text-xs bg-cad-input border border-cad-border text-cad-text"
-                  disabled={selectedViewport.locked}
-                />
-              </div>
-              <div>
-                <label className="block text-xs text-cad-text-dim mb-1">Height (mm):</label>
-                <input
-                  type="number"
-                  min="20"
-                  value={Math.round(selectedViewport.height)}
-                  onChange={(e) => updateSheetViewport(activeSheetId!, selectedViewport.id, { height: Math.max(20, parseFloat(e.target.value) || 20) })}
                   className="w-full px-2 py-1 text-xs bg-cad-input border border-cad-border text-cad-text"
                   disabled={selectedViewport.locked}
                 />
@@ -307,7 +288,7 @@ export function SheetPropertiesPanel() {
             {/* Tip for interaction */}
             {!selectedViewport.locked && (
               <div className="mt-2 p-2 bg-blue-500/10 border border-blue-500/20 text-xs text-blue-400">
-                <strong>Tip:</strong> Drag handles on canvas to resize. Drag center to move.
+                <strong>Tip:</strong> Drag center handle to move viewport. Change scale to resize.
               </div>
             )}
           </div>

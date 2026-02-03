@@ -712,33 +712,27 @@ export function ConnectionIcon({ size = 24, className }: IconProps) {
  * Aligned Dimension Icon - Dimension parallel to measured points
  */
 export function AlignedDimensionIcon({ size = 24, className }: IconProps) {
-  // Two angled reference walls with a dimension line measuring between them
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox="0 0 32 32"
       fill="none"
       stroke="currentColor"
-      strokeWidth="1.5"
       strokeLinecap="round"
       strokeLinejoin="round"
       className={className}
     >
-      {/* Two angled reference lines (walls) — going bottom-left to top-right */}
-      <line x1="1" y1="22" x2="6" y2="14" strokeWidth="2" opacity="0.3" />
-      <line x1="14" y1="10" x2="19" y2="2" strokeWidth="2" opacity="0.3" />
-      {/* Extension lines — short perpendicular lines from each wall to dimension line */}
-      <line x1="4" y1="17" x2="7" y2="18.5" strokeWidth="0.75" opacity="0.5" />
-      <line x1="17" y1="5" x2="20" y2="6.5" strokeWidth="0.75" opacity="0.5" />
-      {/* Dimension line between the two walls — split for text */}
-      <line x1="5.5" y1="17.8" x2="9" y2="15.5" strokeWidth="1.5" />
-      <line x1="14" y1="11.5" x2="18.5" y2="5.8" strokeWidth="1.5" />
-      {/* Filled arrowheads */}
-      <polygon points="5.5,17.8 7.6,17.6 7.1,15.7" fill="currentColor" stroke="none" />
-      <polygon points="18.5,5.8 16.4,6 16.9,7.9" fill="currentColor" stroke="none" />
-      {/* Dimension value */}
-      <text x="12" y="14.5" fill="currentColor" stroke="none" fontSize="5" fontWeight="600" fontFamily="sans-serif" textAnchor="middle">24</text>
+      {/* Main diagonal dimension line */}
+      <line x1="9" y1="23" x2="23" y2="9" strokeWidth="1.2" />
+      {/* Left arrowhead */}
+      <polygon points="9,23 12.5,21.5 11,18.5" fill="currentColor" stroke="none" />
+      {/* Right arrowhead */}
+      <polygon points="23,9 19.5,10.5 21,13.5" fill="currentColor" stroke="none" />
+      {/* Bottom-left witness line */}
+      <line x1="2.5" y1="26" x2="6" y2="29.5" strokeWidth="1.1" />
+      {/* Top-right witness line */}
+      <line x1="26" y1="2.5" x2="29.5" y2="6" strokeWidth="1.1" />
     </svg>
   );
 }

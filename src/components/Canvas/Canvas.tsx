@@ -141,6 +141,7 @@ export function Canvas() {
               sheet: activeSheet,
               drawings: s.drawings,
               shapes: s.shapes,
+              parametricShapes: s.parametricShapes,
               layers: s.layers,
               viewport: s.viewport,
               selectedViewportId: s.viewportEditState.selectedViewportId,
@@ -155,15 +156,21 @@ export function Canvas() {
                 previewPosition: s.previewPosition,
                 placementScale: s.placementScale,
               },
+              customPatterns: {
+                userPatterns: s.userPatterns,
+                projectPatterns: s.projectPatterns,
+              },
             });
           }
         } else {
           const filteredShapes = s.shapes.filter(shape => shape.drawingId === s.activeDrawingId);
+          const filteredParametricShapes = s.parametricShapes.filter(shape => shape.drawingId === s.activeDrawingId);
           const filteredLayers = s.layers.filter(layer => layer.drawingId === s.activeDrawingId);
           const activeDrawing = s.drawings.find(d => d.id === s.activeDrawingId) || null;
 
           renderer.render({
             shapes: filteredShapes,
+            parametricShapes: filteredParametricShapes,
             selectedShapeIds: s.selectedShapeIds,
             hoveredShapeId: s.hoveredShapeId,
             viewport: s.viewport,
@@ -181,6 +188,12 @@ export function Canvas() {
             boundaryDragging: s.boundaryEditState.activeHandle !== null,
             whiteBackground: s.whiteBackground,
             hideSelectionHandles: ['move','copy','rotate','scale','mirror','array','trim','extend','fillet','offset'].includes(s.activeTool),
+            sectionPlacementPreview: s.sectionPlacementPreview,
+            pendingSection: s.pendingSection,
+            customPatterns: {
+              userPatterns: s.userPatterns,
+              projectPatterns: s.projectPatterns,
+            },
           });
         }
       }
@@ -194,6 +207,19 @@ export function Canvas() {
   // Handle mouse events
   const { handleMouseDown, handleMouseMove, handleMouseUp, handleWheel, handleClick, handleDoubleClick, handleContextMenu, isPanning } =
     useCanvasEvents(canvasRef);
+
+  // Attach wheel listener with passive: false to allow preventDefault
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+
+    const wheelHandler = (e: WheelEvent) => {
+      handleWheel(e as unknown as React.WheelEvent<HTMLCanvasElement>);
+    };
+
+    canvas.addEventListener('wheel', wheelHandler, { passive: false });
+    return () => canvas.removeEventListener('wheel', wheelHandler);
+  }, [handleWheel]);
 
   // Handle keyboard shortcuts for drawing
   useDrawingKeyboard();
@@ -266,8 +292,6 @@ export function Canvas() {
         onMouseDown={handleMouseDown}
         onMouseMove={onMouseMove}
         onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseUp}
-        onWheel={handleWheel}
         onClick={onCanvasClick}
         onDoubleClick={handleDoubleClick}
         onContextMenu={handleContextMenu}

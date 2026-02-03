@@ -288,6 +288,8 @@ export function isEnhancedDrawing(value: unknown): value is EnhancedDrawing {
     'category' in value &&
     'views' in value &&
     'defaultScale' in value &&
+    'metadata' in value &&
+    'isTemplate' in value &&
     Array.isArray((value as EnhancedDrawing).views)
   );
 }

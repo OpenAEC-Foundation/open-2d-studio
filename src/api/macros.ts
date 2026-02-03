@@ -1,12 +1,17 @@
 /**
- * Macro Recording - Record and replay API calls
+ * Macro Recording - Record and replay API calls using command-based API
  */
 
 import type { CadEventBus } from './events';
 
+interface RecordedCommand {
+  tool: string;
+  arguments: Record<string, unknown>;
+}
+
 export class MacroRecorder {
   private recording = false;
-  private lines: string[] = [];
+  private commands: RecordedCommand[] = [];
   private unsub: (() => void) | null = null;
 
   constructor(private bus: CadEventBus) {}
@@ -18,7 +23,7 @@ export class MacroRecorder {
   startRecording(): void {
     if (this.recording) return;
     this.recording = true;
-    this.lines = [];
+    this.commands = [];
 
     const unsubs: (() => void)[] = [];
 
@@ -26,37 +31,56 @@ export class MacroRecorder {
     unsubs.push(this.bus.on('entity:added', ({ entity }) => {
       if (!this.recording) return;
       const { id, layerId, drawingId, style, visible, locked, ...params } = entity;
-      this.lines.push(`cad.entities.add('${entity.type}', ${JSON.stringify(params)});`);
+      this.commands.push({
+        tool: `cad_draw_create_${entity.type}`,
+        arguments: params,
+      });
     }));
 
-    // Record entity removals
-    unsubs.push(this.bus.on('entity:removed', ({ entity }) => {
+    // Record entity removals (via selection)
+    unsubs.push(this.bus.on('entity:removed', () => {
       if (!this.recording) return;
-      this.lines.push(`cad.entities.remove('${entity.id}');`);
-    }));
-
-    // Record commands
-    unsubs.push(this.bus.on('command:completed', ({ name, params }) => {
-      if (!this.recording) return;
-      this.lines.push(`cad.commands.execute('${name}', ${JSON.stringify(params)});`);
+      this.commands.push({
+        tool: 'cad_modify_delete',
+        arguments: {},
+      });
     }));
 
     // Record selection changes
     unsubs.push(this.bus.on('selection:changed', ({ ids }) => {
       if (!this.recording) return;
-      this.lines.push(`cad.selection.set(${JSON.stringify(ids)});`);
+      this.commands.push({
+        tool: 'cad_selection_set',
+        arguments: { ids },
+      });
     }));
 
     // Record viewport changes
     unsubs.push(this.bus.on('viewport:changed', (vp) => {
       if (!this.recording) return;
-      this.lines.push(`cad.viewport.set(${JSON.stringify(vp)});`);
+      if (vp.zoom !== undefined) {
+        this.commands.push({
+          tool: 'cad_viewport_setZoom',
+          arguments: { level: vp.zoom },
+        });
+      }
     }));
 
-    // Record tool changes
-    unsubs.push(this.bus.on('tool:changed', ({ tool }) => {
+    // Record undo/redo
+    unsubs.push(this.bus.on('undo', () => {
       if (!this.recording) return;
-      this.lines.push(`cad.tools.setActive('${tool}');`);
+      this.commands.push({
+        tool: 'cad_history_undo',
+        arguments: {},
+      });
+    }));
+
+    unsubs.push(this.bus.on('redo', () => {
+      if (!this.recording) return;
+      this.commands.push({
+        tool: 'cad_history_redo',
+        arguments: {},
+      });
     }));
 
     this.unsub = () => unsubs.forEach(fn => fn());
@@ -68,14 +92,28 @@ export class MacroRecorder {
       this.unsub();
       this.unsub = null;
     }
-    const script = this.lines.join('\n');
-    this.lines = [];
+    // Return as JSON array of MCP tool calls
+    const script = JSON.stringify(this.commands, null, 2);
+    this.commands = [];
     return script;
   }
 
-  runMacro(script: string): void {
-    // Execute recorded script in the context of window.cad
-    const fn = new Function('cad', script);
-    fn((window as any).cad);
+  async runMacro(script: string): Promise<void> {
+    const cad = (window as any).cad;
+    if (!cad) return;
+
+    try {
+      const commands: RecordedCommand[] = JSON.parse(script);
+      const { executeMcpTool } = await import('./mcp/server');
+
+      for (const cmd of commands) {
+        await executeMcpTool({
+          name: cmd.tool,
+          arguments: cmd.arguments,
+        });
+      }
+    } catch (error) {
+      console.error('Failed to run macro:', error);
+    }
   }
 }

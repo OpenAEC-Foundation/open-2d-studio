@@ -128,9 +128,10 @@ interface RibbonButtonProps {
   active?: boolean;
   disabled?: boolean;
   shortcut?: string;
+  tooltip?: string;
 }
 
-function RibbonButton({ icon, label, onClick, active, disabled, shortcut }: RibbonButtonProps) {
+function RibbonButton({ icon, label, onClick, active, disabled, shortcut, tooltip }: RibbonButtonProps) {
   const tt = useTooltip();
   return (
     <>
@@ -145,7 +146,7 @@ function RibbonButton({ icon, label, onClick, active, disabled, shortcut }: Ribb
         <span className="ribbon-btn-icon">{icon}</span>
         <span className="ribbon-btn-label">{label}</span>
       </button>
-      {tt.show && <RibbonTooltip label={label} shortcut={shortcut} parentRef={tt.ref as React.RefObject<HTMLElement>} />}
+      {tt.show && <RibbonTooltip label={tooltip || label} shortcut={shortcut} parentRef={tt.ref as React.RefObject<HTMLElement>} />}
     </>
   );
 }
@@ -311,6 +312,9 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
 
     selectAll,
     deselectAll,
+    editorMode,
+    openSectionDialog,
+    setPatternManagerOpen,
   } = useAppStore();
 
   const circleOptions: DropdownOption[] = [
@@ -729,6 +733,12 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
                 active={activeTool === 'hatch'}
               />
               <RibbonButton
+                icon={<HatchIcon size={24} />}
+                label="Pattern Manager"
+                onClick={() => setPatternManagerOpen(true)}
+                tooltip="Manage hatch patterns"
+              />
+              <RibbonButton
                 icon={<InsulationIcon size={24} />}
                 label="Insulation"
                 onClick={() => {}}
@@ -760,8 +770,9 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
               <RibbonButton
                 icon={<SteelSectionIcon size={24} />}
                 label="Section"
-                onClick={() => console.log('Section')}
-                disabled={true}
+                onClick={openSectionDialog}
+                disabled={editorMode !== 'drawing'}
+                tooltip="Insert structural profile section"
               />
             </RibbonGroup>
           </div>

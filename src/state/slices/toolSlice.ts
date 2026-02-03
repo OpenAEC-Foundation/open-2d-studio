@@ -71,11 +71,12 @@ export interface ToolState {
   modifyRefShapeId: string | null;  // For trim/extend: cutting/boundary edge ID
 
   // Hatch tool options
-  hatchPatternType: 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots';
+  hatchPatternType: 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots' | 'custom';
   hatchPatternAngle: number;
   hatchPatternScale: number;
   hatchFillColor: string;
   hatchBackgroundColor: string | null;
+  hatchCustomPatternId: string | null;  // ID of custom pattern (when patternType is 'custom')
 }
 
 // ============================================================================
@@ -135,11 +136,12 @@ export interface ToolActions {
   setArrayAngle: (angle: number) => void;
 
   // Hatch tool actions
-  setHatchPatternType: (type: 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots') => void;
+  setHatchPatternType: (type: 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots' | 'custom') => void;
   setHatchPatternAngle: (angle: number) => void;
   setHatchPatternScale: (scale: number) => void;
   setHatchFillColor: (color: string) => void;
   setHatchBackgroundColor: (color: string | null) => void;
+  setHatchCustomPatternId: (id: string | null) => void;
 }
 
 export type ToolSlice = ToolState & ToolActions;
@@ -212,6 +214,7 @@ export const initialToolState: ToolState = {
   hatchPatternScale: 1,
   hatchFillColor: '#ffffff',
   hatchBackgroundColor: null,
+  hatchCustomPatternId: null,
 };
 
 // ============================================================================
@@ -462,4 +465,6 @@ export const createToolSlice = (
     set((state) => { state.hatchFillColor = color; }),
   setHatchBackgroundColor: (color) =>
     set((state) => { state.hatchBackgroundColor = color; }),
+  setHatchCustomPatternId: (id) =>
+    set((state) => { state.hatchCustomPatternId = id; }),
 });

@@ -205,6 +205,7 @@ export function useBoxSelection() {
   const {
     viewport,
     shapes,
+    parametricShapes,
     activeTool,
     selectShapes,
     setSelectionBox,
@@ -273,6 +274,7 @@ export function useBoxSelection() {
 
       const selectedIds: string[] = [];
 
+      // Check regular shapes
       for (const shape of shapes) {
         if (!shape.visible || shape.locked) continue;
         if (shape.drawingId !== activeDrawingId) continue;  // Only select shapes in active drawing
@@ -310,9 +312,34 @@ export function useBoxSelection() {
         }
       }
 
+      // Check parametric shapes
+      for (const shape of parametricShapes) {
+        if (!shape.visible || shape.locked) continue;
+        if (shape.drawingId !== activeDrawingId) continue;
+
+        const bounds = shape.generatedGeometry?.bounds;
+        if (!bounds) continue;
+
+        if (box.mode === 'window') {
+          // Window selection: entire shape must be inside
+          const allInside = bounds.minX >= minX && bounds.maxX <= maxX &&
+                           bounds.minY >= minY && bounds.maxY <= maxY;
+          if (allInside) {
+            selectedIds.push(shape.id);
+          }
+        } else {
+          // Crossing selection: bounds overlap is sufficient
+          const overlaps = !(bounds.maxX < minX || bounds.minX > maxX ||
+                            bounds.maxY < minY || bounds.minY > maxY);
+          if (overlaps) {
+            selectedIds.push(shape.id);
+          }
+        }
+      }
+
       return selectedIds;
     },
-    [viewport, shapes, activeDrawingId]
+    [viewport, shapes, parametricShapes, activeDrawingId]
   );
 
   /**

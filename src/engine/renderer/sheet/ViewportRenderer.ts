@@ -7,6 +7,8 @@
  */
 
 import type { Shape, Drawing, SheetViewport, Viewport, Layer, CropRegion, ViewportLayerOverride } from '../types';
+import type { ParametricShape, ProfileParametricShape } from '../../../types/parametric';
+import type { CustomHatchPattern } from '../../../types/hatch';
 import { BaseRenderer } from '../core/BaseRenderer';
 import { ShapeRenderer } from '../core/ShapeRenderer';
 import { HandleRenderer } from '../ui/HandleRenderer';
@@ -15,10 +17,17 @@ import { MM_TO_PIXELS, COLORS } from '../types';
 export interface ViewportRenderOptions {
   /** All layers for filtering */
   layers: Layer[];
+  /** Parametric shapes to render */
+  parametricShapes?: ParametricShape[];
   /** Whether crop region editing is active for this viewport */
   isCropRegionEditing?: boolean;
   /** Current sheet viewport zoom level for proper handle sizing */
   sheetZoom?: number;
+  /** Custom hatch patterns for rendering */
+  customPatterns?: {
+    userPatterns: CustomHatchPattern[];
+    projectPatterns: CustomHatchPattern[];
+  };
 }
 
 export class ViewportRenderer extends BaseRenderer {
@@ -49,6 +58,32 @@ export class ViewportRenderer extends BaseRenderer {
     layers: Layer[],
     layerOverrides?: ViewportLayerOverride[]
   ): Shape[] {
+    return shapes.filter(shape => {
+      // First check if layer exists and is visible globally
+      const layer = layers.find(l => l.id === shape.layerId);
+      if (!layer || !layer.visible) return false;
+
+      // Then check for viewport-specific override
+      if (layerOverrides) {
+        const override = layerOverrides.find(o => o.layerId === shape.layerId);
+        if (override && override.visible !== undefined) {
+          return override.visible;
+        }
+      }
+
+      // Default to layer's global visibility
+      return true;
+    });
+  }
+
+  /**
+   * Filter parametric shapes based on layer overrides
+   */
+  private filterParametricByLayerOverrides(
+    shapes: ParametricShape[],
+    layers: Layer[],
+    layerOverrides?: ViewportLayerOverride[]
+  ): ParametricShape[] {
     return shapes.filter(shape => {
       // First check if layer exists and is visible globally
       const layer = layers.find(l => l.id === shape.layerId);
@@ -169,6 +204,11 @@ export class ViewportRenderer extends BaseRenderer {
     const isCropRegionEditing = options?.isCropRegionEditing || false;
     const sheetZoom = options?.sheetZoom || 1;
 
+    // Set custom patterns for hatch rendering
+    if (options?.customPatterns) {
+      this.shapeRenderer.setCustomPatterns(options.customPatterns.userPatterns, options.customPatterns.projectPatterns);
+    }
+
     // Get the drawing to access its boundary
     const drawing = drawings.find(d => d.id === vp.drawingId);
 
@@ -186,13 +226,18 @@ export class ViewportRenderer extends BaseRenderer {
     ctx.rect(vpX, vpY, vpWidth, vpHeight);
     ctx.clip();
 
-    // Draw viewport background (slightly off-white)
-    ctx.fillStyle = '#fafafa';
+    // Draw viewport background (white - same as paper)
+    ctx.fillStyle = '#ffffff';
     ctx.fillRect(vpX, vpY, vpWidth, vpHeight);
 
     // Get shapes for this drawing, filtered by visibility and layer overrides
     let drawingShapes = shapes.filter(s => s.drawingId === vp.drawingId && s.visible);
     drawingShapes = this.filterShapesByLayerOverrides(drawingShapes, layers, vp.layerOverrides);
+
+    // Get parametric shapes for this drawing
+    const parametricShapes = options?.parametricShapes || [];
+    let drawingParametricShapes = parametricShapes.filter(s => s.drawingId === vp.drawingId && s.visible);
+    drawingParametricShapes = this.filterParametricByLayerOverrides(drawingParametricShapes, layers, vp.layerOverrides);
 
     // Calculate transform for viewport
     const vpCenterX = vpX + vpWidth / 2;
@@ -213,6 +258,11 @@ export class ViewportRenderer extends BaseRenderer {
     // Draw shapes (invertColors=true to convert white strokes to black on white paper)
     for (const shape of drawingShapes) {
       this.shapeRenderer.drawShapeSimple(shape, true);
+    }
+
+    // Draw parametric shapes
+    for (const pShape of drawingParametricShapes) {
+      this.drawParametricShapeSimple(pShape, true);
     }
 
     // Draw boundary indicator in viewport (thin line) - only if no crop region
@@ -329,5 +379,52 @@ export class ViewportRenderer extends BaseRenderer {
     }
     const inverse = Math.round(1 / scale);
     return `1:${inverse}`;
+  }
+
+  /**
+   * Draw a parametric shape simply (for viewport rendering)
+   */
+  private drawParametricShapeSimple(shape: ParametricShape, invertColors: boolean = false): void {
+    const ctx = this.ctx;
+
+    if (shape.parametricType !== 'profile') return;
+
+    const profileShape = shape as ProfileParametricShape;
+    const geometry = profileShape.generatedGeometry;
+
+    if (!geometry || geometry.outlines.length === 0) return;
+
+    // Determine stroke color
+    let strokeColor = shape.style.strokeColor;
+    if (invertColors && strokeColor === '#ffffff') {
+      strokeColor = '#000000';
+    }
+
+    ctx.save();
+    ctx.strokeStyle = strokeColor;
+    ctx.lineWidth = shape.style.strokeWidth;
+
+    // Draw each outline
+    for (let i = 0; i < geometry.outlines.length; i++) {
+      const outline = geometry.outlines[i];
+      const closed = geometry.closed[i];
+
+      if (outline.length < 2) continue;
+
+      ctx.beginPath();
+      ctx.moveTo(outline[0].x, outline[0].y);
+
+      for (let j = 1; j < outline.length; j++) {
+        ctx.lineTo(outline[j].x, outline[j].y);
+      }
+
+      if (closed) {
+        ctx.closePath();
+      }
+
+      ctx.stroke();
+    }
+
+    ctx.restore();
   }
 }

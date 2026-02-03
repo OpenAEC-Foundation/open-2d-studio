@@ -32,11 +32,17 @@ export const DEFAULT_BOUNDARY: DrawingBoundary = {
 };
 
 /**
+ * Default drawing scale (1:50)
+ */
+export const DEFAULT_SCALE = 0.02;
+
+/**
  * Create a new drawing
  */
 export function createDrawing(
   name: string,
-  boundary?: Partial<DrawingBoundary>
+  boundary?: Partial<DrawingBoundary>,
+  scale?: number
 ): Drawing {
   return {
     id: generateDrawingId(),
@@ -45,6 +51,7 @@ export function createDrawing(
       ...DEFAULT_BOUNDARY,
       ...boundary,
     },
+    scale: scale ?? DEFAULT_SCALE,
     createdAt: new Date().toISOString(),
     modifiedAt: new Date().toISOString(),
   };

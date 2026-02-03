@@ -7,6 +7,8 @@ interface BackstageProps {
   isOpen: boolean;
   onClose: () => void;
   initialView?: BackstageView;
+  /** Callback to open the Sheet Template Import dialog (rendered in App.tsx) */
+  onOpenSheetTemplateImport?: () => void;
 }
 
 interface BackstageItemProps {
@@ -124,7 +126,7 @@ function FeedbackPanel() {
   );
 }
 
-export function Backstage({ isOpen, onClose, initialView }: BackstageProps) {
+export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImport }: BackstageProps) {
   const { handleNew, handleOpen, handleSave, handleSaveAs, handleExportSVG, handleExportDXF, handleExportIFC, handleExportJSON, handleImportDXF, handlePrint, handleExit } = useFileOperations();
   const [activeView, setActiveView] = useState<BackstageView>('none');
 
@@ -142,6 +144,9 @@ export function Backstage({ isOpen, onClose, initialView }: BackstageProps) {
 
   if (!isOpen) return null;
 
+  // Helper to close Backstage before executing an action.
+  // IMPORTANT: Always use action() wrapper for Import/Export buttons
+  // so the Backstage closes before the dialog appears.
   const action = (fn: () => void | Promise<void>) => async () => {
     onClose();
     await fn();
@@ -276,6 +281,20 @@ export function Backstage({ isOpen, onClose, initialView }: BackstageProps) {
                 <div>
                   <div className="text-sm font-medium text-[#e2e8f0]">DXF File</div>
                   <div className="text-xs text-[#64748b] mt-0.5">Import geometry from DXF format (.dxf)</div>
+                </div>
+              </button>
+              <button
+                className="flex items-center gap-4 px-5 py-4 rounded bg-[#1e293b] border border-[#334155] hover:border-[#475569] hover:bg-[#253349] transition-colors cursor-default text-left"
+                onClick={action(() => onOpenSheetTemplateImport?.())}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2">
+                  <rect x="3" y="3" width="18" height="18" rx="2"/>
+                  <line x1="3" y1="15" x2="21" y2="15"/>
+                  <line x1="12" y1="15" x2="12" y2="21"/>
+                </svg>
+                <div>
+                  <div className="text-sm font-medium text-[#e2e8f0]">Sheet Template</div>
+                  <div className="text-xs text-[#64748b] mt-0.5">Import SVG-based sheet template (.svg)</div>
                 </div>
               </button>
             </div>
@@ -523,6 +542,7 @@ export function Backstage({ isOpen, onClose, initialView }: BackstageProps) {
           </div>
         )}
       </div>
+
     </div>
   );
 }

@@ -177,43 +177,12 @@ export const createViewportEditSlice = (
       const dx = sheetPos.x - dragStart.x;
       const dy = sheetPos.y - dragStart.y;
 
-      // Apply changes based on which handle is being dragged
+      // Only allow moving (center handle) - size is derived from boundary × scale (Revit-style)
       if (activeHandle === 'center') {
-        // Move entire viewport
         viewport.x = originalViewport.x + dx;
         viewport.y = originalViewport.y + dy;
-      } else {
-        // Resize based on handle
-        let newX = originalViewport.x;
-        let newY = originalViewport.y;
-        let newWidth = originalViewport.width;
-        let newHeight = originalViewport.height;
-
-        // Handle horizontal resizing
-        if (activeHandle.includes('left')) {
-          newX = originalViewport.x + dx;
-          newWidth = originalViewport.width - dx;
-        } else if (activeHandle.includes('right')) {
-          newWidth = originalViewport.width + dx;
-        }
-
-        // Handle vertical resizing
-        if (activeHandle.includes('top')) {
-          newY = originalViewport.y + dy;
-          newHeight = originalViewport.height - dy;
-        } else if (activeHandle.includes('bottom')) {
-          newHeight = originalViewport.height + dy;
-        }
-
-        // Ensure minimum size (20mm)
-        const minSize = 20;
-        if (newWidth >= minSize && newHeight >= minSize) {
-          viewport.x = newX;
-          viewport.y = newY;
-          viewport.width = newWidth;
-          viewport.height = newHeight;
-        }
       }
+      // Note: Resize handles are ignored - viewport size is controlled by scale
 
       sheet.modifiedAt = new Date().toISOString();
     }),

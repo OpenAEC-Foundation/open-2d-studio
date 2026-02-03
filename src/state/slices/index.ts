@@ -112,3 +112,21 @@ export {
   initialDraftPlacementState,
   createDraftPlacementSlice,
 } from './drawingPlacementSlice';
+
+// Parametric Slice
+export {
+  type ParametricState,
+  type ParametricActions,
+  type ParametricSlice,
+  initialParametricState,
+  createParametricSlice,
+} from './parametricSlice';
+
+// Hatch Slice
+export {
+  type HatchState,
+  type HatchActions,
+  type HatchSlice,
+  initialHatchState,
+  createHatchSlice,
+} from './hatchSlice';

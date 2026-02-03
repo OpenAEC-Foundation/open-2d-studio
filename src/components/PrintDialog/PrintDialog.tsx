@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { X, Printer, FileDown, Save, Trash2, ChevronRight } from 'lucide-react';
+import { invoke } from '@tauri-apps/api/core';
 import { useAppStore } from '../../state/appStore';
 import type { PrintAppearance, RasterQuality, PrintRange } from '../../state/slices/uiSlice';
 import { renderShapesToCanvas } from './printRenderer';
@@ -7,6 +8,7 @@ import { exportToPDF } from './pdfExport';
 import { printViaWindow } from './browserPrint';
 import { SheetSelectionDialog } from './SheetSelectionDialog';
 import { getTemplateById } from '../../services/titleBlockService';
+import { loadCustomSVGTemplates, renderSVGTitleBlock } from '../../services/svgTitleBlockService';
 
 const PAPER_SIZES: Record<string, { width: number; height: number; label: string }> = {
   'A4': { width: 210, height: 297, label: 'A4 (210 x 297 mm)' },
@@ -34,6 +36,7 @@ interface PrintDialogProps {
 
 export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
   const shapes = useAppStore(s => s.shapes);
+  const parametricShapes = useAppStore(s => s.parametricShapes);
   const viewport = useAppStore(s => s.viewport);
   const canvasSize = useAppStore(s => s.canvasSize);
   const sheets = useAppStore(s => s.sheets);
@@ -42,6 +45,8 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
   const editorMode = useAppStore(s => s.editorMode);
   const layers = useAppStore(s => s.layers);
   const projectName = useAppStore(s => s.projectName);
+  const userPatterns = useAppStore(s => s.userPatterns);
+  const projectPatterns = useAppStore(s => s.projectPatterns);
 
   const settings = useAppStore(s => s.printSettings);
   const savedPresets = useAppStore(s => s.savedPrintPresets);
@@ -191,7 +196,7 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
     }
   }, [settings.plotArea, calculateExtents, viewport, canvasSize]);
 
-  const generatePreview = useCallback(() => {
+  const generatePreview = useCallback(async () => {
     const paper = PAPER_SIZES[settings.paperSize];
     if (!paper) return;
     const isLandscape = settings.orientation === 'landscape';
@@ -255,7 +260,7 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
       ctx.lineWidth = 0.5 / fitScale;
       ctx.strokeRect(0, 0, sheetW, sheetH);
 
-      renderSheetPreview(ctx, activeSheet, sheetW, sheetH, 1);
+      await renderSheetPreview(ctx, activeSheet, sheetW, sheetH, 1);
       ctx.restore();
     } else {
       // Drawing mode: render shapes fitted to paper
@@ -301,6 +306,7 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
         offsetY,
         appearance: settings.appearance,
         plotLineweights: settings.plotLineweights,
+        customPatterns: [...userPatterns, ...projectPatterns],
       });
     }
 
@@ -313,15 +319,30 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
   }, [visibleShapes, settings, getPlotBounds, isSheetMode, activeSheet, shapes, layers]);
 
   // Render a sheet onto the preview canvas (title block, viewports with shapes)
-  const renderSheetPreview = useCallback((
+  const renderSheetPreview = useCallback(async (
     ctx: CanvasRenderingContext2D,
     sheet: typeof activeSheet & {},
     canvasW: number,
     canvasH: number,
     previewScale: number,
-  ) => {
+  ): Promise<void> => {
     const MM = previewScale; // 1mm = previewScale pixels in the preview
     const PX_PER_MM = 3.78; // screen pixels per mm (MM_TO_PIXELS)
+
+    // Check for full-page SVG template
+    const svgTemplateId = (sheet.titleBlock as { svgTemplateId?: string }).svgTemplateId;
+    let isFullPageSvg = false;
+    let svgTemplate: ReturnType<typeof loadCustomSVGTemplates>[0] | undefined;
+
+    if (svgTemplateId) {
+      const svgTemplates = loadCustomSVGTemplates();
+      svgTemplate = svgTemplates.find(t => t.id === svgTemplateId);
+      if (svgTemplate?.isFullPage) {
+        isFullPageSvg = true;
+        // For full-page templates, render SVG as background
+        await renderSvgToCanvas(ctx, svgTemplate, sheet.titleBlock.fields, 0, 0, canvasW, canvasH);
+      }
+    }
 
     // Draw viewports
     for (const vp of sheet.viewports) {
@@ -337,7 +358,9 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
 
       // Render shapes inside this viewport
       const vpShapes = shapes.filter(s => s.drawingId === vp.drawingId && s.visible);
-      if (vpShapes.length > 0) {
+      const vpParametricShapes = parametricShapes.filter(s => s.drawingId === vp.drawingId && s.visible);
+
+      if (vpShapes.length > 0 || vpParametricShapes.length > 0) {
         ctx.save();
         ctx.beginPath();
         ctx.rect(vpX, vpY, vpW, vpH);
@@ -353,7 +376,39 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
           offsetY: vpCenterY - vp.centerY * vpScale,
           appearance: settings.appearance,
           plotLineweights: settings.plotLineweights,
+          customPatterns: [...userPatterns, ...projectPatterns],
         });
+
+        // Render parametric shapes
+        for (const pShape of vpParametricShapes) {
+          if (pShape.parametricType !== 'profile') continue;
+          const geometry = (pShape as { generatedGeometry?: { outlines: { x: number; y: number }[][]; closed: boolean[] } }).generatedGeometry;
+          if (!geometry || geometry.outlines.length === 0) continue;
+
+          let strokeColor = pShape.style.strokeColor;
+          if (settings.appearance === 'blackLines') {
+            strokeColor = '#000000';
+          } else if (strokeColor === '#ffffff') {
+            strokeColor = '#000000';
+          }
+
+          ctx.strokeStyle = strokeColor;
+          ctx.lineWidth = pShape.style.strokeWidth * vpScale;
+
+          for (let i = 0; i < geometry.outlines.length; i++) {
+            const outline = geometry.outlines[i];
+            const closed = geometry.closed[i];
+            if (outline.length < 2) continue;
+
+            ctx.beginPath();
+            ctx.moveTo(outline[0].x * vpScale + vpCenterX - vp.centerX * vpScale, outline[0].y * vpScale + vpCenterY - vp.centerY * vpScale);
+            for (let j = 1; j < outline.length; j++) {
+              ctx.lineTo(outline[j].x * vpScale + vpCenterX - vp.centerX * vpScale, outline[j].y * vpScale + vpCenterY - vp.centerY * vpScale);
+            }
+            if (closed) ctx.closePath();
+            ctx.stroke();
+          }
+        }
 
         ctx.restore();
       }
@@ -364,29 +419,39 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
       ctx.strokeRect(vpX, vpY, vpW, vpH);
     }
 
-    // Draw title block
-    if (sheet.titleBlock.visible) {
+    // Draw title block (skip if full-page SVG already rendered)
+    if (sheet.titleBlock.visible && !isFullPageSvg) {
       const tb = sheet.titleBlock;
-      const tbW = tb.width * MM;
-      const tbH = tb.height * MM;
-      const tbX = canvasW - tbW - tb.x * MM;
-      const tbY = canvasH - tbH - tb.y * MM;
 
-      // Get template if available (EnhancedTitleBlock has templateId)
-      const templateId = (tb as { templateId?: string }).templateId;
-      const template = templateId ? getTemplateById(templateId) : undefined;
+      // Check for SVG template (corner-style, not full-page)
+      if (svgTemplate && !svgTemplate.isFullPage) {
+        const tbW = svgTemplate.width * MM;
+        const tbH = svgTemplate.height * MM;
+        const tbX = canvasW - tbW - (tb.x || 10) * MM;
+        const tbY = canvasH - tbH - (tb.y || 10) * MM;
+        await renderSvgToCanvas(ctx, svgTemplate, tb.fields, tbX, tbY, tbW, tbH);
+      } else if (!svgTemplateId) {
+        // Legacy grid-based or template-based title block
+        const tbW = tb.width * MM;
+        const tbH = tb.height * MM;
+        const tbX = canvasW - tbW - tb.x * MM;
+        const tbY = canvasH - tbH - tb.y * MM;
 
-      // Title block background
-      ctx.fillStyle = template?.layout?.backgroundColor || '#f8f8f8';
-      ctx.fillRect(tbX, tbY, tbW, tbH);
+        // Get template if available (EnhancedTitleBlock has templateId)
+        const templateId = (tb as { templateId?: string }).templateId;
+        const template = templateId ? getTemplateById(templateId) : undefined;
 
-      // Title block border (borderWidth is in screen px, convert to mm)
-      const borderWidth = (template?.layout?.borderWidth || 2) / PX_PER_MM * MM;
-      ctx.strokeStyle = template?.layout?.gridColor || '#000000';
-      ctx.lineWidth = borderWidth;
-      ctx.strokeRect(tbX, tbY, tbW, tbH);
+        // Title block background
+        ctx.fillStyle = template?.layout?.backgroundColor || '#f8f8f8';
+        ctx.fillRect(tbX, tbY, tbW, tbH);
 
-      if (template) {
+        // Title block border (borderWidth is in screen px, convert to mm)
+        const borderWidth = (template?.layout?.borderWidth || 2) / PX_PER_MM * MM;
+        ctx.strokeStyle = template?.layout?.gridColor || '#000000';
+        ctx.lineWidth = borderWidth;
+        ctx.strokeRect(tbX, tbY, tbW, tbH);
+
+        if (template) {
         // Template-based layout (matches TitleBlockRenderer.drawTemplateLayout)
         // Font sizes in templates are in screen pixels; convert to mm (our coordinate system)
         const PX = 1 / PX_PER_MM; // convert 1 screen pixel to mm
@@ -485,8 +550,49 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
         }
         ctx.textBaseline = 'alphabetic';
       }
+      }
     }
-  }, [shapes, settings.appearance, settings.plotLineweights]);
+  }, [shapes, parametricShapes, settings.appearance, settings.plotLineweights, userPatterns, projectPatterns]);
+
+  // Helper to render SVG template to canvas (returns Promise for async loading)
+  const renderSvgToCanvas = useCallback((
+    ctx: CanvasRenderingContext2D,
+    template: ReturnType<typeof loadCustomSVGTemplates>[0],
+    fields: { id: string; value: string }[],
+    x: number,
+    y: number,
+    width: number,
+    height: number
+  ): Promise<void> => {
+    return new Promise((resolve) => {
+      // Build field values
+      const fieldValues: Record<string, string> = {};
+      for (const field of fields) {
+        fieldValues[field.id] = field.value || '';
+      }
+
+      // Render SVG with substituted values
+      const renderedSvg = renderSVGTitleBlock(template, fieldValues);
+
+      // Create an image from the SVG and draw it
+      const img = new Image();
+      const blob = new Blob([renderedSvg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+
+      img.onload = () => {
+        ctx.drawImage(img, x, y, width, height);
+        URL.revokeObjectURL(url);
+        resolve();
+      };
+
+      img.onerror = () => {
+        URL.revokeObjectURL(url);
+        resolve(); // Resolve anyway to not block
+      };
+
+      img.src = url;
+    });
+  }, []);
 
   useEffect(() => {
     if (isOpen) generatePreview();
@@ -495,13 +601,26 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
   const handleExportPDF = async () => {
     setIsExporting(true);
     try {
-      await exportToPDF({
+      const filePath = await exportToPDF({
         shapes: visibleShapes,
         sheets: settings.printRange === 'selectedSheets' ? sheets : undefined,
-        allShapes: settings.printRange === 'selectedSheets' ? shapes : undefined,
+        allShapes: shapes,
+        allParametricShapes: parametricShapes,
         settings,
         projectName,
+        activeSheet: isSheetMode ? activeSheet : null,
+        customPatterns: [...userPatterns, ...projectPatterns],
       });
+      if (filePath) {
+        // Open the exported PDF with default application
+        try {
+          await invoke('open_file_with_default_app', { path: filePath });
+        } catch (openError) {
+          console.warn('Could not open PDF:', openError);
+        }
+        // Close the dialog
+        onClose();
+      }
     } catch (error) {
       console.error('PDF export failed:', error);
       alert('Export failed: ' + (error as Error).message);
@@ -510,7 +629,7 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
     }
   };
 
-  const handlePrint = () => {
+  const handlePrint = async () => {
     const paper = PAPER_SIZES[settings.paperSize];
     if (!paper) return;
     const isLandscape = settings.orientation === 'landscape';
@@ -553,7 +672,7 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
         ctx.scale(fitScale, fitScale);
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, sheetW, sheetH);
-        renderSheetPreview(ctx, activeSheet, sheetW, sheetH, 1);
+        await renderSheetPreview(ctx, activeSheet, sheetW, sheetH, 1);
         ctx.restore();
       }
     } else {
@@ -593,6 +712,7 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
         offsetY,
         appearance: settings.appearance,
         plotLineweights: settings.plotLineweights,
+        customPatterns: [...userPatterns, ...projectPatterns],
       });
     }
 
@@ -629,20 +749,21 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
       <div
         ref={dialogRef}
-        className="bg-cad-surface border border-cad-border rounded-lg shadow-2xl w-[900px] max-h-[90vh] overflow-hidden flex flex-col"
+        className="bg-cad-surface border border-cad-border shadow-xl w-[900px] h-[600px] flex flex-col"
         style={dragPos ? { position: 'fixed', left: dragPos.x, top: dragPos.y, margin: 0 } : undefined}
       >
         {/* Header */}
         <div
-          className="flex items-center justify-between px-3 py-1.5 border-b border-cad-border cursor-move select-none"
+          className="flex items-center justify-between px-3 py-1.5 border-b border-cad-border select-none"
+          style={{ background: 'linear-gradient(to bottom, #ffffff, #f5f5f5)', borderColor: '#d4d4d4' }}
           onMouseDown={handleDragStart}
         >
-          <h2 className="text-sm font-semibold text-cad-text flex items-center gap-1.5">
+          <h2 className="text-xs font-semibold text-gray-800 flex items-center gap-1.5">
             <Printer size={14} />
             Print / Plot
           </h2>
-          <button onClick={onClose} className="text-cad-text-dim hover:text-cad-text transition-colors">
-            <X size={16} />
+          <button onClick={onClose} className="p-0.5 hover:bg-cad-hover rounded transition-colors text-gray-600 hover:text-gray-800 cursor-default -mr-1">
+            <X size={14} />
           </button>
         </div>
 
@@ -926,26 +1047,26 @@ export function PrintDialog({ isOpen, onClose }: PrintDialogProps) {
         </div>
 
         {/* Footer */}
-        <div className="flex items-center justify-end gap-3 px-4 py-3 border-t border-cad-border">
+        <div className="flex items-center justify-end gap-2 px-3 py-2 border-t border-cad-border">
           <button
             onClick={onClose}
-            className="px-4 py-2 text-sm text-cad-text hover:bg-cad-border rounded transition-colors"
+            className="px-3 py-1 text-xs bg-cad-input border border-cad-border text-cad-text hover:bg-cad-hover"
           >
             Cancel
           </button>
           <button
             onClick={handleExportPDF}
             disabled={isExporting}
-            className="px-4 py-2 text-sm bg-cad-bg border border-cad-border text-cad-text rounded hover:border-cad-accent transition-colors disabled:opacity-50 flex items-center gap-2"
+            className="px-3 py-1 text-xs bg-cad-input border border-cad-border text-cad-text hover:bg-cad-hover disabled:opacity-50 flex items-center gap-1"
           >
-            <FileDown size={16} />
+            <FileDown size={14} />
             {isExporting ? 'Exporting...' : 'Export PDF'}
           </button>
           <button
             onClick={handlePrint}
-            className="px-4 py-2 text-sm bg-cad-accent text-white rounded hover:bg-cad-accent/80 transition-colors flex items-center gap-2"
+            className="px-3 py-1 text-xs bg-cad-accent text-white hover:bg-cad-accent/80 flex items-center gap-1"
           >
-            <Printer size={16} />
+            <Printer size={14} />
             Print
           </button>
         </div>

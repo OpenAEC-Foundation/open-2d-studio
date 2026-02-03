@@ -4,6 +4,7 @@
  */
 
 import type { Point, Shape, RectangleShape, TextShape, ArcShape, EllipseShape, HatchShape } from '../../types/geometry';
+import type { ParametricShape, ProfileParametricShape } from '../../types/parametric';
 import { isPointNearSpline } from './SplineUtils';
 import type { DimensionShape } from '../../types/dimension';
 import {
@@ -667,6 +668,51 @@ export function isPointNearPolyline(
 }
 
 /**
+ * Check if a point is near a parametric shape's outline geometry
+ * This provides precise hit testing on the actual shape, not just the bounding box
+ */
+export function isPointNearParametricShape(
+  point: Point,
+  shape: ParametricShape,
+  tolerance: number
+): boolean {
+  if (shape.parametricType !== 'profile') {
+    return false;
+  }
+
+  const profileShape = shape as ProfileParametricShape;
+  const geometry = profileShape.generatedGeometry;
+
+  if (!geometry || geometry.outlines.length === 0) {
+    return false;
+  }
+
+  // Check each outline
+  for (let i = 0; i < geometry.outlines.length; i++) {
+    const outline = geometry.outlines[i];
+    const isClosed = geometry.closed[i];
+
+    if (outline.length < 2) continue;
+
+    // Check each segment of the outline
+    for (let j = 0; j < outline.length - 1; j++) {
+      if (isPointNearLine(point, outline[j], outline[j + 1], tolerance)) {
+        return true;
+      }
+    }
+
+    // Check closing segment if closed
+    if (isClosed && outline.length > 2) {
+      if (isPointNearLine(point, outline[outline.length - 1], outline[0], tolerance)) {
+        return true;
+      }
+    }
+  }
+
+  return false;
+}
+
+/**
  * Get bounding box of a shape
  */
 export function getShapeBounds(shape: Shape): ShapeBounds | null {
@@ -937,4 +983,166 @@ export function worldToScreen(
     x: worldX * viewport.zoom + viewport.offsetX,
     y: worldY * viewport.zoom + viewport.offsetY,
   };
+}
+
+/**
+ * Check if a point is inside a circle
+ */
+export function isPointInsideCircle(point: Point, center: Point, radius: number): boolean {
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  return dx * dx + dy * dy <= radius * radius;
+}
+
+/**
+ * Check if a point is inside a rectangle (accounting for rotation)
+ */
+export function isPointInsideRectangle(point: Point, rect: RectangleShape): boolean {
+  const { topLeft, width, height, rotation } = rect;
+  const cx = topLeft.x + width / 2;
+  const cy = topLeft.y + height / 2;
+
+  // Transform point to rectangle's local coordinate system
+  let testPoint = point;
+  if (rotation !== 0) {
+    const cos = Math.cos(-rotation);
+    const sin = Math.sin(-rotation);
+    const dx = point.x - cx;
+    const dy = point.y - cy;
+    testPoint = {
+      x: cx + dx * cos - dy * sin,
+      y: cy + dx * sin + dy * cos,
+    };
+  }
+
+  return (
+    testPoint.x >= topLeft.x &&
+    testPoint.x <= topLeft.x + width &&
+    testPoint.y >= topLeft.y &&
+    testPoint.y <= topLeft.y + height
+  );
+}
+
+/**
+ * Check if a point is inside an ellipse (accounting for rotation)
+ */
+export function isPointInsideEllipse(point: Point, ellipse: EllipseShape): boolean {
+  const { center, radiusX, radiusY, rotation } = ellipse;
+
+  // Transform point to ellipse's local coordinate system
+  const cos = Math.cos(-rotation);
+  const sin = Math.sin(-rotation);
+  const dx = point.x - center.x;
+  const dy = point.y - center.y;
+  const localX = dx * cos - dy * sin;
+  const localY = dx * sin + dy * cos;
+
+  // Check if inside ellipse: (x/a)² + (y/b)² <= 1
+  return (localX / radiusX) ** 2 + (localY / radiusY) ** 2 <= 1;
+}
+
+/**
+ * Check if a point is inside any closed shape
+ * Returns the shape if found, null otherwise
+ */
+export function findClosedShapeContainingPoint(point: Point, shapes: Shape[]): Shape | null {
+  // Check shapes in reverse order (topmost first)
+  for (let i = shapes.length - 1; i >= 0; i--) {
+    const shape = shapes[i];
+    if (!shape.visible) continue;
+
+    switch (shape.type) {
+      case 'circle':
+        if (isPointInsideCircle(point, shape.center, shape.radius)) {
+          return shape;
+        }
+        break;
+      case 'rectangle':
+        if (isPointInsideRectangle(point, shape)) {
+          return shape;
+        }
+        break;
+      case 'ellipse':
+        if (isPointInsideEllipse(point, shape)) {
+          return shape;
+        }
+        break;
+      case 'polyline':
+        if (shape.closed && isPointInPolygon(point, shape.points)) {
+          return shape;
+        }
+        break;
+      case 'hatch':
+        // Don't allow hatching inside existing hatch
+        break;
+    }
+  }
+  return null;
+}
+
+/**
+ * Generate boundary points from a closed shape for hatch creation
+ */
+export function getShapeBoundaryPoints(shape: Shape, segmentCount: number = 64): Point[] {
+  switch (shape.type) {
+    case 'circle': {
+      // Generate points around the circle
+      const points: Point[] = [];
+      for (let i = 0; i < segmentCount; i++) {
+        const angle = (i / segmentCount) * Math.PI * 2;
+        points.push({
+          x: shape.center.x + shape.radius * Math.cos(angle),
+          y: shape.center.y + shape.radius * Math.sin(angle),
+        });
+      }
+      return points;
+    }
+    case 'rectangle': {
+      const { topLeft, width, height, rotation } = shape;
+      const cx = topLeft.x + width / 2;
+      const cy = topLeft.y + height / 2;
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+
+      // Corner offsets from center
+      const corners = [
+        { x: -width / 2, y: -height / 2 },
+        { x: width / 2, y: -height / 2 },
+        { x: width / 2, y: height / 2 },
+        { x: -width / 2, y: height / 2 },
+      ];
+
+      // Rotate and translate corners
+      return corners.map(c => ({
+        x: cx + c.x * cos - c.y * sin,
+        y: cy + c.x * sin + c.y * cos,
+      }));
+    }
+    case 'ellipse': {
+      // Generate points around the ellipse
+      const { center, radiusX, radiusY, rotation } = shape;
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+      const points: Point[] = [];
+
+      for (let i = 0; i < segmentCount; i++) {
+        const angle = (i / segmentCount) * Math.PI * 2;
+        const localX = radiusX * Math.cos(angle);
+        const localY = radiusY * Math.sin(angle);
+        points.push({
+          x: center.x + localX * cos - localY * sin,
+          y: center.y + localX * sin + localY * cos,
+        });
+      }
+      return points;
+    }
+    case 'polyline': {
+      if (shape.closed) {
+        return [...shape.points];
+      }
+      return [];
+    }
+    default:
+      return [];
+  }
 }

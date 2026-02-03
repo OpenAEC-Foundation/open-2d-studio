@@ -10,9 +10,11 @@ import type { EnhancedTitleBlock, TitleBlockTemplate, TitleBlockLayout } from '.
 import { BaseRenderer } from '../core/BaseRenderer';
 import { MM_TO_PIXELS, COLORS } from '../types';
 import { getTemplateById } from '../../../services/titleBlockService';
+import { loadCustomSVGTemplates, renderSVGTitleBlock } from '../../../services/svgTitleBlockService';
 
 export class TitleBlockRenderer extends BaseRenderer {
   private logoImageCache: Map<string, HTMLImageElement> = new Map();
+  private svgImageCache: Map<string, HTMLImageElement> = new Map();
 
   /**
    * Draw title block at bottom-right of paper
@@ -23,6 +25,13 @@ export class TitleBlockRenderer extends BaseRenderer {
     paperHeight: number
   ): void {
     const ctx = this.ctx;
+
+    // Check for SVG template ID
+    const svgTemplateId = (titleBlock as { svgTemplateId?: string }).svgTemplateId;
+    if (svgTemplateId) {
+      this.drawSVGTitleBlock(svgTemplateId, titleBlock, paperWidth, paperHeight);
+      return;
+    }
 
     // Check if this is an enhanced title block
     const isEnhanced = 'templateId' in titleBlock || 'revisionTable' in titleBlock || 'logo' in titleBlock;
@@ -69,6 +78,85 @@ export class TitleBlockRenderer extends BaseRenderer {
       if (enhanced.revisionTable?.visible && enhanced.revisionTable.revisions.length > 0) {
         this.drawRevisionTable(enhanced.revisionTable, tbX, tbY, tbWidth, tbHeight);
       }
+    }
+  }
+
+  /**
+   * Draw SVG-based title block
+   */
+  private drawSVGTitleBlock(
+    svgTemplateId: string,
+    titleBlock: TitleBlock | EnhancedTitleBlock,
+    paperWidth: number,
+    paperHeight: number
+  ): void {
+    const ctx = this.ctx;
+
+    // Load SVG template from localStorage
+    const svgTemplates = loadCustomSVGTemplates();
+    const svgTemplate = svgTemplates.find(t => t.id === svgTemplateId);
+
+    if (!svgTemplate) {
+      // Template not found, fall back to default rendering
+      console.warn(`SVG template ${svgTemplateId} not found`);
+      return;
+    }
+
+    // Determine dimensions and position based on full-page mode
+    let tbWidth: number;
+    let tbHeight: number;
+    let tbX: number;
+    let tbY: number;
+
+    if (svgTemplate.isFullPage) {
+      // Full-page template: cover entire paper
+      tbWidth = paperWidth;
+      tbHeight = paperHeight;
+      tbX = 0;
+      tbY = 0;
+    } else {
+      // Traditional title block: position at bottom-right corner
+      tbWidth = svgTemplate.width * MM_TO_PIXELS;
+      tbHeight = svgTemplate.height * MM_TO_PIXELS;
+      tbX = paperWidth - tbWidth - (titleBlock.x || 10) * MM_TO_PIXELS;
+      tbY = paperHeight - tbHeight - (titleBlock.y || 10) * MM_TO_PIXELS;
+    }
+
+    // Build field values from title block fields
+    const fieldValues: Record<string, string> = {};
+    for (const field of titleBlock.fields) {
+      fieldValues[field.id] = field.value || '';
+    }
+
+    // Render SVG with substituted values
+    const renderedSvg = renderSVGTitleBlock(svgTemplate, fieldValues);
+
+    // Check if we have a cached image for this SVG
+    const cacheKey = `${svgTemplateId}_${JSON.stringify(fieldValues)}`;
+    let img = this.svgImageCache.get(cacheKey);
+
+    if (!img) {
+      // Create new image from SVG
+      img = new Image();
+      const blob = new Blob([renderedSvg], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+
+      img.onload = () => {
+        // Draw the image once loaded
+        ctx.drawImage(img!, tbX, tbY, tbWidth, tbHeight);
+        URL.revokeObjectURL(url);
+      };
+
+      img.onerror = () => {
+        console.error('Failed to load SVG title block');
+        URL.revokeObjectURL(url);
+      };
+
+      img.src = url;
+      this.svgImageCache.set(cacheKey, img);
+    } else if (img.complete) {
+      // Draw cached image
+      ctx.drawImage(img, tbX, tbY, tbWidth, tbHeight);
     }
   }
 

@@ -7,12 +7,15 @@
  */
 
 import type { Shape, Sheet, Drawing, Viewport, SheetViewport, Layer } from '../types';
+import type { ParametricShape } from '../../../types/parametric';
+import type { CustomHatchPattern } from '../../../types/hatch';
 import { BaseRenderer } from '../core/BaseRenderer';
 import { ViewportRenderer } from '../sheet/ViewportRenderer';
 import { TitleBlockRenderer } from '../sheet/TitleBlockRenderer';
 import { AnnotationRenderer } from '../sheet/AnnotationRenderer';
 import { HandleRenderer, ViewportHandleType } from '../ui/HandleRenderer';
 import { PAPER_SIZES, MM_TO_PIXELS, COLORS } from '../types';
+import { loadCustomSVGTemplates } from '../../../services/svgTitleBlockService';
 
 /** Point type for placement preview */
 interface Point {
@@ -36,6 +39,7 @@ export interface SheetRenderOptions {
   sheet: Sheet;
   drawings: Drawing[];
   shapes: Shape[]; // All shapes from all drawings
+  parametricShapes?: ParametricShape[]; // All parametric shapes from all drawings
   layers: Layer[]; // All layers for filtering
   viewport: Viewport; // Pan/zoom for the sheet view
   selectedViewportId?: string | null;
@@ -49,6 +53,11 @@ export interface SheetRenderOptions {
   selectedAnnotationIds?: string[];
   /** Drawing placement preview info */
   placementPreview?: PlacementPreviewInfo;
+  /** Custom hatch patterns for rendering */
+  customPatterns?: {
+    userPatterns: CustomHatchPattern[];
+    projectPatterns: CustomHatchPattern[];
+  };
 }
 
 export class SheetRenderer extends BaseRenderer {
@@ -85,6 +94,7 @@ export class SheetRenderer extends BaseRenderer {
       sheet,
       drawings,
       shapes,
+      parametricShapes,
       layers,
       viewport,
       selectedViewportId,
@@ -93,6 +103,7 @@ export class SheetRenderer extends BaseRenderer {
       cropRegionViewportId,
       selectedAnnotationIds = [],
       placementPreview,
+      customPatterns,
     } = options;
     const ctx = this.ctx;
 
@@ -111,18 +122,34 @@ export class SheetRenderer extends BaseRenderer {
     const paperWidth = paperDims.width * MM_TO_PIXELS;
     const paperHeight = paperDims.height * MM_TO_PIXELS;
 
+    // Check if title block uses a full-page SVG template
+    const svgTemplateId = (sheet.titleBlock as { svgTemplateId?: string }).svgTemplateId;
+    let isFullPageTemplate = false;
+    if (svgTemplateId) {
+      const svgTemplates = loadCustomSVGTemplates();
+      const svgTemplate = svgTemplates.find(t => t.id === svgTemplateId);
+      if (svgTemplate?.isFullPage) {
+        isFullPageTemplate = true;
+      }
+    }
+
     // Draw paper shadow
     ctx.fillStyle = 'rgba(0, 0, 0, 0.3)';
     ctx.fillRect(8, 8, paperWidth, paperHeight);
 
-    // Draw paper background (white)
+    // Always draw white paper background first
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, paperWidth, paperHeight);
 
-    // Draw paper border
-    ctx.strokeStyle = '#888888';
-    ctx.lineWidth = 1 / viewport.zoom;
-    ctx.strokeRect(0, 0, paperWidth, paperHeight);
+    if (isFullPageTemplate) {
+      // For full-page templates, draw the SVG template on top of white background
+      this.titleBlockRenderer.drawTitleBlock(sheet.titleBlock, paperWidth, paperHeight);
+    } else {
+      // Draw paper border (non-full-page templates only - full-page SVG has its own border)
+      ctx.strokeStyle = '#888888';
+      ctx.lineWidth = 1 / viewport.zoom;
+      ctx.strokeRect(0, 0, paperWidth, paperHeight);
+    }
 
     // Draw viewports
     for (const vp of sheet.viewports) {
@@ -138,8 +165,10 @@ export class SheetRenderer extends BaseRenderer {
         isSelected,
         {
           layers,
+          parametricShapes,
           isCropRegionEditing,
           sheetZoom: viewport.zoom,
+          customPatterns,
         }
       );
     }
@@ -158,8 +187,8 @@ export class SheetRenderer extends BaseRenderer {
       });
     }
 
-    // Draw title block
-    if (sheet.titleBlock.visible) {
+    // Draw title block (skip if full-page template - already drawn as background)
+    if (sheet.titleBlock.visible && !isFullPageTemplate) {
       this.titleBlockRenderer.drawTitleBlock(sheet.titleBlock, paperWidth, paperHeight);
     }
 

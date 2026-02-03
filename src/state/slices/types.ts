@@ -179,6 +179,9 @@ export const DEFAULT_DRAWING_BOUNDARY: DrawingBoundary = {
   height: 1000,
 };
 
+// Default drawing scale (1:50 = 0.02, means 1000 drawing units = 20mm on sheet)
+export const DEFAULT_DRAWING_SCALE = 0.02;
+
 // Legacy alias for backward compatibility
 export const DEFAULT_DRAFT_BOUNDARY = DEFAULT_DRAWING_BOUNDARY;
 

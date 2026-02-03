@@ -1,1284 +1,1703 @@
-# Open 2D Studio - Programmatic API Documentation
+# Open 2D Studio - MCP API Reference
 
-## Overview
+This document describes the MCP (Model Context Protocol) tool-based API for Open 2D Studio. All commands use JSON format.
 
-Open 2D Studio exposes a full programmatic API accessible in two ways:
+## Table of Contents
 
-1. **Browser Console** (`window.cad`) -- for interactive scripting inside the app
-2. **HTTP API** (`localhost:49100`) -- for external tools, scripts, and AI assistants to control the app remotely
-
-All examples below work in the browser console or via the `/eval` HTTP endpoint. When using `/eval`, prefix with `return` to get values back.
+- [Getting Started](#getting-started)
+- [Tool Format](#tool-format)
+- [Draw Tools](#draw-tools)
+- [Modify Tools](#modify-tools)
+- [Query Tools](#query-tools)
+- [Selection Tools](#selection-tools)
+- [Layer Tools](#layer-tools)
+- [Viewport Tools](#viewport-tools)
+- [Document Tools](#document-tools)
+- [Style Tools](#style-tools)
+- [Snap Tools](#snap-tools)
+- [History Tools](#history-tools)
 
 ---
 
-## HTTP API (External Access)
+## Getting Started
 
-When the app starts, a local HTTP server launches on `http://127.0.0.1:49100`. External tools can send commands to control the app.
+### Tool Call Format
 
-### Endpoints
+All operations use MCP tool calls in JSON format:
 
-| Method  | Path      | Description                             |
-|---------|-----------|-----------------------------------------|
-| GET     | `/health` | Check if the app is running             |
-| GET     | `/info`   | Get instance info (PID, port, version)  |
-| POST    | `/eval`   | Execute JavaScript in the app context   |
-| OPTIONS | `*`       | CORS preflight (auto-handled)           |
-
-### Health Check
-
-```bash
-curl http://127.0.0.1:49100/health
-# {"status":"ok"}
+```json
+{
+  "tool": "cad_category_action_entity",
+  "arguments": { ... }
+}
 ```
 
-### Instance Info
+### Multiple Operations
 
-```bash
-curl http://127.0.0.1:49100/info
-# {"pid":1234,"port":49100,"version":"0.3.0"}
+Execute multiple tools in sequence:
+
+```json
+[
+  {"tool": "cad_draw_create_rectangle", "arguments": {"topLeft": {"x": 100, "y": 100}, "width": 200, "height": 100}},
+  {"tool": "cad_draw_create_circle", "arguments": {"center": {"x": 200, "y": 150}, "radius": 30}}
+]
 ```
 
-### Eval -- Execute Scripts
+### Response Format
 
-Send a POST request with a JSON body containing a `script` field. The script runs inside the app's webview with full access to `window.cad`. Scripts support `async`/`await`. The eval has a **30-second timeout**.
+All tools return a response:
+
+```json
+{
+  "success": true,
+  "data": { ... },
+  "executionTime": 5.2
+}
+```
+
+Or on error:
+
+```json
+{
+  "success": false,
+  "error": "Error message"
+}
+```
+
+### Point Format
+
+Points can be specified as objects:
+
+```json
+{"x": 100, "y": 200}
+```
+
+---
+
+## Draw Tools
+
+Create shapes in the active drawing.
+
+### cad_draw_create_line
+
+Draw a line between two points.
+
+```json
+{
+  "tool": "cad_draw_create_line",
+  "arguments": {
+    "start": {"x": 0, "y": 0},
+    "end": {"x": 100, "y": 100},
+    "style": {
+      "strokeColor": "#ff0000",
+      "strokeWidth": 2,
+      "lineStyle": "dashed"
+    }
+  }
+}
+```
+
+**Parameters:**
+- `start` (point, required): Start point
+- `end` (point, required): End point
+- `style` (object, optional): Style overrides
+  - `strokeColor`: Hex color (e.g., "#ff0000")
+  - `strokeWidth`: Line width in pixels
+  - `lineStyle`: "solid" | "dashed" | "dotted" | "dashdot"
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_rectangle
+
+Draw a rectangle.
+
+```json
+{
+  "tool": "cad_draw_create_rectangle",
+  "arguments": {
+    "topLeft": {"x": 0, "y": 0},
+    "width": 100,
+    "height": 50,
+    "style": {"fillColor": "#0066cc"}
+  }
+}
+```
+
+**Parameters:**
+- `topLeft` (point, required): Top-left corner
+- `width` (number, required): Width (>= 0)
+- `height` (number, required): Height (>= 0)
+- `rotation` (number, optional): Rotation in radians (default: 0)
+- `style` (object, optional): Style overrides
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_circle
+
+Draw a circle.
+
+```json
+{
+  "tool": "cad_draw_create_circle",
+  "arguments": {
+    "center": {"x": 50, "y": 50},
+    "radius": 25,
+    "style": {"strokeColor": "#00ff00"}
+  }
+}
+```
+
+**Parameters:**
+- `center` (point, required): Center point
+- `radius` (number, required): Radius (>= 0)
+- `style` (object, optional): Style overrides
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_arc
+
+Draw an arc (partial circle).
+
+```json
+{
+  "tool": "cad_draw_create_arc",
+  "arguments": {
+    "center": {"x": 50, "y": 50},
+    "radius": 25,
+    "startAngle": 0,
+    "endAngle": 3.14159
+  }
+}
+```
+
+**Parameters:**
+- `center` (point, required): Center point
+- `radius` (number, required): Radius (>= 0)
+- `startAngle` (number, required): Start angle in radians
+- `endAngle` (number, required): End angle in radians
+- `style` (object, optional): Style overrides
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_ellipse
+
+Draw an ellipse.
+
+```json
+{
+  "tool": "cad_draw_create_ellipse",
+  "arguments": {
+    "center": {"x": 50, "y": 50},
+    "radiusX": 40,
+    "radiusY": 20,
+    "rotation": 0.5
+  }
+}
+```
+
+**Parameters:**
+- `center` (point, required): Center point
+- `radiusX` (number, required): X radius (>= 0)
+- `radiusY` (number, required): Y radius (>= 0)
+- `rotation` (number, optional): Rotation in radians (default: 0)
+- `style` (object, optional): Style overrides
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_polyline
+
+Draw a polyline (connected line segments).
+
+```json
+{
+  "tool": "cad_draw_create_polyline",
+  "arguments": {
+    "points": [
+      {"x": 0, "y": 0},
+      {"x": 50, "y": 100},
+      {"x": 100, "y": 0}
+    ],
+    "closed": true
+  }
+}
+```
+
+**Parameters:**
+- `points` (array of points, required): Vertices (minimum 2)
+- `closed` (boolean, optional): Close the polyline (default: false)
+- `style` (object, optional): Style overrides
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_spline
+
+Draw a smooth spline curve through points.
+
+```json
+{
+  "tool": "cad_draw_create_spline",
+  "arguments": {
+    "points": [
+      {"x": 0, "y": 0},
+      {"x": 50, "y": 100},
+      {"x": 100, "y": 0}
+    ],
+    "closed": false
+  }
+}
+```
+
+**Parameters:**
+- `points` (array of points, required): Control points (minimum 2)
+- `closed` (boolean, optional): Close the spline (default: false)
+- `style` (object, optional): Style overrides
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_text
+
+Add text annotation.
+
+```json
+{
+  "tool": "cad_draw_create_text",
+  "arguments": {
+    "position": {"x": 100, "y": 100},
+    "text": "Hello World",
+    "fontSize": 16,
+    "fontFamily": "Arial",
+    "color": "#ffffff",
+    "bold": true
+  }
+}
+```
+
+**Parameters:**
+- `position` (point, required): Text position
+- `text` (string, required): Text content
+- `fontSize` (number, optional): Font size (default: 12)
+- `fontFamily` (string, optional): Font family (default: "Arial")
+- `rotation` (number, optional): Rotation in radians (default: 0)
+- `alignment` (string, optional): "left" | "center" | "right" (default: "left")
+- `verticalAlignment` (string, optional): "top" | "middle" | "bottom" (default: "top")
+- `color` (string, optional): Text color (default: "#ffffff")
+- `bold` (boolean, optional): Bold text (default: false)
+- `italic` (boolean, optional): Italic text (default: false)
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_point
+
+Draw a point marker.
+
+```json
+{
+  "tool": "cad_draw_create_point",
+  "arguments": {
+    "position": {"x": 50, "y": 50}
+  }
+}
+```
+
+**Parameters:**
+- `position` (point, required): Point position
+- `style` (object, optional): Style overrides
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_dimension
+
+Add a dimension annotation.
+
+```json
+{
+  "tool": "cad_draw_create_dimension",
+  "arguments": {
+    "points": [{"x": 0, "y": 0}, {"x": 100, "y": 0}],
+    "dimensionType": "linear",
+    "dimensionLineOffset": 20
+  }
+}
+```
+
+**Parameters:**
+- `points` (array of points, required): Reference points
+- `dimensionType` (string, optional): "linear" | "aligned" | "angular" | "radial" | "diameter"
+- `dimensionLineOffset` (number, optional): Offset of dimension line (default: 20)
+- `value` (string, optional): Override dimension value
+- `prefix` (string, optional): Text prefix
+- `suffix` (string, optional): Text suffix
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_create_hatch
+
+Create a hatched/filled region.
+
+```json
+{
+  "tool": "cad_draw_create_hatch",
+  "arguments": {
+    "points": [
+      {"x": 0, "y": 0},
+      {"x": 100, "y": 0},
+      {"x": 100, "y": 100},
+      {"x": 0, "y": 100}
+    ],
+    "patternType": "diagonal",
+    "fillColor": "#ff0000"
+  }
+}
+```
+
+**Parameters:**
+- `points` (array of points, required): Boundary polygon vertices
+- `patternType` (string, optional): "solid" | "diagonal" | "crosshatch" | "horizontal" | "vertical" | "dots" | "custom" (default: "solid")
+- `patternAngle` (number, optional): Pattern rotation in degrees (default: 0)
+- `patternScale` (number, optional): Pattern scale multiplier (default: 1)
+- `fillColor` (string, optional): Pattern/fill color (default: "#ffffff")
+- `backgroundColor` (string, optional): Background color (transparent if not set)
+
+**Returns:** `{ "id": "string", "shape": {...} }`
+
+---
+
+### cad_draw_createBulk
+
+Create multiple shapes in a single operation.
+
+```json
+{
+  "tool": "cad_draw_createBulk",
+  "arguments": {
+    "shapes": [
+      {"type": "line", "params": {"start": {"x": 0, "y": 0}, "end": {"x": 100, "y": 0}}},
+      {"type": "line", "params": {"start": {"x": 100, "y": 0}, "end": {"x": 100, "y": 100}}},
+      {"type": "circle", "params": {"center": {"x": 50, "y": 50}, "radius": 20}}
+    ]
+  }
+}
+```
+
+**Parameters:**
+- `shapes` (array, required): Array of shape definitions with `type` and `params`
+
+**Returns:** `{ "count": number, "ids": ["..."], "shapes": [...] }`
+
+---
+
+## Modify Tools
+
+Transform and modify existing shapes.
+
+### cad_modify_move
+
+Move shapes by offset.
+
+```json
+{
+  "tool": "cad_modify_move",
+  "arguments": {
+    "ids": ["shape_123", "shape_456"],
+    "offset": {"x": 50, "y": 50}
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs to move (uses selection if not provided)
+- `offset` (point, required): Translation offset
+
+**Returns:** `{ "movedCount": number, "ids": ["..."] }`
+
+---
+
+### cad_modify_copy
+
+Copy shapes with optional offset.
+
+```json
+{
+  "tool": "cad_modify_copy",
+  "arguments": {
+    "ids": ["shape_123"],
+    "offset": {"x": 20, "y": 20}
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs to copy (uses selection if not provided)
+- `offset` (point, optional): Offset for copies (default: {x: 20, y: 20})
+
+**Returns:** `{ "copiedCount": number, "newIds": ["..."] }`
+
+---
+
+### cad_modify_rotate
+
+Rotate shapes around a center point.
+
+```json
+{
+  "tool": "cad_modify_rotate",
+  "arguments": {
+    "ids": ["shape_123"],
+    "center": {"x": 50, "y": 50},
+    "angle": 0.785
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs (uses selection if not provided)
+- `center` (point, required): Rotation center
+- `angle` (number, required): Rotation angle in radians
+
+**Returns:** `{ "rotatedCount": number, "ids": ["..."] }`
+
+---
+
+### cad_modify_scale
+
+Scale shapes from a center point.
+
+```json
+{
+  "tool": "cad_modify_scale",
+  "arguments": {
+    "ids": ["shape_123"],
+    "center": {"x": 50, "y": 50},
+    "factor": 2.0
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs (uses selection if not provided)
+- `center` (point, required): Scale center
+- `factor` (number, required): Scale factor (min: 0.01)
+
+**Returns:** `{ "scaledCount": number, "ids": ["..."] }`
+
+---
+
+### cad_modify_mirror
+
+Mirror shapes across a line.
+
+```json
+{
+  "tool": "cad_modify_mirror",
+  "arguments": {
+    "ids": ["shape_123"],
+    "p1": {"x": 0, "y": 0},
+    "p2": {"x": 0, "y": 100},
+    "copy": true
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs (uses selection if not provided)
+- `p1` (point, required): First point of mirror line
+- `p2` (point, required): Second point of mirror line
+- `copy` (boolean, optional): Create mirrored copies (default: false)
+
+**Returns:** `{ "mirroredCount": number, "ids": ["..."] }` or `{ "mirroredCount": number, "newIds": ["..."] }` if copy=true
+
+---
+
+### cad_modify_delete
+
+Delete shapes.
+
+```json
+{
+  "tool": "cad_modify_delete",
+  "arguments": {
+    "ids": ["shape_123", "shape_456"]
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs to delete (uses selection if not provided)
+
+**Returns:** `{ "deletedCount": number, "ids": ["..."] }`
+
+---
+
+### cad_modify_update
+
+Update shape properties.
+
+```json
+{
+  "tool": "cad_modify_update",
+  "arguments": {
+    "id": "shape_123",
+    "props": {
+      "visible": true,
+      "locked": false
+    }
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Shape ID
+- `props` (object, required): Properties to update
+
+**Returns:** `{ "id": "string" }`
+
+---
+
+### cad_modify_setStyle
+
+Update shape style.
+
+```json
+{
+  "tool": "cad_modify_setStyle",
+  "arguments": {
+    "ids": ["shape_123"],
+    "style": {
+      "strokeColor": "#ff0000",
+      "strokeWidth": 2,
+      "lineStyle": "dashed",
+      "fillColor": "#00ff00"
+    }
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs (uses selection if not provided)
+- `style` (object, required): Style properties
+
+**Returns:** `{ "styledCount": number, "ids": ["..."] }`
+
+---
+
+### cad_modify_setLayer
+
+Move shapes to a different layer.
+
+```json
+{
+  "tool": "cad_modify_setLayer",
+  "arguments": {
+    "ids": ["shape_123"],
+    "layerId": "layer_456"
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs (uses selection if not provided)
+- `layerId` (string, required): Target layer ID
+
+**Returns:** `{ "movedCount": number, "ids": ["..."], "layerId": "string" }`
+
+---
+
+## Query Tools
+
+Read-only operations to get information about shapes.
+
+### cad_query_get
+
+Get a shape by ID.
+
+```json
+{
+  "tool": "cad_query_get",
+  "arguments": {
+    "id": "shape_123"
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Shape ID
+
+**Returns:** `{ "shape": {...} }`
+
+---
+
+### cad_query_list
+
+List shapes with optional filtering.
+
+```json
+{
+  "tool": "cad_query_list",
+  "arguments": {
+    "type": "line",
+    "layer": "layer_123",
+    "visible": true,
+    "limit": 100,
+    "offset": 0
+  }
+}
+```
+
+**Parameters:**
+- `type` (string, optional): Filter by shape type
+- `layer` (string, optional): Filter by layer ID
+- `drawing` (string, optional): Filter by drawing ID (default: active drawing)
+- `visible` (boolean, optional): Filter by visibility
+- `locked` (boolean, optional): Filter by locked state
+- `limit` (number, optional): Maximum results (default: 1000)
+- `offset` (number, optional): Skip first N results (default: 0)
+
+**Returns:** `{ "shapes": [...], "total": number, "offset": number, "limit": number, "hasMore": boolean }`
+
+---
+
+### cad_query_find
+
+Find shapes within a bounding box.
+
+```json
+{
+  "tool": "cad_query_find",
+  "arguments": {
+    "bounds": {"minX": 0, "minY": 0, "maxX": 100, "maxY": 100},
+    "type": "line",
+    "intersects": true
+  }
+}
+```
+
+**Parameters:**
+- `bounds` (object, required): Bounding box {minX, minY, maxX, maxY}
+- `type` (string, optional): Filter by shape type
+- `intersects` (boolean, optional): Include intersecting shapes (default: true)
+
+**Returns:** `{ "shapes": [...], "count": number }`
+
+---
+
+### cad_query_count
+
+Count shapes with optional filtering.
+
+```json
+{
+  "tool": "cad_query_count",
+  "arguments": {
+    "type": "line",
+    "layer": "layer_123"
+  }
+}
+```
+
+**Parameters:**
+- `type` (string, optional): Filter by shape type
+- `layer` (string, optional): Filter by layer ID
+- `drawing` (string, optional): Filter by drawing ID
+
+**Returns:** `{ "count": number, "byType": {"line": 5, "circle": 3, ...} }`
+
+---
+
+### cad_query_bounds
+
+Get bounding box of shapes.
+
+```json
+{
+  "tool": "cad_query_bounds",
+  "arguments": {
+    "ids": ["shape_123", "shape_456"]
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs (uses all shapes if not provided)
+
+**Returns:** `{ "bounds": {"minX": 0, "minY": 0, "maxX": 100, "maxY": 100}, "width": number, "height": number, "center": {"x": 50, "y": 50} }`
+
+---
+
+### cad_query_selected
+
+Get currently selected shapes.
+
+```json
+{
+  "tool": "cad_query_selected",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "ids": ["..."], "shapes": [...], "count": number }`
+
+---
+
+## Selection Tools
+
+Manage shape selection.
+
+### cad_selection_set
+
+Set the selection to specific shapes.
+
+```json
+{
+  "tool": "cad_selection_set",
+  "arguments": {
+    "ids": ["shape_123", "shape_456"]
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, required): Shape IDs to select
+
+**Returns:** `{ "selectedCount": number, "ids": ["..."] }`
+
+---
+
+### cad_selection_add
+
+Add shapes to current selection.
+
+```json
+{
+  "tool": "cad_selection_add",
+  "arguments": {
+    "ids": ["shape_789"]
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, required): Shape IDs to add
+
+**Returns:** `{ "addedCount": number, "totalSelected": number, "ids": ["..."] }`
+
+---
+
+### cad_selection_remove
+
+Remove shapes from current selection.
+
+```json
+{
+  "tool": "cad_selection_remove",
+  "arguments": {
+    "ids": ["shape_123"]
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, required): Shape IDs to remove
+
+**Returns:** `{ "removedCount": number, "totalSelected": number, "ids": ["..."] }`
+
+---
+
+### cad_selection_clear
+
+Clear all selection.
+
+```json
+{
+  "tool": "cad_selection_clear",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "clearedCount": number }`
+
+---
+
+### cad_selection_all
+
+Select all shapes in the active drawing.
+
+```json
+{
+  "tool": "cad_selection_all",
+  "arguments": {
+    "type": "circle",
+    "layer": "layer_123"
+  }
+}
+```
+
+**Parameters:**
+- `type` (string, optional): Filter by shape type
+- `layer` (string, optional): Filter by layer ID
+
+**Returns:** `{ "selectedCount": number, "ids": ["..."] }`
+
+---
+
+## Layer Tools
+
+Manage layers.
+
+### cad_layer_create
+
+Create a new layer.
+
+```json
+{
+  "tool": "cad_layer_create",
+  "arguments": {
+    "name": "My Layer",
+    "color": "#00ff00",
+    "visible": true,
+    "locked": false,
+    "lineStyle": "solid",
+    "lineWidth": 1
+  }
+}
+```
+
+**Parameters:**
+- `name` (string, required): Layer name
+- `color` (string, optional): Layer color (default: "#ffffff")
+- `visible` (boolean, optional): Layer visibility (default: true)
+- `locked` (boolean, optional): Layer locked state (default: false)
+- `lineStyle` (string, optional): "solid" | "dashed" | "dotted" | "dashdot"
+- `lineWidth` (number, optional): Default line width (default: 1)
+
+**Returns:** `{ "layer": {...} }`
+
+---
+
+### cad_layer_delete
+
+Delete a layer.
+
+```json
+{
+  "tool": "cad_layer_delete",
+  "arguments": {
+    "id": "layer_123"
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Layer ID to delete
+
+**Returns:** `{ "deletedLayer": {...}, "shapesAffected": number }`
+
+---
+
+### cad_layer_update
+
+Update layer properties.
+
+```json
+{
+  "tool": "cad_layer_update",
+  "arguments": {
+    "id": "layer_123",
+    "name": "New Name",
+    "color": "#ff0000",
+    "visible": true,
+    "locked": false
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Layer ID
+- `name` (string, optional): New layer name
+- `color` (string, optional): Layer color
+- `visible` (boolean, optional): Layer visibility
+- `locked` (boolean, optional): Layer locked state
+- `lineStyle` (string, optional): Default line style
+- `lineWidth` (number, optional): Default line width
+
+**Returns:** `{ "layer": {...} }`
+
+---
+
+### cad_layer_setActive
+
+Set the active layer.
+
+```json
+{
+  "tool": "cad_layer_setActive",
+  "arguments": {
+    "id": "layer_123"
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Layer ID to make active
+
+**Returns:** `{ "activeLayerId": "string", "layer": {...} }`
+
+---
+
+### cad_layer_list
+
+List all layers.
+
+```json
+{
+  "tool": "cad_layer_list",
+  "arguments": {
+    "drawing": "drawing_123"
+  }
+}
+```
+
+**Parameters:**
+- `drawing` (string, optional): Filter by drawing ID
+
+**Returns:** `{ "layers": [...], "activeLayerId": "string", "count": number }`
+
+---
+
+### cad_layer_get
+
+Get a layer by ID.
+
+```json
+{
+  "tool": "cad_layer_get",
+  "arguments": {
+    "id": "layer_123"
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Layer ID
+
+**Returns:** `{ "layer": {...}, "shapeCount": number, "isActive": boolean }`
+
+---
+
+## Viewport Tools
+
+Control the view.
+
+### cad_viewport_pan
+
+Pan the viewport by offset.
+
+```json
+{
+  "tool": "cad_viewport_pan",
+  "arguments": {
+    "dx": 100,
+    "dy": 50
+  }
+}
+```
+
+**Parameters:**
+- `dx` (number, required): Horizontal pan amount
+- `dy` (number, required): Vertical pan amount
+
+**Returns:** `{ "viewport": {...} }`
+
+---
+
+### cad_viewport_zoom
+
+Zoom in or out.
+
+```json
+{
+  "tool": "cad_viewport_zoom",
+  "arguments": {
+    "direction": "in",
+    "factor": 1.2,
+    "center": {"x": 100, "y": 100}
+  }
+}
+```
+
+**Parameters:**
+- `direction` (string, required): "in" | "out"
+- `factor` (number, optional): Zoom factor (default: 1.2)
+- `center` (point, optional): Zoom center (screen coordinates)
+
+**Returns:** `{ "viewport": {...} }`
+
+---
+
+### cad_viewport_fit
+
+Fit viewport to show all content or specific shapes.
+
+```json
+{
+  "tool": "cad_viewport_fit",
+  "arguments": {
+    "ids": ["shape_123"],
+    "padding": 50
+  }
+}
+```
+
+**Parameters:**
+- `ids` (array, optional): Shape IDs to fit to (fits all if not provided)
+- `padding` (number, optional): Padding around content (default: 50)
+
+**Returns:** `{ "viewport": {...} }`
+
+---
+
+### cad_viewport_reset
+
+Reset viewport to default position and zoom.
+
+```json
+{
+  "tool": "cad_viewport_reset",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "viewport": {...} }`
+
+---
+
+### cad_viewport_setZoom
+
+Set specific zoom level.
+
+```json
+{
+  "tool": "cad_viewport_setZoom",
+  "arguments": {
+    "level": 1.5,
+    "center": {"x": 50, "y": 50}
+  }
+}
+```
+
+**Parameters:**
+- `level` (number, required): Zoom level (1 = 100%, min: 0.01, max: 100)
+- `center` (point, optional): Zoom center in world coordinates
+
+**Returns:** `{ "viewport": {...} }`
+
+---
+
+### cad_viewport_get
+
+Get current viewport state.
+
+```json
+{
+  "tool": "cad_viewport_get",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "viewport": {...}, "canvasSize": {"width": number, "height": number} }`
+
+---
+
+## Document Tools
+
+Manage drawings and sheets.
+
+### cad_document_newDrawing
+
+Create a new drawing.
+
+```json
+{
+  "tool": "cad_document_newDrawing",
+  "arguments": {
+    "name": "My Drawing",
+    "switchTo": true
+  }
+}
+```
+
+**Parameters:**
+- `name` (string, optional): Drawing name
+- `switchTo` (boolean, optional): Switch to the new drawing (default: true)
+
+**Returns:** `{ "drawing": {...} }`
+
+---
+
+### cad_document_deleteDrawing
+
+Delete a drawing.
+
+```json
+{
+  "tool": "cad_document_deleteDrawing",
+  "arguments": {
+    "id": "drawing_123"
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Drawing ID to delete
+
+**Returns:** `{ "deletedDrawing": {...} }`
+
+---
+
+### cad_document_renameDrawing
+
+Rename a drawing.
+
+```json
+{
+  "tool": "cad_document_renameDrawing",
+  "arguments": {
+    "id": "drawing_123",
+    "name": "New Name"
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Drawing ID
+- `name` (string, required): New name
+
+**Returns:** `{ "drawing": {...} }`
+
+---
+
+### cad_document_switchToDrawing
+
+Switch to a specific drawing.
+
+```json
+{
+  "tool": "cad_document_switchToDrawing",
+  "arguments": {
+    "id": "drawing_123"
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Drawing ID to switch to
+
+**Returns:** `{ "activeDrawingId": "string", "drawing": {...} }`
+
+---
+
+### cad_document_newSheet
+
+Create a new sheet.
+
+```json
+{
+  "tool": "cad_document_newSheet",
+  "arguments": {
+    "name": "Sheet 1",
+    "paperSize": "A4",
+    "orientation": "landscape",
+    "switchTo": true
+  }
+}
+```
+
+**Parameters:**
+- `name` (string, optional): Sheet name
+- `paperSize` (string, optional): "A4" | "A3" | "A2" | "A1" | "A0" | "Letter" | "Legal" | "Tabloid" | "Custom"
+- `orientation` (string, optional): "portrait" | "landscape"
+- `switchTo` (boolean, optional): Switch to the new sheet (default: true)
+
+**Returns:** `{ "sheet": {...} }`
+
+---
+
+### cad_document_deleteSheet
+
+Delete a sheet.
+
+```json
+{
+  "tool": "cad_document_deleteSheet",
+  "arguments": {
+    "id": "sheet_123"
+  }
+}
+```
+
+**Parameters:**
+- `id` (string, required): Sheet ID to delete
+
+**Returns:** `{ "deletedSheet": {...} }`
+
+---
+
+### cad_document_switchMode
+
+Switch between drawing and sheet mode.
+
+```json
+{
+  "tool": "cad_document_switchMode",
+  "arguments": {
+    "mode": "drawing"
+  }
+}
+```
+
+**Parameters:**
+- `mode` (string, required): "drawing" | "sheet"
+
+**Returns:** `{ "mode": "string" }`
+
+---
+
+### cad_document_listDrawings
+
+List all drawings.
+
+```json
+{
+  "tool": "cad_document_listDrawings",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "drawings": [...], "activeDrawingId": "string", "count": number }`
+
+---
+
+### cad_document_listSheets
+
+List all sheets.
+
+```json
+{
+  "tool": "cad_document_listSheets",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "sheets": [...], "activeSheetId": "string", "count": number }`
+
+---
+
+### cad_document_getState
+
+Get current document state.
+
+```json
+{
+  "tool": "cad_document_getState",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "editorMode": "string", "activeDrawingId": "string", "activeSheetId": "string", ... }`
+
+---
+
+## Style Tools
+
+Manage drawing styles.
+
+### cad_style_get
+
+Get current drawing style.
+
+```json
+{
+  "tool": "cad_style_get",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "style": {...} }`
+
+---
+
+### cad_style_set
+
+Set current drawing style.
+
+```json
+{
+  "tool": "cad_style_set",
+  "arguments": {
+    "strokeColor": "#ff0000",
+    "strokeWidth": 2,
+    "lineStyle": "dashed",
+    "fillColor": "#00ff00"
+  }
+}
+```
+
+**Parameters:**
+- `strokeColor` (string, optional): Stroke color (hex)
+- `strokeWidth` (number, optional): Stroke width (min: 0.1)
+- `lineStyle` (string, optional): "solid" | "dashed" | "dotted" | "dashdot"
+- `fillColor` (string, optional): Fill color (hex or undefined for no fill)
+
+**Returns:** `{ "style": {...} }`
+
+---
+
+### cad_style_getDefaults
+
+Get default text style.
+
+```json
+{
+  "tool": "cad_style_getDefaults",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "textStyle": {...}, "shapeStyle": {...} }`
+
+---
+
+### cad_style_setTextDefaults
+
+Set default text style.
+
+```json
+{
+  "tool": "cad_style_setTextDefaults",
+  "arguments": {
+    "fontSize": 14,
+    "fontFamily": "Arial",
+    "color": "#ffffff",
+    "bold": false,
+    "italic": false
+  }
+}
+```
+
+**Parameters:**
+- `fontSize` (number, optional): Default font size (min: 1)
+- `fontFamily` (string, optional): Default font family
+- `color` (string, optional): Default text color
+- `bold` (boolean, optional): Default bold state
+- `italic` (boolean, optional): Default italic state
+
+**Returns:** `{ "textStyle": {...} }`
+
+---
+
+## Snap Tools
+
+Configure snap settings.
+
+### cad_snap_enable
+
+Enable snap.
+
+```json
+{
+  "tool": "cad_snap_enable",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "snapEnabled": true }`
+
+---
+
+### cad_snap_disable
+
+Disable snap.
+
+```json
+{
+  "tool": "cad_snap_disable",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "snapEnabled": false }`
+
+---
+
+### cad_snap_setTypes
+
+Set active snap types.
+
+```json
+{
+  "tool": "cad_snap_setTypes",
+  "arguments": {
+    "types": ["endpoint", "midpoint", "center", "intersection"]
+  }
+}
+```
+
+**Parameters:**
+- `types` (array, required): Array of snap types
+  - Available: "grid", "endpoint", "midpoint", "center", "intersection", "perpendicular", "tangent", "nearest"
+
+**Returns:** `{ "activeSnaps": ["..."] }`
+
+---
+
+### cad_snap_getSettings
+
+Get current snap settings.
+
+```json
+{
+  "tool": "cad_snap_getSettings",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "snapEnabled": boolean, "activeSnaps": [...], "snapTolerance": number, "gridVisible": boolean, "gridSize": number, "orthoMode": boolean, "polarTrackingEnabled": boolean, "polarAngleIncrement": number }`
+
+---
+
+### cad_snap_setTolerance
+
+Set snap tolerance.
+
+```json
+{
+  "tool": "cad_snap_setTolerance",
+  "arguments": {
+    "tolerance": 10
+  }
+}
+```
+
+**Parameters:**
+- `tolerance` (number, required): Snap tolerance in pixels (min: 1)
+
+**Returns:** `{ "snapTolerance": number }`
+
+---
+
+### cad_snap_toggleGrid
+
+Toggle grid visibility.
+
+```json
+{
+  "tool": "cad_snap_toggleGrid",
+  "arguments": {
+    "visible": true
+  }
+}
+```
+
+**Parameters:**
+- `visible` (boolean, optional): Grid visibility (toggles if not specified)
+
+**Returns:** `{ "gridVisible": boolean }`
+
+---
+
+### cad_snap_setGridSize
+
+Set grid size.
+
+```json
+{
+  "tool": "cad_snap_setGridSize",
+  "arguments": {
+    "size": 10
+  }
+}
+```
+
+**Parameters:**
+- `size` (number, required): Grid size in drawing units (min: 1)
+
+**Returns:** `{ "gridSize": number }`
+
+---
+
+### cad_snap_toggleOrtho
+
+Toggle orthogonal mode.
+
+```json
+{
+  "tool": "cad_snap_toggleOrtho",
+  "arguments": {
+    "enabled": true
+  }
+}
+```
+
+**Parameters:**
+- `enabled` (boolean, optional): Ortho mode state (toggles if not specified)
+
+**Returns:** `{ "orthoMode": boolean }`
+
+---
+
+### cad_snap_togglePolar
+
+Toggle polar tracking.
+
+```json
+{
+  "tool": "cad_snap_togglePolar",
+  "arguments": {
+    "enabled": true
+  }
+}
+```
+
+**Parameters:**
+- `enabled` (boolean, optional): Polar tracking state (toggles if not specified)
+
+**Returns:** `{ "polarTrackingEnabled": boolean }`
+
+---
+
+### cad_snap_setPolarAngle
+
+Set polar tracking angle increment.
+
+```json
+{
+  "tool": "cad_snap_setPolarAngle",
+  "arguments": {
+    "angle": 45
+  }
+}
+```
+
+**Parameters:**
+- `angle` (number, required): Angle increment in degrees (1-90)
+
+**Returns:** `{ "polarAngleIncrement": number }`
+
+---
+
+## History Tools
+
+Undo/redo operations.
+
+### cad_history_undo
+
+Undo the last action.
+
+```json
+{
+  "tool": "cad_history_undo",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "undone": boolean }`
+
+---
+
+### cad_history_redo
+
+Redo the last undone action.
+
+```json
+{
+  "tool": "cad_history_redo",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "redone": boolean }`
+
+---
+
+### cad_history_getState
+
+Get current history state.
+
+```json
+{
+  "tool": "cad_history_getState",
+  "arguments": {}
+}
+```
+
+**Returns:** `{ "canUndo": boolean, "canRedo": boolean, "historyIndex": number, "historySize": number }`
+
+---
+
+## HTTP API
+
+Commands can be executed via the HTTP API using MCP JSON-RPC format:
 
 ```bash
-curl -X POST http://127.0.0.1:49100/eval \
+curl -X POST http://127.0.0.1:49100/mcp \
   -H "Content-Type: application/json" \
-  -d '{"script":"return cad.entities.count()"}'
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "params": {
+      "name": "cad_draw_create_rectangle",
+      "arguments": {"topLeft": {"x": 0, "y": 0}, "width": 100, "height": 50}
+    },
+    "id": 1
+  }'
 ```
 
-Response:
+---
+
+## Error Handling
+
+All tools return a response with a `success` field:
 
 ```json
-{"success":true,"result":"0"}
+{
+  "success": false,
+  "error": "Shape not found: invalid_id"
+}
 ```
 
-Error response:
+---
+
+## Transactions
+
+Group multiple operations into a single undo step using bulk operations:
 
 ```json
-{"success":false,"error":"ReferenceError: foo is not defined"}
-```
-
-Use `return` to send a value back. The result is JSON-serialized (you may need to `JSON.parse()` the `result` string).
-
-### Custom Port
-
-Launch the app with a custom API port:
-
-```bash
-open-2d-studio.exe --api-port 9200
-```
-
-### Multiple Instances
-
-Each instance picks a free port starting from 49100 (scans up to +100). Discovery files are written to:
-
-- **Windows**: `%APPDATA%\Open2DStudio\instances\instance-{pid}.json`
-- **Linux/Mac**: `~/.config/open-2d-studio/instances/instance-{pid}.json`
-
-Each file contains:
-
-```json
-{"pid":1234,"port":49100,"startedAt":"1706000000"}
-```
-
-Discovery files are cleaned up when the app closes.
-
-### CORS
-
-The server sets `Access-Control-Allow-Origin: *` on all responses, so browser-based tools can call it directly.
-
----
-
-## Type Reference
-
-### Point
-
-All point parameters accept either an object or a tuple:
-
-```js
-{ x: 100, y: 200 }  // Object form
-[100, 200]           // Array form
-```
-
-### ShapeType
-
-```
-'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'text' | 'point' | 'dimension'
-```
-
-### ShapeStyle
-
-```js
 {
-  strokeColor: '#ffffff',   // CSS color string
-  strokeWidth: 1,           // Line width in drawing units
-  lineStyle: 'solid',       // 'solid' | 'dashed' | 'dotted' | 'dashdot'
-  fillColor: '#ff000080'    // Optional fill color (with alpha)
-}
-```
-
-### ToolType
-
-```
-'select' | 'pan'
-| 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'dimension'
-| 'filled-region' | 'insulation' | 'detail-component'
-| 'move' | 'copy' | 'rotate' | 'scale' | 'mirror' | 'trim' | 'extend' | 'fillet' | 'offset'
-| 'sheet-text' | 'sheet-leader' | 'sheet-dimension'
-```
-
-### SnapType
-
-```
-'grid' | 'endpoint' | 'midpoint' | 'center' | 'intersection' | 'perpendicular' | 'tangent' | 'nearest'
-```
-
-### LineStyle
-
-```
-'solid' | 'dashed' | 'dotted' | 'dashdot'
-```
-
-### EditorMode
-
-```
-'drawing' | 'sheet'
-```
-
-### PaperSize
-
-```
-'A4' | 'A3' | 'A2' | 'A1' | 'A0' | 'Letter' | 'Legal' | 'Tabloid' | 'Custom'
-```
-
-### PaperOrientation
-
-```
-'portrait' | 'landscape'
-```
-
-### TextAlignment / TextVerticalAlignment
-
-```
-TextAlignment: 'left' | 'center' | 'right'
-TextVerticalAlignment: 'top' | 'middle' | 'bottom'
-```
-
-### DimensionType
-
-```
-'linear' | 'aligned' | 'angular' | 'radius' | 'diameter'
-```
-
-### DimensionArrowType
-
-```
-'filled' | 'open' | 'dot' | 'tick' | 'none'
-```
-
-### DimensionTextPlacement
-
-```
-'above' | 'centered' | 'below'
-```
-
-### DimensionStyle
-
-```js
-{
-  arrowType: 'filled',           // DimensionArrowType
-  arrowSize: 3,                  // Arrow size in drawing units
-  extensionLineGap: 2,           // Gap between geometry and extension line
-  extensionLineOvershoot: 2,     // How far extension lines extend past dimension line
-  textHeight: 3,                 // Text height in drawing units
-  textPlacement: 'above',        // DimensionTextPlacement
-  lineColor: '#00ffff',          // Color for dimension/extension lines
-  textColor: '#00ffff',          // Color for dimension text
-  precision: 2                   // Decimal places
-}
-```
-
-### EntityFilter
-
-Used by `cad.entities.list()` and `cad.entities.count()`:
-
-```js
-{
-  type: 'circle',                       // Optional: filter by ShapeType
-  layer: 'layer-id',                    // Optional: filter by layer ID
-  drawing: 'drawing-id',               // Optional: filter by drawing ID
-  visible: true,                        // Optional: filter by visibility
-  locked: false,                        // Optional: filter by lock state
-  predicate: (shape) => shape.type === 'line'  // Optional: custom filter function
-}
-```
-
-### CommandResult
-
-Returned by `cad.commands.execute()`:
-
-```js
-{ success: true }
-{ success: false, error: 'Unknown command: FOO' }
-```
-
----
-
-## Entities (Shapes)
-
-Access via `cad.entities`.
-
-### Create Shapes
-
-All `add()` calls return the created shape object (including its generated `id`).
-
-#### Line
-
-```js
-cad.entities.add('line', {
-  start: { x: 0, y: 0 },
-  end: { x: 200, y: 100 },
-  style: { strokeColor: '#ffffff', strokeWidth: 2, lineStyle: 'solid' }  // optional
-})
-```
-
-#### Circle
-
-```js
-cad.entities.add('circle', {
-  center: { x: 100, y: 100 },
-  radius: 50,
-  style: { strokeColor: '#ff0000', strokeWidth: 1, lineStyle: 'solid' }
-})
-```
-
-#### Rectangle
-
-```js
-cad.entities.add('rectangle', {
-  position: { x: 50, y: 50 },  // top-left corner (also accepts 'topLeft')
-  width: 200,
-  height: 100,
-  rotation: 0,  // optional, in radians
-  style: { strokeColor: '#ffffff', strokeWidth: 1, lineStyle: 'solid' }
-})
-```
-
-#### Arc
-
-```js
-cad.entities.add('arc', {
-  center: { x: 100, y: 100 },
-  radius: 60,
-  startAngle: 0,        // radians
-  endAngle: Math.PI / 2, // radians
-  style: { strokeColor: '#ffffff', strokeWidth: 1, lineStyle: 'solid' }
-})
-```
-
-#### Ellipse
-
-```js
-cad.entities.add('ellipse', {
-  center: { x: 100, y: 100 },
-  radiusX: 80,
-  radiusY: 40,
-  rotation: 0,  // optional, in radians
-  style: { strokeColor: '#ffffff', strokeWidth: 1, lineStyle: 'solid' }
-})
-```
-
-#### Polyline
-
-```js
-cad.entities.add('polyline', {
-  points: [{ x: 0, y: 0 }, { x: 100, y: 50 }, { x: 200, y: 0 }],
-  closed: false,  // optional, set true for polygon
-  style: { strokeColor: '#ffffff', strokeWidth: 1, lineStyle: 'solid' }
-})
-```
-
-#### Point
-
-```js
-cad.entities.add('point', {
-  position: { x: 50, y: 50 },
-  style: { strokeColor: '#ffffff', strokeWidth: 1, lineStyle: 'solid' }
-})
-```
-
-#### Text
-
-```js
-cad.entities.add('text', {
-  position: { x: 100, y: 100 },
-  text: 'Hello World',
-  fontSize: 16,                    // optional (default 12)
-  fontFamily: 'Arial',            // optional (default 'Arial')
-  rotation: 0,                     // optional, radians
-  alignment: 'left',               // optional: 'left' | 'center' | 'right'
-  verticalAlignment: 'top',        // optional: 'top' | 'middle' | 'bottom'
-  bold: false,                     // optional
-  italic: false,                   // optional
-  underline: false,                // optional
-  color: '#ffffff',                // optional, text color
-  lineHeight: 1.2,                 // optional, multiplier
-  fixedWidth: 200,                 // optional, wrap text at this width
-})
-```
-
-#### Dimension
-
-```js
-cad.entities.add('dimension', {
-  dimensionType: 'linear',                 // 'linear' | 'aligned' | 'angular' | 'radius' | 'diameter'
-  points: [{ x: 0, y: 0 }, { x: 100, y: 0 }],  // varies by type (see below)
-  dimensionLineOffset: 20,                 // distance from geometry to dimension line
-  linearDirection: 'horizontal',           // for linear only: 'horizontal' | 'vertical'
-  value: '',                               // empty = auto-calculated
-  valueOverridden: false,
-  prefix: '',                              // e.g. 'R' for radius
-  suffix: 'mm',                            // e.g. 'mm'
-  dimensionStyle: {                        // optional, uses defaults if omitted
-    arrowType: 'filled',
-    arrowSize: 3,
-    extensionLineGap: 2,
-    extensionLineOvershoot: 2,
-    textHeight: 3,
-    textPlacement: 'above',
-    lineColor: '#00ffff',
-    textColor: '#00ffff',
-    precision: 2,
-  },
-})
-```
-
-**Dimension point patterns:**
-
-| Type       | Points                                  |
-|------------|-----------------------------------------|
-| `linear`   | `[point1, point2]`                      |
-| `aligned`  | `[point1, point2]`                      |
-| `angular`  | `[vertex, point1, point2]`              |
-| `radius`   | `[center, pointOnCircle]`               |
-| `diameter` | `[center, pointOnCircle]`               |
-
-#### Points as Arrays
-
-All point parameters accept `[x, y]` arrays:
-
-```js
-cad.entities.add('line', {
-  start: [0, 0],
-  end: [200, 100]
-})
-```
-
-### Bulk Create
-
-Add multiple shapes in a single state update (faster than looping `add()`):
-
-```js
-cad.entities.addBulk([
-  { type: 'line', params: { start: [0, 0], end: [100, 0] } },
-  { type: 'circle', params: { center: [50, 50], radius: 25 } },
-  { type: 'rectangle', params: { position: [10, 10], width: 80, height: 40 } },
-])
-// Returns: Shape[]
-```
-
-### Query Shapes
-
-```js
-cad.entities.count()                          // Total entity count
-cad.entities.count({ type: 'circle' })        // Count with filter
-
-cad.entities.list()                           // All shapes (returns Shape[])
-cad.entities.list({ type: 'line' })           // Filter by type
-cad.entities.list({ layer: 'layer-id' })      // Filter by layer
-cad.entities.list({ drawing: 'drawing-id' })  // Filter by drawing
-cad.entities.list({ visible: true })          // Filter by visibility
-cad.entities.list({ locked: false })          // Filter by lock state
-cad.entities.list({                           // Custom predicate
-  predicate: s => s.type === 'circle' && s.radius > 50
-})
-
-cad.entities.get('shape-id')                  // Get by ID (returns Shape | undefined)
-cad.entities.findAt({ x: 100, y: 100 })      // Hit-test at point (returns Shape | null)
-cad.entities.findAt([100, 100], 5)            // With tolerance (default: auto)
-cad.entities.findInBounds({                   // Find shapes in bounding box
-  minX: 0, minY: 0, maxX: 500, maxY: 500
-})
-```
-
-### Modify Shapes
-
-```js
-cad.entities.update('shape-id', {
-  style: { strokeColor: '#ff0000', strokeWidth: 2 }
-})
-
-// Delete one
-cad.entities.remove('shape-id')
-
-// Delete multiple
-cad.entities.remove(['id1', 'id2'])
-
-// Bulk delete (single state update)
-cad.entities.removeBulk(['id1', 'id2', 'id3'])
-
-// Duplicate a shape (returns cloned Shape with new ID)
-cad.entities.clone('shape-id')                  // offset: {x:20, y:20} default
-cad.entities.clone('shape-id', { x: 50, y: 0 }) // custom offset
-cad.entities.clone('shape-id', [50, 0])          // array form
-```
-
-### Transform Shapes
-
-Apply geometric transformations to one or more shapes:
-
-```js
-// Translate (move)
-cad.entities.transform(['id1', 'id2'], {
-  translate: { x: 50, y: 100 }
-})
-
-// Rotate (angle in radians)
-cad.entities.transform(['id1'], {
-  rotate: { center: { x: 0, y: 0 }, angle: Math.PI / 4 }
-})
-
-// Scale (uniform)
-cad.entities.transform(['id1'], {
-  scale: { center: { x: 0, y: 0 }, factor: 2 }
-})
-
-// Mirror across a line defined by two points
-cad.entities.transform(['id1'], {
-  mirror: { p1: { x: 0, y: 0 }, p2: { x: 0, y: 100 } }
-})
-
-// Combined (all transforms applied in order)
-cad.entities.transform(['id1'], {
-  translate: [10, 0],
-  rotate: { center: [50, 50], angle: 0.5 },
-  scale: { center: [50, 50], factor: 1.5 }
-})
-```
-
----
-
-## Selection
-
-Access via `cad.selection`.
-
-```js
-cad.selection.get()                           // Get selected shape IDs (string[])
-cad.selection.getEntities()                   // Get selected shape objects (Shape[])
-cad.selection.set(['id1', 'id2'])             // Set selection (replaces current)
-cad.selection.add(['id3'])                    // Add to existing selection
-cad.selection.remove(['id1'])                 // Remove from selection
-cad.selection.clear()                         // Deselect all
-cad.selection.all()                           // Select all visible/unlocked shapes
-cad.selection.count()                         // Count selected
-cad.selection.filter(s => s.type === 'circle') // Filter selected shapes by predicate
-```
-
----
-
-## Layers
-
-Access via `cad.layers`.
-
-```js
-// Create
-cad.layers.create('My Layer')                 // Returns Layer object
-cad.layers.create('Red Layer', {
-  color: '#ff0000',
-  visible: true,
-  locked: false,
-  lineStyle: 'solid',    // 'solid' | 'dashed' | 'dotted' | 'dashdot'
-  lineWidth: 1
-})
-
-// Query
-cad.layers.list()                             // All layers in active drawing
-cad.layers.list('drawing-id')                 // Layers in specific drawing
-cad.layers.get('layer-id')                    // Get by ID
-cad.layers.getByName('My Layer')              // Find by name
-cad.layers.getActive()                        // Get active layer
-
-// Modify
-cad.layers.setActive('layer-id')              // Set active layer
-cad.layers.update('layer-id', {
-  visible: false,
-  color: '#00ff00',
-  locked: true,
-  name: 'Renamed Layer',
-  lineStyle: 'dashed',
-  lineWidth: 2
-})
-cad.layers.remove('layer-id')                 // Delete layer (can't delete last one)
-```
-
-### Layer Object
-
-```js
-{
-  id: 'layer-abc123',
-  name: 'Layer 0',
-  drawingId: 'drawing-1',
-  visible: true,
-  locked: false,
-  color: '#ffffff',
-  lineStyle: 'solid',
-  lineWidth: 1
-}
-```
-
----
-
-## Viewport (Pan & Zoom)
-
-Access via `cad.viewport`.
-
-```js
-// Read
-cad.viewport.get()                            // { offsetX, offsetY, zoom }
-cad.viewport.canvasSize                       // { width, height } (read-only)
-
-// Set directly
-cad.viewport.set({ zoom: 1.5 })              // Merge with current viewport
-cad.viewport.set({ offsetX: 100, offsetY: 200, zoom: 2 })
-cad.viewport.setZoom(1.5)                     // Set exact zoom level
-
-// Pan
-cad.viewport.pan(100, 0)                      // Pan by dx, dy in screen pixels
-
-// Zoom
-cad.viewport.zoomIn()                         // Zoom in ~20%
-cad.viewport.zoomOut()                        // Zoom out ~20%
-cad.viewport.zoomToFit()                      // Fit all content in view
-cad.viewport.zoomToEntities(['id1', 'id2'])   // Zoom to specific shapes
-
-// Reset
-cad.viewport.reset()                          // Reset to 1:1 at origin
-
-// Coordinate conversion
-cad.viewport.screenToWorld({ x: 400, y: 300 }) // Screen pixels → drawing units
-cad.viewport.worldToScreen({ x: 100, y: 100 }) // Drawing units → screen pixels
-cad.viewport.screenToWorld([400, 300])          // Array form
-```
-
----
-
-## Document (Drawings & Sheets)
-
-Access via `cad.document`.
-
-### Mode
-
-```js
-cad.document.mode                              // 'drawing' or 'sheet'
-cad.document.switchMode('drawing')
-cad.document.switchMode('sheet')               // Switches to active or first sheet
-```
-
-### Drawings
-
-Access via `cad.document.drawings`.
-
-```js
-cad.document.drawings.list()                   // All drawings (Drawing[])
-cad.document.drawings.create('Floor Plan')     // Create and switch to new drawing
-cad.document.drawings.getActive()              // Get active drawing
-cad.document.drawings.switchTo('drawing-id')   // Switch active drawing
-cad.document.drawings.rename('id', 'New Name')
-cad.document.drawings.remove('id')             // Can't delete the last drawing
-
-// Drawing boundary (model space limits)
-cad.document.drawings.getBoundary('id')        // { x, y, width, height }
-cad.document.drawings.setBoundary('id', {
-  x: -500, y: -500, width: 1000, height: 1000
-})
-cad.document.drawings.fitBoundary('id')        // Auto-fit boundary to content
-```
-
-#### Drawing Object
-
-```js
-{
-  id: 'drawing-1',
-  name: 'Drawing 1',
-  boundary: { x: -500, y: -500, width: 1000, height: 1000 },
-  createdAt: '2025-01-01T00:00:00.000Z',
-  modifiedAt: '2025-01-01T00:00:00.000Z'
-}
-```
-
-### Sheets
-
-Access via `cad.document.sheets`.
-
-```js
-cad.document.sheets.list()                     // All sheets (Sheet[])
-cad.document.sheets.create('Sheet 1')          // Create with defaults (A4 landscape)
-cad.document.sheets.create('Sheet 1', {
-  paperSize: 'A3',                             // 'A4'|'A3'|'A2'|'A1'|'A0'|'Letter'|'Legal'|'Tabloid'|'Custom'
-  orientation: 'landscape'                     // 'portrait' | 'landscape'
-})
-cad.document.sheets.getActive()                // Get active sheet
-cad.document.sheets.switchTo('sheet-id')       // Switch to sheet (enters sheet mode)
-cad.document.sheets.rename('id', 'Cover Sheet')
-cad.document.sheets.remove('id')
-```
-
-### Sheet Viewports
-
-Access via `cad.document.viewports`. Sheet viewports display drawings inside sheets (paper space).
-
-```js
-// List viewports in a sheet
-cad.document.viewports.list('sheet-id')        // SheetViewport[]
-
-// Add a viewport showing a drawing inside a sheet
-cad.document.viewports.add('sheet-id', 'drawing-id')  // Default bounds
-cad.document.viewports.add('sheet-id', 'drawing-id', {
-  x: 100, y: 100, width: 400, height: 300
-})
-
-// Update viewport properties
-cad.document.viewports.update('viewport-id', {
-  x: 50, y: 50,
-  width: 500, height: 400,
-  scale: 0.01,          // Scale factor (0.01 = 1:100)
-  centerX: 0,           // Center point in drawing coordinates
-  centerY: 0,
-  locked: true,          // Lock viewport from editing
-  visible: true
-})
-
-// Center viewport on its drawing's boundary center
-cad.document.viewports.center('viewport-id')
-
-// Auto-fit: set scale and center to show entire drawing
-cad.document.viewports.fitToDrawing('viewport-id')
-
-// Remove viewport
-cad.document.viewports.remove('viewport-id')
-```
-
-#### SheetViewport Object
-
-```js
-{
-  id: 'viewport-abc',
-  drawingId: 'drawing-1',
-  x: 100, y: 100,
-  width: 400, height: 300,
-  centerX: 0, centerY: 0,
-  scale: 0.01,
-  locked: false,
-  visible: true
-}
-```
-
----
-
-## Commands (Modify Operations)
-
-Access via `cad.commands`. Commands wrap shape modifications in transactions automatically (single undo step).
-
-### Execute Commands
-
-Returns `{ success: true }` or `{ success: false, error: '...' }`.
-
-```js
-// Move shapes
-cad.commands.execute('MOVE', {
-  ids: ['id1', 'id2'],
-  from: { x: 0, y: 0 },
-  to: { x: 100, y: 50 }
-})
-
-// Copy shapes
-cad.commands.execute('COPY', {
-  ids: ['id1'],
-  from: { x: 0, y: 0 },
-  to: { x: 200, y: 0 }
-})
-
-// Rotate shapes (angle in degrees)
-cad.commands.execute('ROTATE', {
-  ids: ['id1'],
-  center: { x: 100, y: 100 },
-  angle: 45
-})
-
-// Scale shapes
-cad.commands.execute('SCALE', {
-  ids: ['id1'],
-  base: { x: 0, y: 0 },
-  factor: 2
-})
-
-// Mirror shapes across a line
-cad.commands.execute('MIRROR', {
-  ids: ['id1'],
-  p1: { x: 0, y: 0 },
-  p2: { x: 0, y: 100 }
-})
-
-// Delete shapes
-cad.commands.execute('ERASE', { ids: ['id1', 'id2'] })
-
-// Offset (clones shape; for circles, increases radius)
-cad.commands.execute('OFFSET', { ids: ['id1'], distance: 10 })
-```
-
-> **Note**: `FILLET` and `CHAMFER` commands are registered but not yet fully implemented.
-
-### Query Commands
-
-```js
-cad.commands.list()          // ['MOVE','COPY','ROTATE','SCALE','MIRROR','ERASE','OFFSET','FILLET','CHAMFER']
-cad.commands.isActive()      // Is an interactive command in progress?
-cad.commands.cancel()        // Cancel active interactive command
-```
-
----
-
-## Dimensions
-
-Access via `cad.dimensions`. Convenience methods that create dimension shapes.
-
-```js
-// Linear dimension (horizontal/vertical)
-cad.dimensions.addLinear({ x: 0, y: 0 }, { x: 100, y: 0 })          // offset = 20 default
-cad.dimensions.addLinear({ x: 0, y: 0 }, { x: 100, y: 0 }, 30)      // custom offset
-
-// Aligned dimension (follows line between points)
-cad.dimensions.addAligned({ x: 0, y: 0 }, { x: 100, y: 50 })
-cad.dimensions.addAligned({ x: 0, y: 0 }, { x: 100, y: 50 }, 25)
-
-// Angular dimension
-cad.dimensions.addAngular(
-  { x: 50, y: 50 },   // vertex
-  { x: 100, y: 50 },  // point 1
-  { x: 50, y: 100 }   // point 2
-)
-cad.dimensions.addAngular(vertex, p1, p2, 40)  // custom offset
-
-// Radius dimension (adds 'R' prefix)
-cad.dimensions.addRadius(
-  { x: 100, y: 100 },  // center
-  { x: 150, y: 100 }   // point on circle
-)
-
-// Diameter dimension (adds '⌀' prefix)
-cad.dimensions.addDiameter(
-  { x: 100, y: 100 },  // center
-  { x: 150, y: 100 }   // point on circle
-)
-
-// Get default dimension style
-cad.dimensions.getStyle()
-// Returns DimensionStyle object (see Type Reference)
-
-// Set default dimension style (note: style is per-shape, use entities.update() for existing)
-cad.dimensions.setStyle({ precision: 3, arrowType: 'open' })
-```
-
----
-
-## Snap & Grid
-
-### Snap
-
-Access via `cad.snap`.
-
-```js
-// Enable/disable
-cad.snap.enabled                                // true/false (read-only getter)
-cad.snap.setEnabled(true)
-
-// Snap types
-cad.snap.getTypes()                             // Active snap types (SnapType[])
-cad.snap.setTypes(['endpoint', 'midpoint', 'center', 'intersection'])
-
-// Tolerance (pixels)
-cad.snap.tolerance                              // Current tolerance (read-only getter)
-cad.snap.setTolerance(10)
-
-// Ortho mode (constrain to 0/90 degrees)
-cad.snap.orthoMode                              // true/false (read-only getter)
-cad.snap.setOrthoMode(true)
-
-// Polar tracking
-cad.snap.polarTracking                          // true/false (read-only getter)
-cad.snap.setPolarTracking(true)
-cad.snap.polarAngle                             // Current angle increment in degrees (read-only)
-cad.snap.setPolarAngle(45)                      // Set polar angle increment (degrees)
-```
-
-#### Available Snap Types
-
-```
-'grid' | 'endpoint' | 'midpoint' | 'center' | 'intersection' | 'perpendicular' | 'tangent' | 'nearest'
-```
-
-### Grid
-
-Access via `cad.grid`.
-
-```js
-cad.grid.visible                                // true/false (read-only getter)
-cad.grid.setVisible(true)
-
-cad.grid.size                                   // Current grid spacing (read-only getter)
-cad.grid.setSize(25)                            // Set grid spacing in drawing units
-```
-
----
-
-## Styles
-
-Access via `cad.styles`. Controls the default style applied to newly created shapes.
-
-```js
-// Get current drawing style
-cad.styles.getCurrent()
-// { strokeColor: '#ffffff', strokeWidth: 1, lineStyle: 'solid' }
-
-// Set current drawing style (merged with existing)
-cad.styles.setCurrent({
-  strokeColor: '#ff0000',
-  strokeWidth: 2,
-  lineStyle: 'dashed'
-})
-
-// Get default text style
-cad.styles.getTextDefaults()
-// { fontSize: 12, fontFamily: 'Arial', ... }
-
-// Set default text style (merged with existing)
-cad.styles.setTextDefaults({
-  fontSize: 14,
-  fontFamily: 'Courier',
-  bold: true
-})
-```
-
----
-
-## Tools
-
-Access via `cad.tools`. Controls the active drawing/interaction tool.
-
-```js
-cad.tools.getActive()                           // Current tool (ToolType)
-cad.tools.setActive('line')                     // Switch tool (cancels active command)
-cad.tools.setActive('select')
-
-// Tool drawing modes
-cad.tools.getMode('circle')                     // e.g., 'center-radius'
-cad.tools.setMode('circle', 'center-radius')
-
-cad.tools.getMode('rectangle')
-cad.tools.setMode('rectangle', 'corner')
-
-cad.tools.getMode('arc')
-cad.tools.setMode('arc', 'three-point')
-
-cad.tools.getMode('ellipse')
-cad.tools.setMode('ellipse', 'center')
-
-cad.tools.getMode('dimension')
-cad.tools.setMode('dimension', 'linear')
-```
-
----
-
-## Application (File I/O)
-
-Access via `cad.app`.
-
-```js
-// Project info
-cad.app.projectName                             // Current project name (read-only getter)
-cad.app.filePath                                // Current file path or null (read-only getter)
-cad.app.isModified                              // Has unsaved changes (read-only getter)
-cad.app.setProjectName('My Project')
-
-// New project (clears everything)
-cad.app.newProject()
-
-// Open file (shows dialog if no path given)
-await cad.app.open()                            // Opens file dialog
-await cad.app.open('C:/path/to/file.o2d')       // Open specific file
-
-// Save (shows dialog if no current path)
-await cad.app.save()                            // Save to current path or show dialog
-await cad.app.save('C:/path/to/file.o2d')       // Save to specific path
-
-// Export
-await cad.app.exportSVG()                       // Shows dialog
-await cad.app.exportSVG('C:/path/to/file.svg')  // Export to specific path
-await cad.app.exportDXF()
-await cad.app.exportDXF('C:/path/to/file.dxf')
-await cad.app.exportJSON()
-await cad.app.exportJSON('C:/path/to/file.json')
-
-// Print (opens print dialog)
-cad.app.print()
-```
-
-> **Note**: `open()`, `save()`, and all export methods are `async` -- use `await` or `.then()`.
-
----
-
-## Undo / Redo
-
-Convenience methods on the top-level `cad` object.
-
-```js
-cad.undo()    // Returns true if undo was performed
-cad.redo()    // Returns true if redo was performed
-```
-
-All shape mutations (`entities.add`, `entities.update`, `entities.remove`, `commands.execute`, etc.) automatically push to undo history.
-
----
-
-## Transactions (Batch Operations)
-
-Group multiple operations into a single undo step and suppress rendering until commit.
-
-### Simple Usage
-
-```js
-cad.transaction('draw grid', () => {
-  for (let i = 0; i < 10; i++) {
-    cad.entities.add('line', {
-      start: { x: 0, y: i * 20 },
-      end: { x: 200, y: i * 20 }
-    })
+  "tool": "cad_draw_createBulk",
+  "arguments": {
+    "shapes": [
+      {"type": "line", "params": {"start": {"x": 0, "y": 0}, "end": {"x": 100, "y": 100}}},
+      {"type": "circle", "params": {"center": {"x": 50, "y": 50}, "radius": 20}}
+    ]
   }
-})
-// cad.undo() now removes all 10 lines at once
-```
-
-### Return Values
-
-```js
-const shapes = cad.transaction('create shapes', () => {
-  const a = cad.entities.add('circle', { center: [0,0], radius: 50 })
-  const b = cad.entities.add('circle', { center: [100,0], radius: 50 })
-  return [a, b]
-})
-// shapes = [Shape, Shape]
-```
-
-### Error Handling
-
-If the function throws, the transaction is automatically rolled back (all changes undone):
-
-```js
-try {
-  cad.transaction('risky operation', () => {
-    cad.entities.add('circle', { center: [0,0], radius: 50 })
-    throw new Error('Something went wrong')
-    // The circle is automatically removed via rollback
-  })
-} catch (e) {
-  console.error(e)
 }
 ```
-
-### Advanced Transaction Control
-
-Access via `cad.transactions`:
-
-```js
-cad.transactions.isActive        // Is a transaction currently open?
-cad.transactions.renderSuppressed // Is rendering suppressed?
-
-cad.transactions.begin('my-op')  // Start transaction manually
-// ... do work ...
-cad.transactions.commit()        // Commit (collapses history entries into one)
-cad.transactions.rollback()      // Or rollback (undoes all changes)
-```
-
-> **Warning**: Nested transactions are not supported. Calling `begin()` while a transaction is active will throw.
-
----
-
-## Events
-
-Access via `cad.events`. Subscribe to state changes using a pub/sub event bus.
-
-### Subscribe
-
-```js
-// Subscribe (returns unsubscribe function)
-const unsub = cad.events.on('entity:added', (data) => {
-  console.log('Added:', data.entity)
-})
-
-// Unsubscribe
-unsub()
-
-// Or manually
-cad.events.off('entity:added', myHandler)
-
-// One-time listener
-cad.events.once('entity:added', (data) => {
-  console.log('First entity added:', data.entity)
-})
-```
-
-### Available Events
-
-| Event | Data | Description |
-|-------|------|-------------|
-| `entity:added` | `{ entity: Shape }` | Shape created |
-| `entity:modified` | `{ entity: Shape }` | Shape properties changed |
-| `entity:removed` | `{ entity: Shape }` | Shape deleted |
-| `selection:changed` | `{ ids: string[] }` | Selection modified |
-| `selection:cleared` | `{}` | All shapes deselected |
-| `layer:added` | `{ layer: Layer }` | Layer created |
-| `layer:removed` | `{ layer: Layer }` | Layer deleted |
-| `layer:changed` | `{ layer: Layer }` | Layer properties changed |
-| `layer:activeChanged` | `{ id: string }` | Active layer switched |
-| `viewport:changed` | `{ offsetX, offsetY, zoom }` | Viewport transformed |
-| `tool:changed` | `{ tool: ToolType }` | Active tool changed |
-| `command:started` | `{ name: string, params: object }` | Command execution started |
-| `command:completed` | `{ name: string, params: object }` | Command execution finished |
-| `command:cancelled` | `{ name: string, error?: string }` | Command cancelled/failed |
-| `transaction:started` | `{ name: string }` | Transaction opened |
-| `transaction:committed` | `{ name: string }` | Transaction committed |
-| `transaction:rolledBack` | `{ name: string }` | Transaction rolled back |
-| `undo` | `{}` | Undo executed |
-| `redo` | `{}` | Redo executed |
-| `document:saved` | `{ path: string }` | Document saved to file |
-| `document:loaded` | `{ path: string }` | Document loaded from file |
-| `document:newProject` | `{}` | New empty project created |
-| `drawing:created` | `{ drawing: Drawing }` | New drawing added |
-| `drawing:removed` | `{ drawing: Drawing }` | Drawing deleted |
-| `drawing:switched` | `{ id: string }` | Active drawing changed |
-| `sheet:created` | `{ sheet: Sheet }` | New sheet added |
-| `sheet:removed` | `{ sheet: Sheet }` | Sheet deleted |
-| `sheet:switched` | `{ id: string }` | Active sheet changed |
-| `mode:changed` | `{ mode: EditorMode }` | Editor mode changed |
-
----
-
-## Macros (Record & Replay)
-
-Record user actions and replay them programmatically.
-
-```js
-// Start recording
-cad.startRecording()
-
-// Perform actions normally...
-cad.entities.add('line', { start: [0, 0], end: [100, 0] })
-cad.entities.add('circle', { center: [50, 50], radius: 25 })
-
-// Stop recording — returns JS source code
-const macro = cad.stopRecording()
-console.log(macro)
-// cad.entities.add('line', {"start":{"x":0,"y":0},"end":{"x":100,"y":0}});
-// cad.entities.add('circle', {"center":{"x":50,"y":50},"radius":25});
-
-// Replay the recorded macro
-cad.runMacro(macro)
-```
-
-**What gets recorded:**
-
-- Entity additions (`entity:added`)
-- Entity removals (`entity:removed`)
-- Command executions (`command:completed`)
-- Selection changes (`selection:changed`)
-- Viewport changes (`viewport:changed`)
-- Tool changes (`tool:changed`)
-
----
-
-## Annotations (Sheet Mode)
-
-Access via `cad.annotations`. Annotations are placed on sheets (paper space), not on drawings.
-
-```js
-// Add text annotation to a sheet
-cad.annotations.addText('sheet-id', { x: 100, y: 50 }, 'Note: Check dimensions')
-cad.annotations.addText('sheet-id', [100, 50], 'Note text', {
-  fontSize: 14,
-  fontFamily: 'Arial',
-  color: '#ff0000',
-  bold: true
-})
-
-// Add leader annotation (arrow with text)
-cad.annotations.addLeader(
-  'sheet-id',
-  [{ x: 200, y: 200 }, { x: 250, y: 150 }],  // Leader points (arrow path)
-  'See detail A',
-  { /* optional SheetLeaderAnnotation overrides */ }
-)
-
-// Add revision cloud
-cad.annotations.addRevisionCloud(
-  'sheet-id',
-  [{ x: 100, y: 100 }, { x: 300, y: 100 }, { x: 300, y: 300 }, { x: 100, y: 300 }],
-  { revisionNumber: 'A' }
-)
-
-// Query
-cad.annotations.list('sheet-id')               // All annotations on a sheet
-cad.annotations.list()                         // Annotations on the active sheet
-cad.annotations.get('annotation-id')           // Get by ID
-
-// Modify
-cad.annotations.update('annotation-id', {
-  text: 'Updated text',
-  fontSize: 16
-})
-cad.annotations.remove('annotation-id')
-
-// Selection
-cad.annotations.select(['ann-id-1', 'ann-id-2'])
-cad.annotations.deselectAll()
-```
-
----
-
-## Complete Examples
-
-### Draw a House (via HTTP)
-
-```bash
-API="http://127.0.0.1:49100/eval"
-
-# Walls
-curl -s -X POST $API -H "Content-Type: application/json" \
-  -d '{"script":"cad.entities.add(\"rectangle\", {position:{x:0,y:0}, width:200, height:150})"}'
-
-# Roof
-curl -s -X POST $API -H "Content-Type: application/json" \
-  -d '{"script":"cad.entities.add(\"polyline\", {points:[{x:-10,y:0},{x:100,y:-80},{x:210,y:0}], closed:true})"}'
-
-# Door
-curl -s -X POST $API -H "Content-Type: application/json" \
-  -d '{"script":"cad.entities.add(\"rectangle\", {position:{x:70,y:50}, width:60, height:100})"}'
-
-# Windows
-curl -s -X POST $API -H "Content-Type: application/json" \
-  -d '{"script":"cad.entities.add(\"rectangle\", {position:{x:15,y:20}, width:40, height:40})"}'
-curl -s -X POST $API -H "Content-Type: application/json" \
-  -d '{"script":"cad.entities.add(\"rectangle\", {position:{x:145,y:20}, width:40, height:40})"}'
-
-# Zoom to fit
-curl -s -X POST $API -H "Content-Type: application/json" \
-  -d '{"script":"cad.viewport.zoomToFit(); return cad.entities.count()"}'
-```
-
-### Draw a House (Browser Console)
-
-```js
-cad.entities.add('rectangle', { position: {x:0,y:0}, width: 200, height: 150 })
-cad.entities.add('polyline', {
-  points: [{x:-10,y:0}, {x:100,y:-80}, {x:210,y:0}],
-  closed: true
-})
-cad.entities.add('rectangle', { position: {x:70,y:50}, width: 60, height: 100 })
-cad.entities.add('rectangle', { position: {x:15,y:20}, width: 40, height: 40 })
-cad.entities.add('rectangle', { position: {x:145,y:20}, width: 40, height: 40 })
-cad.viewport.zoomToFit()
-```
-
-### Python Script
-
-```python
-import requests
-import json
-
-API = "http://127.0.0.1:49100"
-
-def eval_cad(script):
-    r = requests.post(f"{API}/eval", json={"script": script})
-    return r.json()
-
-# Check connection
-print(requests.get(f"{API}/health").json())
-
-# Draw shapes
-eval_cad('cad.entities.add("circle", {center:{x:0,y:0}, radius:100})')
-eval_cad('cad.entities.add("line", {start:{x:-100,y:0}, end:{x:100,y:0}})')
-eval_cad('cad.entities.add("line", {start:{x:0,y:-100}, end:{x:0,y:100}})')
-
-# Query
-result = eval_cad('return cad.entities.count()')
-print(f"Entities: {result['result']}")
-
-# Zoom to fit
-eval_cad('cad.viewport.zoomToFit()')
-```
-
-### Node.js Script
-
-```js
-const API = 'http://127.0.0.1:49100';
-
-async function evalCad(script) {
-  const res = await fetch(`${API}/eval`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ script })
-  });
-  return res.json();
-}
-
-// Draw a grid
-for (let i = 0; i <= 10; i++) {
-  await evalCad(`cad.entities.add("line", {start:{x:${i*20},y:0}, end:{x:${i*20},y:200}})`);
-  await evalCad(`cad.entities.add("line", {start:{x:0,y:${i*20}}, end:{x:200,y:${i*20}}})`);
-}
-
-await evalCad('cad.viewport.zoomToFit()');
-console.log(await evalCad('return cad.entities.count()'));
-```
-
-### Batch with Transaction
-
-```js
-// All 100 shapes become a single undo step
-cad.transaction('draw sunburst', () => {
-  for (let i = 0; i < 100; i++) {
-    const angle = (i / 100) * 2 * Math.PI;
-    cad.entities.add('line', {
-      start: { x: 500, y: 500 },
-      end: { x: 500 + 400 * Math.cos(angle), y: 500 + 400 * Math.sin(angle) },
-      style: { strokeColor: '#ffaa00', strokeWidth: 0.5, lineStyle: 'solid' }
-    });
-  }
-});
-cad.viewport.zoomToFit();
-```
-
----
-
-## Notes
-
-- The API server only listens on `127.0.0.1` (localhost) for security
-- Scripts have a **30-second timeout** via the HTTP eval endpoint
-- All shape mutations automatically push to the undo history
-- Use `cad.transaction(name, fn)` to group operations into a single undo step
-- The `return` keyword sends values back through the HTTP eval response
-- All point parameters accept both `{x, y}` objects and `[x, y]` arrays
-- Discovery files are cleaned up when the app closes
-- Shapes created via the API inherit the active layer and active drawing automatically
-- The `style` parameter on `add()` is optional -- defaults to the current drawing style

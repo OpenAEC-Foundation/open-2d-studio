@@ -202,7 +202,7 @@ export class HandleRenderer extends BaseRenderer {
   }
 
   /**
-   * Draw viewport resize handles
+   * Draw viewport move handle (center only - Revit-style: size is derived from boundary × scale)
    * @param x - X position in pixels (already scaled)
    * @param y - Y position in pixels (already scaled)
    * @param width - Width in pixels (already scaled)
@@ -212,37 +212,38 @@ export class HandleRenderer extends BaseRenderer {
   drawViewportHandles(x: number, y: number, width: number, height: number, zoom: number = 1): void {
     const ctx = this.ctx;
     // Compensate for zoom so handles appear consistent size on screen
-    const handleSize = 8 / zoom;
-    const lineWidth = 1 / zoom;
+    const handleSize = 10 / zoom;
+    const lineWidth = 1.5 / zoom;
 
-    ctx.fillStyle = '#e94560';
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = lineWidth;
 
-    // Corner and edge handles
-    const positions = [
-      { x: x, y: y }, // top-left
-      { x: x + width, y: y }, // top-right
-      { x: x + width, y: y + height }, // bottom-right
-      { x: x, y: y + height }, // bottom-left
-      { x: x + width / 2, y: y }, // top
-      { x: x + width, y: y + height / 2 }, // right
-      { x: x + width / 2, y: y + height }, // bottom
-      { x: x, y: y + height / 2 }, // left
-    ];
-
-    for (const pos of positions) {
-      ctx.fillRect(pos.x - handleSize / 2, pos.y - handleSize / 2, handleSize, handleSize);
-      ctx.strokeRect(pos.x - handleSize / 2, pos.y - handleSize / 2, handleSize, handleSize);
-    }
-
-    // Draw center handle (for moving) - different style
+    // Only draw center handle for moving (Revit-style: no resize, size = boundary × scale)
     ctx.fillStyle = '#4a90d9';
     const centerX = x + width / 2;
     const centerY = y + height / 2;
+
+    // Draw move handle as a larger circle with move icon
     ctx.beginPath();
-    ctx.arc(centerX, centerY, handleSize / 2, 0, Math.PI * 2);
+    ctx.arc(centerX, centerY, handleSize, 0, Math.PI * 2);
     ctx.fill();
+    ctx.stroke();
+
+    // Draw move arrows inside
+    ctx.strokeStyle = '#ffffff';
+    ctx.lineWidth = 1.5 / zoom;
+    const arrowSize = handleSize * 0.5;
+
+    // Horizontal line
+    ctx.beginPath();
+    ctx.moveTo(centerX - arrowSize, centerY);
+    ctx.lineTo(centerX + arrowSize, centerY);
+    ctx.stroke();
+
+    // Vertical line
+    ctx.beginPath();
+    ctx.moveTo(centerX, centerY - arrowSize);
+    ctx.lineTo(centerX, centerY + arrowSize);
     ctx.stroke();
   }
 

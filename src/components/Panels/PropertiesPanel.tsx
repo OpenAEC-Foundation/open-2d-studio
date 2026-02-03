@@ -1,6 +1,8 @@
 import { memo, useState, useRef, useEffect } from 'react';
 import { useAppStore } from '../../state/appStore';
 import type { LineStyle, Shape, TextAlignment, TextVerticalAlignment, HatchPatternType } from '../../types/geometry';
+import type { ParametricShape, ProfileParametricShape } from '../../types/parametric';
+import { PROFILE_TEMPLATES } from '../../services/parametric/profileTemplates';
 import { DrawingPropertiesPanel } from './DrawingPropertiesPanel';
 
 const RAD2DEG = 180 / Math.PI;
@@ -140,6 +142,88 @@ function ColorPalette({ label, value, onChange }: { label: string; value: string
   );
 }
 
+function ParametricShapeProperties({ shape }: { shape: ParametricShape }) {
+  const updateProfileParameters = useAppStore(s => s.updateProfileParameters);
+  const updateProfilePosition = useAppStore(s => s.updateProfilePosition);
+  const updateProfileRotation = useAppStore(s => s.updateProfileRotation);
+
+  if (shape.parametricType !== 'profile') {
+    return <div className="text-xs text-cad-text-dim">Unknown parametric type</div>;
+  }
+
+  const profileShape = shape as ProfileParametricShape;
+  const template = PROFILE_TEMPLATES[profileShape.profileType];
+
+  const handleParameterChange = (paramId: string, value: number) => {
+    updateProfileParameters(shape.id, { [paramId]: value });
+  };
+
+  return (
+    <>
+      <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
+        <div className="text-xs font-semibold text-cad-accent mb-1">
+          {template?.name || profileShape.profileType}
+        </div>
+        {profileShape.presetId && (
+          <div className="text-xs text-cad-text-dim">
+            Preset: {profileShape.presetId}
+          </div>
+        )}
+        {profileShape.standard && (
+          <div className="text-xs text-cad-text-dim">
+            Standard: {profileShape.standard}
+          </div>
+        )}
+      </div>
+
+      {/* Position */}
+      <div className="mb-3">
+        <label className="block text-xs font-semibold text-cad-text mb-2">Position</label>
+        <div className="grid grid-cols-2 gap-2">
+          <NumberField
+            label="X"
+            value={profileShape.position.x}
+            onChange={(v) => updateProfilePosition(shape.id, { ...profileShape.position, x: v })}
+            step={1}
+          />
+          <NumberField
+            label="Y"
+            value={profileShape.position.y}
+            onChange={(v) => updateProfilePosition(shape.id, { ...profileShape.position, y: v })}
+            step={1}
+          />
+        </div>
+      </div>
+
+      {/* Rotation */}
+      <NumberField
+        label="Rotation (deg)"
+        value={profileShape.rotation * RAD2DEG}
+        onChange={(v) => updateProfileRotation(shape.id, v * DEG2RAD)}
+        step={1}
+      />
+
+      {/* Parameters */}
+      {template && (
+        <div className="mt-3 pt-3 border-t border-cad-border">
+          <label className="block text-xs font-semibold text-cad-text mb-2">Parameters</label>
+          {template.parameters.map((param) => (
+            <NumberField
+              key={param.id}
+              label={`${param.label}${param.unit ? ` (${param.unit})` : ''}`}
+              value={(profileShape.parameters[param.id] as number) || (param.defaultValue as number)}
+              onChange={(v) => handleParameterChange(param.id, v)}
+              step={param.step || 1}
+              min={param.min}
+              max={param.max}
+            />
+          ))}
+        </div>
+      )}
+    </>
+  );
+}
+
 function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (id: string, updates: Partial<Shape>) => void }) {
   const update = (updates: Record<string, unknown>) => updateShape(shape.id, updates as Partial<Shape>);
 
@@ -252,7 +336,10 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
         </>
       );
 
-    case 'hatch':
+    case 'hatch': {
+      const { userPatterns, projectPatterns } = useAppStore.getState();
+      const customPatterns = [...userPatterns, ...projectPatterns];
+
       return (
         <>
           <SelectField label="Pattern Type" value={shape.patternType}
@@ -263,8 +350,25 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               { value: 'horizontal', label: 'Horizontal' },
               { value: 'vertical', label: 'Vertical' },
               { value: 'dots', label: 'Dots' },
+              { value: 'custom', label: 'Custom' },
             ] as { value: HatchPatternType; label: string }[]}
             onChange={(v) => update({ patternType: v })} />
+          {shape.patternType === 'custom' && (
+            <SelectField
+              label="Custom Pattern"
+              value={shape.customPatternId || ''}
+              options={[
+                { value: '', label: '-- Select Pattern --' },
+                ...customPatterns.map(p => ({ value: p.id, label: p.name })),
+              ]}
+              onChange={(v) => update({ customPatternId: v || undefined })}
+            />
+          )}
+          {shape.patternType === 'custom' && customPatterns.length === 0 && (
+            <div className="text-xs text-yellow-500 mb-2">
+              No custom patterns. Create one in Pattern Manager.
+            </div>
+          )}
           <NumberField label="Pattern Angle (deg)" value={shape.patternAngle} onChange={(v) => update({ patternAngle: v })} step={1} />
           <NumberField label="Pattern Scale" value={shape.patternScale} onChange={(v) => update({ patternScale: v })} step={0.1} min={0.1} />
           <ColorPalette label="Fill Color" value={shape.fillColor} onChange={(v) => update({ fillColor: v })} />
@@ -279,6 +383,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
           <NumberField label="Boundary Points" value={shape.points.length} onChange={() => {}} readOnly />
         </>
       );
+    }
 
     default:
       return (
@@ -292,18 +397,26 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
 export const PropertiesPanel = memo(function PropertiesPanel() {
   const selectedShapeIds = useAppStore(s => s.selectedShapeIds);
   const shapes = useAppStore(s => s.shapes);
+  const parametricShapes = useAppStore(s => s.parametricShapes);
   const currentStyle = useAppStore(s => s.currentStyle);
   const setCurrentStyle = useAppStore(s => s.setCurrentStyle);
   const updateShape = useAppStore(s => s.updateShape);
 
   const selectedShapes = shapes.filter((s) => selectedShapeIds.includes(s.id));
-  const hasSelection = selectedShapes.length > 0;
+  const selectedParametricShapes = parametricShapes.filter((s) => selectedShapeIds.includes(s.id));
+  const hasSelection = selectedShapes.length > 0 || selectedParametricShapes.length > 0;
+  const hasRegularShapeSelection = selectedShapes.length > 0;
 
   // Get common style from selection (or use current style)
-  const displayStyle = hasSelection ? selectedShapes[0].style : currentStyle;
+  // For parametric shapes, use their style or fall back to current style
+  const displayStyle = hasRegularShapeSelection
+    ? selectedShapes[0].style
+    : selectedParametricShapes.length > 0
+      ? selectedParametricShapes[0].style
+      : currentStyle;
 
   const handleColorChange = (color: string) => {
-    if (hasSelection) {
+    if (hasRegularShapeSelection) {
       selectedShapes.forEach((shape) => {
         updateShape(shape.id, { style: { ...shape.style, strokeColor: color } });
       });
@@ -313,7 +426,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
   };
 
   const handleWidthChange = (width: number) => {
-    if (hasSelection) {
+    if (hasRegularShapeSelection) {
       selectedShapes.forEach((shape) => {
         updateShape(shape.id, { style: { ...shape.style, strokeWidth: width } });
       });
@@ -323,7 +436,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
   };
 
   const handleLineStyleChange = (lineStyle: LineStyle) => {
-    if (hasSelection) {
+    if (hasRegularShapeSelection) {
       selectedShapes.forEach((shape) => {
         updateShape(shape.id, { style: { ...shape.style, lineStyle } });
       });
@@ -340,12 +453,44 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
     );
   }
 
+  const totalSelected = selectedShapes.length + selectedParametricShapes.length;
+
+  // If only parametric shapes selected, show parametric properties
+  if (selectedParametricShapes.length > 0 && selectedShapes.length === 0) {
+    return (
+      <div className="flex-1 overflow-auto">
+        <div className="p-3">
+          {/* Selection info */}
+          <div className="text-xs text-cad-text-dim mb-4">
+            {selectedParametricShapes.length} parametric shape{selectedParametricShapes.length > 1 ? 's' : ''} selected
+          </div>
+
+          {/* Parametric shape properties */}
+          {selectedParametricShapes.length === 1 && (
+            <ParametricShapeProperties shape={selectedParametricShapes[0]} />
+          )}
+
+          {selectedParametricShapes.length > 1 && (
+            <div className="text-xs text-cad-text-dim">
+              Select a single parametric shape to edit its properties.
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex-1 overflow-auto">
       <div className="p-3">
         {/* Selection info */}
         <div className="text-xs text-cad-text-dim mb-4">
-          {selectedShapes.length} object{selectedShapes.length > 1 ? 's' : ''} selected
+          {totalSelected} object{totalSelected > 1 ? 's' : ''} selected
+          {selectedParametricShapes.length > 0 && selectedShapes.length > 0 && (
+            <span className="block text-cad-text-dim">
+              ({selectedShapes.length} shapes, {selectedParametricShapes.length} parametric)
+            </span>
+          )}
         </div>
 
         {/* Stroke Color */}
@@ -381,7 +526,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
         </div>
 
         {/* Shape-specific properties */}
-        {selectedShapes.length === 1 && (
+        {selectedShapes.length === 1 && selectedParametricShapes.length === 0 && (
           <div className="mt-4 pt-4 border-t border-cad-border">
             <h4 className="text-xs font-semibold text-cad-text mb-2">
               {selectedShapes[0].type.charAt(0).toUpperCase() +

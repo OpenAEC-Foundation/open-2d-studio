@@ -43,6 +43,7 @@ import type {
 import {
   generateId,
   DEFAULT_DRAWING_BOUNDARY,
+  DEFAULT_DRAWING_SCALE,
   createDefaultTitleBlock,
   getShapeBounds,
   defaultStyle,
@@ -99,6 +100,7 @@ export interface DocumentState {
   activeLayerId: string;
   editorMode: EditorMode;
   drawingViewports: Record<string, Viewport>;
+  sheetViewports: Record<string, Viewport>;
 
   // View
   viewport: Viewport;
@@ -151,6 +153,20 @@ export interface DocumentState {
   // Title block templates
   customTitleBlockTemplates: TitleBlockTemplate[];
   customSheetTemplates: SheetTemplate[];
+
+  // Parametric shapes
+  parametricShapes: import('../types/parametric').ParametricShape[];
+  sectionDialogOpen: boolean;
+  pendingSection: {
+    profileType: import('../types/parametric').ProfileType;
+    parameters: import('../types/parametric').ParameterValues;
+    presetId?: string;
+    rotation: number;
+  } | null;
+
+  // Hatch patterns (per-document)
+  hatchCustomPatternId: string | null;  // Selected custom pattern ID for hatch tool
+  projectPatterns: import('../types/hatch').CustomHatchPattern[];  // Project-level custom patterns
 }
 
 // ============================================================================
@@ -176,7 +192,7 @@ export interface DocumentActions {
   switchToDrawing: (id: string) => void;
 
   // Sheet actions
-  addSheet: (name?: string, paperSize?: PaperSize, orientation?: PaperOrientation) => void;
+  addSheet: (name?: string, paperSize?: PaperSize, orientation?: PaperOrientation, svgTitleBlockId?: string) => void;
   deleteSheet: (id: string) => void;
   renameSheet: (id: string, name: string) => void;
   updateSheet: (id: string, updates: Partial<Sheet>) => void;
@@ -355,6 +371,7 @@ export function createEmptyDocumentState(projectName = 'Untitled'): DocumentStat
       id: defaultDrawingId,
       name: 'Drawing 1',
       boundary: { ...DEFAULT_DRAWING_BOUNDARY },
+      scale: DEFAULT_DRAWING_SCALE,
       createdAt: new Date().toISOString(),
       modifiedAt: new Date().toISOString(),
     }],
@@ -375,6 +392,7 @@ export function createEmptyDocumentState(projectName = 'Untitled'): DocumentStat
     activeLayerId: defaultLayerId,
     editorMode: 'drawing',
     drawingViewports: { [defaultDrawingId]: { offsetX: 0, offsetY: 0, zoom: 1 } },
+    sheetViewports: {},
     viewport: { offsetX: 0, offsetY: 0, zoom: 1 },
     isDrawing: false,
     drawingPoints: [],
@@ -435,6 +453,13 @@ export function createEmptyDocumentState(projectName = 'Untitled'): DocumentStat
     placementScale: 0.01,
     customTitleBlockTemplates: [],
     customSheetTemplates: [],
+    // Parametric shapes
+    parametricShapes: [],
+    sectionDialogOpen: false,
+    pendingSection: null,
+    // Hatch patterns (per-document)
+    hatchCustomPatternId: null,
+    projectPatterns: [],
   };
 }
 
@@ -585,6 +610,7 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
             id,
             name: name || `Drawing ${state.drawings.length + 1}`,
             boundary: { ...DEFAULT_DRAWING_BOUNDARY },
+            scale: DEFAULT_DRAWING_SCALE,
             createdAt: new Date().toISOString(),
             modifiedAt: new Date().toISOString(),
           };
@@ -726,16 +752,23 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
       // Sheet Actions
       // ======================================================================
 
-      addSheet: (name, paperSize = 'A4', orientation = 'landscape') =>
+      addSheet: (name, paperSize = 'A4', orientation = 'landscape', svgTitleBlockId) =>
         set((state) => {
           const id = generateId();
+          const titleBlock = createDefaultTitleBlock();
+
+          // If SVG title block ID is provided, store it for rendering
+          if (svgTitleBlockId) {
+            (titleBlock as unknown as { svgTemplateId?: string }).svgTemplateId = svgTitleBlockId;
+          }
+
           const newSheet: Sheet = {
             id,
             name: name || `Sheet ${state.sheets.length + 1}`,
             paperSize,
             orientation,
             viewports: [],
-            titleBlock: createDefaultTitleBlock(),
+            titleBlock,
             annotations: [],
             createdAt: new Date().toISOString(),
             modifiedAt: new Date().toISOString(),
@@ -1946,6 +1979,7 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
             state.drawings = loadedDrawings.map((drawing: Drawing) => ({
               ...drawing,
               boundary: drawing.boundary || { ...DEFAULT_DRAWING_BOUNDARY },
+              scale: drawing.scale || DEFAULT_DRAWING_SCALE,
             }));
             state.sheets = dataWithDrawings.sheets || [];
             state.activeDrawingId = loadedActiveDrawingId || loadedDrawings[0].id;
@@ -1957,6 +1991,7 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
             state.drawings = [{
               id: newDrawingId, name: 'Drawing 1',
               boundary: { ...DEFAULT_DRAWING_BOUNDARY },
+              scale: DEFAULT_DRAWING_SCALE,
               createdAt: new Date().toISOString(), modifiedAt: new Date().toISOString(),
             }];
             state.sheets = [];

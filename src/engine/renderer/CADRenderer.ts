@@ -16,6 +16,8 @@ import type { Shape, Viewport, SnapPoint, DrawingBoundary, Sheet, Drawing, Sheet
 import type { DrawingPreview, SelectionBox } from '../../state/appStore';
 import type { TrackingLine } from '../geometry/Tracking';
 import type { IPoint } from '../geometry/Point';
+import type { ParametricShape } from '../../types/parametric';
+import type { CustomHatchPattern } from '../../types/hatch';
 
 import { DrawingRenderer, DrawingRenderOptions } from './modes/DrawingRenderer';
 import { SheetRenderer, SheetRenderOptions, PlacementPreviewInfo } from './modes/SheetRenderer';
@@ -27,6 +29,7 @@ export type { BoundaryHandleType, ViewportHandleType };
 // Interface for drawing mode rendering
 interface RenderOptions {
   shapes: Shape[];
+  parametricShapes?: ParametricShape[];
   selectedShapeIds: string[];
   hoveredShapeId?: string | null;
   viewport: Viewport;
@@ -44,6 +47,18 @@ interface RenderOptions {
   boundaryDragging?: boolean;
   whiteBackground?: boolean;
   hideSelectionHandles?: boolean;
+  sectionPlacementPreview?: IPoint | null;
+  pendingSection?: {
+    profileType: import('../../types/parametric').ProfileType;
+    parameters: import('../../types/parametric').ParameterValues;
+    presetId?: string;
+    rotation: number;
+  } | null;
+  /** Custom hatch patterns for rendering */
+  customPatterns?: {
+    userPatterns: CustomHatchPattern[];
+    projectPatterns: CustomHatchPattern[];
+  };
 }
 
 // Interface for sheet mode rendering (supports both new and legacy property names)
@@ -51,6 +66,7 @@ interface SheetModeRenderOptions {
   sheet: Sheet;
   drawings: Drawing[];
   shapes: Shape[];
+  parametricShapes?: ParametricShape[];
   layers: Layer[];
   viewport: Viewport;
   selectedViewportId?: string | null;
@@ -64,6 +80,11 @@ interface SheetModeRenderOptions {
   selectedAnnotationIds?: string[];
   /** Drawing placement preview info */
   placementPreview?: PlacementPreviewInfo;
+  /** Custom hatch patterns for rendering */
+  customPatterns?: {
+    userPatterns: CustomHatchPattern[];
+    projectPatterns: CustomHatchPattern[];
+  };
 }
 
 export class CADRenderer {
@@ -103,6 +124,7 @@ export class CADRenderer {
   render(options: RenderOptions): void {
     const drawingOptions: DrawingRenderOptions = {
       shapes: options.shapes,
+      parametricShapes: options.parametricShapes,
       selectedShapeIds: options.selectedShapeIds,
       hoveredShapeId: options.hoveredShapeId,
       viewport: options.viewport,
@@ -119,6 +141,9 @@ export class CADRenderer {
       boundaryDragging: options.boundaryDragging,
       whiteBackground: options.whiteBackground,
       hideSelectionHandles: options.hideSelectionHandles,
+      sectionPlacementPreview: options.sectionPlacementPreview,
+      pendingSection: options.pendingSection,
+      customPatterns: options.customPatterns,
     };
 
     this.drawingRenderer.render(drawingOptions);
@@ -132,6 +157,7 @@ export class CADRenderer {
       sheet: options.sheet,
       drawings: options.drawings,
       shapes: options.shapes,
+      parametricShapes: options.parametricShapes,
       layers: options.layers,
       viewport: options.viewport,
       selectedViewportId: options.selectedViewportId,
@@ -141,6 +167,7 @@ export class CADRenderer {
       cropRegionViewportId: options.cropRegionViewportId,
       selectedAnnotationIds: options.selectedAnnotationIds,
       placementPreview: options.placementPreview,
+      customPatterns: options.customPatterns,
     };
 
     this.sheetRenderer.render(sheetOptions);

@@ -4,17 +4,22 @@
 
 import type { Shape, Viewport, SnapPoint, DrawingBoundary } from '../types';
 import type { DrawingPreview, SelectionBox, TrackingLine, Point } from '../types';
+import type { ParametricShape } from '../../../types/parametric';
+import type { CustomHatchPattern } from '../../../types/hatch';
 import { BaseRenderer } from '../core/BaseRenderer';
 import { ShapeRenderer } from '../core/ShapeRenderer';
+import { ParametricRenderer } from '../core/ParametricRenderer';
 import { GridLayer } from '../layers/GridLayer';
 import { SnapLayer } from '../layers/SnapLayer';
 import { TrackingLayer } from '../layers/TrackingLayer';
 import { SelectionLayer } from '../layers/SelectionLayer';
 import { HandleRenderer } from '../ui/HandleRenderer';
 import { COLORS } from '../types';
+import { generateProfileGeometry } from '../../../services/parametric/geometryGenerators';
 
 export interface DrawingRenderOptions {
   shapes: Shape[];
+  parametricShapes?: ParametricShape[];
   selectedShapeIds: string[];
   hoveredShapeId?: string | null;
   viewport: Viewport;
@@ -31,6 +36,18 @@ export interface DrawingRenderOptions {
   boundaryDragging?: boolean;
   whiteBackground?: boolean;
   hideSelectionHandles?: boolean;
+  sectionPlacementPreview?: Point | null;
+  pendingSection?: {
+    profileType: import('../../../types/parametric').ProfileType;
+    parameters: import('../../../types/parametric').ParameterValues;
+    presetId?: string;
+    rotation: number;
+  } | null;
+  /** Custom hatch patterns (user + project) for rendering */
+  customPatterns?: {
+    userPatterns: CustomHatchPattern[];
+    projectPatterns: CustomHatchPattern[];
+  };
 }
 
 // Legacy alias
@@ -38,6 +55,7 @@ export type DraftRenderOptions = DrawingRenderOptions;
 
 export class DrawingRenderer extends BaseRenderer {
   private shapeRenderer: ShapeRenderer;
+  private parametricRenderer: ParametricRenderer;
   private gridLayer: GridLayer;
   private snapLayer: SnapLayer;
   private trackingLayer: TrackingLayer;
@@ -47,6 +65,7 @@ export class DrawingRenderer extends BaseRenderer {
   constructor(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number) {
     super(ctx, width, height, dpr);
     this.shapeRenderer = new ShapeRenderer(ctx, width, height, dpr);
+    this.parametricRenderer = new ParametricRenderer(ctx, width, height, dpr);
     this.gridLayer = new GridLayer(ctx, width, height, dpr);
     this.snapLayer = new SnapLayer(ctx, width, height, dpr);
     this.trackingLayer = new TrackingLayer(ctx, width, height, dpr);
@@ -61,6 +80,7 @@ export class DrawingRenderer extends BaseRenderer {
     this.width = width;
     this.height = height;
     this.shapeRenderer = new ShapeRenderer(this.ctx, width, height, this.dpr);
+    this.parametricRenderer = new ParametricRenderer(this.ctx, width, height, this.dpr);
     this.gridLayer = new GridLayer(this.ctx, width, height, this.dpr);
     this.snapLayer = new SnapLayer(this.ctx, width, height, this.dpr);
     this.trackingLayer = new TrackingLayer(this.ctx, width, height, this.dpr);
@@ -90,9 +110,15 @@ export class DrawingRenderer extends BaseRenderer {
       hoveredShapeId,
       whiteBackground,
       hideSelectionHandles,
+      customPatterns,
     } = options;
 
     const ctx = this.ctx;
+
+    // Set custom patterns for hatch rendering
+    if (customPatterns) {
+      this.shapeRenderer.setCustomPatterns(customPatterns.userPatterns, customPatterns.projectPatterns);
+    }
 
     // Clear canvas
     ctx.save();
@@ -128,6 +154,17 @@ export class DrawingRenderer extends BaseRenderer {
       this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
     }
 
+    // Draw parametric shapes
+    const parametricShapes = options.parametricShapes;
+    if (parametricShapes) {
+      for (const shape of parametricShapes) {
+        if (!shape.visible) continue;
+        const isSelected = selectedShapeIds.includes(shape.id);
+        const isHovered = hoveredShapeId === shape.id;
+        this.parametricRenderer.drawParametricShape(shape, isSelected, isHovered, whiteBackground);
+      }
+    }
+
     // Draw preview shape while drawing
     if (drawingPreview) {
       this.shapeRenderer.drawPreview(drawingPreview, currentStyle, viewport, whiteBackground);
@@ -141,6 +178,16 @@ export class DrawingRenderer extends BaseRenderer {
     // Draw snap point indicator (skip grid snaps - they're not useful to show)
     if (currentSnapPoint && currentSnapPoint.type !== 'grid') {
       this.snapLayer.drawSnapIndicator(currentSnapPoint, viewport);
+    }
+
+    // Draw section placement preview (pending section following mouse)
+    const { sectionPlacementPreview, pendingSection } = options;
+    if (sectionPlacementPreview && pendingSection) {
+      this.drawSectionPlacementPreview(
+        sectionPlacementPreview,
+        pendingSection,
+        whiteBackground
+      );
     }
 
     ctx.restore();
@@ -166,6 +213,80 @@ export class DrawingRenderer extends BaseRenderer {
    */
   getBoundaryHandlePositions(boundary: DrawingBoundary) {
     return this.handleRenderer.getBoundaryHandlePositions(boundary);
+  }
+
+  /**
+   * Draw section placement preview (ghost shape following mouse)
+   */
+  private drawSectionPlacementPreview(
+    position: Point,
+    pendingSection: NonNullable<DrawingRenderOptions['pendingSection']>,
+    whiteBackground?: boolean
+  ): void {
+    const ctx = this.ctx;
+
+    try {
+      const geometry = generateProfileGeometry(
+        pendingSection.profileType,
+        pendingSection.parameters,
+        position,
+        pendingSection.rotation,
+        1
+      );
+
+      if (geometry.outlines.length === 0) return;
+
+      ctx.save();
+
+      // Semi-transparent preview style
+      ctx.globalAlpha = 0.6;
+      ctx.strokeStyle = whiteBackground ? '#0066cc' : '#00d4ff';
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([6, 3]);
+
+      // Draw outlines
+      for (let i = 0; i < geometry.outlines.length; i++) {
+        const outline = geometry.outlines[i];
+        const closed = geometry.closed[i];
+
+        if (outline.length < 2) continue;
+
+        ctx.beginPath();
+        ctx.moveTo(outline[0].x, outline[0].y);
+
+        for (let j = 1; j < outline.length; j++) {
+          ctx.lineTo(outline[j].x, outline[j].y);
+        }
+
+        if (closed) {
+          ctx.closePath();
+          // Light fill for outer outline
+          if (i === 0) {
+            ctx.fillStyle = whiteBackground ? 'rgba(0, 102, 204, 0.1)' : 'rgba(0, 212, 255, 0.1)';
+            ctx.fill();
+          }
+        }
+
+        ctx.stroke();
+      }
+
+      // Draw insertion point crosshair
+      ctx.setLineDash([]);
+      ctx.strokeStyle = '#00ff00';
+      ctx.lineWidth = 1;
+      ctx.globalAlpha = 0.8;
+      const crossSize = 10;
+      ctx.beginPath();
+      ctx.moveTo(position.x - crossSize, position.y);
+      ctx.lineTo(position.x + crossSize, position.y);
+      ctx.moveTo(position.x, position.y - crossSize);
+      ctx.lineTo(position.x, position.y + crossSize);
+      ctx.stroke();
+
+      ctx.restore();
+    } catch {
+      // Silently ignore preview errors
+    }
   }
 }
 

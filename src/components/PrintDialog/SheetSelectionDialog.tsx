@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useRef, useCallback } from 'react';
 import { X } from 'lucide-react';
 import type { Sheet } from '../../types/geometry';
 
@@ -11,6 +11,9 @@ interface SheetSelectionDialogProps {
 
 export function SheetSelectionDialog({ sheets, selectedIds, onConfirm, onCancel }: SheetSelectionDialogProps) {
   const [selected, setSelected] = useState<Set<string>>(new Set(selectedIds));
+  const [position, setPosition] = useState({ x: 0, y: 0 });
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStartRef = useRef({ x: 0, y: 0 });
 
   const toggle = (id: string) => {
     const next = new Set(selected);
@@ -19,17 +22,47 @@ export function SheetSelectionDialog({ sheets, selectedIds, onConfirm, onCancel 
     setSelected(next);
   };
 
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+    setIsDragging(true);
+    dragStartRef.current = { x: e.clientX - position.x, y: e.clientY - position.y };
+  }, [position]);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isDragging) return;
+    setPosition({
+      x: e.clientX - dragStartRef.current.x,
+      y: e.clientY - dragStartRef.current.y,
+    });
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
+
   return (
-    <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]">
-      <div className="bg-cad-surface border border-cad-border rounded-lg shadow-xl w-[360px] max-h-[60vh] flex flex-col">
-        <div className="flex items-center justify-between px-4 py-2 border-b border-cad-border">
-          <h3 className="text-sm font-semibold text-cad-text">Select Sheets</h3>
-          <button onClick={onCancel} className="text-cad-text-dim hover:text-cad-text">
-            <X size={16} />
+    <div
+      className="fixed inset-0 bg-black/40 flex items-center justify-center z-[60]"
+      onMouseMove={handleMouseMove}
+      onMouseUp={handleMouseUp}
+      onMouseLeave={handleMouseUp}
+    >
+      <div
+        className="bg-cad-surface border border-cad-border shadow-xl w-[360px] h-[400px] flex flex-col"
+        style={{ transform: `translate(${position.x}px, ${position.y}px)` }}
+      >
+        <div
+          className="flex items-center justify-between px-3 py-1.5 border-b border-cad-border select-none"
+          style={{ background: 'linear-gradient(to bottom, #ffffff, #f5f5f5)', borderColor: '#d4d4d4' }}
+          onMouseDown={handleMouseDown}
+        >
+          <h3 className="text-xs font-semibold text-gray-800">Select Sheets</h3>
+          <button onClick={onCancel} className="p-0.5 hover:bg-cad-hover rounded transition-colors text-gray-600 hover:text-gray-800 cursor-default -mr-1">
+            <X size={14} />
           </button>
         </div>
 
-        <div className="flex gap-2 px-4 pt-2">
+        <div className="flex gap-2 px-3 pt-2">
           <button
             onClick={() => setSelected(new Set(sheets.map(s => s.id)))}
             className="text-xs text-cad-accent hover:underline"
@@ -44,7 +77,7 @@ export function SheetSelectionDialog({ sheets, selectedIds, onConfirm, onCancel 
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-1">
+        <div className="flex-1 overflow-y-auto p-3 space-y-1">
           {sheets.length === 0 ? (
             <p className="text-xs text-cad-text-dim">No sheets available.</p>
           ) : (
@@ -56,7 +89,7 @@ export function SheetSelectionDialog({ sheets, selectedIds, onConfirm, onCancel 
                   onChange={() => toggle(sheet.id)}
                   className="accent-cad-accent"
                 />
-                <span className="text-sm text-cad-text">{sheet.name}</span>
+                <span className="text-xs text-cad-text">{sheet.name}</span>
                 <span className="text-xs text-cad-text-dim ml-auto">
                   {sheet.paperSize} {sheet.orientation}
                 </span>
@@ -65,13 +98,13 @@ export function SheetSelectionDialog({ sheets, selectedIds, onConfirm, onCancel 
           )}
         </div>
 
-        <div className="flex justify-end gap-2 px-4 py-2 border-t border-cad-border">
-          <button onClick={onCancel} className="px-3 py-1 text-sm text-cad-text hover:bg-cad-border rounded">
+        <div className="flex justify-end gap-2 px-3 py-2 border-t border-cad-border">
+          <button onClick={onCancel} className="px-3 py-1 text-xs bg-cad-input border border-cad-border text-cad-text hover:bg-cad-hover">
             Cancel
           </button>
           <button
             onClick={() => onConfirm(Array.from(selected))}
-            className="px-3 py-1 text-sm bg-cad-accent text-white rounded hover:bg-cad-accent/80"
+            className="px-3 py-1 text-xs bg-cad-accent text-white hover:bg-cad-accent/80"
           >
             OK
           </button>

@@ -5,7 +5,7 @@
 import { useCallback } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
 import type { Point, LineShape, RectangleShape, CircleShape, ArcShape, PolylineShape, SplineShape, EllipseShape, SnapPoint, Shape, HatchShape } from '../../types/geometry';
-import { snapToAngle, calculateCircleFrom3Points, isPointNearShape } from '../../engine/geometry/GeometryUtils';
+import { snapToAngle, calculateCircleFrom3Points, isPointNearShape, findClosedShapeContainingPoint, getShapeBoundaryPoints } from '../../engine/geometry/GeometryUtils';
 import { useDimensionDrawing } from './useDimensionDrawing';
 
 /**
@@ -320,10 +320,30 @@ export function useShapeDrawing() {
   );
 
   /**
-   * Handle click for hatch drawing (same pattern as polyline)
+   * Handle click for hatch drawing
+   * - If clicking inside a closed shape (circle, rectangle, ellipse, closed polyline), fill it immediately
+   * - Otherwise, draw a new hatch boundary polygon
    */
   const handleHatchClick = useCallback(
     (snappedPos: Point, shiftKey: boolean) => {
+      // If no points drawn yet, check if clicking inside an existing closed shape
+      if (drawingPoints.length === 0) {
+        const { shapes } = useAppStore.getState();
+        const activeShapes = shapes.filter(s => s.drawingId === activeDrawingId);
+        const containingShape = findClosedShapeContainingPoint(snappedPos, activeShapes);
+
+        if (containingShape) {
+          // Get boundary points from the shape
+          const boundaryPoints = getShapeBoundaryPoints(containingShape);
+          if (boundaryPoints.length >= 3) {
+            // Create hatch immediately with this boundary
+            createHatch(boundaryPoints);
+            return;
+          }
+        }
+      }
+
+      // Fall back to drawing a new boundary polygon
       let finalPos = snappedPos;
       if (shiftKey && drawingPoints.length > 0) {
         const lastPoint = drawingPoints[drawingPoints.length - 1];
@@ -331,7 +351,7 @@ export function useShapeDrawing() {
       }
       addDrawingPoint(finalPos);
     },
-    [drawingPoints, addDrawingPoint]
+    [drawingPoints, addDrawingPoint, activeDrawingId, createHatch]
   );
 
   /**

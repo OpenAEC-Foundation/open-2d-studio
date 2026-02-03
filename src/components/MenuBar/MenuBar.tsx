@@ -160,7 +160,11 @@ function WindowControls() {
   return <WindowsControls {...controlProps} />;
 }
 
-export const MenuBar = memo(function MenuBar() {
+interface MenuBarProps {
+  onSendFeedback?: () => void;
+}
+
+export const MenuBar = memo(function MenuBar({ onSendFeedback }: MenuBarProps) {
   const canUndo = useAppStore(s => s.canUndo());
   const canRedo = useAppStore(s => s.canRedo());
   const isModified = useAppStore(s => s.isModified);
@@ -248,6 +252,16 @@ export const MenuBar = memo(function MenuBar() {
           {isModified ? '* ' : ''}{projectName} - Open 2D Studio
         </span>
       </div>
+
+      {/* Send Feedback */}
+      {onSendFeedback && (
+        <button
+          onClick={onSendFeedback}
+          className="text-xs text-cad-text-dim hover:text-cad-accent transition-colors cursor-default mr-4"
+        >
+          Send Feedback
+        </button>
+      )}
 
       {/* Window controls */}
       <WindowControls />

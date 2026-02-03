@@ -59,6 +59,7 @@ export function useFileOperations() {
           activeDrawingId: project.activeDrawingId,
           activeSheetId: project.activeSheetId,
           drawingViewports: project.drawingViewports,
+          sheetViewports: project.sheetViewports,
         },
         filePath,
         project.name
@@ -88,6 +89,7 @@ export function useFileOperations() {
         activeDrawingId: s.activeDrawingId,
         activeSheetId: s.activeSheetId,
         drawingViewports: s.drawingViewports,
+        sheetViewports: s.sheetViewports,
         shapes: s.shapes,
         layers: s.layers,
         activeLayerId: s.activeLayerId,
@@ -126,6 +128,7 @@ export function useFileOperations() {
         activeDrawingId: s.activeDrawingId,
         activeSheetId: s.activeSheetId,
         drawingViewports: s.drawingViewports,
+        sheetViewports: s.sheetViewports,
         shapes: s.shapes,
         layers: s.layers,
         activeLayerId: s.activeLayerId,
@@ -163,7 +166,8 @@ export function useFileOperations() {
       let content: string;
 
       if (extension === 'ifc') {
-        content = exportToIFC(s.shapes, s.layers);
+        const customPatterns = [...s.userPatterns, ...s.projectPatterns];
+        content = exportToIFC(s.shapes, s.layers, customPatterns);
       } else if (extension === 'dxf') {
         content = exportToDXF(s.shapes);
       } else if (extension === 'json') {
@@ -207,7 +211,8 @@ export function useFileOperations() {
     const filePath = await showExportDialog('ifc', s.projectName);
     if (!filePath) return;
     try {
-      await writeTextFile(filePath, exportToIFC(s.shapes, s.layers));
+      const customPatterns = [...s.userPatterns, ...s.projectPatterns];
+      await writeTextFile(filePath, exportToIFC(s.shapes, s.layers, customPatterns));
       await showInfo(`Exported successfully to ${filePath}`);
     } catch (err) { await showError(`Failed to export: ${err}`); }
   }, []);
