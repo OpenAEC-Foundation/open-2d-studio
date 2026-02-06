@@ -1,5 +1,7 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useFileOperations } from '../../../hooks/file/useFileOperations';
+import { getSetting, setSetting } from '../../../utils/settings';
+import { open as shellOpen } from '@tauri-apps/plugin-shell';
 
 export type BackstageView = 'none' | 'import' | 'export' | 'shortcuts' | 'feedback' | 'about';
 
@@ -35,22 +37,170 @@ function BackstageItem({ icon, label, onClick, onMouseEnter, active, shortcut }:
 }
 
 type FeedbackCategory = 'bug' | 'feature' | 'general';
+type FeedbackStatus = 'idle' | 'submitting' | 'success' | 'error' | 'no-token';
+
+const GITHUB_REPO = 'OpenAEC-Foundation/Open-2D-Studio';
+const CATEGORY_LABELS: Record<FeedbackCategory, string> = {
+  bug: 'bug',
+  feature: 'enhancement',
+  general: 'feedback',
+};
+const RATING_LABELS: Record<number, string> = {
+  1: 'Frustrated',
+  2: 'Neutral',
+  3: 'Happy',
+};
 
 function FeedbackPanel() {
   const [category, setCategory] = useState<FeedbackCategory>('general');
   const [message, setMessage] = useState('');
   const [rating, setRating] = useState<number | null>(null);
-  const [submitted, setSubmitted] = useState(false);
+  const [status, setStatus] = useState<FeedbackStatus>('idle');
+  const [error, setError] = useState('');
+  const [token, setToken] = useState('');
+  const [tokenLoaded, setTokenLoaded] = useState(false);
+  const [showToken, setShowToken] = useState(false);
+  const [issueUrl, setIssueUrl] = useState('');
+  const [tokenStatus, setTokenStatus] = useState<'idle' | 'validating' | 'valid' | 'invalid' | 'no-scope'>('idle');
+  const [tokenUser, setTokenUser] = useState('');
+  const validateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleSubmit = () => {
-    setSubmitted(true);
+  useEffect(() => {
+    getSetting<string>('github-token', '').then(saved => {
+      setToken(saved);
+      setTokenLoaded(true);
+      if (saved.trim()) validateToken(saved);
+    });
+  }, []);
+
+  const validateToken = async (value: string) => {
+    if (!value.trim()) {
+      setTokenStatus('idle');
+      setTokenUser('');
+      return;
+    }
+    setTokenStatus('validating');
+    try {
+      const res = await fetch('https://api.github.com/user', {
+        headers: {
+          'Authorization': `Bearer ${value.trim()}`,
+          'Accept': 'application/vnd.github+json',
+        },
+      });
+      if (!res.ok) {
+        setTokenStatus('invalid');
+        setTokenUser('');
+        return;
+      }
+      const scopes = res.headers.get('x-oauth-scopes') || '';
+      const hasScope = scopes.split(',').map(s => s.trim()).some(s => s === 'public_repo' || s === 'repo');
+      if (!hasScope) {
+        setTokenStatus('no-scope');
+        setTokenUser('');
+        return;
+      }
+      const data = await res.json();
+      setTokenUser(data.login || '');
+      setTokenStatus('valid');
+    } catch {
+      setTokenStatus('invalid');
+      setTokenUser('');
+    }
   };
 
-  if (submitted) {
+  const handleSaveToken = async (value: string) => {
+    setToken(value);
+    await setSetting('github-token', value);
+    if (validateTimerRef.current) clearTimeout(validateTimerRef.current);
+    if (value.trim()) {
+      validateTimerRef.current = setTimeout(() => validateToken(value), 600);
+    } else {
+      setTokenStatus('idle');
+      setTokenUser('');
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!token.trim()) {
+      setStatus('no-token');
+      return;
+    }
+
+    setStatus('submitting');
+    setError('');
+
+    const ratingText = rating ? `\n\n**Sentiment:** ${RATING_LABELS[rating] || ''}` : '';
+    const title = category === 'bug'
+      ? `[Bug] ${message.slice(0, 80)}${message.length > 80 ? '...' : ''}`
+      : category === 'feature'
+        ? `[Feature Request] ${message.slice(0, 80)}${message.length > 80 ? '...' : ''}`
+        : `[Feedback] ${message.slice(0, 80)}${message.length > 80 ? '...' : ''}`;
+
+    const body = `${message}${ratingText}\n\n---\n*Submitted from Open 2D Studio*`;
+
+    try {
+      const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/issues`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${token.trim()}`,
+          'Accept': 'application/vnd.github+json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          title,
+          body,
+          labels: [CATEGORY_LABELS[category]],
+        }),
+      });
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 401) {
+          setError('Invalid token. Please check your GitHub token and try again.');
+        } else if (res.status === 403) {
+          setError('Token lacks permission. Ensure it has the "repo" or "public_repo" scope.');
+        } else {
+          setError(data.message || `GitHub API error (${res.status})`);
+        }
+        setStatus('error');
+        return;
+      }
+
+      const data = await res.json();
+      setIssueUrl(data.html_url || '');
+      setStatus('success');
+      setMessage('');
+      setRating(null);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Network error');
+      setStatus('error');
+    }
+  };
+
+  if (!tokenLoaded) return null;
+
+  if (status === 'success') {
     return (
       <div className="p-8">
         <h2 className="text-lg font-semibold text-cad-text mb-6">Send Feedback</h2>
-        <p className="text-sm text-cad-text-dim">Thank you for your feedback!</p>
+        <p className="text-sm text-cad-text mb-2">Thank you for your feedback!</p>
+        {issueUrl && (
+          <p className="text-xs text-cad-text-dim">
+            Issue created:{' '}
+            <button
+              className="text-cad-accent hover:underline cursor-pointer"
+              onClick={() => shellOpen(issueUrl)}
+            >
+              {issueUrl}
+            </button>
+          </p>
+        )}
+        <button
+          className="mt-4 px-4 py-1.5 text-xs font-medium rounded bg-cad-surface border border-cad-border text-cad-text-dim hover:bg-cad-hover cursor-default"
+          onClick={() => { setStatus('idle'); setIssueUrl(''); }}
+        >
+          Send another
+        </button>
       </div>
     );
   }
@@ -71,6 +221,68 @@ function FeedbackPanel() {
     <div className="p-8">
       <h2 className="text-lg font-semibold text-cad-text mb-6">Send Feedback</h2>
       <div className="max-w-md flex flex-col gap-4">
+        {/* GitHub Token */}
+        {(!token.trim() || status === 'no-token' || tokenStatus === 'invalid' || tokenStatus === 'no-scope') && (
+          <div className="bg-cad-surface border border-cad-border rounded p-3 flex flex-col gap-2">
+            <label className="text-xs text-cad-text-dim">
+              GitHub Personal Access Token <span className="text-cad-text-muted">(required to submit)</span>
+            </label>
+            <div className="flex gap-2">
+              <input
+                type={showToken ? 'text' : 'password'}
+                className={`flex-1 bg-cad-bg border text-cad-text text-xs rounded px-2 py-1.5 focus:outline-none font-mono ${
+                  tokenStatus === 'invalid' || tokenStatus === 'no-scope' ? 'border-red-500' : tokenStatus === 'valid' ? 'border-green-500' : 'border-cad-border focus:border-cad-border-light'
+                }`}
+                placeholder="ghp_..."
+                value={token}
+                onChange={e => handleSaveToken(e.target.value)}
+              />
+              <button
+                className="px-2 py-1 text-[10px] text-cad-text-dim border border-cad-border rounded hover:bg-cad-hover cursor-default"
+                onClick={() => setShowToken(!showToken)}
+              >
+                {showToken ? 'Hide' : 'Show'}
+              </button>
+            </div>
+            {tokenStatus === 'validating' && (
+              <p className="text-[10px] text-cad-text-muted">Validating token...</p>
+            )}
+            {tokenStatus === 'invalid' && (
+              <p className="text-[10px] text-red-400">Invalid token. Please check and try again.</p>
+            )}
+            {tokenStatus === 'no-scope' && (
+              <p className="text-[10px] text-red-400">Token is missing the <strong>public_repo</strong> scope.</p>
+            )}
+            {tokenStatus === 'valid' && (
+              <p className="text-[10px] text-green-400">Authenticated as <strong>{tokenUser}</strong></p>
+            )}
+            <p className="text-[10px] text-cad-text-muted">
+              <button
+                className="text-cad-accent hover:underline cursor-pointer"
+                onClick={() => shellOpen('https://github.com/settings/tokens/new?scopes=public_repo&description=Open+2D+Studio+Feedback')}
+              >
+                Create a token
+              </button>
+              {' '}with <strong>public_repo</strong> scope.
+            </p>
+          </div>
+        )}
+
+        {token.trim() && status !== 'no-token' && tokenStatus !== 'invalid' && tokenStatus !== 'no-scope' && (
+          <div className="flex items-center gap-2">
+            {tokenStatus === 'valid' && <span className="w-2 h-2 rounded-full bg-green-500" />}
+            <span className="text-[10px] text-cad-text-muted">
+              {tokenStatus === 'valid' ? `Authenticated as ${tokenUser}` : 'GitHub token configured'}
+            </span>
+            <button
+              className="text-[10px] text-cad-text-dim hover:text-cad-text cursor-default"
+              onClick={() => { setShowToken(false); handleSaveToken(''); setTokenStatus('idle'); setTokenUser(''); }}
+            >
+              Clear
+            </button>
+          </div>
+        )}
+
         {/* Category toggles */}
         <div className="flex gap-2">
           {categories.map(c => (
@@ -113,13 +325,18 @@ function FeedbackPanel() {
           ))}
         </div>
 
+        {/* Error message */}
+        {status === 'error' && (
+          <p className="text-xs text-red-400">{error}</p>
+        )}
+
         {/* Submit */}
         <button
           className="self-start px-5 py-1.5 text-sm font-medium text-white rounded transition-colors cursor-default bg-cad-accent hover:bg-cad-accent/80 disabled:opacity-50 disabled:cursor-default"
-          disabled={!message.trim()}
+          disabled={!message.trim() || status === 'submitting'}
           onClick={handleSubmit}
         >
-          Submit
+          {status === 'submitting' ? 'Submitting...' : 'Submit'}
         </button>
       </div>
     </div>

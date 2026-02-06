@@ -86,23 +86,34 @@ export function SectionDialog({ isOpen, onClose, onInsert }: SectionDialogProps)
     return getPresetsForType(selectedProfileType);
   }, [selectedProfileType]);
 
-  // Filter presets by standard and category
+  // Filter presets by standard and category (or global search)
   const filteredPresets = useMemo(() => {
-    let presets = allPresets;
-
     if (searchQuery) {
-      presets = searchPresets(searchQuery).filter(p => p.profileType === selectedProfileType);
-    } else {
-      if (selectedStandard) {
-        presets = presets.filter(p => p.standard === selectedStandard);
-      }
-      if (selectedCategory) {
-        presets = presets.filter(p => p.category === selectedCategory);
-      }
+      // Global search across ALL profile types, standards, and categories
+      return searchPresets(searchQuery);
     }
 
+    let presets = allPresets;
+    if (selectedStandard) {
+      presets = presets.filter(p => p.standard === selectedStandard);
+    }
+    if (selectedCategory) {
+      presets = presets.filter(p => p.category === selectedCategory);
+    }
     return presets;
-  }, [allPresets, selectedStandard, selectedCategory, searchQuery, selectedProfileType]);
+  }, [allPresets, selectedStandard, selectedCategory, searchQuery]);
+
+  // Group search results by profile type for display
+  const groupedSearchResults = useMemo(() => {
+    if (!searchQuery) return null;
+    const groups: Record<string, typeof filteredPresets> = {};
+    for (const preset of filteredPresets) {
+      const key = preset.profileType;
+      if (!groups[key]) groups[key] = [];
+      groups[key].push(preset);
+    }
+    return groups;
+  }, [searchQuery, filteredPresets]);
 
   // Get available categories for current standard
   const categories = useMemo(() => {
@@ -273,118 +284,170 @@ export function SectionDialog({ isOpen, onClose, onInsert }: SectionDialogProps)
           </button>
         </div>
 
+        {/* Global Search Bar */}
+        <div className="px-3 py-2 border-b border-cad-border bg-cad-surface">
+          <div className="relative">
+            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-cad-text-dim" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              placeholder="Search all profiles (e.g. W8x31, IPE200, L6x6)..."
+              className="w-full pl-8 pr-8 py-1.5 text-sm bg-cad-input border border-cad-border text-cad-text rounded"
+              autoFocus
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-cad-text-dim hover:text-cad-text"
+              >
+                <X size={12} />
+              </button>
+            )}
+          </div>
+        </div>
+
         {/* Content */}
         <div className="flex-1 flex overflow-hidden">
           {/* Left: Profile Type & Presets */}
           <div className="w-[280px] border-r border-cad-border flex flex-col">
-            {/* Profile Type Selection */}
-            <div className="p-3 border-b border-cad-border">
-              <label className="block text-xs text-cad-text-dim mb-1">Profile Type:</label>
-              <select
-                value={selectedProfileType}
-                onChange={(e) => {
-                  setSelectedProfileType(e.target.value as ProfileType);
-                  setSelectedPresetId('');
-                  setSelectedCategory('');
-                }}
-                className="w-full px-2 py-1.5 text-sm bg-cad-input border border-cad-border text-cad-text"
-              >
-                {getAllProfileTemplates().map(t => (
-                  <option key={t.id} value={t.id}>{t.name}</option>
-                ))}
-              </select>
-            </div>
-
-            {/* Standard & Search */}
-            <div className="p-3 border-b border-cad-border space-y-2">
-              <div className="flex gap-2">
-                <div className="flex-1">
-                  <label className="block text-xs text-cad-text-dim mb-1">Standard:</label>
+            {/* Filters (hidden during search) */}
+            {!searchQuery && (
+              <>
+                {/* Profile Type Selection */}
+                <div className="p-3 border-b border-cad-border">
+                  <label className="block text-xs text-cad-text-dim mb-1">Profile Type:</label>
                   <select
-                    value={selectedStandard}
+                    value={selectedProfileType}
                     onChange={(e) => {
-                      setSelectedStandard(e.target.value);
+                      setSelectedProfileType(e.target.value as ProfileType);
+                      setSelectedPresetId('');
                       setSelectedCategory('');
-                      setSelectedPresetId('');
                     }}
-                    className="w-full px-2 py-1 text-xs bg-cad-input border border-cad-border text-cad-text"
+                    className="w-full px-2 py-1.5 text-sm bg-cad-input border border-cad-border text-cad-text"
                   >
-                    {getAvailableStandards().map(std => (
-                      <option key={std} value={std}>{std}</option>
+                    {getAllProfileTemplates().map(t => (
+                      <option key={t.id} value={t.id}>{t.name}</option>
                     ))}
                   </select>
                 </div>
-                <div className="flex-1">
-                  <label className="block text-xs text-cad-text-dim mb-1">Category:</label>
-                  <select
-                    value={selectedCategory}
-                    onChange={(e) => {
-                      setSelectedCategory(e.target.value);
-                      setSelectedPresetId('');
-                    }}
-                    className="w-full px-2 py-1 text-xs bg-cad-input border border-cad-border text-cad-text"
-                  >
-                    <option value="">All</option>
-                    {categories.map(cat => (
-                      <option key={cat} value={cat}>{cat}</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
 
-              {/* Search */}
-              <div className="relative">
-                <Search size={12} className="absolute left-2 top-1/2 -translate-y-1/2 text-cad-text-dim" />
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Search profiles..."
-                  className="w-full pl-7 pr-2 py-1 text-xs bg-cad-input border border-cad-border text-cad-text"
-                />
-              </div>
-            </div>
+                {/* Standard & Category */}
+                <div className="p-3 border-b border-cad-border">
+                  <div className="flex gap-2">
+                    <div className="flex-1">
+                      <label className="block text-xs text-cad-text-dim mb-1">Standard:</label>
+                      <select
+                        value={selectedStandard}
+                        onChange={(e) => {
+                          setSelectedStandard(e.target.value);
+                          setSelectedCategory('');
+                          setSelectedPresetId('');
+                        }}
+                        className="w-full px-2 py-1 text-xs bg-cad-input border border-cad-border text-cad-text"
+                      >
+                        {getAvailableStandards().map(std => (
+                          <option key={std} value={std}>{std}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-xs text-cad-text-dim mb-1">Category:</label>
+                      <select
+                        value={selectedCategory}
+                        onChange={(e) => {
+                          setSelectedCategory(e.target.value);
+                          setSelectedPresetId('');
+                        }}
+                        className="w-full px-2 py-1 text-xs bg-cad-input border border-cad-border text-cad-text"
+                      >
+                        <option value="">All</option>
+                        {categories.map(cat => (
+                          <option key={cat} value={cat}>{cat}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Preset List */}
             <div className="flex-1 overflow-y-auto p-2">
               <div className="space-y-1">
-                {/* Custom option */}
-                <button
-                  onClick={() => {
-                    setUseCustom(true);
-                    setSelectedPresetId('');
-                    setParameters(getDefaultParameters(selectedProfileType));
-                  }}
-                  className={`w-full text-left px-2 py-1.5 text-xs transition-colors ${
-                    useCustom && !selectedPresetId
-                      ? 'bg-cad-accent text-white'
-                      : 'hover:bg-cad-hover text-cad-text'
-                  }`}
-                >
-                  [Custom Dimensions]
-                </button>
-
-                {filteredPresets.map(preset => (
+                {/* Custom option (hidden during search) */}
+                {!searchQuery && (
                   <button
-                    key={preset.id}
                     onClick={() => {
-                      setSelectedPresetId(preset.id);
-                      setUseCustom(false);
+                      setUseCustom(true);
+                      setSelectedPresetId('');
+                      setParameters(getDefaultParameters(selectedProfileType));
                     }}
                     className={`w-full text-left px-2 py-1.5 text-xs transition-colors ${
-                      selectedPresetId === preset.id
+                      useCustom && !selectedPresetId
                         ? 'bg-cad-accent text-white'
                         : 'hover:bg-cad-hover text-cad-text'
                     }`}
                   >
-                    <span className="font-medium">{preset.name}</span>
-                    {preset.properties?.weight && (
-                      <span className="ml-2 text-cad-text-dim text-[10px]">
-                        {preset.properties.weight.toFixed(1)} kg/m
-                      </span>
-                    )}
+                    [Custom Dimensions]
                   </button>
-                ))}
+                )}
+
+                {/* Search results grouped by profile type */}
+                {groupedSearchResults ? (
+                  Object.entries(groupedSearchResults).map(([profileType, presets]) => {
+                    const typeName = PROFILE_TEMPLATES[profileType as ProfileType]?.name || profileType;
+                    return (
+                      <div key={profileType}>
+                        <div className="px-2 py-1 text-[10px] font-semibold text-cad-text-muted uppercase tracking-wider bg-cad-surface sticky top-0 border-b border-cad-border">
+                          {typeName}
+                        </div>
+                        {presets.map(preset => (
+                          <button
+                            key={preset.id}
+                            onClick={() => {
+                              setSelectedProfileType(preset.profileType);
+                              setSelectedStandard(preset.standard);
+                              setSelectedCategory(preset.category);
+                              setSelectedPresetId(preset.id);
+                              setUseCustom(false);
+                              setSearchQuery('');
+                            }}
+                            className="w-full text-left px-2 py-1.5 text-xs transition-colors hover:bg-cad-hover text-cad-text"
+                          >
+                            <span className="font-medium">{preset.name}</span>
+                            <span className="ml-2 text-cad-text-dim text-[10px]">
+                              {preset.standard} · {preset.category}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    );
+                  })
+                ) : (
+                  /* Normal filtered list */
+                  filteredPresets.map(preset => (
+                    <button
+                      key={preset.id}
+                      onClick={() => {
+                        setSelectedPresetId(preset.id);
+                        setUseCustom(false);
+                      }}
+                      className={`w-full text-left px-2 py-1.5 text-xs transition-colors ${
+                        selectedPresetId === preset.id
+                          ? 'bg-cad-accent text-white'
+                          : 'hover:bg-cad-hover text-cad-text'
+                      }`}
+                    >
+                      <span className="font-medium">{preset.name}</span>
+                      {preset.properties?.weight && (
+                        <span className="ml-2 text-cad-text-dim text-[10px]">
+                          {preset.properties.weight.toFixed(1)} kg/m
+                        </span>
+                      )}
+                    </button>
+                  ))
+                )}
 
                 {filteredPresets.length === 0 && !searchQuery && (
                   <div className="text-center text-cad-text-dim py-4 text-xs">
