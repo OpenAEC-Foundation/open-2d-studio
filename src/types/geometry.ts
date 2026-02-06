@@ -184,7 +184,7 @@ export interface TextShape extends BaseShape {
   leaderPoints?: Point[];    // Leader line waypoints (from text to geometry)
   leaderConfig?: LeaderConfig; // Leader styling and configuration
   // Text behavior
-  isModelText?: boolean;     // If true, text size is in model units (scales with geometry like Revit Model Text)
+  isModelText?: boolean;     // If true, text size is in model units (scales with geometry)
   // Background masking
   backgroundMask?: boolean;  // If true, draw opaque background behind text
   backgroundColor?: string;  // Background color (default: drawing background or white)
@@ -198,7 +198,7 @@ export interface PointShape extends BaseShape {
   position: Point;
 }
 
-// Text Style - reusable text formatting preset (like Revit Text Types)
+// Text Style - reusable text formatting preset
 export interface TextStyle {
   id: string;
   name: string;

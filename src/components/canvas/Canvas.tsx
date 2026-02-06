@@ -235,9 +235,9 @@ export function Canvas() {
 
         // If in a drawing/modify tool (not select)
         if (s.activeTool !== 'select') {
-          // If actively drawing (points placed), finish current drawing but stay in tool
+          // If actively drawing (points placed), finish current drawing via base handler
           if (s.isDrawing || s.drawingPoints.length > 0) {
-            useAppStore.getState().clearDrawingPoints();
+            baseHandleContextMenu(e);
             return;
           }
           // Not drawing - exit to select mode

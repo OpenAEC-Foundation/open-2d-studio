@@ -75,18 +75,18 @@ export interface DimensionStyle {
 }
 
 /**
- * Default dimension style - Revit-like appearance
+ * Default dimension style
  */
 export const DEFAULT_DIMENSION_STYLE: DimensionStyle = {
-  arrowType: 'tick',        // Revit uses diagonal tick marks
+  arrowType: 'tick',        // Diagonal tick marks
   arrowSize: 2.5,           // Tick mark size
   extensionLineGap: 1.5,    // Small gap between geometry and extension line
   extensionLineOvershoot: 2.5, // Extension line extends past dimension line
   textHeight: 2.5,          // Slightly smaller text
-  textPlacement: 'centered', // Revit centers text on dimension line
+  textPlacement: 'centered', // Text centered on dimension line
   lineColor: '#00ffff',     // Cyan - standard dimension color
   textColor: '#00ffff',
-  precision: 0,             // Revit typically shows whole numbers
+  precision: 0,             // Show whole numbers by default
 };
 
 // ============================================================================

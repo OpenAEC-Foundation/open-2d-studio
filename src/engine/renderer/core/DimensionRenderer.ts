@@ -354,7 +354,7 @@ export class DimensionRenderer extends BaseRenderer {
         break;
       }
       case 'tick': {
-        // Revit-style diagonal tick mark at 45 degrees to dimension line
+        // Diagonal tick mark at 45 degrees to dimension line
         const tickAngle = angle + Math.PI / 4; // 45 degrees from dimension line
         const halfSize = size * 0.7; // Slightly longer for visibility
         ctx.beginPath();
@@ -452,7 +452,7 @@ export class DimensionRenderer extends BaseRenderer {
   }
 
   /**
-   * Draw selection handles for aligned/linear dimension (Revit-style)
+   * Draw selection handles for aligned/linear dimension
    */
   private drawAlignedDimensionHandles(
     dimension: DimensionShape,
@@ -464,7 +464,7 @@ export class DimensionRenderer extends BaseRenderer {
     const handleSize = 5;
     const textHeight = style.textHeight || 3;
 
-    // 1. Text drag handle (blue, below text) - Revit style
+    // 1. Text drag handle (blue, below text)
     ctx.fillStyle = '#4488ff';
     ctx.strokeStyle = '#ffffff';
     ctx.lineWidth = 1;

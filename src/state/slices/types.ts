@@ -354,7 +354,7 @@ export type SliceCreator<TSlice, TStore = TSlice> = (
   get: () => TStore
 ) => TSlice;
 
-// Built-in Text Styles (like Revit's default text types)
+// Built-in Text Styles
 export const createDefaultTextStyles = (): TextStyle[] => [
   {
     id: 'annotation-small',

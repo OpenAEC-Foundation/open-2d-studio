@@ -1556,26 +1556,44 @@ export function useShapeDrawing() {
    * Finish current drawing (right-click or escape)
    */
   const finishDrawing = useCallback(() => {
-    if (drawingPoints.length > 0) {
-      if (activeTool === 'polyline' && drawingPoints.length >= 2) {
-        createPolyline(drawingPoints, false, drawingBulges);
-      } else if (activeTool === 'hatch' && drawingPoints.length >= 3) {
-        createHatch(drawingPoints);
-      } else if (activeTool === 'spline' && drawingPoints.length >= 2) {
-        createSpline(drawingPoints, false);
-      } else if (activeTool === 'dimension') {
-        dimensionDrawing.cancelDimensionDrawing();
-        return;
-      }
-      clearDrawingPoints();
-      setDrawingPreview(null);
+    // Read everything directly from store to avoid stale closure issues
+    const state = useAppStore.getState();
+    const pts = state.drawingPoints;
+    const bulges = state.drawingBulges;
+    const tool = state.activeTool;
+
+    if (pts.length === 0) return;
+
+    if (tool === 'polyline' && pts.length >= 2) {
+      const polylineShape: PolylineShape = {
+        id: generateId(),
+        type: 'polyline',
+        layerId: state.activeLayerId,
+        drawingId: state.activeDrawingId,
+        style: { ...state.currentStyle },
+        visible: true,
+        locked: false,
+        points: [...pts],
+        closed: false,
+        bulge: bulges && bulges.some(b => b !== 0) ? [...bulges] : undefined,
+      };
+      state.addShape(polylineShape);
+    } else if (tool === 'hatch' && pts.length >= 3) {
+      createHatch(pts);
+    } else if (tool === 'spline' && pts.length >= 2) {
+      createSpline(pts, false);
+    } else if (tool === 'dimension') {
+      dimensionDrawing.cancelDimensionDrawing();
+      return;
     }
-  }, [drawingPoints, drawingBulges, activeTool, createPolyline, createHatch, createSpline, clearDrawingPoints, setDrawingPreview, dimensionDrawing]);
+    state.clearDrawingPoints();
+    state.setDrawingPreview(null);
+  }, [createHatch, createSpline, dimensionDrawing]);
 
   /**
    * Check if currently drawing
    */
-  const isDrawing = useCallback(() => drawingPoints.length > 0, [drawingPoints]);
+  const isDrawing = useCallback(() => useAppStore.getState().drawingPoints.length > 0, []);
 
   /**
    * Get last drawing point (for snap base point)

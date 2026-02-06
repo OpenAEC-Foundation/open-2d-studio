@@ -256,6 +256,10 @@ export class ShapeRenderer extends BaseRenderer {
         ctx.moveTo(preview.start.x, preview.start.y);
         ctx.lineTo(preview.end.x, preview.end.y);
         ctx.stroke();
+        // Draw temporary dimension showing line length
+        if (viewport) {
+          this.drawPreviewDimension(preview.start, preview.end, viewport);
+        }
         break;
 
       case 'rectangle': {
@@ -281,6 +285,16 @@ export class ShapeRenderer extends BaseRenderer {
           ctx.rect(x, y, width, height);
         }
         ctx.stroke();
+        // Draw temporary dimensions for width and height (always outside the rectangle)
+        if (viewport) {
+          const topLeft = { x, y };
+          const topRight = { x: x + width, y };
+          const bottomRight = { x: x + width, y: y + height };
+          // Width dimension along the top edge, pushed upward (outside)
+          this.drawPreviewDimension(topLeft, topRight, viewport, { x: 0, y: -1 });
+          // Height dimension along the right edge, pushed rightward (outside)
+          this.drawPreviewDimension(bottomRight, topRight, viewport, { x: 1, y: 0 });
+        }
         break;
       }
 
@@ -300,6 +314,11 @@ export class ShapeRenderer extends BaseRenderer {
         ctx.beginPath();
         ctx.arc(preview.center.x, preview.center.y, preview.radius, 0, Math.PI * 2);
         ctx.stroke();
+        // Draw temporary radius dimension from center to right quadrant, above the line
+        if (viewport && preview.radius > 0.5) {
+          const radiusEnd = { x: preview.center.x + preview.radius, y: preview.center.y };
+          this.drawPreviewDimension(preview.center, radiusEnd, viewport, { x: 0, y: -1 });
+        }
         break;
 
       case 'arc':
@@ -351,6 +370,11 @@ export class ShapeRenderer extends BaseRenderer {
             ctx.lineTo(preview.currentPoint.x, preview.currentPoint.y);
           }
           ctx.stroke();
+          // Draw temporary dimension for current segment
+          if (viewport) {
+            const lastPt = preview.points[preview.points.length - 1];
+            this.drawPreviewDimension(lastPt, preview.currentPoint, viewport);
+          }
         }
         break;
 
@@ -669,6 +693,179 @@ export class ShapeRenderer extends BaseRenderer {
         break;
       }
     }
+  }
+
+  /**
+   * Draw a temporary dimension on a preview line.
+   * Includes extension lines, an offset parallel dimension line with tick marks,
+   * and centered text with a gap in the dimension line.
+   */
+  private drawPreviewDimension(start: { x: number; y: number }, end: { x: number; y: number }, viewport: Viewport, outwardDir?: { x: number; y: number }): void {
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const length = Math.hypot(dx, dy);
+
+    // Don't show dimension for very short lines
+    if (length < 0.5) return;
+
+    const ctx = this.ctx;
+    const zoom = viewport.zoom;
+
+    // Line angle and perpendicular direction
+    const angle = Math.atan2(dy, dx);
+    let perpX = -Math.sin(angle);
+    let perpY = Math.cos(angle);
+    if (outwardDir) {
+      // Use caller-specified outward direction: flip perpendicular if it points away from desired side
+      const dot = perpX * outwardDir.x + perpY * outwardDir.y;
+      if (dot < 0) {
+        perpX = -perpX;
+        perpY = -perpY;
+      }
+    } else {
+      // Default: ensure dimension appears above the line (negative Y in screen coords)
+      if (perpY > 0 || (perpY === 0 && perpX < 0)) {
+        perpX = -perpX;
+        perpY = -perpY;
+      }
+    }
+
+    // All sizes scale inversely with zoom so they stay consistent on screen
+    const dimOffset = 20 / zoom;        // Distance from drawn line to dimension line
+    const extGap = 3 / zoom;            // Gap between drawn line and start of extension line
+    const extOvershoot = 4 / zoom;      // How far extension line extends past dimension line
+    const tickSize = 5 / zoom;          // Length of tick mark
+    const fontSize = 11 / zoom;
+    const textPadding = 3 / zoom;
+
+    // --- Extension line endpoints ---
+    // Extension lines run perpendicular from near the drawn line to past the dimension line
+    const extStartBottom = {
+      x: start.x + perpX * extGap,
+      y: start.y + perpY * extGap,
+    };
+    const extStartTop = {
+      x: start.x + perpX * (dimOffset + extOvershoot),
+      y: start.y + perpY * (dimOffset + extOvershoot),
+    };
+    const extEndBottom = {
+      x: end.x + perpX * extGap,
+      y: end.y + perpY * extGap,
+    };
+    const extEndTop = {
+      x: end.x + perpX * (dimOffset + extOvershoot),
+      y: end.y + perpY * (dimOffset + extOvershoot),
+    };
+
+    // --- Dimension line endpoints (parallel to drawn line, offset by dimOffset) ---
+    const dimStart = {
+      x: start.x + perpX * dimOffset,
+      y: start.y + perpY * dimOffset,
+    };
+    const dimEnd = {
+      x: end.x + perpX * dimOffset,
+      y: end.y + perpY * dimOffset,
+    };
+    const dimMid = {
+      x: (dimStart.x + dimEnd.x) / 2,
+      y: (dimStart.y + dimEnd.y) / 2,
+    };
+
+    // --- Prepare text metrics for gap calculation ---
+    const displayText = length.toFixed(2);
+    ctx.font = `${fontSize}px Arial`;
+    const textMetrics = ctx.measureText(displayText);
+    const textGap = textMetrics.width + textPadding * 2;
+    const halfGap = textGap / 2;
+
+    // Gap start/end points along the dimension line
+    const gapStart = {
+      x: dimMid.x - Math.cos(angle) * halfGap,
+      y: dimMid.y - Math.sin(angle) * halfGap,
+    };
+    const gapEnd = {
+      x: dimMid.x + Math.cos(angle) * halfGap,
+      y: dimMid.y + Math.sin(angle) * halfGap,
+    };
+
+    ctx.save();
+    ctx.strokeStyle = '#00bfff';
+    ctx.fillStyle = '#00bfff';
+    ctx.lineWidth = 1 / zoom;
+    ctx.setLineDash([]);
+
+    // --- Draw extension lines ---
+    ctx.beginPath();
+    ctx.moveTo(extStartBottom.x, extStartBottom.y);
+    ctx.lineTo(extStartTop.x, extStartTop.y);
+    ctx.moveTo(extEndBottom.x, extEndBottom.y);
+    ctx.lineTo(extEndTop.x, extEndTop.y);
+    ctx.stroke();
+
+    // --- Draw dimension line (two segments with text gap) ---
+    ctx.beginPath();
+    ctx.moveTo(dimStart.x, dimStart.y);
+    ctx.lineTo(gapStart.x, gapStart.y);
+    ctx.moveTo(gapEnd.x, gapEnd.y);
+    ctx.lineTo(dimEnd.x, dimEnd.y);
+    ctx.stroke();
+
+    // --- Draw tick marks (45° diagonal) ---
+    const tickAngle = angle + Math.PI / 4; // 45° from the dimension line
+    const halfTick = tickSize * 0.7;
+
+    // Tick at dimension start
+    ctx.beginPath();
+    ctx.moveTo(
+      dimStart.x - Math.cos(tickAngle) * halfTick,
+      dimStart.y - Math.sin(tickAngle) * halfTick
+    );
+    ctx.lineTo(
+      dimStart.x + Math.cos(tickAngle) * halfTick,
+      dimStart.y + Math.sin(tickAngle) * halfTick
+    );
+    ctx.stroke();
+
+    // Tick at dimension end
+    ctx.beginPath();
+    ctx.moveTo(
+      dimEnd.x - Math.cos(tickAngle) * halfTick,
+      dimEnd.y - Math.sin(tickAngle) * halfTick
+    );
+    ctx.lineTo(
+      dimEnd.x + Math.cos(tickAngle) * halfTick,
+      dimEnd.y + Math.sin(tickAngle) * halfTick
+    );
+    ctx.stroke();
+
+    // --- Draw dimension text centered in the gap ---
+    ctx.save();
+    ctx.translate(dimMid.x, dimMid.y);
+
+    // Rotate text to align with the line, but keep readable (not upside down)
+    let textAngle = angle;
+    if (textAngle > Math.PI / 2) textAngle -= Math.PI;
+    if (textAngle < -Math.PI / 2) textAngle += Math.PI;
+    ctx.rotate(textAngle);
+
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    // Background for readability
+    ctx.fillStyle = 'rgba(26, 26, 46, 0.9)';
+    ctx.fillRect(
+      -textMetrics.width / 2 - textPadding,
+      -fontSize / 2 - textPadding / 2,
+      textMetrics.width + textPadding * 2,
+      fontSize + textPadding
+    );
+
+    // Text
+    ctx.fillStyle = '#00bfff';
+    ctx.fillText(displayText, 0, 0);
+
+    ctx.restore();
+    ctx.restore();
   }
 
   // Private shape drawing methods

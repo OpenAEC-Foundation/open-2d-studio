@@ -983,7 +983,7 @@ export function useGripEditing() {
             }
 
             // For text resize handles (grips 1 and 2), force X-axis constraint
-            // This enforces Revit-style behavior where only width can be adjusted
+            // Only width can be adjusted via grip editing
             const forceXAxisConstraint = shape.type === 'text' && (i === 1 || i === 2);
 
             // Enable snapping for dimension reference point handles (gripIndex >= 4)

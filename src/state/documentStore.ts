@@ -214,7 +214,7 @@ export interface DocumentState {
   hatchCustomPatternId: string | null;  // Selected custom pattern ID for hatch tool
   projectPatterns: import('../types/hatch').CustomHatchPattern[];  // Project-level custom patterns
 
-  // Text Styles (like Revit Text Types)
+  // Text Styles
   textStyles: TextStyle[];              // Available text styles (built-in + custom)
   activeTextStyleId: string | null;     // Currently selected text style for new text
 }
