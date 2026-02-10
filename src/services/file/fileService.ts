@@ -4,6 +4,7 @@
 
 import { open, save, message, ask } from '@tauri-apps/plugin-dialog';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
+import { logger } from '../log/logService';
 import type { Shape, ShapeStyle, LineStyle, Layer, Drawing, Sheet, Viewport, DrawingBoundary, PolylineShape, ImageShape } from '../../types/geometry';
 import { splineToSvgPath } from '../../engine/geometry/SplineUtils';
 import { bulgeToArc, bulgeArcBounds } from '../../engine/geometry/GeometryUtils';
@@ -97,6 +98,8 @@ export interface ProjectFileV2 {
   filledRegionTypes?: import('../../types/filledRegion').FilledRegionType[];
   // Project info (optional, backward compatible)
   projectInfo?: import('../../types/projectInfo').ProjectInfo;
+  // Unit settings (optional, backward compatible)
+  unitSettings?: import('../../units/types').UnitSettings;
 }
 
 // Current project file type
@@ -438,8 +441,24 @@ function shapeToSVG(shape: Shape): string {
 /**
  * Export shapes to DXF format (basic implementation)
  */
-export function exportToDXF(shapes: Shape[]): string {
+export function exportToDXF(shapes: Shape[], unitSettings?: import('../../units/types').UnitSettings): string {
+  // Map length unit to DXF $INSUNITS value
+  const insUnitsMap: Record<string, number> = {
+    'mm': 4, 'cm': 5, 'm': 6, 'in': 1, 'ft': 2, 'ft-in': 2,
+  };
+  const insUnits = unitSettings ? (insUnitsMap[unitSettings.lengthUnit] ?? 4) : 4;
+
   let dxf = `0
+SECTION
+2
+HEADER
+9
+$INSUNITS
+70
+${insUnits}
+0
+ENDSEC
+0
 SECTION
 2
 ENTITIES
@@ -862,6 +881,30 @@ const DXF_COLORS: Record<number, string> = {
 function getDxfColor(colorIndex: number): string {
   if (colorIndex <= 0 || colorIndex === 256) return '#ffffff'; // ByBlock/ByLayer = white
   return DXF_COLORS[colorIndex] || '#ffffff';
+}
+
+/**
+ * Extract $INSUNITS from a DXF HEADER section.
+ * Returns the LengthUnit or null if not found.
+ */
+export function parseDXFInsUnits(content: string): import('../../units/types').LengthUnit | null {
+  const insUnitsToUnit: Record<number, import('../../units/types').LengthUnit> = {
+    1: 'in', 2: 'ft', 4: 'mm', 5: 'cm', 6: 'm',
+  };
+  const lines = content.split(/\r?\n/);
+  for (let i = 0; i < lines.length; i++) {
+    if (lines[i]?.trim() === '$INSUNITS') {
+      // Next pair: group code 70, then the value
+      const code = parseInt(lines[i + 1]?.trim() ?? '', 10);
+      const val = parseInt(lines[i + 2]?.trim() ?? '', 10);
+      if (code === 70 && insUnitsToUnit[val]) {
+        return insUnitsToUnit[val];
+      }
+    }
+    // Stop scanning after HEADER section ends
+    if (lines[i]?.trim() === 'ENTITIES') break;
+  }
+  return null;
 }
 
 /**
@@ -1313,7 +1356,7 @@ export function parseDXF(
       } as Shape);
     }
 
-    // Parse TRACE entity (thick line - convert to polyline)
+    // Parse TRACE entity (thick line — convert to polyline)
     if (code === 0 && value === 'TRACE') {
       const pts: { x: number; y: number }[] = [
         { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }, { x: 0, y: 0 }
@@ -1351,6 +1394,10 @@ export function parseDXF(
     }
   }
 
+  if (shapes.length > 0) {
+    logger.info(`DXF parsed: ${shapes.length} entities imported`, 'DXF');
+  }
+
   return shapes;
 }
 
@@ -1365,9 +1412,31 @@ export async function confirmUnsavedChanges(): Promise<boolean> {
 }
 
 /**
+ * Show 3-button Save/Don't Save/Cancel dialog for unsaved changes.
+ * Returns 'save', 'discard', or 'cancel'.
+ */
+export type SavePromptResult = 'save' | 'discard' | 'cancel';
+
+export async function promptSaveBeforeClose(docName?: string): Promise<SavePromptResult> {
+  const result = await message(
+    `Do you want to save changes to "${docName || 'Untitled'}"?`,
+    {
+      title: 'Unsaved Changes',
+      kind: 'warning',
+      buttons: { yes: 'Save', no: "Don't Save", cancel: 'Cancel' },
+    }
+  );
+  // Custom button labels: Tauri returns the label text, not semantic ids
+  if (result === 'Yes' || result === 'Save') return 'save';
+  if (result === 'No' || result === "Don't Save") return 'discard';
+  return 'cancel';
+}
+
+/**
  * Show error message
  */
 export async function showError(msg: string): Promise<void> {
+  logger.error(msg, 'File');
   await message(msg, { title: 'Error', kind: 'error' });
 }
 
@@ -1375,5 +1444,6 @@ export async function showError(msg: string): Promise<void> {
  * Show info message
  */
 export async function showInfo(msg: string): Promise<void> {
+  logger.info(msg, 'File');
   await message(msg, { title: 'Info', kind: 'info' });
 }

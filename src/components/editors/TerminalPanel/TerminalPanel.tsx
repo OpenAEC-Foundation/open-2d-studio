@@ -4,6 +4,8 @@ import { FitAddon } from '@xterm/addon-fit';
 import { invoke } from '@tauri-apps/api/core';
 import { X, Minimize2, Maximize2, Terminal as TerminalIcon } from 'lucide-react';
 import { executeClaudeCadCommand } from '../../../services/integration/claudeCadService';
+import { useAppStore } from '../../../state/appStore';
+import { ErrorLogPanel } from './ErrorLogPanel';
 import '@xterm/xterm/css/xterm.css';
 
 /**
@@ -46,7 +48,7 @@ interface TerminalPanelProps {
   onHeightChange: (height: number) => void;
 }
 
-type TerminalMode = 'shell' | 'ai';
+type TerminalMode = 'shell' | 'ai' | 'log';
 
 export function TerminalPanel({ isOpen, onClose, height, onHeightChange }: TerminalPanelProps) {
   const terminalRef = useRef<HTMLDivElement>(null);
@@ -64,6 +66,10 @@ export function TerminalPanel({ isOpen, onClose, height, onHeightChange }: Termi
   const commandHistoryRef = useRef<string[]>([]);
   const historyIndexRef = useRef(-1);
   const modeRef = useRef<TerminalMode>('ai');
+
+  // Error/warning count for Log tab badge
+  const errorCount = useAppStore(s => s.logEntries.filter(e => e.severity === 'error').length);
+  const warningCount = useAppStore(s => s.logEntries.filter(e => e.severity === 'warning').length);
 
   // Keep modeRef in sync
   modeRef.current = mode;
@@ -550,6 +556,28 @@ export function TerminalPanel({ isOpen, onClose, height, onHeightChange }: Termi
             >
               Shell
             </button>
+            <button
+              onClick={() => setMode('log')}
+              className={`px-2 py-0.5 text-xs font-medium transition-colors flex items-center gap-1 ${
+                mode === 'log'
+                  ? 'bg-red-600 text-white'
+                  : errorCount > 0
+                    ? 'text-red-400 hover:text-red-300'
+                    : warningCount > 0
+                      ? 'text-orange-400 hover:text-orange-300'
+                      : 'text-cad-text-dim hover:text-cad-text'
+              }`}
+              title="Error Log"
+            >
+              Log
+              {(errorCount > 0 || warningCount > 0) && (
+                <span className={`px-1 rounded-full text-[10px] leading-tight ${
+                  errorCount > 0 ? 'bg-red-500 text-white' : 'bg-orange-500 text-white'
+                }`}>
+                  {errorCount > 0 ? errorCount : warningCount}
+                </span>
+              )}
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-1">
@@ -570,8 +598,15 @@ export function TerminalPanel({ isOpen, onClose, height, onHeightChange }: Termi
         </div>
       </div>
 
-      {/* Terminal */}
-      <div ref={terminalRef} className="flex-1 overflow-hidden" />
+      {/* Terminal (hidden when log mode is active) */}
+      <div ref={terminalRef} className="flex-1 overflow-hidden" style={{ display: mode === 'log' ? 'none' : undefined }} />
+
+      {/* Error Log Panel */}
+      {mode === 'log' && (
+        <div className="flex-1 overflow-hidden">
+          <ErrorLogPanel />
+        </div>
+      )}
     </div>
   );
 }

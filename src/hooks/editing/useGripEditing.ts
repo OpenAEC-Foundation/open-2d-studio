@@ -13,7 +13,7 @@ import type { Point, Shape, EllipseShape, TextShape, BeamShape, LineShape, Image
 import type { DimensionShape } from '../../types/dimension';
 import type { ParametricShape } from '../../types/parametric';
 import { updateParametricPosition } from '../../services/parametric/parametricService';
-import { getTextBounds } from '../../engine/geometry/GeometryUtils';
+import { getTextBounds, snapToAngle } from '../../engine/geometry/GeometryUtils';
 import { calculateAlignedDimensionGeometry, angleBetweenPoints, calculateDimensionValue, formatDimensionValue } from '../../engine/geometry/DimensionUtils';
 import { findNearestSnapPoint } from '../../engine/geometry/SnapUtils';
 import { applyTracking, type TrackingSettings } from '../../engine/geometry/Tracking';
@@ -1168,7 +1168,7 @@ export function useGripEditing() {
   );
 
   const handleGripMouseMove = useCallback(
-    (worldPos: Point): boolean => {
+    (worldPos: Point, shiftKey?: boolean): boolean => {
       // Check parametric shape drag first
       const parametricDrag = parametricDragRef.current;
       if (parametricDrag) {
@@ -1247,6 +1247,16 @@ export function useGripEditing() {
           if (drag.axisConstraint === 'x') constrainedPos.y = drag.originalGripPoint.y;
           if (drag.axisConstraint === 'y') constrainedPos.x = drag.originalGripPoint.x;
         }
+      }
+
+      // Shift-key: snap line/beam endpoint to 45° angle increments
+      if (shiftKey && !drag.axisConstraint &&
+          (currentShape.type === 'line' || currentShape.type === 'beam') &&
+          (drag.gripIndex === 0 || drag.gripIndex === 1)) {
+        const opposite = drag.gripIndex === 0
+          ? (currentShape as LineShape | BeamShape).end
+          : (currentShape as LineShape | BeamShape).start;
+        constrainedPos = snapToAngle(opposite, constrainedPos);
       }
 
       // Apply tracking for beam/line endpoint drags and polyline vertex drags

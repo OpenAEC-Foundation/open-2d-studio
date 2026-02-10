@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../../../state/appStore';
+import { formatLength, formatAngle } from '../../../units';
 import { getDistance, getAngle } from '../../../engine/geometry/CoordinateParser';
 import {
   transformShape,
@@ -46,6 +47,7 @@ export function DynamicInput() {
     trackingPoint,
     directDistanceAngle,
     dynamicInputEnabled,
+    unitSettings,
   } = useAppStore();
 
   const [focusedField, setFocusedField] = useState<0 | 1 | -1>(-1); // -1 = none, 0 = field1, 1 = field2
@@ -572,8 +574,8 @@ export function DynamicInput() {
   const tooltipY = Math.min(mousePosition.y + 20, canvasSize.height - 100);
 
   // Display values: use locked if set, otherwise live
-  const displayVal1 = lockedDistance !== null ? lockedDistance.toFixed(2) : distance.toFixed(2);
-  const displayVal2 = lockedAngle !== null ? lockedAngle.toFixed(1) : angle.toFixed(1);
+  const displayVal1 = formatLength(lockedDistance !== null ? lockedDistance : distance, unitSettings);
+  const displayVal2 = formatAngle(lockedAngle !== null ? lockedAngle : angle, unitSettings);
 
   return (
     <div
@@ -644,7 +646,7 @@ export function DynamicInput() {
                   setFocusedField(1);
                 }}
               >
-                {displayVal2}{config.field2Label === 'Angle' ? '\u00B0' : ''}
+                {displayVal2}
               </span>
             )}
             {lockedAngle !== null && (
@@ -659,15 +661,15 @@ export function DynamicInput() {
         {/* Read-only coordinates - show effective (tracked) position */}
         <div className="flex items-center gap-2 text-cad-text text-[10px]">
           <span className="text-cad-text-dim">X:</span>
-          <span className="text-cad-accent">{effectivePoint.x.toFixed(2)}</span>
+          <span className="text-cad-accent">{formatLength(effectivePoint.x, unitSettings)}</span>
           <span className="text-cad-text-dim ml-2">Y:</span>
-          <span className="text-cad-accent">{effectivePoint.y.toFixed(2)}</span>
+          <span className="text-cad-accent">{formatLength(effectivePoint.y, unitSettings)}</span>
         </div>
         <div className="flex items-center gap-2 text-cad-text text-[10px]">
           <span className="text-cad-text-dim">{'\u0394'}X:</span>
-          <span>{deltaX.toFixed(2)}</span>
+          <span>{formatLength(deltaX, unitSettings)}</span>
           <span className="text-cad-text-dim ml-2">{'\u0394'}Y:</span>
-          <span>{deltaY.toFixed(2)}</span>
+          <span>{formatLength(deltaY, unitSettings)}</span>
         </div>
 
         {/* Hint */}

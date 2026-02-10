@@ -10,6 +10,19 @@ import { COLORS } from '../types';
 import type { ParametricShape, ProfileParametricShape } from '../../../types/parametric';
 
 export class ParametricRenderer extends BaseRenderer {
+  private _showLineweight: boolean = true;
+
+  /**
+   * Set whether to display actual line weights (false = all lines 1px thin)
+   */
+  setShowLineweight(show: boolean): void {
+    this._showLineweight = show;
+  }
+
+  private getLineWidth(strokeWidth: number): number {
+    return this._showLineweight ? strokeWidth : 1;
+  }
+
   /**
    * Draw a parametric shape
    */
@@ -50,7 +63,7 @@ export class ParametricRenderer extends BaseRenderer {
 
     // Set stroke style
     ctx.strokeStyle = isSelected ? COLORS.selection : isHovered ? COLORS.hover : strokeColor;
-    ctx.lineWidth = shape.style.strokeWidth;
+    ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth);
     ctx.setLineDash(this.getLineDash(shape.style.lineStyle));
 
     // Draw each outline

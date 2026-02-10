@@ -30,11 +30,14 @@ export interface ViewportRenderOptions {
   };
   /** Total number of viewports on the sheet (for "whenMultiple" title visibility) */
   totalViewportsOnSheet?: number;
+  /** Whether to display actual line weights (false = all lines 1px thin) */
+  showLineweight?: boolean;
 }
 
 export class ViewportRenderer extends BaseRenderer {
   private shapeRenderer: ShapeRenderer;
   private handleRenderer: HandleRenderer;
+  private _showLineweight: boolean = true;
 
   constructor(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number) {
     super(ctx, width, height, dpr);
@@ -210,6 +213,10 @@ export class ViewportRenderer extends BaseRenderer {
     if (options?.customPatterns) {
       this.shapeRenderer.setCustomPatterns(options.customPatterns.userPatterns, options.customPatterns.projectPatterns);
     }
+
+    // Set lineweight display mode
+    this._showLineweight = options?.showLineweight !== false;
+    this.shapeRenderer.setShowLineweight(this._showLineweight);
 
     // Get the drawing to access its boundary
     const drawing = drawings.find(d => d.id === vp.drawingId);
@@ -512,7 +519,7 @@ export class ViewportRenderer extends BaseRenderer {
 
     ctx.save();
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = shape.style.strokeWidth;
+    ctx.lineWidth = this._showLineweight ? shape.style.strokeWidth : 1;
 
     // Draw each outline
     for (let i = 0; i < geometry.outlines.length; i++) {

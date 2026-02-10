@@ -51,6 +51,10 @@ import {
   type ProjectInfoActions,
   type ExtensionState,
   type ExtensionActions,
+  type UnitState,
+  type UnitActions,
+  type LogState,
+  type LogActions,
 
   // Initial states
   initialModelState,
@@ -69,6 +73,8 @@ import {
   initialClipboardState,
   initialProjectInfoState,
   initialExtensionState,
+  initialUnitState,
+  initialLogState,
 
   // Slice creators
   createModelSlice,
@@ -87,6 +93,8 @@ import {
   createClipboardSlice,
   createProjectInfoSlice,
   createExtensionSlice,
+  createUnitSlice,
+  createLogSlice,
 } from './slices';
 
 // Re-export types for backward compatibility
@@ -192,6 +200,8 @@ function extractPerDocState(s: any) {
     // 2D Cursor
     cursor2D: s.cursor2D,
     cursor2DVisible: s.cursor2DVisible,
+    // Unit settings
+    unitSettings: s.unitSettings,
   };
 }
 
@@ -264,6 +274,8 @@ function restoreDocState(docId: string, set: any) {
     state.activeTextStyleId = saved.activeTextStyleId || null;
     // Project info
     if (saved.projectInfo) state.projectInfo = saved.projectInfo;
+    // Unit settings
+    if (saved.unitSettings) state.unitSettings = saved.unitSettings;
   });
 }
 
@@ -316,6 +328,8 @@ export type AppState =
   & ClipboardState
   & ProjectInfoState
   & ExtensionState
+  & UnitState
+  & LogState
   & ModelActions
   & ViewActions
   & ToolActions
@@ -332,6 +346,8 @@ export type AppState =
   & ClipboardActions
   & ProjectInfoActions
   & ExtensionActions
+  & UnitActions
+  & LogActions
   & CoordinatingActions
   & DocumentManagementState
   & DocumentManagementActions;
@@ -357,6 +373,8 @@ const initialState = {
   ...initialClipboardState,
   ...initialProjectInfoState,
   ...initialExtensionState,
+  ...initialUnitState,
+  ...initialLogState,
 };
 
 // ============================================================================
@@ -399,6 +417,8 @@ export const useAppStore = create<AppState>()(
       ...createClipboardSlice(set as any, get as any),
       ...createProjectInfoSlice(set as any, get as any),
       ...createExtensionSlice(set as any, get as any),
+      ...createUnitSlice(set as any, get as any),
+      ...createLogSlice(set as any, get as any),
 
       // ========================================================================
       // Coordinating Actions (cross-slice operations)
@@ -649,6 +669,9 @@ export const useIsDraftMode = useIsDrawingMode;
 export const useProjectName = () => useAppStore((state) => state.projectName);
 export const useIsModified = () => useAppStore((state) => state.isModified);
 export const useCurrentFilePath = () => useAppStore((state) => state.currentFilePath);
+
+// Unit selectors
+export const useUnitSettings = () => useAppStore((state) => state.unitSettings);
 
 // Annotation selectors
 export const useSelectedAnnotationIds = () => useAppStore((state) => state.selectedAnnotationIds);

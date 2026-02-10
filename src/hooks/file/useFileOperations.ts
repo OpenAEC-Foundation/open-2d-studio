@@ -15,8 +15,10 @@ import {
   showInfo,
   showImportDxfDialog,
   parseDXF,
+  parseDXFInsUnits,
   type ProjectFile,
 } from '../../services/file/fileService';
+import { logger } from '../../services/log/logService';
 import { readTextFile, writeTextFile } from '@tauri-apps/plugin-fs';
 import { DEFAULT_PROJECT_INFO } from '../../types/projectInfo';
 
@@ -66,9 +68,16 @@ export function useFileOperations() {
         // Add the parsed shapes to the new document
         useAppStore.getState().addShapes(shapes);
 
+        // Detect and apply DXF units
+        const dxfUnit = parseDXFInsUnits(content);
+        if (dxfUnit) {
+          useAppStore.getState().setLengthUnit(dxfUnit);
+        }
+
         if (isEmptyUntitled) {
           useAppStore.getState().closeDocument(prevDocId);
         }
+        logger.info(`Opened DXF file: ${fileName}`, 'File');
       } catch (err) {
         await showError(`Failed to open DXF: ${err}`);
       }
@@ -119,11 +128,16 @@ export function useFileOperations() {
       if (project.projectInfo) {
         useAppStore.getState().setProjectInfo(project.projectInfo);
       }
+      // Restore unit settings (backward compatible)
+      if (project.unitSettings) {
+        useAppStore.getState().setUnitSettings(project.unitSettings);
+      }
 
       // Close the previous empty untitled tab
       if (isEmptyUntitled) {
         useAppStore.getState().closeDocument(prevDocId);
       }
+      logger.info(`Opened project: ${fileName}`, 'File');
     } catch (err) {
       await showError(`Failed to open file: ${err}`);
     }
@@ -166,6 +180,7 @@ export function useFileOperations() {
           ...s.projectInfo,
           erpnext: { ...s.projectInfo.erpnext, apiSecret: '' },
         },
+        unitSettings: s.unitSettings,
       };
 
       await writeProjectFile(filePath, project);
@@ -174,6 +189,7 @@ export function useFileOperations() {
 
       const fileName = filePath.split(/[/\\]/).pop()?.replace('.o2d', '') || 'Untitled';
       setProjectName(fileName);
+      logger.info(`Project saved: ${fileName}`, 'File');
     } catch (err) {
       await showError(`Failed to save file: ${err}`);
     }
@@ -211,6 +227,7 @@ export function useFileOperations() {
           ...s.projectInfo,
           erpnext: { ...s.projectInfo.erpnext, apiSecret: '' },
         },
+        unitSettings: s.unitSettings,
       };
 
       await writeProjectFile(filePath, project);
@@ -219,6 +236,7 @@ export function useFileOperations() {
 
       const fileName = filePath.split(/[/\\]/).pop()?.replace('.o2d', '') || 'Untitled';
       setProjectName(fileName);
+      logger.info(`Project saved as: ${fileName}`, 'File');
     } catch (err) {
       await showError(`Failed to save file: ${err}`);
     }
@@ -242,7 +260,7 @@ export function useFileOperations() {
         const customPatterns = [...s.userPatterns, ...s.projectPatterns];
         content = exportToIFC(s.shapes, s.layers, customPatterns);
       } else if (extension === 'dxf') {
-        content = exportToDXF(s.shapes);
+        content = exportToDXF(s.shapes, s.unitSettings);
       } else if (extension === 'json') {
         content = JSON.stringify({ shapes: s.shapes, layers: s.layers }, null, 2);
       } else {
@@ -273,7 +291,7 @@ export function useFileOperations() {
     const filePath = await showExportDialog('dxf', s.projectName);
     if (!filePath) return;
     try {
-      await writeTextFile(filePath, exportToDXF(s.shapes));
+      await writeTextFile(filePath, exportToDXF(s.shapes, s.unitSettings));
       await showInfo(`Exported successfully to ${filePath}`);
     } catch (err) { await showError(`Failed to export: ${err}`); }
   }, []);
@@ -315,6 +333,13 @@ export function useFileOperations() {
       }
 
       addShapes(shapes);
+
+      // Detect and apply DXF units
+      const dxfUnit = parseDXFInsUnits(content);
+      if (dxfUnit) {
+        useAppStore.getState().setLengthUnit(dxfUnit);
+      }
+      logger.info(`Imported DXF: ${shapes.length} entities`, 'File');
     } catch (err) {
       await showError(`Failed to import DXF: ${err}`);
     }

@@ -1,5 +1,7 @@
 import { memo, useState, useRef, useEffect, useMemo } from 'react';
 import { useAppStore } from '../../state/appStore';
+import { formatLength, parseLength } from '../../units';
+import type { UnitSettings } from '../../units/types';
 import type { LineStyle, Shape, TextAlignment, TextVerticalAlignment, BeamShape, BeamMaterial, BeamJustification, LeaderArrowType, LeaderAttachment, LeaderConfig, TextCase } from '../../types/geometry';
 import type { ParametricShape, ProfileParametricShape } from '../../types/parametric';
 import type { DimensionShape, DimensionArrowType, DimensionTextPlacement } from '../../types/dimension';
@@ -161,16 +163,28 @@ function RegionTypeSelector({ currentTypeId, onApplyType, onManageTypes }: {
   );
 }
 
-function NumberField({ label, value, onChange, step = 1, min, max, readOnly }: {
+function NumberField({ label, value, onChange, step = 1, min, max, readOnly, unitSettings }: {
   label: string; value: number; onChange: (v: number) => void;
-  step?: number; min?: number; max?: number; readOnly?: boolean;
+  step?: number; min?: number; max?: number; readOnly?: boolean; unitSettings?: UnitSettings;
 }) {
+  const displayValue = unitSettings
+    ? formatLength(value, { ...unitSettings, showUnitSuffix: false })
+    : String(Math.round(value * 1000) / 1000);
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (unitSettings) {
+      onChange(parseLength(e.target.value, unitSettings));
+    } else {
+      onChange(parseFloat(e.target.value) || 0);
+    }
+  };
+
   return (
     <div className="mb-2">
       <label className={labelClass}>{label}</label>
       <input type="number" step={step} min={min} max={max} readOnly={readOnly}
-        value={Math.round(value * 1000) / 1000}
-        onChange={(e) => onChange(parseFloat(e.target.value) || 0)}
+        value={displayValue}
+        onChange={handleChange}
         className={inputClass} />
     </div>
   );

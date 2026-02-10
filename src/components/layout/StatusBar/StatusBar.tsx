@@ -1,6 +1,7 @@
 import { memo, useState, useRef, useEffect } from 'react';
-import { Terminal, ChevronDown, Layers, Plus, Eye, EyeOff, Lock, Unlock, Trash2 } from 'lucide-react';
+import { Terminal, ChevronDown, Layers, Plus, Eye, EyeOff, Lock, Unlock, Trash2, AlertCircle } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
+import { formatLength } from '../../../units';
 
 /**
  * Compact layer selector dropdown for status bar with full management controls
@@ -388,10 +389,16 @@ export const StatusBar = memo(function StatusBar() {
   const setSnapSettingsOpen = useAppStore(s => s.setSnapSettingsOpen);
   const dynamicInputEnabled = useAppStore(s => s.dynamicInputEnabled);
   const toggleDynamicInput = useAppStore(s => s.toggleDynamicInput);
+  const showLineweight = useAppStore(s => s.showLineweight);
+  const toggleShowLineweight = useAppStore(s => s.toggleShowLineweight);
   const terminalOpen = useAppStore(s => s.terminalOpen);
   const toggleTerminal = useAppStore(s => s.toggleTerminal);
+  const setTerminalOpen = useAppStore(s => s.setTerminalOpen);
+  const logErrorCount = useAppStore(s => s.logEntries.filter(e => e.severity === 'error').length);
+  const logWarningCount = useAppStore(s => s.logEntries.filter(e => e.severity === 'warning').length);
   const cursor2D = useAppStore(s => s.cursor2D);
   const cursor2DVisible = useAppStore(s => s.cursor2DVisible);
+  const unitSettings = useAppStore(s => s.unitSettings);
   const drawings = useAppStore(s => s.drawings);
   const activeDrawingId = useAppStore(s => s.activeDrawingId);
   const editorMode = useAppStore(s => s.editorMode);
@@ -429,17 +436,17 @@ export const StatusBar = memo(function StatusBar() {
       {/* Coordinates */}
       <div className="flex items-center gap-2">
         <span>X:</span>
-        <span className="text-cad-text font-mono w-20">{worldX.toFixed(2)}</span>
+        <span className="text-cad-text font-mono w-20">{formatLength(worldX, unitSettings)}</span>
         <span>Y:</span>
-        <span className="text-cad-text font-mono w-20">{worldY.toFixed(2)}</span>
+        <span className="text-cad-text font-mono w-20">{formatLength(worldY, unitSettings)}</span>
       </div>
 
       {/* 2D Cursor position */}
       {cursor2DVisible && (
         <div className="flex items-center gap-2">
           <span className="text-red-400">Cursor:</span>
-          <span className="text-red-300 font-mono w-20">{cursor2D.x.toFixed(2)}</span>
-          <span className="text-red-300 font-mono w-20">{cursor2D.y.toFixed(2)}</span>
+          <span className="text-red-300 font-mono w-20">{formatLength(cursor2D.x, unitSettings)}</span>
+          <span className="text-red-300 font-mono w-20">{formatLength(cursor2D.y, unitSettings)}</span>
         </div>
       )}
 
@@ -452,7 +459,7 @@ export const StatusBar = memo(function StatusBar() {
       {/* Grid size */}
       <div className="flex items-center gap-2">
         <span>Grid:</span>
-        <span className="text-cad-text font-mono">{gridSize}</span>
+        <span className="text-cad-text font-mono">{formatLength(gridSize, unitSettings)}</span>
       </div>
 
       {/* Drawing Scale (show in drawing mode OR when viewport selected in sheet mode) */}
@@ -618,6 +625,17 @@ export const StatusBar = memo(function StatusBar() {
         >
           POS
         </button>
+        <button
+          onClick={toggleShowLineweight}
+          className={`px-2 py-0.5 text-xs font-medium rounded transition-colors cursor-default ${
+            showLineweight
+              ? 'bg-teal-600 text-white hover:bg-teal-500'
+              : 'bg-cad-bg text-cad-text-dim hover:bg-cad-hover'
+          }`}
+          title="Display Lineweight - show actual line weights"
+        >
+          LWT
+        </button>
       </div>
 
       {/* Active tool + status message */}
@@ -642,6 +660,24 @@ export const StatusBar = memo(function StatusBar() {
       >
         <Terminal size={14} />
       </button>
+
+      {/* Error log badge */}
+      {(logErrorCount > 0 || logWarningCount > 0) && (
+        <button
+          onClick={() => {
+            setTerminalOpen(true);
+          }}
+          className={`flex items-center gap-1 px-1.5 py-0.5 rounded transition-colors cursor-default ${
+            logErrorCount > 0
+              ? 'text-red-400 hover:bg-red-500/20'
+              : 'text-orange-400 hover:bg-orange-500/20'
+          }`}
+          title={`${logErrorCount} error(s), ${logWarningCount} warning(s) — click to open log`}
+        >
+          <AlertCircle size={12} />
+          <span className="text-xs font-medium">{logErrorCount > 0 ? logErrorCount : logWarningCount}</span>
+        </button>
+      )}
 
       {/* Selection count */}
       <div className="flex items-center gap-2">

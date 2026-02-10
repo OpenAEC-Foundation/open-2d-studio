@@ -167,6 +167,7 @@ export function Canvas() {
                 userPatterns: s.userPatterns,
                 projectPatterns: s.projectPatterns,
               },
+              showLineweight: s.showLineweight,
             });
           }
         } else {
@@ -205,6 +206,7 @@ export function Canvas() {
             previewPatternId: s.previewPatternId,
             cursor2D: s.cursor2D,
             cursor2DVisible: s.cursor2DVisible,
+            showLineweight: s.showLineweight,
           });
         }
       }

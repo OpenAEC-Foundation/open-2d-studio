@@ -35,6 +35,7 @@ import { useGlobalKeyboard } from './hooks/keyboard/useGlobalKeyboard';
 import { useAppStore } from './state/appStore';
 import { CadApi } from './api';
 import { loadAllExtensions } from './extensions';
+import { logger } from './services/log/logService';
 
 function App() {
   // Initialize keyboard shortcuts
@@ -137,7 +138,7 @@ function App() {
 
       // Load extensions after CadApi is available
       loadAllExtensions().catch((err) =>
-        console.error('[Extensions] Failed to load extensions:', err)
+        logger.error(`Failed to load extensions: ${err}`, 'Extensions')
       );
     }
     return () => {

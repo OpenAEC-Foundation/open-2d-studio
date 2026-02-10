@@ -115,6 +115,7 @@ export function useDimensionDrawing() {
     setDrawingPreview,
     dimensionMode,
     shapes,
+    unitSettings,
   } = useAppStore();
 
   // Store references separately since they're not in the store
@@ -136,7 +137,7 @@ export function useDimensionDrawing() {
       linearDirection?: 'horizontal' | 'vertical'
     ) => {
       const value = calculateDimensionValue(points, dimensionType, linearDirection);
-      const formattedValue = formatDimensionValue(value, dimensionType, DEFAULT_DIMENSION_STYLE.precision);
+      const formattedValue = formatDimensionValue(value, dimensionType, DEFAULT_DIMENSION_STYLE.precision, unitSettings);
 
       // Determine prefix based on type
       let prefix: string | undefined;
@@ -468,7 +469,7 @@ export function useDimensionDrawing() {
         }
 
         const value = calculateDimensionValue([p1, p2], dimensionMode === 'linear' ? 'linear' : 'aligned', linearDirection);
-        const formattedValue = formatDimensionValue(value, dimensionMode === 'linear' ? 'linear' : 'aligned', DEFAULT_DIMENSION_STYLE.precision);
+        const formattedValue = formatDimensionValue(value, dimensionMode === 'linear' ? 'linear' : 'aligned', DEFAULT_DIMENSION_STYLE.precision, unitSettings);
 
         setDrawingPreview({
           type: 'dimension',
@@ -505,7 +506,7 @@ export function useDimensionDrawing() {
         const vertex = drawingPoints[1];
         const offset = distance(vertex, snappedPos);
         const value = calculateDimensionValue([vertex, drawingPoints[2], drawingPoints[3]], 'angular');
-        const formattedValue = formatDimensionValue(value, 'angular', DEFAULT_DIMENSION_STYLE.precision);
+        const formattedValue = formatDimensionValue(value, 'angular', DEFAULT_DIMENSION_STYLE.precision, unitSettings);
 
         setDrawingPreview({
           type: 'dimension',
@@ -534,7 +535,7 @@ export function useDimensionDrawing() {
       };
 
       const value = calculateDimensionValue([center, edgePoint], dimensionMode);
-      const formattedValue = formatDimensionValue(value, dimensionMode, DEFAULT_DIMENSION_STYLE.precision);
+      const formattedValue = formatDimensionValue(value, dimensionMode, DEFAULT_DIMENSION_STYLE.precision, unitSettings);
 
       setDrawingPreview({
         type: 'dimension',

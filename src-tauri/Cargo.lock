@@ -2808,7 +2808,7 @@ dependencies = [
 
 [[package]]
 name = "open-2d-studio"
-version = "0.16.0"
+version = "0.18.0"
 dependencies = [
  "clap",
  "dxf",

@@ -28,6 +28,8 @@ export class ShapeRenderer extends BaseRenderer {
   // Live preview: temporarily override pattern for selected hatch shapes
   private previewPatternId: string | null = null;
   private previewSelectedIds: Set<string> = new Set();
+  // Display lineweight: when false, all lines render at 1px
+  private _showLineweight: boolean = true;
   // Cache for loaded image elements (keyed by shape ID)
   private imageCache: Map<string, HTMLImageElement> = new Map();
 
@@ -44,6 +46,20 @@ export class ShapeRenderer extends BaseRenderer {
   setDrawingScale(scale: number): void {
     this.drawingScale = scale;
     this.dimensionRenderer.setDrawingScale(scale);
+  }
+
+  /**
+   * Set whether to display actual line weights (false = all lines 1px thin)
+   */
+  setShowLineweight(show: boolean): void {
+    this._showLineweight = show;
+  }
+
+  /**
+   * Get the effective stroke width (respects showLineweight toggle)
+   */
+  private getLineWidth(strokeWidth: number): number {
+    return this._showLineweight ? strokeWidth : 1;
   }
 
   /**
@@ -133,7 +149,7 @@ export class ShapeRenderer extends BaseRenderer {
       strokeColor = '#000000';
     }
     ctx.strokeStyle = isSelected ? COLORS.selection : isHovered ? COLORS.hover : strokeColor;
-    ctx.lineWidth = style.strokeWidth;
+    ctx.lineWidth = this.getLineWidth(style.strokeWidth);
     ctx.setLineDash(this.getLineDash(style.lineStyle));
 
     if (style.fillColor) {
@@ -205,7 +221,7 @@ export class ShapeRenderer extends BaseRenderer {
     }
 
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = style.strokeWidth;
+    ctx.lineWidth = this.getLineWidth(style.strokeWidth);
     ctx.setLineDash(this.getLineDash(style.lineStyle));
 
     if (style.fillColor) {
@@ -268,7 +284,7 @@ export class ShapeRenderer extends BaseRenderer {
       strokeColor = '#000000';
     }
     ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = style?.strokeWidth || 1;
+    ctx.lineWidth = this.getLineWidth(style?.strokeWidth || 1);
     ctx.setLineDash([]);
 
     switch (preview.type) {

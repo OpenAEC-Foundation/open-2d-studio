@@ -4,6 +4,8 @@
 
 import type { Point, Shape, SnapType } from '../../types/geometry';
 import type { DimensionType, DimensionShape, DimensionStyle } from '../../types/dimension';
+import type { UnitSettings } from '../../units/types';
+import { formatLength, formatAngle } from '../../units';
 
 // ============================================================================
 // Basic Geometry Helpers
@@ -115,12 +117,26 @@ export function calculateDimensionValue(
 export function formatDimensionValue(
   value: number,
   dimensionType: DimensionType,
-  precision: number = 2
+  precision?: number,
+  unitSettings?: UnitSettings
 ): string {
-  if (dimensionType === 'angular') {
-    return value.toFixed(precision) + '\u00B0'; // degree symbol
+  if (unitSettings) {
+    if (dimensionType === 'angular') {
+      const settings = precision !== undefined
+        ? { ...unitSettings, anglePrecision: precision }
+        : unitSettings;
+      return formatAngle(value, settings);
+    }
+    const settings = precision !== undefined
+      ? { ...unitSettings, lengthPrecision: precision }
+      : unitSettings;
+    return formatLength(value, settings);
   }
-  return value.toFixed(precision);
+  // Fallback for callers that don't pass unitSettings yet
+  if (dimensionType === 'angular') {
+    return value.toFixed(precision ?? 2) + '\u00B0';
+  }
+  return value.toFixed(precision ?? 2);
 }
 
 // ============================================================================

@@ -58,6 +58,8 @@ export interface SheetRenderOptions {
     userPatterns: CustomHatchPattern[];
     projectPatterns: CustomHatchPattern[];
   };
+  /** Whether to display actual line weights (false = all lines 1px thin) */
+  showLineweight?: boolean;
 }
 
 export class SheetRenderer extends BaseRenderer {
@@ -183,6 +185,7 @@ export class SheetRenderer extends BaseRenderer {
           sheetZoom: viewport.zoom,
           customPatterns,
           totalViewportsOnSheet: visibleViewports.length,
+          showLineweight: options.showLineweight,
         }
       );
     }

@@ -6,8 +6,9 @@ import { ProjectInfoPanel } from '../ProjectInfoDialog';
 import { ExtensionManagerPanel } from './ExtensionManagerPanel';
 import { useAppStore } from '../../../state/appStore';
 import type { ExtensionBackstagePanel } from '../../../extensions/types';
+import type { LengthUnit, NumberFormat } from '../../../units/types';
 
-export type BackstageView = 'none' | 'import' | 'export' | 'shortcuts' | 'feedback' | 'about' | 'projectInfo' | 'extensions' | `ext:${string}`;
+export type BackstageView = 'none' | 'import' | 'export' | 'shortcuts' | 'feedback' | 'about' | 'projectInfo' | 'units' | 'extensions' | `ext:${string}`;
 
 interface BackstageProps {
   isOpen: boolean;
@@ -54,6 +55,132 @@ const RATING_LABELS: Record<number, string> = {
   2: 'Neutral',
   3: 'Happy',
 };
+
+const LENGTH_UNIT_OPTIONS: { value: LengthUnit; label: string }[] = [
+  { value: 'mm', label: 'Millimeters (mm)' },
+  { value: 'cm', label: 'Centimeters (cm)' },
+  { value: 'm', label: 'Meters (m)' },
+  { value: 'in', label: 'Inches (in)' },
+  { value: 'ft', label: 'Feet (ft)' },
+  { value: 'ft-in', label: 'Feet & Inches (ft-in)' },
+];
+
+const PRECISION_OPTIONS = Array.from({ length: 9 }, (_, i) => ({
+  value: i,
+  label: i === 0 ? '0 (whole)' : String(i),
+}));
+
+function UnitsPanel() {
+  const unitSettings = useAppStore(s => s.unitSettings);
+  const setUnitSettings = useAppStore(s => s.setUnitSettings);
+
+  const selectClass = "w-full bg-cad-bg border border-cad-border text-cad-text text-sm rounded px-2 py-1.5 focus:outline-none focus:border-cad-accent";
+  const labelStyle = "block text-sm text-cad-text-dim mb-1";
+
+  return (
+    <div className="p-8">
+      <h2 className="text-lg font-semibold text-cad-text mb-6">Units</h2>
+      <div className="max-w-md space-y-5">
+        {/* Length Unit */}
+        <div>
+          <label className={labelStyle}>Length Unit</label>
+          <select
+            className={selectClass}
+            value={unitSettings.lengthUnit}
+            onChange={(e) => setUnitSettings({ lengthUnit: e.target.value as LengthUnit })}
+          >
+            {LENGTH_UNIT_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Length Precision */}
+        <div>
+          <label className={labelStyle}>
+            {unitSettings.lengthUnit === 'ft-in' ? 'Fractional Precision' : 'Length Decimal Places'}
+          </label>
+          <select
+            className={selectClass}
+            value={unitSettings.lengthPrecision}
+            onChange={(e) => setUnitSettings({ lengthPrecision: parseInt(e.target.value) })}
+          >
+            {unitSettings.lengthUnit === 'ft-in'
+              ? [
+                  { value: 0, label: 'Whole inches' },
+                  { value: 1, label: '1/2"' },
+                  { value: 2, label: '1/4"' },
+                  { value: 3, label: '1/8"' },
+                  { value: 4, label: '1/16"' },
+                  { value: 5, label: '1/32"' },
+                  { value: 6, label: '1/64"' },
+                ].map(o => <option key={o.value} value={o.value}>{o.label}</option>)
+              : PRECISION_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)
+            }
+          </select>
+        </div>
+
+        {/* Angle Precision */}
+        <div>
+          <label className={labelStyle}>Angle Decimal Places</label>
+          <select
+            className={selectClass}
+            value={unitSettings.anglePrecision}
+            onChange={(e) => setUnitSettings({ anglePrecision: parseInt(e.target.value) })}
+          >
+            {PRECISION_OPTIONS.map(o => (
+              <option key={o.value} value={o.value}>{o.label}</option>
+            ))}
+          </select>
+        </div>
+
+        {/* Number Format */}
+        <div>
+          <label className={labelStyle}>Number Format</label>
+          <div className="flex gap-4">
+            <label className="flex items-center gap-2 text-sm text-cad-text cursor-pointer">
+              <input
+                type="radio"
+                name="numberFormat"
+                checked={unitSettings.numberFormat === 'period'}
+                onChange={() => setUnitSettings({ numberFormat: 'period' as NumberFormat })}
+                className="accent-cad-accent"
+              />
+              1,234.56 (US/UK)
+            </label>
+            <label className="flex items-center gap-2 text-sm text-cad-text cursor-pointer">
+              <input
+                type="radio"
+                name="numberFormat"
+                checked={unitSettings.numberFormat === 'comma'}
+                onChange={() => setUnitSettings({ numberFormat: 'comma' as NumberFormat })}
+                className="accent-cad-accent"
+              />
+              1.234,56 (EU)
+            </label>
+          </div>
+        </div>
+
+        {/* Show Unit Suffix */}
+        <div>
+          <label className="flex items-center gap-2 text-sm text-cad-text cursor-pointer">
+            <input
+              type="checkbox"
+              checked={unitSettings.showUnitSuffix}
+              onChange={(e) => setUnitSettings({ showUnitSuffix: e.target.checked })}
+              className="accent-cad-accent"
+            />
+            Show unit suffix (e.g. "1500 mm")
+          </label>
+        </div>
+
+        <p className="text-xs text-cad-text-muted mt-4">
+          Changes apply immediately to the current document.
+        </p>
+      </div>
+    </div>
+  );
+}
 
 function FeedbackPanel() {
   const [category, setCategory] = useState<FeedbackCategory>('general');
@@ -485,6 +612,13 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
             active={activeView === 'projectInfo'}
           />
           <BackstageItem
+            icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>}
+            label="Units"
+            onClick={() => setActiveView('units')}
+            onMouseEnter={() => setActiveView('units')}
+            active={activeView === 'units'}
+          />
+          <BackstageItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>}
             label="Extensions"
             onClick={() => setActiveView('extensions')}
@@ -817,6 +951,7 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
         )}
         {activeView === 'feedback' && <FeedbackPanel />}
         {activeView === 'projectInfo' && <ProjectInfoPanel isOpen={true} />}
+        {activeView === 'units' && <UnitsPanel />}
         {activeView === 'about' && (
           <div className="p-8">
             <h2 className="text-lg font-semibold text-cad-text mb-6">About</h2>

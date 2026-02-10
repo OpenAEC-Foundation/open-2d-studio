@@ -157,3 +157,24 @@ export {
   initialExtensionState,
   createExtensionSlice,
 } from './extensionSlice';
+
+// Unit Slice
+export {
+  type UnitState,
+  type UnitActions,
+  type UnitSlice,
+  initialUnitState,
+  createUnitSlice,
+} from './unitSlice';
+
+// Log Slice
+export {
+  type LogSeverity,
+  type LogEntry,
+  type LogFilter,
+  type LogState,
+  type LogActions,
+  type LogSlice,
+  initialLogState,
+  createLogSlice,
+} from './logSlice';

@@ -220,6 +220,9 @@ export interface DocumentState {
 
   // Project Info
   projectInfo: import('../types/projectInfo').ProjectInfo;
+
+  // Unit settings
+  unitSettings: import('../units/types').UnitSettings;
 }
 
 // ============================================================================
@@ -545,6 +548,14 @@ export function createEmptyDocumentState(projectName = 'Untitled'): DocumentStat
         apiKey: '',
         apiSecret: '',
       },
+    },
+
+    unitSettings: {
+      lengthUnit: 'mm',
+      lengthPrecision: 0,
+      anglePrecision: 1,
+      numberFormat: 'period',
+      showUnitSuffix: false,
     },
   };
 }

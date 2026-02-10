@@ -25,13 +25,14 @@ export {
   exportToDXF,
   exportToIFC,
   confirmUnsavedChanges,
+  promptSaveBeforeClose,
   showError,
   showInfo,
   showImportDxfDialog,
   parseDXF,
 } from './file/fileService';
 
-export type { ProjectFile } from './file/fileService';
+export type { ProjectFile, SavePromptResult } from './file/fileService';
 
 // Shape operations
 export {
@@ -241,6 +242,9 @@ export {
   explodeParametricShape,
   cloneParametricShape,
 } from './parametric/parametricService';
+
+// Log service
+export { logger } from './log/logService';
 
 // Export operations
 export * from './export/ifcExport';

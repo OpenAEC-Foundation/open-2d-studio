@@ -6,7 +6,13 @@
 import { useCallback } from 'react';
 import { useAppStore } from '../../../state/appStore';
 import { getDocumentStoreIfExists } from '../../../state/documentStore';
-import { confirmUnsavedChanges } from '../../../services/file/fileService';
+import {
+  promptSaveBeforeClose,
+  showSaveDialog,
+  writeProjectFile,
+  type ProjectFile,
+} from '../../../services/file/fileService';
+import { logger } from '../../../services/log/logService';
 
 /** Get tab display info — for active doc reads from appStore, for inactive reads from doc store */
 function useTabInfo(docId: string, isActive: boolean) {
@@ -34,6 +40,102 @@ function isDocModified(docId: string, activeDocumentId: string, appState: any): 
   return store?.getState().isModified ?? false;
 }
 
+/** Save the currently active document. Returns true if saved, false if user cancelled. */
+async function saveActiveDocument(): Promise<boolean> {
+  const s = useAppStore.getState();
+  let filePath = s.currentFilePath;
+
+  if (!filePath) {
+    filePath = await showSaveDialog(s.projectName);
+    if (!filePath) return false; // User cancelled save dialog
+  }
+
+  try {
+    const customRegionTypes = s.filledRegionTypes.filter((t: any) => !t.isBuiltIn);
+    const project: ProjectFile = {
+      version: 2,
+      name: s.projectName,
+      createdAt: new Date().toISOString(),
+      modifiedAt: new Date().toISOString(),
+      drawings: s.drawings,
+      sheets: s.sheets,
+      activeDrawingId: s.activeDrawingId,
+      activeSheetId: s.activeSheetId,
+      drawingViewports: s.drawingViewports,
+      sheetViewports: s.sheetViewports,
+      shapes: s.shapes,
+      layers: s.layers,
+      activeLayerId: s.activeLayerId,
+      settings: {
+        gridSize: s.gridSize,
+        gridVisible: s.gridVisible,
+        snapEnabled: s.snapEnabled,
+      },
+      savedPrintPresets: Object.keys(s.savedPrintPresets).length > 0 ? s.savedPrintPresets : undefined,
+      filledRegionTypes: customRegionTypes.length > 0 ? customRegionTypes : undefined,
+      projectInfo: {
+        ...s.projectInfo,
+        erpnext: { ...s.projectInfo.erpnext, apiSecret: '' },
+      },
+      unitSettings: s.unitSettings,
+    };
+
+    await writeProjectFile(filePath, project);
+    s.setFilePath(filePath);
+    s.setModified(false);
+    const fileName = filePath.split(/[/\\]/).pop()?.replace('.o2d', '') || 'Untitled';
+    s.setProjectName(fileName);
+    logger.info(`Project saved: ${fileName}`, 'File');
+    return true;
+  } catch (err) {
+    logger.error(`Failed to save: ${err}`, 'File');
+    return false;
+  }
+}
+
+/** Get the display name of a document */
+function getDocName(docId: string, activeDocumentId: string): string {
+  if (docId === activeDocumentId) {
+    return useAppStore.getState().projectName;
+  }
+  const store = getDocumentStoreIfExists(docId);
+  return store?.getState().projectName ?? 'Untitled';
+}
+
+/**
+ * Handle closing a document with unsaved changes prompt.
+ * Returns true if the document was closed, false if cancelled.
+ */
+async function handleCloseWithSavePrompt(
+  docId: string,
+  activeDocumentId: string,
+  closeDocument: (id: string) => void,
+  switchDocument: (id: string) => void,
+): Promise<boolean> {
+  const appState = useAppStore.getState();
+  if (!isDocModified(docId, activeDocumentId, appState)) {
+    closeDocument(docId);
+    return true;
+  }
+
+  const docName = getDocName(docId, activeDocumentId);
+
+  // If closing a non-active doc, switch to it first so save operates on its state
+  const needSwitch = docId !== activeDocumentId;
+  if (needSwitch) {
+    switchDocument(docId);
+  }
+
+  const result = await promptSaveBeforeClose(docName);
+  if (result === 'cancel') return false;
+  if (result === 'save') {
+    const saved = await saveActiveDocument();
+    if (!saved) return false; // User cancelled the save dialog
+  }
+  closeDocument(docId);
+  return true;
+}
+
 function TabItem({ docId, index, total }: { docId: string; index: number; total: number }) {
   const activeDocumentId = useAppStore((s) => s.activeDocumentId);
   const documentOrder = useAppStore((s) => s.documentOrder);
@@ -53,22 +155,14 @@ function TabItem({ docId, index, total }: { docId: string; index: number; total:
   const handleMiddleClick = useCallback(async (e: React.MouseEvent) => {
     if (e.button === 1) {
       e.preventDefault();
-      if (isDocModified(docId, activeDocumentId, useAppStore.getState())) {
-        const proceed = await confirmUnsavedChanges();
-        if (!proceed) return;
-      }
-      closeDocument(docId);
+      await handleCloseWithSavePrompt(docId, activeDocumentId, closeDocument, switchDocument);
     }
-  }, [closeDocument, docId, activeDocumentId]);
+  }, [closeDocument, switchDocument, docId, activeDocumentId]);
 
   const handleClose = useCallback(async (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (isDocModified(docId, activeDocumentId, useAppStore.getState())) {
-      const proceed = await confirmUnsavedChanges();
-      if (!proceed) return;
-    }
-    closeDocument(docId);
-  }, [closeDocument, docId, activeDocumentId]);
+    await handleCloseWithSavePrompt(docId, activeDocumentId, closeDocument, switchDocument);
+  }, [closeDocument, switchDocument, docId, activeDocumentId]);
 
   const handleContextMenu = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
@@ -77,24 +171,24 @@ function TabItem({ docId, index, total }: { docId: string; index: number; total:
     menu.style.left = `${e.clientX}px`;
     menu.style.top = `${e.clientY}px`;
 
-    const closeWithCheck = async (id: string) => {
-      if (isDocModified(id, activeDocumentId, useAppStore.getState())) {
-        const proceed = await confirmUnsavedChanges();
-        if (!proceed) return;
-      }
-      closeDocument(id);
+    const closeWithCheck = async (id: string): Promise<boolean> => {
+      return handleCloseWithSavePrompt(id, useAppStore.getState().activeDocumentId, closeDocument, switchDocument);
     };
 
     const items = [
       { label: 'Close', action: () => closeWithCheck(docId) },
       { label: 'Close Others', action: async () => {
-        for (const id of documentOrder) {
-          if (id !== docId) await closeWithCheck(id);
+        for (const id of [...documentOrder]) {
+          if (id !== docId) {
+            const closed = await closeWithCheck(id);
+            if (!closed) break;
+          }
         }
       }},
       { label: 'Close All', action: async () => {
-        for (const id of documentOrder) {
-          await closeWithCheck(id);
+        for (const id of [...documentOrder]) {
+          const closed = await closeWithCheck(id);
+          if (!closed) break;
         }
       }},
     ];
@@ -110,7 +204,7 @@ function TabItem({ docId, index, total }: { docId: string; index: number; total:
     document.body.appendChild(menu);
     const cleanup = () => { menu.remove(); document.removeEventListener('mousedown', cleanup); };
     setTimeout(() => document.addEventListener('mousedown', cleanup), 0);
-  }, [closeDocument, documentOrder, docId, activeDocumentId]);
+  }, [closeDocument, switchDocument, documentOrder, docId, activeDocumentId]);
 
   return (
     <div

@@ -5,10 +5,11 @@ import {
   showSaveDialog,
   readProjectFile,
   writeProjectFile,
-  confirmUnsavedChanges,
+  promptSaveBeforeClose,
   showError,
   type ProjectFile,
 } from '../../services/file/fileService';
+import { logger } from '../../services/log/logService';
 
 /**
  * Hook to handle global keyboard shortcuts
@@ -66,18 +67,58 @@ export function useGlobalKeyboard() {
     toggleTerminal,
   } = useAppStore();
 
+  /** Quick-save current document. Returns true if saved, false if cancelled/failed. */
+  const quickSave = useCallback(async (): Promise<boolean> => {
+    let fp = currentFilePath;
+    if (!fp) {
+      fp = await showSaveDialog(projectName);
+      if (!fp) return false;
+    }
+    try {
+      const project: ProjectFile = {
+        version: 2,
+        name: projectName,
+        createdAt: new Date().toISOString(),
+        modifiedAt: new Date().toISOString(),
+        drawings, sheets,
+        activeDrawingId: activeDrawingId || '',
+        activeSheetId, drawingViewports, sheetViewports,
+        shapes, layers, activeLayerId,
+        settings: { gridSize, gridVisible, snapEnabled },
+      };
+      await writeProjectFile(fp, project);
+      setFilePath(fp);
+      setModified(false);
+      const fileName = fp.split(/[/\\]/).pop()?.replace('.o2d', '') || 'Untitled';
+      setProjectName(fileName);
+      logger.info(`Project saved: ${fileName}`, 'File');
+      return true;
+    } catch (err) {
+      await showError(`Failed to save file: ${err}`);
+      return false;
+    }
+  }, [currentFilePath, projectName, shapes, layers, activeLayerId, drawings, sheets, activeDrawingId, activeSheetId, drawingViewports, sheetViewports, gridSize, gridVisible, snapEnabled, setFilePath, setModified, setProjectName]);
+
   const handleNew = useCallback(async () => {
     if (isModified) {
-      const proceed = await confirmUnsavedChanges();
-      if (!proceed) return;
+      const result = await promptSaveBeforeClose(projectName);
+      if (result === 'cancel') return;
+      if (result === 'save') {
+        const saved = await quickSave();
+        if (!saved) return;
+      }
     }
     newProject();
-  }, [isModified, newProject]);
+  }, [isModified, projectName, newProject, quickSave]);
 
   const handleOpen = useCallback(async () => {
     if (isModified) {
-      const proceed = await confirmUnsavedChanges();
-      if (!proceed) return;
+      const result = await promptSaveBeforeClose(projectName);
+      if (result === 'cancel') return;
+      if (result === 'save') {
+        const saved = await quickSave();
+        if (!saved) return;
+      }
     }
 
     const filePath = await showOpenDialog();
@@ -104,7 +145,7 @@ export function useGlobalKeyboard() {
     } catch (err) {
       await showError(`Failed to open file: ${err}`);
     }
-  }, [isModified, loadProject]);
+  }, [isModified, projectName, loadProject, quickSave]);
 
   const handleSave = useCallback(async () => {
     let filePath = currentFilePath;

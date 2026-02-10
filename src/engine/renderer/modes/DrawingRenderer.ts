@@ -56,6 +56,8 @@ export interface DrawingRenderOptions {
   cursor2D?: Point | null;
   /** Whether 2D cursor is visible */
   cursor2DVisible?: boolean;
+  /** Whether to display actual line weights (false = all lines 1px thin) */
+  showLineweight?: boolean;
 }
 
 // Legacy alias
@@ -139,6 +141,10 @@ export class DrawingRenderer extends BaseRenderer {
 
     // Set live preview pattern
     this.shapeRenderer.setPreviewPattern(options.previewPatternId || null, selectedShapeIds);
+
+    // Set lineweight display mode
+    this.shapeRenderer.setShowLineweight(options.showLineweight !== false);
+    this.parametricRenderer.setShowLineweight(options.showLineweight !== false);
 
     // Clear canvas
     ctx.save();

@@ -66,6 +66,8 @@ interface RenderOptions {
   cursor2D?: { x: number; y: number } | null;
   /** Whether 2D cursor is visible */
   cursor2DVisible?: boolean;
+  /** Whether to display actual line weights (false = all lines 1px thin) */
+  showLineweight?: boolean;
 }
 
 // Interface for sheet mode rendering (supports both new and legacy property names)
@@ -92,6 +94,8 @@ interface SheetModeRenderOptions {
     userPatterns: CustomHatchPattern[];
     projectPatterns: CustomHatchPattern[];
   };
+  /** Whether to display actual line weights (false = all lines 1px thin) */
+  showLineweight?: boolean;
 }
 
 export class CADRenderer {
@@ -155,6 +159,7 @@ export class CADRenderer {
       previewPatternId: options.previewPatternId,
       cursor2D: options.cursor2D,
       cursor2DVisible: options.cursor2DVisible,
+      showLineweight: options.showLineweight,
     };
 
     this.drawingRenderer.render(drawingOptions);
@@ -179,6 +184,7 @@ export class CADRenderer {
       selectedAnnotationIds: options.selectedAnnotationIds,
       placementPreview: options.placementPreview,
       customPatterns: options.customPatterns,
+      showLineweight: options.showLineweight,
     };
 
     this.sheetRenderer.render(sheetOptions);

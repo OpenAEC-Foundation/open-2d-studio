@@ -87,6 +87,9 @@ export interface ToolState {
 
   // Dynamic Input toggle
   dynamicInputEnabled: boolean;
+
+  // Display Lineweight toggle
+  showLineweight: boolean;
 }
 
 // ============================================================================
@@ -164,6 +167,9 @@ export interface ToolActions {
 
   // Dynamic Input toggle
   toggleDynamicInput: () => void;
+
+  // Display Lineweight toggle
+  toggleShowLineweight: () => void;
 }
 
 export type ToolSlice = ToolState & ToolActions;
@@ -247,6 +253,9 @@ export const initialToolState: ToolState = {
 
   // Dynamic Input
   dynamicInputEnabled: true,
+
+  // Display Lineweight (default: on)
+  showLineweight: true,
 };
 
 // ============================================================================
@@ -622,5 +631,11 @@ export const createToolSlice = (
   toggleDynamicInput: () =>
     set((state) => {
       state.dynamicInputEnabled = !state.dynamicInputEnabled;
+    }),
+
+  // Display Lineweight toggle
+  toggleShowLineweight: () =>
+    set((state) => {
+      state.showLineweight = !state.showLineweight;
     }),
 });

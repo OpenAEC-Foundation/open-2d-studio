@@ -473,7 +473,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Drawing mode: grip dragging
       if (editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        if (gripEditing.handleGripMouseMove(worldPos)) {
+        if (gripEditing.handleGripMouseMove(worldPos, e.shiftKey)) {
           return;
         }
 
@@ -862,7 +862,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Drawing mode: grip dragging
       if (refs.editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, refs.viewport);
-        if (refs.gripEditing.handleGripMouseMove(worldPos)) {
+        if (refs.gripEditing.handleGripMouseMove(worldPos, e.shiftKey)) {
           return;
         }
       }
