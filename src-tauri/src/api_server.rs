@@ -222,9 +222,10 @@ fn handle_request(
 
         ("GET", "/info") => {
             let body = format!(
-                r#"{{"pid":{},"port":{},"version":"0.3.0"}}"#,
+                r#"{{"pid":{},"port":{},"version":"{}"}}"#,
                 std::process::id(),
-                state.port
+                state.port,
+                env!("CARGO_PKG_VERSION")
             );
             respond_json(request, 200, &body);
         }
