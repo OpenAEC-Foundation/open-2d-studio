@@ -26,6 +26,7 @@ import { useTextDrawing } from '../drawing/useTextDrawing';
 import { useBoundaryEditing } from '../editing/useBoundaryEditing';
 import { useViewportEditing } from '../editing/useViewportEditing';
 import { useAnnotationEditing } from '../editing/useAnnotationEditing';
+import { useTitleBlockEditing } from '../editing/useTitleBlockEditing';
 import { useGripEditing } from '../editing/useGripEditing';
 import { useModifyTools } from '../editing/useModifyTools';
 import { useBeamDrawing } from '../drawing/useBeamDrawing';
@@ -53,6 +54,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
   const boundaryEditing = useBoundaryEditing();
   const viewportEditing = useViewportEditing();
   const annotationEditing = useAnnotationEditing();
+  const titleBlockEditing = useTitleBlockEditing();
   const gripEditing = useGripEditing();
   const modifyTools = useModifyTools();
   const beamDrawing = useBeamDrawing();
@@ -292,9 +294,14 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
 
       const screenPos = panZoom.getMousePos(e);
 
-      // Sheet mode: annotation tools or viewport selection
+      // Sheet mode: title block field editing, annotation tools, or viewport selection
       if (editorMode === 'sheet') {
-        // Handle annotation tool clicks first
+        // Handle title block field click first
+        if (titleBlockEditing.handleTitleBlockClick(screenPos)) {
+          return;
+        }
+
+        // Handle annotation tool clicks
         if (annotationEditing.handleAnnotationClick(screenPos, e.shiftKey)) {
           return;
         }
@@ -1001,6 +1008,9 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         return;
       }
 
+      // Sheet mode: title block field hover highlighting
+      titleBlockEditing.handleTitleBlockMouseMove(screenPos);
+
       // Drawing mode: boundary dragging
       if (editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
@@ -1519,8 +1529,13 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
 
       const screenPos = panZoom.getMousePos(e);
 
-      // Sheet mode: double-click on a viewport to switch to that drawing
+      // Sheet mode: double-click on title block field to edit, or viewport to switch drawing
       if (editorMode === 'sheet') {
+        // Try title block field first
+        if (titleBlockEditing.handleTitleBlockClick(screenPos)) {
+          return;
+        }
+
         const sheetPos = viewportEditing.screenToSheet(screenPos.x, screenPos.y);
         const vp = viewportEditing.findViewportAtPoint(sheetPos);
         if (vp) {
@@ -1762,5 +1777,6 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     handleContextMenu,
     isPanning: panZoom.isPanning,
     consumeRightDrag,
+    titleBlockEditing,
   };
 }

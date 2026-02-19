@@ -211,7 +211,7 @@ function useTooltip(delay = 400) {
   return { show, ref, onEnter, onLeave };
 }
 
-type RibbonTab = 'home' | 'modify' | 'structural' | 'view' | 'tools' | string;
+type RibbonTab = 'home' | 'modify' | 'structural' | 'view' | 'tools' | 'selection' | string;
 
 interface RibbonButtonProps {
   icon: React.ReactNode;
@@ -779,6 +779,15 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
     return () => document.removeEventListener('mousedown', handler);
   }, [ifcFilterOpen]);
 
+  // Auto-switch to/from the contextual "Selection" tab
+  useEffect(() => {
+    if (selectedShapeIds.length > 0 && activeTab !== 'selection') {
+      setActiveTab('selection');
+    } else if (selectedShapeIds.length === 0 && activeTab === 'selection') {
+      setActiveTab('home');
+    }
+  }, [selectedShapeIds.length]);
+
   // Count shapes per IFC category (for filter dropdown badge)
   const ifcCategoryCounts = useMemo(() => {
     const map = new Map<string, number>();
@@ -877,6 +886,14 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
             {tab.label}
           </button>
         ))}
+        {selectedShapeIds.length > 0 && (
+          <button
+            className={`ribbon-tab contextual ${activeTab === 'selection' ? 'active' : ''}`}
+            onClick={() => setActiveTab('selection')}
+          >
+            Selection
+          </button>
+        )}
       </div>
 
       {/* Ribbon Content */}
@@ -884,40 +901,6 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
         {/* Home Tab */}
         <div className={`ribbon-content ${activeTab === 'home' ? 'active' : ''}`}>
           <div className="ribbon-groups">
-            {/* Clipboard Group */}
-            <RibbonGroup label="Clipboard">
-              <RibbonButton
-                icon={<ClipboardPaste size={24} />}
-                label="Paste"
-                onClick={() => pasteShapes()}
-                disabled={isSheetMode || !hasClipboardContent()}
-                shortcut="Ctrl+V"
-              />
-              <RibbonButtonStack>
-                <RibbonSmallButton
-                  icon={<Scissors size={14} />}
-                  label="Cut"
-                  onClick={cutSelectedShapes}
-                  disabled={isSheetMode || selectedShapeIds.length === 0}
-                  shortcut="Ctrl+X"
-                />
-                <RibbonSmallButton
-                  icon={<Copy size={14} />}
-                  label="Copy"
-                  onClick={copySelectedShapes}
-                  disabled={isSheetMode || selectedShapeIds.length === 0}
-                  shortcut="Ctrl+C"
-                />
-                <RibbonSmallButton
-                  icon={<Trash2 size={14} />}
-                  label="Delete"
-                  onClick={deleteSelectedShapes}
-                  disabled={isSheetMode || selectedShapeIds.length === 0}
-                  shortcut="Del"
-                />
-              </RibbonButtonStack>
-            </RibbonGroup>
-
             {/* Selection Group */}
             <RibbonGroup label="Selection">
               <RibbonButton
@@ -1299,37 +1282,6 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
               />
             </RibbonGroup>
 
-            {/* Draw Order Group */}
-            <RibbonGroup label="Draw Order">
-              <RibbonButtonStack>
-                <RibbonSmallButton
-                  icon={<ArrowUpToLine size={14} />}
-                  label="Bring Front"
-                  onClick={bringToFront}
-                  disabled={isSheetMode || selectedShapeIds.length === 0}
-                />
-                <RibbonSmallButton
-                  icon={<ArrowUp size={14} />}
-                  label="Bring Fwd"
-                  onClick={bringForward}
-                  disabled={isSheetMode || selectedShapeIds.length === 0}
-                />
-              </RibbonButtonStack>
-              <RibbonButtonStack>
-                <RibbonSmallButton
-                  icon={<ArrowDown size={14} />}
-                  label="Send Bwd"
-                  onClick={sendBackward}
-                  disabled={isSheetMode || selectedShapeIds.length === 0}
-                />
-                <RibbonSmallButton
-                  icon={<ArrowDownToLine size={14} />}
-                  label="Send Back"
-                  onClick={sendToBack}
-                  disabled={isSheetMode || selectedShapeIds.length === 0}
-                />
-              </RibbonButtonStack>
-            </RibbonGroup>
             {renderExtensionButtonsForTab('home')}
           </div>
         </div>
@@ -1361,11 +1313,35 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
 
             <RibbonGroup label="Clipboard">
               <RibbonButton
-                icon={<Trash2 size={24} />}
-                label="Delete"
-                onClick={deleteSelectedShapes}
-                disabled={isSheetMode || selectedShapeIds.length === 0}
+                icon={<ClipboardPaste size={24} />}
+                label="Paste"
+                onClick={() => pasteShapes()}
+                disabled={isSheetMode || !hasClipboardContent()}
+                shortcut="Ctrl+V"
               />
+              <RibbonButtonStack>
+                <RibbonSmallButton
+                  icon={<Scissors size={14} />}
+                  label="Cut"
+                  onClick={cutSelectedShapes}
+                  disabled={isSheetMode || selectedShapeIds.length === 0}
+                  shortcut="Ctrl+X"
+                />
+                <RibbonSmallButton
+                  icon={<Copy size={14} />}
+                  label="Copy"
+                  onClick={copySelectedShapes}
+                  disabled={isSheetMode || selectedShapeIds.length === 0}
+                  shortcut="Ctrl+C"
+                />
+                <RibbonSmallButton
+                  icon={<Trash2 size={14} />}
+                  label="Delete"
+                  onClick={deleteSelectedShapes}
+                  disabled={isSheetMode || selectedShapeIds.length === 0}
+                  shortcut="Del"
+                />
+              </RibbonButtonStack>
             </RibbonGroup>
             {renderExtensionButtonsForTab('modify')}
           </div>
@@ -1960,6 +1936,42 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
             </RibbonGroup>
 
             {renderExtensionButtonsForTab('ifc')}
+          </div>
+        </div>
+
+        {/* Selection Tab (contextual — visible only when shapes are selected) */}
+        <div className={`ribbon-content ${activeTab === 'selection' ? 'active' : ''}`}>
+          <div className="ribbon-groups">
+            <RibbonGroup label="Draw Order">
+              <RibbonButtonStack>
+                <RibbonSmallButton
+                  icon={<ArrowUpToLine size={14} />}
+                  label="Bring Front"
+                  onClick={bringToFront}
+                  disabled={isSheetMode || selectedShapeIds.length === 0}
+                />
+                <RibbonSmallButton
+                  icon={<ArrowUp size={14} />}
+                  label="Bring Fwd"
+                  onClick={bringForward}
+                  disabled={isSheetMode || selectedShapeIds.length === 0}
+                />
+              </RibbonButtonStack>
+              <RibbonButtonStack>
+                <RibbonSmallButton
+                  icon={<ArrowDown size={14} />}
+                  label="Send Bwd"
+                  onClick={sendBackward}
+                  disabled={isSheetMode || selectedShapeIds.length === 0}
+                />
+                <RibbonSmallButton
+                  icon={<ArrowDownToLine size={14} />}
+                  label="Send Back"
+                  onClick={sendToBack}
+                  disabled={isSheetMode || selectedShapeIds.length === 0}
+                />
+              </RibbonButtonStack>
+            </RibbonGroup>
           </div>
         </div>
 

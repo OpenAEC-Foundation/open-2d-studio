@@ -1,7 +1,7 @@
 {
   "name": "open-nd-studio",
   "private": true,
-  "version": "0.22.0",
+  "version": "0.24.0",
   "type": "module",
   "scripts": {
     "dev": "vite",

@@ -143,6 +143,9 @@ export interface ViewportEditState {
   isDragging: boolean;                 // Whether viewport is being moved/resized
   dragStart: Point | null;             // Mouse position when drag started (sheet mm coords)
   originalViewport: SheetViewport | null;   // Viewport state before drag started
+  isMoving: boolean;                   // Whether viewport is being moved via command
+  moveBasePoint: Point | null;         // Base point for move operation
+  moveSnappedPos: Point | null;        // Snapped destination position
 }
 
 // ============================================================================

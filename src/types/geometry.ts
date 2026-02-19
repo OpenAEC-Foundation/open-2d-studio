@@ -43,7 +43,7 @@ export interface ShapeGroup {
 /** @deprecated Use drawingId instead */
 export type BaseShapeWithDraftId = BaseShape & { draftId?: string };
 
-export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'pile' | 'wall' | 'slab' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation';
+export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'pile' | 'wall' | 'slab' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation' | 'block-instance';
 
 export type HatchPatternType = 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots' | 'custom';
 
@@ -645,6 +645,22 @@ export interface TextStyle {
   isProjectStyle?: boolean;   // Project-specific vs User global style
 }
 
+// Block definitions and instances
+export interface BlockDefinition {
+  id: string;
+  name: string;
+  shapes: BaseShape[];
+}
+
+export interface BlockInstanceShape extends BaseShape {
+  type: 'block-instance';
+  blockDefinitionId: string;
+  position: Point;
+  rotation: number;
+  scaleX: number;
+  scaleY: number;
+}
+
 // Forward declaration for DimensionShape (defined in dimension.ts)
 import type { DimensionShape } from './dimension';
 
@@ -673,7 +689,8 @@ export type Shape =
   | PlateSystemShape
   | SpotElevationShape
   | CPTShape
-  | FoundationZoneShape;
+  | FoundationZoneShape
+  | BlockInstanceShape;
 
 // Layer type
 export interface Layer {

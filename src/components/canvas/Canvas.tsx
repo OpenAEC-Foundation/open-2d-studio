@@ -1,5 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from 'react';
 import { useAppStore } from '../../state/appStore';
+import { getActiveDocumentStore } from '../../state/documentStore';
 import { CADRenderer } from '../../engine/renderer/CADRenderer';
 import { useCanvasEvents } from '../../hooks/canvas/useCanvasEvents';
 import { useContextMenu } from '../../hooks/canvas/useContextMenu';
@@ -11,6 +12,7 @@ import type { TextShape, GridlineShape, Point } from '../../types/geometry';
 import { MM_TO_PIXELS } from '../../engine/renderer/types';
 import { screenToWorld, worldToScreen } from '../../engine/geometry/GeometryUtils';
 import { setRotationGizmoVisible } from '../../engine/renderer/rotationGizmoState';
+import { TitleBlockFieldEditor } from '../editors/TitleBlockFieldEditor/TitleBlockFieldEditor';
 import { parseSpacingPattern, createGridlinesFromPattern } from '../../utils/gridlineUtils';
 import { regenerateGridDimensions } from '../../utils/gridDimensionUtils';
 
@@ -354,6 +356,13 @@ export function Canvas() {
     return drawing?.scale;
   });
 
+  // Title block field editing state — read directly from documentStore.
+  // Subscribe to the tick counter on appStore so React re-renders when these change.
+  useAppStore(s => (s as any)._titleBlockRenderTick);
+  const _docStoreForCanvas = getActiveDocumentStore();
+  const titleBlockEditingFieldId = _docStoreForCanvas.getState().titleBlockEditingFieldId;
+  const hoveredTitleBlockFieldId = _docStoreForCanvas.getState().hoveredTitleBlockFieldId;
+
   // Selected gridline for "+" button overlay (only when exactly one gridline is selected)
   const selectedGridline = useAppStore(s => {
     if (s.selectedShapeIds.length !== 1) return null;
@@ -601,7 +610,7 @@ export function Canvas() {
   }, []);
 
   // Handle mouse events
-  const { handleMouseDown, handleMouseMove, handleMouseUp, handleWheel, handleClick, handleDoubleClick, handleContextMenu: baseHandleContextMenu, isPanning, consumeRightDrag } =
+  const { handleMouseDown, handleMouseMove, handleMouseUp, handleWheel, handleClick, handleDoubleClick, handleContextMenu: baseHandleContextMenu, isPanning, consumeRightDrag, titleBlockEditing } =
     useCanvasEvents(canvasRef);
 
   // Context menu state
@@ -736,6 +745,10 @@ export function Canvas() {
     if (isPanning) {
       return 'cursor-grabbing';
     }
+    // Show pointer when hovering a title block field
+    if (hoveredTitleBlockFieldId) {
+      return 'cursor-pointer';
+    }
     switch (activeTool) {
       case 'pan':
         return 'cursor-grab';
@@ -786,6 +799,24 @@ export function Canvas() {
           drawingScale={activeDrawingScale}
         />
       )}
+
+      {/* Title Block Field Editor Overlay */}
+      {titleBlockEditingFieldId && (() => {
+        const rect = titleBlockEditing.getEditingFieldScreenRect();
+        if (!rect) return null;
+        return (
+          <TitleBlockFieldEditor
+            x={rect.x}
+            y={rect.y}
+            width={rect.width}
+            height={rect.height}
+            fieldRect={rect.fieldRect}
+            zoom={viewportForOverlay.zoom}
+            onSave={titleBlockEditing.saveFieldValue}
+            onCancel={titleBlockEditing.cancelFieldEditing}
+          />
+        );
+      })()}
 
       {/* Gridline "+" Button Overlay - shows when a single gridline is selected */}
       {selectedGridline && activeTool === 'select' && (

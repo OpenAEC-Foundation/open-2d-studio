@@ -726,7 +726,7 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
   const clearView = () => setActiveView('none');
 
   return (
-    <div className="fixed inset-0 z-50 flex bg-cad-bg">
+    <div className="fixed inset-0 top-8 z-50 flex bg-cad-bg">
       {/* Sidebar */}
       <div className="w-[250px] flex flex-col border-r border-cad-border bg-cad-surface">
         {/* Back button + header */}

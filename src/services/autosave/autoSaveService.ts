@@ -103,7 +103,9 @@ export function restoreAutoSave(set: (fn: (state: any) => void) => void): boolea
     state.shapes = data.shapes || [];
     state.layers = data.layers || [];
     state.drawings = data.drawings || [];
-    state.sheets = data.sheets || [];
+    if (data.sheets && data.sheets.length > 0) {
+      state.sheets = data.sheets;
+    }
     state.activeDrawingId = data.activeDrawingId;
     state.activeSheetId = data.activeSheetId || null;
     state.activeLayerId = data.activeLayerId;

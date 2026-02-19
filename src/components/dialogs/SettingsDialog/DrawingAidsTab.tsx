@@ -42,7 +42,7 @@ export function DrawingAidsTab() {
   const dynamicInputEnabled = useAppStore(s => s.dynamicInputEnabled);
   const toggleDynamicInput = useAppStore(s => s.toggleDynamicInput);
   const showRotationGizmo = useAppStore(s => s.showRotationGizmo);
-  const toggleShowRotationGizmo = useAppStore(s => s.toggleShowRotationGizmo);
+  const toggleShowRotationGizmo = useAppStore(s => s.toggleRotationGizmo);
 
   const handleSelectAll = () => {
     for (const snap of snapTypes) {

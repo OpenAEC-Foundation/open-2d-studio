@@ -7,23 +7,34 @@
 
 import { useCallback } from 'react';
 import { useAppStore } from '../../state/appStore';
+import { getActiveDocumentStore } from '../../state/documentStore';
 import { getTitleBlockFieldRects, type TitleBlockFieldRect } from '../../engine/renderer/sheet/titleBlockHitTest';
 import { MM_TO_PIXELS } from '../../engine/renderer/types';
 import { PAPER_SIZES } from '../../state/slices/types';
 
+/**
+ * Force a React re-render by bumping a counter on appStore.
+ * This avoids syncing actual data between stores (which can cause
+ * overwrite issues since documentStore and appStore initialize separately).
+ */
+function triggerRerender() {
+  const cur = (useAppStore.getState() as any)._titleBlockRenderTick ?? 0;
+  useAppStore.setState({ _titleBlockRenderTick: cur + 1 } as any);
+}
+
 export function useTitleBlockEditing() {
-  const {
-    viewport,
-    editorMode,
-    sheets,
-    activeSheetId,
-    titleBlockEditingFieldId,
-    startTitleBlockFieldEditing,
-    endTitleBlockFieldEditing,
-    setHoveredTitleBlockFieldId,
-    updateTitleBlockField,
-    customTitleBlockTemplates,
-  } = useAppStore();
+  const viewport = useAppStore(s => s.viewport);
+  const editorMode = useAppStore(s => s.editorMode);
+  const sheets = useAppStore(s => s.sheets);
+  const activeSheetId = useAppStore(s => s.activeSheetId);
+  const customTitleBlockTemplates = useAppStore(s => s.customTitleBlockTemplates);
+
+  // Read title block editing state from documentStore directly (not proxied to appStore)
+  // We subscribe to a tick counter to force re-renders when these change.
+  useAppStore(s => (s as any)._titleBlockRenderTick);
+  const docStore = getActiveDocumentStore();
+  const titleBlockEditingFieldId = docStore.getState().titleBlockEditingFieldId;
+  const hoveredTitleBlockFieldId = docStore.getState().hoveredTitleBlockFieldId;
 
   /**
    * Get the active sheet
@@ -112,9 +123,15 @@ export function useTitleBlockEditing() {
       if (titleBlockEditingFieldId) return;
 
       const field = findFieldAtScreenPos(screenPos.x, screenPos.y);
-      setHoveredTitleBlockFieldId(field?.fieldId ?? null);
+      const newId = field?.fieldId ?? null;
+      // Only update if changed to avoid unnecessary re-renders
+      if (newId !== hoveredTitleBlockFieldId) {
+        const docStore = getActiveDocumentStore();
+        docStore.getState().setHoveredTitleBlockFieldId(newId);
+        triggerRerender();
+      }
     },
-    [editorMode, titleBlockEditingFieldId, findFieldAtScreenPos, setHoveredTitleBlockFieldId]
+    [editorMode, titleBlockEditingFieldId, hoveredTitleBlockFieldId, findFieldAtScreenPos]
   );
 
   /**
@@ -127,13 +144,15 @@ export function useTitleBlockEditing() {
 
       const field = findFieldAtScreenPos(screenPos.x, screenPos.y);
       if (field) {
-        startTitleBlockFieldEditing(field.fieldId);
+        const docStore = getActiveDocumentStore();
+        docStore.getState().startTitleBlockFieldEditing(field.fieldId);
+        triggerRerender();
         return true;
       }
 
       return false;
     },
-    [editorMode, findFieldAtScreenPos, startTitleBlockFieldEditing]
+    [editorMode, findFieldAtScreenPos]
   );
 
   /**
@@ -154,35 +173,59 @@ export function useTitleBlockEditing() {
     if (!fieldRect) return null;
 
     // Convert from sheet pixel space to screen space
-    const result = {
+    return {
       x: fieldRect.x * viewport.zoom + viewport.offsetX,
       y: fieldRect.y * viewport.zoom + viewport.offsetY,
       width: fieldRect.width * viewport.zoom,
       height: fieldRect.height * viewport.zoom,
       fieldRect,
     };
-    return result;
   }, [titleBlockEditingFieldId, getFieldRects, viewport]);
 
   /**
-   * Save the current field value
+   * Save the current field value.
+   * Updates appStore sheets directly (the renderer reads from appStore).
+   * documentStore.sheets starts empty and is only populated on doc switch,
+   * so we cannot rely on docStore.updateTitleBlockField here.
    */
   const saveFieldValue = useCallback(
     (value: string): void => {
       const sheet = getActiveSheet();
       if (!sheet || !titleBlockEditingFieldId) return;
-      updateTitleBlockField(sheet.id, titleBlockEditingFieldId, value);
-      endTitleBlockFieldEditing();
+
+      // Update the field directly on appStore's sheets
+      const currentSheets = useAppStore.getState().sheets;
+      const updatedSheets = currentSheets.map((s: any) => {
+        if (s.id !== sheet.id) return s;
+        return {
+          ...s,
+          titleBlock: {
+            ...s.titleBlock,
+            fields: s.titleBlock.fields.map((f: any) =>
+              f.id === titleBlockEditingFieldId ? { ...f, value } : f
+            ),
+          },
+          modifiedAt: new Date().toISOString(),
+        };
+      });
+      useAppStore.setState({ sheets: updatedSheets, isModified: true } as any);
+
+      // End editing (state lives in docStore)
+      const docStore = getActiveDocumentStore();
+      docStore.getState().endTitleBlockFieldEditing();
+      triggerRerender();
     },
-    [getActiveSheet, titleBlockEditingFieldId, updateTitleBlockField, endTitleBlockFieldEditing]
+    [getActiveSheet, titleBlockEditingFieldId]
   );
 
   /**
    * Cancel editing
    */
   const cancelFieldEditing = useCallback((): void => {
-    endTitleBlockFieldEditing();
-  }, [endTitleBlockFieldEditing]);
+    const docStore = getActiveDocumentStore();
+    docStore.getState().endTitleBlockFieldEditing();
+    triggerRerender();
+  }, []);
 
   return {
     handleTitleBlockMouseMove,

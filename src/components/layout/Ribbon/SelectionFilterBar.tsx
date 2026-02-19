@@ -36,6 +36,7 @@ const CATEGORY_LABELS: Record<ShapeType, string> = {
   'spot-elevation': 'Spot Elevations',
   cpt: 'CPTs',
   'foundation-zone': 'Foundation Zones',
+  'block-instance': 'Block Instances',
 };
 
 // Singular labels for count = 1
@@ -64,6 +65,7 @@ const CATEGORY_LABELS_SINGULAR: Record<ShapeType, string> = {
   'spot-elevation': 'Spot Elevation',
   cpt: 'CPT',
   'foundation-zone': 'Foundation Zone',
+  'block-instance': 'Block Instance',
 };
 
 // Preferred display order for categories

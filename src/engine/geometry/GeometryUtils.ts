@@ -556,7 +556,7 @@ export function isPointNearImage(point: Point, shape: ImageShape, tolerance: num
  * Check if a point is near a shape (for hit testing)
  * @param drawingScale - Optional drawing scale for text annotation scaling
  */
-export function isPointNearShape(point: Point, shape: Shape, tolerance: number = 5, drawingScale?: number): boolean {
+export function isPointNearShape(point: Point, shape: Shape, tolerance: number = 5, drawingScale?: number, _blockDefinitions?: Map<string, any>): boolean {
   switch (shape.type) {
     case 'line':
       return isPointNearLine(point, shape.start, shape.end, tolerance);
@@ -1530,7 +1530,7 @@ export function isPointNearParametricShape(
  * Get bounding box of a shape
  * @param drawingScale - Optional drawing scale for text annotation scaling
  */
-export function getShapeBounds(shape: Shape, drawingScale?: number, gridlineExtension?: number): ShapeBounds | null {
+export function getShapeBounds(shape: Shape, drawingScale?: number, gridlineExtension?: number | Map<string, any>, _blockDefinitions?: Map<string, any>): ShapeBounds | null {
   switch (shape.type) {
     case 'line':
       return {
@@ -1809,7 +1809,7 @@ export function getShapeBounds(shape: Shape, drawingScale?: number, gridlineExte
       const glShape = shape as GridlineShape;
       const glSf = annotationScaleFactor(drawingScale);
       const r = (glShape.bubbleRadius || 0) * glSf;
-      const glExt = (gridlineExtension ?? 500) * glSf;
+      const glExt = (typeof gridlineExtension === 'number' ? gridlineExtension : 500) * glSf;
       return {
         minX: Math.min(glShape.start.x, glShape.end.x) - r - glExt,
         minY: Math.min(glShape.start.y, glShape.end.y) - r - glExt,
@@ -2009,6 +2009,15 @@ export function getShapeBounds(shape: Shape, drawingScale?: number, gridlineExte
         minY: Math.min(imgCorners[0].y, imgCorners[1].y, imgCorners[2].y, imgCorners[3].y),
         maxX: Math.max(imgCorners[0].x, imgCorners[1].x, imgCorners[2].x, imgCorners[3].x),
         maxY: Math.max(imgCorners[0].y, imgCorners[1].y, imgCorners[2].y, imgCorners[3].y),
+      };
+    }
+    case 'block-instance': {
+      const bi = shape as any;
+      return {
+        minX: bi.position.x,
+        minY: bi.position.y,
+        maxX: bi.position.x + (bi.scaleX || 1),
+        maxY: bi.position.y + (bi.scaleY || 1),
       };
     }
     default:
