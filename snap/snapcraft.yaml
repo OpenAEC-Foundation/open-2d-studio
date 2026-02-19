@@ -1,0 +1,75 @@
+name: open-2d-studio
+base: core22
+version: '0.24.0'
+summary: Free, open-source 2D CAD application
+description: |
+  Open 2D Studio is a free, open-source 2D CAD application built for architects,
+  engineers, and designers who need professional drafting tools without expensive
+  subscriptions.
+
+  Features:
+
+  - Drawing tools: Line, Rectangle, Circle, Arc, Polyline, Ellipse, Spline, Hatch
+  - Modify tools: Move, Copy, Rotate, Scale, Mirror, Offset, Trim, Extend, Fillet
+  - Structural tools: Beams, Piles, Walls, Slabs, Plate Systems, Gridlines, Levels
+  - Sheet management: Multiple drawings, sheets with title blocks, viewports
+  - Dimension tools: Linear, aligned, angular, radius, diameter, spot elevation
+  - Annotation tools: Text, leaders, section callouts
+  - Layer management with visibility, lock, and color control
+  - Snap and tracking: endpoint, midpoint, center, intersection, perpendicular, polar
+  - Grid and ortho mode
+  - Undo/redo with full history
+  - IFC export for BIM interoperability
+  - Print dialog with PDF export
+  - Customizable Quick Access Toolbar
+  - Multiple themes: Dark, Light, Blue, High Contrast
+  - No telemetry, no data collection, no subscriptions
+
+  Built with Tauri and web technologies for a fast, lightweight, native desktop experience.
+title: Open 2D Studio
+icon: snap/gui/open-2d-studio.png
+license: LGPL-3.0-or-later
+contact: https://impertio.nl/
+issues: https://github.com/OpenAEC-Foundation/open-2d-studio/issues
+source-code: https://github.com/OpenAEC-Foundation/open-2d-studio
+website: https://impertio.nl/
+grade: stable
+confinement: strict
+
+apps:
+  open-2d-studio:
+    command: usr/bin/open-nd-studio
+    desktop: usr/share/applications/open-2d-studio.desktop
+    extensions: [gnome]
+    plugs:
+      - home
+      - removable-media
+      - network
+
+layout:
+  /usr/lib/x86_64-linux-gnu/webkit2gtk-4.1:
+    bind: $SNAP/usr/lib/x86_64-linux-gnu/webkit2gtk-4.1
+
+parts:
+  open-2d-studio:
+    plugin: dump
+    source: open-2d-studio.deb
+    source-type: deb
+    stage-packages:
+      - libwebkit2gtk-4.1-0
+      - libjavascriptcoregtk-4.1-0
+    override-build: |
+      craftctl default
+      mkdir -p $CRAFT_PART_INSTALL/usr/share/applications
+      cat > $CRAFT_PART_INSTALL/usr/share/applications/open-2d-studio.desktop << 'EOF'
+      [Desktop Entry]
+      Name=Open 2D Studio
+      Comment=Free, open-source 2D CAD application
+      Exec=open-nd-studio %F
+      Icon=${SNAP}/usr/share/icons/hicolor/128x128/apps/open-nd-studio.png
+      Terminal=false
+      Type=Application
+      Categories=Graphics;Engineering;
+      MimeType=application/x-onds;
+      StartupWMClass=open-nd-studio
+      EOF
