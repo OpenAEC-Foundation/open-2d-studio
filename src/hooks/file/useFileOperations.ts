@@ -172,6 +172,14 @@ export function useFileOperations() {
       if (project.wallTypes && project.wallTypes.length > 0) {
         useAppStore.getState().setWallTypes(project.wallTypes);
       }
+      // Restore wall system types (backward compatible)
+      if ((project as any).wallSystemTypes && (project as any).wallSystemTypes.length > 0) {
+        useAppStore.getState().setWallSystemTypes((project as any).wallSystemTypes);
+      }
+      // Restore saved queries (backward compatible)
+      if (project.queries && project.queries.length > 0) {
+        useAppStore.getState().setQueries(project.queries);
+      }
 
       // Close the previous empty untitled tab
       if (isEmptyUntitled) {
@@ -228,6 +236,8 @@ export function useFileOperations() {
         customSheetTemplates: s.customSheetTemplates.length > 0 ? s.customSheetTemplates : undefined,
         projectPatterns: s.projectPatterns.length > 0 ? s.projectPatterns : undefined,
         wallTypes: s.wallTypes.length > 0 ? s.wallTypes : undefined,
+        wallSystemTypes: s.wallSystemTypes.length > 0 ? s.wallSystemTypes : undefined,
+        queries: s.queries.length > 0 ? s.queries : undefined,
       };
 
       await writeProjectFile(filePath, project);
@@ -282,6 +292,7 @@ export function useFileOperations() {
         customSheetTemplates: s.customSheetTemplates.length > 0 ? s.customSheetTemplates : undefined,
         projectPatterns: s.projectPatterns.length > 0 ? s.projectPatterns : undefined,
         wallTypes: s.wallTypes.length > 0 ? s.wallTypes : undefined,
+        wallSystemTypes: s.wallSystemTypes.length > 0 ? s.wallSystemTypes : undefined,
       };
 
       await writeProjectFile(filePath, project);
@@ -546,6 +557,10 @@ export function useFileOperations() {
       // Restore wall types (backward compatible — global/shared state)
       if (project.wallTypes && project.wallTypes.length > 0) {
         useAppStore.getState().setWallTypes(project.wallTypes);
+      }
+      // Restore wall system types (backward compatible)
+      if ((project as any).wallSystemTypes && (project as any).wallSystemTypes.length > 0) {
+        useAppStore.getState().setWallSystemTypes((project as any).wallSystemTypes);
       }
 
       if (isEmptyUntitled) {

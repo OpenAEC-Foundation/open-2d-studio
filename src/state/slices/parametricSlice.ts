@@ -13,9 +13,11 @@ import type {
   ProfileType,
   ParameterValues,
 } from '../../types/parametric';
-import type { BeamMaterial, BeamJustification, GridlineBubblePosition, WallJustification, WallEndCap, WallType, SlabType, ColumnType, BeamType, PileTypeDefinition } from '../../types/geometry';
+import type { BeamMaterial, BeamJustification, GridlineBubblePosition, WallJustification, WallEndCap, WallType, SlabType, ColumnType, BeamType, PileTypeDefinition, GroupedWallType, WallSystemType } from '../../types/geometry';
 import type { MaterialHatchSettings, MaterialHatchSetting, DrawingStandardsPreset, PlanSubtypeSettings } from '../../types/hatch';
 import { DEFAULT_MATERIAL_HATCH_SETTINGS, DEFAULT_PLAN_SUBTYPE_SETTINGS } from '../../types/hatch';
+import { DEFAULT_GROUPED_WALL_TYPES, GROUPED_WALL_EXTRA_TYPES } from '../../services/wallSystem/groupedWallDefaults';
+import { getDefaultWallSystemTypes } from '../../services/wallSystem/wallSystemDefaults';
 import {
   createProfileShape,
   updateParametricParameters,
@@ -50,6 +52,20 @@ export interface ProjectStructure {
   /** Sea level datum: elevation of peil=0 relative to NAP (Normaal Amsterdams Peil) in meters.
    *  e.g., -0.5 means peil=0 is at -0.5m NAP. Default 0. */
   seaLevelDatum: number;
+}
+
+// ============================================================================
+// Saved Query Types
+// ============================================================================
+
+export interface SavedQuery {
+  id: string;
+  name: string;
+  description?: string;
+  sql: string;
+  category: 'schedule' | 'quantity-takeoff' | 'analysis' | 'custom';
+  createdAt: string;
+  modifiedAt: string;
 }
 
 // ============================================================================
@@ -201,6 +217,7 @@ export interface ParametricState {
   pendingWall: {
     thickness: number;
     wallTypeId?: string;
+    wallSystemId?: string;
     justification: WallJustification;
     showCenterline: boolean;
     startCap: WallEndCap;
@@ -303,6 +320,18 @@ export interface ParametricState {
   /** Wall types */
   wallTypes: WallType[];
 
+  /** Grouped wall types (multi-layer wall assemblies like spouwmuur) */
+  groupedWallTypes: GroupedWallType[];
+
+  /** Wall system types (multi-layered assemblies: HSB, metal stud, curtain wall) */
+  wallSystemTypes: WallSystemType[];
+
+  /** Wall system dialog open state */
+  wallSystemDialogOpen: boolean;
+
+  /** Currently selected wall sub-element (stud/panel within a wall system) */
+  selectedWallSubElement: { wallId: string; type: 'stud' | 'panel'; key: string } | null;
+
   /** Slab types */
   slabTypes: SlabType[];
 
@@ -326,6 +355,12 @@ export interface ParametricState {
 
   /** ID of the currently active Drawing Standards preset */
   activeDrawingStandardsId: string;
+
+  /** Saved queries for schedules, quantity takeoffs, and analysis */
+  queries: SavedQuery[];
+
+  /** ID of the currently active/selected query */
+  activeQueryId: string | null;
 }
 
 // ============================================================================
@@ -443,6 +478,22 @@ export interface ParametricActions {
   setWallTypes: (wallTypes: WallType[]) => void;
   setLastUsedWallTypeId: (id: string | null) => void;
 
+  // Grouped wall types
+  addGroupedWallType: (gwt: GroupedWallType) => void;
+  updateGroupedWallType: (id: string, updates: Partial<GroupedWallType>) => void;
+  deleteGroupedWallType: (id: string) => void;
+  explodeWallGroup: (groupId: string) => void;
+
+  // Wall system types (multi-layered assemblies)
+  addWallSystemType: (wst: WallSystemType) => void;
+  updateWallSystemType: (id: string, updates: Partial<WallSystemType>) => void;
+  deleteWallSystemType: (id: string) => void;
+  setWallSystemTypes: (types: WallSystemType[]) => void;
+  openWallSystemDialog: () => void;
+  closeWallSystemDialog: () => void;
+  selectWallSubElement: (wallId: string, type: 'stud' | 'panel', key: string) => void;
+  clearWallSubElement: () => void;
+
   // Slab types
   addSlabType: (slabType: SlabType) => void;
   updateSlabType: (id: string, updates: Partial<SlabType>) => void;
@@ -514,6 +565,13 @@ export interface ParametricActions {
   addStorey: (buildingId: string, storey: ProjectStorey) => void;
   removeStorey: (buildingId: string, storeyId: string) => void;
   updateStorey: (buildingId: string, storeyId: string, updates: Partial<ProjectStorey>) => void;
+
+  // Saved Queries
+  addQuery: (query: Omit<SavedQuery, 'id' | 'createdAt' | 'modifiedAt'>) => string;
+  updateQuery: (id: string, updates: Partial<SavedQuery>) => void;
+  deleteQuery: (id: string) => void;
+  setActiveQuery: (id: string | null) => void;
+  setQueries: (queries: SavedQuery[]) => void;
 }
 
 export type ParametricSlice = ParametricState & ParametricActions;
@@ -604,7 +662,13 @@ export const initialParametricState: ParametricState = {
     { id: 'staal-10', name: 'Staal', thickness: 10, material: 'steel' },
     // Isolatie (Insulation)
     { id: 'isolatie-184', name: 'Isolatie', thickness: 184, material: 'insulation' },
+    // Extra wall types used by grouped wall assemblies
+    ...GROUPED_WALL_EXTRA_TYPES,
   ],
+  groupedWallTypes: [...DEFAULT_GROUPED_WALL_TYPES],
+  wallSystemTypes: getDefaultWallSystemTypes(),
+  wallSystemDialogOpen: false,
+  selectedWallSubElement: null,
   slabTypes: [
     // Beton (Concrete) slabs — INB-Template standard structural slab types
     { id: 'vloer-beton-150', name: 'Beton', thickness: 150, material: 'concrete' },
@@ -681,6 +745,8 @@ export const initialParametricState: ParametricState = {
     },
   ],
   activeDrawingStandardsId: 'default-nen-en',
+  queries: [],
+  activeQueryId: null,
 };
 
 // ============================================================================
@@ -694,6 +760,7 @@ interface StoreWithHistory {
   isModified: boolean;
   shapes: Shape[];
   drawings: Drawing[];
+  groups: import('../../types/geometry').ShapeGroup[];
   updateShapes: (updates: { id: string; updates: Partial<Shape> }[]) => void;
   syncAllSectionReferences?: () => void;
 }
@@ -1218,6 +1285,100 @@ export const createParametricSlice = (
     }),
 
   // ============================================================================
+  // Grouped Wall Types
+  // ============================================================================
+
+  addGroupedWallType: (gwt) =>
+    set((state) => {
+      state.groupedWallTypes.push(gwt);
+    }),
+
+  updateGroupedWallType: (id, updates) =>
+    set((state) => {
+      const index = state.groupedWallTypes.findIndex(g => g.id === id);
+      if (index !== -1) {
+        Object.assign(state.groupedWallTypes[index], updates);
+      }
+    }),
+
+  deleteGroupedWallType: (id) =>
+    set((state) => {
+      state.groupedWallTypes = state.groupedWallTypes.filter(g => g.id !== id);
+    }),
+
+  explodeWallGroup: (groupId) => {
+    set((state) => {
+      // Remove groupId from all wall shapes in this group,
+      // and clear their groupedWallTypeId/groupedWallLayerIndex
+      for (const shape of state.shapes) {
+        if (shape.groupId === groupId) {
+          delete shape.groupId;
+          if (shape.type === 'wall') {
+            const wall = shape as WallShape;
+            delete wall.groupedWallTypeId;
+            delete wall.groupedWallLayerIndex;
+          }
+        }
+      }
+      // Remove the group entry
+      state.groups = state.groups.filter(g => g.id !== groupId);
+    });
+  },
+
+  // ============================================================================
+  // Wall System Types (multi-layered assemblies)
+  // ============================================================================
+
+  addWallSystemType: (wst) =>
+    set((state) => {
+      state.wallSystemTypes.push(wst);
+    }),
+
+  updateWallSystemType: (id, updates) =>
+    set((state) => {
+      const index = state.wallSystemTypes.findIndex(w => w.id === id);
+      if (index !== -1) {
+        Object.assign(state.wallSystemTypes[index], updates);
+      }
+    }),
+
+  deleteWallSystemType: (id) =>
+    set((state) => {
+      state.wallSystemTypes = state.wallSystemTypes.filter(w => w.id !== id);
+      // Clear wallSystemId from any walls that reference this deleted type
+      for (const shape of state.shapes) {
+        if (shape.type === 'wall' && (shape as WallShape).wallSystemId === id) {
+          (shape as WallShape).wallSystemId = undefined;
+        }
+      }
+    }),
+
+  setWallSystemTypes: (types) =>
+    set((state) => {
+      state.wallSystemTypes = types;
+    }),
+
+  openWallSystemDialog: () =>
+    set((state) => {
+      state.wallSystemDialogOpen = true;
+    }),
+
+  closeWallSystemDialog: () =>
+    set((state) => {
+      state.wallSystemDialogOpen = false;
+    }),
+
+  selectWallSubElement: (wallId, type, key) =>
+    set((state) => {
+      state.selectedWallSubElement = { wallId, type, key };
+    }),
+
+  clearWallSubElement: () =>
+    set((state) => {
+      state.selectedWallSubElement = null;
+    }),
+
+  // ============================================================================
   // Slab Types
   // ============================================================================
 
@@ -1650,4 +1811,52 @@ export const createParametricSlice = (
       store.syncAllSectionReferences?.();
     }
   },
+
+  // ============================================================================
+  // Saved Queries
+  // ============================================================================
+
+  addQuery: (query) => {
+    const id = crypto.randomUUID();
+    const now = new Date().toISOString();
+    set((state) => {
+      state.queries.push({
+        ...query,
+        id,
+        createdAt: now,
+        modifiedAt: now,
+      });
+      state.isModified = true;
+    });
+    return id;
+  },
+
+  updateQuery: (id, updates) =>
+    set((state) => {
+      const index = state.queries.findIndex(q => q.id === id);
+      if (index !== -1) {
+        Object.assign(state.queries[index], updates, { modifiedAt: new Date().toISOString() });
+        state.isModified = true;
+      }
+    }),
+
+  deleteQuery: (id) =>
+    set((state) => {
+      state.queries = state.queries.filter(q => q.id !== id);
+      if (state.activeQueryId === id) {
+        state.activeQueryId = null;
+      }
+      state.isModified = true;
+    }),
+
+  setActiveQuery: (id) =>
+    set((state) => {
+      state.activeQueryId = id;
+    }),
+
+  setQueries: (queries) =>
+    set((state) => {
+      state.queries = queries;
+      state.activeQueryId = null;
+    }),
 });

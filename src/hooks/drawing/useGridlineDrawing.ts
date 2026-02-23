@@ -15,7 +15,6 @@ import { regenerateGridDimensions } from '../../utils/gridDimensionUtils';
 import {
   classifyGridlineOrientation,
   getNextGridlineLabel,
-  getGridlineAngleDeg,
   incrementGridLabel,
 } from '../../utils/gridlineUtils';
 

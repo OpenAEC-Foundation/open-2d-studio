@@ -576,7 +576,7 @@ const PILE_TYPE_LABELS: Record<PileType, string> = {
 };
 
 /** Compact pile schedule table for the Pile Plan ribbon tab */
-function PilePlanRibbonTable() {
+export function PilePlanRibbonTable() {
   const shapes = useAppStore(s => s.shapes);
   const activeDrawingId = useAppStore(s => s.activeDrawingId);
   const selectShapes = useAppStore(s => s.selectShapes);
@@ -715,6 +715,7 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
     // Wall dialog
     openMaterialsDialog,
     openWallTypesDialog,
+    openWallSystemDialog,
 
     // Slab
     pendingSlab,
@@ -1626,6 +1627,13 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage }: RibbonProps) {
                 onClick={openWallTypesDialog}
                 disabled={isSheetMode}
                 tooltip="Manage IFC type definitions (walls, slabs)"
+              />
+              <RibbonButton
+                icon={<Layers size={24} />}
+                label="Wall Systems"
+                onClick={openWallSystemDialog}
+                disabled={isSheetMode}
+                tooltip="Manage multi-layered wall systems (HSB, metal stud, curtain wall)"
               />
               <RibbonButton
                 icon={<FolderTree size={24} />}

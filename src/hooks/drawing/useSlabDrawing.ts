@@ -68,11 +68,13 @@ export function useSlabDrawing() {
   );
 
   /**
-   * Handle click for slab drawing (multi-click polygon)
+   * Handle click for slab drawing (multi-click polygon or two-click rectangle)
    */
   const handleSlabClick = useCallback(
     (snappedPos: Point, shiftKey: boolean) => {
       if (!pendingSlab) return false;
+
+      const isRectMode = pendingSlab.shapeMode === 'rectangle';
 
       // Apply shift-key angle constraint if there's a previous point
       let finalPos = snappedPos;
@@ -81,6 +83,39 @@ export function useSlabDrawing() {
         finalPos = snapToAngle(lastPoint, snappedPos);
       }
 
+      // Rectangle mode: two clicks define opposite corners
+      if (isRectMode) {
+        if (drawingPoints.length === 0) {
+          addDrawingPoint(finalPos);
+          return true;
+        } else {
+          const corner1 = drawingPoints[0];
+          const corner2 = finalPos;
+          const dx = Math.abs(corner2.x - corner1.x);
+          const dy = Math.abs(corner2.y - corner1.y);
+
+          if (dx > 1 && dy > 1) {
+            const rectPoints: Point[] = [
+              corner1,
+              { x: corner2.x, y: corner1.y },
+              corner2,
+              { x: corner1.x, y: corner2.y },
+            ];
+            createSlab(rectPoints, {
+              thickness: pendingSlab.thickness,
+              level: pendingSlab.level,
+              elevation: pendingSlab.elevation,
+              material: pendingSlab.material,
+            });
+          }
+          clearDrawingPoints();
+          setDrawingPreview(null);
+          // Keep pendingSlab active for consecutive drawing
+          return true;
+        }
+      }
+
+      // Polygon mode: multi-click
       // Check if clicking near the first point to close the polygon
       if (drawingPoints.length >= 3) {
         const firstPoint = drawingPoints[0];
@@ -138,6 +173,23 @@ export function useSlabDrawing() {
 
       const lastPoint = drawingPoints[drawingPoints.length - 1];
       const previewPos = shiftKey ? snapToAngle(lastPoint, snappedPos) : snappedPos;
+
+      // Rectangle mode: show 4-corner rectangle preview
+      if (pendingSlab.shapeMode === 'rectangle' && drawingPoints.length === 1) {
+        const corner1 = drawingPoints[0];
+        const rectPoints: Point[] = [
+          corner1,
+          { x: previewPos.x, y: corner1.y },
+          previewPos,
+          { x: corner1.x, y: previewPos.y },
+        ];
+        setDrawingPreview({
+          type: 'slab',
+          points: rectPoints,
+          currentPoint: rectPoints[0], // close back to first point
+        });
+        return;
+      }
 
       setDrawingPreview({
         type: 'slab',

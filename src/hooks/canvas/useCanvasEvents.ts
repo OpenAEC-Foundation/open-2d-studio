@@ -12,11 +12,12 @@
 
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
-import type { Point, GridlineShape, BeamShape, PlateSystemShape, PlateSystemOpening } from '../../types/geometry';
+import type { Point, GridlineShape, BeamShape, PlateSystemShape, PlateSystemOpening, WallShape } from '../../types/geometry';
 import { screenToWorld, isPointNearShape, isPointNearParametricShape, snapToAngle, bulgeToArc, calculateBulgeFrom3Points } from '../../engine/geometry/GeometryUtils';
 import { regeneratePlateSystemBeams } from '../drawing/usePlateSystemDrawing';
 import { QuadTree } from '../../engine/spatial/QuadTree';
 import { isShapeInHiddenCategory } from '../../utils/ifcCategoryUtils';
+import { hitTestWallSubElement } from '../../services/wallSystem/wallSystemService';
 
 import { usePanZoom } from '../navigation/usePanZoom';
 import { useBoxSelection } from '../selection/useBoxSelection';
@@ -122,6 +123,10 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     selectedOpeningId,
     setSelectedOpeningId,
     hiddenIfcCategories,
+    wallSystemTypes,
+    selectWallSubElement,
+    clearWallSubElement,
+    selectedWallSubElement,
   } = useAppStore();
 
   // Get the active drawing's scale for text hit detection
@@ -257,9 +262,17 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Drawing mode: grip (handle) dragging on selected shapes
-      // Skip grip editing when a modify tool is active — clicks should go to the modify tool
+      // Skip grip editing when a modify tool or a drawing tool with pending state is active —
+      // clicks should go to the tool handler, not start a grip drag
       const modifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'trim-walls'].includes(activeTool);
-      if (editorMode === 'drawing' && e.button === 0 && !modifyToolActive) {
+      const drawingTools = ['wall', 'beam', 'gridline', 'level', 'slab', 'puntniveau', 'pile', 'cpt', 'section-callout', 'space', 'plate-system'];
+      const isDrawingToolActive = drawingTools.includes(activeTool) || !!pendingSection;
+      const drawingToolWithPending = isDrawingToolActive && !!(
+        pendingWall || pendingBeam || pendingGridline || pendingLevel ||
+        pendingSlab || pendingPuntniveau || pendingPile || pendingCPT ||
+        pendingSectionCallout || pendingSpace || pendingPlateSystem || pendingSection
+      );
+      if (editorMode === 'drawing' && e.button === 0 && !modifyToolActive && !drawingToolWithPending) {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
         if (gripEditing.handleGripMouseDown(worldPos)) {
           return;
@@ -281,7 +294,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         rightDragRef.current = { isDragging: true, startX: e.clientX, startY: e.clientY, didDrag: false, lastSnappedPos: null };
       }
     },
-    [panZoom, editorMode, viewport, annotationEditing, viewportEditing, boundaryEditing, gripEditing, findShapeAtPoint, boxSelection, activeTool]
+    [panZoom, editorMode, viewport, annotationEditing, viewportEditing, boundaryEditing, gripEditing, findShapeAtPoint, boxSelection, activeTool, pendingWall, pendingBeam, pendingGridline, pendingLevel, pendingSlab, pendingPuntniveau, pendingPile, pendingCPT, pendingSectionCallout, pendingSpace, pendingPlateSystem, pendingSection]
   );
 
   /**
@@ -818,10 +831,47 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
 
           if (shapeId) {
             boundaryEditing.deselectBoundary();
+
+            // Wall system sub-element selection:
+            // When clicking on a wall that is already selected and has a wallSystemId,
+            // check for stud/panel sub-element hits (like Revit's Tab-select for curtain walls)
+            const clickedShape = shapes.find(s => s.id === shapeId);
+            if (
+              clickedShape &&
+              clickedShape.type === 'wall' &&
+              (clickedShape as WallShape).wallSystemId &&
+              selectedShapeIds.includes(shapeId) &&
+              !e.ctrlKey && !e.shiftKey
+            ) {
+              const wall = clickedShape as WallShape;
+              const system = wallSystemTypes.find(t => t.id === wall.wallSystemId);
+              if (system) {
+                const subEl = hitTestWallSubElement(worldPos, wall, system, 5 / viewport.zoom);
+                if (subEl && (subEl.type === 'stud' || subEl.type === 'panel')) {
+                  selectWallSubElement(shapeId, subEl.type, subEl.key);
+                  break;
+                }
+              }
+              // No sub-element hit — clear any existing sub-element selection
+              if (selectedWallSubElement && selectedWallSubElement.wallId === shapeId) {
+                clearWallSubElement();
+                break;
+              }
+            } else {
+              // Clicking on a different shape or non-wall: clear wall sub-element selection
+              if (selectedWallSubElement) {
+                clearWallSubElement();
+              }
+            }
+
             // Ctrl or Shift for additive/toggle selection
             selectShape(shapeId, e.ctrlKey || e.shiftKey);
           } else {
             boundaryEditing.deselectBoundary();
+            // Clear wall sub-element selection when clicking empty space
+            if (selectedWallSubElement) {
+              clearWallSubElement();
+            }
             // Only deselect all if not holding Ctrl/Shift
             if (!e.ctrlKey && !e.shiftKey) {
               deselectAll();
@@ -987,6 +1037,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       setSelectedOpeningId,
       updateShape,
       shapes,
+      wallSystemTypes,
+      selectWallSubElement,
+      clearWallSubElement,
+      selectedWallSubElement,
+      selectedShapeIds,
     ]
   );
 
@@ -1662,6 +1717,16 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
           const beam = shape as BeamShape;
           if (beam.plateSystemId) {
             setPlateSystemEditMode(true, beam.plateSystemId);
+            return;
+          }
+        }
+        // Double-click on a puntniveau: start editing the linked label (NAP value)
+        if (shape && shape.type === 'puntniveau') {
+          const linkedLabel = shapes.find(
+            s => s.type === 'text' && (s as any).linkedShapeId === shape.id
+          );
+          if (linkedLabel) {
+            textDrawing.handleTextDoubleClick(linkedLabel.id);
             return;
           }
         }

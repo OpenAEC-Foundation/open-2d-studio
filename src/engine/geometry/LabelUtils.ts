@@ -14,8 +14,10 @@ import type {
   SlabShape,
   LevelShape,
   PileShape,
+  PuntniveauShape,
   SpaceShape,
   WallType,
+  BoundingBox,
 } from '../../types/geometry';
 
 /**
@@ -86,6 +88,12 @@ export function getElementLabelText(
     case 'pile': {
       const pile = shape as PileShape;
       return pile.label || `Pile D${pile.diameter}`;
+    }
+
+    case 'puntniveau': {
+      const pn = shape as PuntniveauShape;
+      const napFormatted = formatDutchNumber(pn.puntniveauNAP);
+      return `PUNTNIVEAU: ${napFormatted} m N.A.P.`;
     }
 
     case 'space': {
@@ -189,6 +197,14 @@ export function getShapePropertyValues(
       props['Diameter'] = String(pile.diameter);
       break;
     }
+    case 'puntniveau': {
+      const pn = shape as PuntniveauShape;
+      const napFormatted = formatDutchNumber(pn.puntniveauNAP);
+      props['Name'] = `PUNTNIVEAU: ${napFormatted} m N.A.P.`;
+      props['NAP'] = napFormatted;
+      props['Value'] = String(pn.puntniveauNAP);
+      break;
+    }
     case 'level': {
       const level = shape as LevelShape;
       const peilM = level.peil / 1000;
@@ -279,6 +295,14 @@ export function getShapeCentroid(shape: Shape): { x: number; y: number } {
       const pile = shape as PileShape;
       return { x: pile.position.x, y: pile.position.y };
     }
+    case 'puntniveau': {
+      const pn = shape as PuntniveauShape;
+      if (pn.points.length === 0) return { x: 0, y: 0 };
+      if (pn.labelPosition) return { x: pn.labelPosition.x, y: pn.labelPosition.y };
+      const cx = pn.points.reduce((s, p) => s + p.x, 0) / pn.points.length;
+      const cy = pn.points.reduce((s, p) => s + p.y, 0) / pn.points.length;
+      return { x: cx, y: cy };
+    }
     case 'line': {
       const line = shape as any;
       return {
@@ -309,6 +333,17 @@ export function findLinkedLabels(shapes: Shape[], linkedToId: string): Shape[] {
   return shapes.filter(
     s => s.type === 'text' && (s as any).linkedShapeId === linkedToId
   );
+}
+
+/**
+ * Format a number in Dutch notation (comma as decimal separator).
+ * Removes trailing zeros after the comma for clean display.
+ * Examples: -18.5 -> "-18,5", 12.0 -> "12", -3.25 -> "-3,25"
+ */
+export function formatDutchNumber(value: number): string {
+  const formatted = value.toFixed(2);
+  const cleaned = formatted.replace(/\.?0+$/, '');
+  return cleaned.replace('.', ',');
 }
 
 /**
@@ -376,4 +411,65 @@ export function computeLinkedLabelPosition(
   };
 
   return { position, rotation };
+}
+
+/**
+ * Compute the bounding box of a polygon (array of points).
+ */
+function getPolygonBoundingBox(points: Point[]): BoundingBox {
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  for (const p of points) {
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x > maxX) maxX = p.x;
+    if (p.y > maxY) maxY = p.y;
+  }
+  return { minX, minY, maxX, maxY };
+}
+
+/**
+ * Compute the span arrow properties for a slab label.
+ *
+ * In structural engineering, the span direction of a slab is along its shorter
+ * dimension. This function computes:
+ * - The centroid of the slab (label position)
+ * - The span direction angle (along the shorter axis of the bounding box)
+ * - The arrow length (70% of the shorter dimension)
+ *
+ * Returns null if the slab has no points.
+ */
+export function computeSlabSpanArrow(
+  slab: SlabShape
+): { position: Point; spanDirection: number; spanLength: number } | null {
+  if (slab.points.length === 0) return null;
+
+  // Compute centroid
+  const cx = slab.points.reduce((s, p) => s + p.x, 0) / slab.points.length;
+  const cy = slab.points.reduce((s, p) => s + p.y, 0) / slab.points.length;
+
+  // Compute bounding box
+  const bb = getPolygonBoundingBox(slab.points);
+  const width = bb.maxX - bb.minX;
+  const height = bb.maxY - bb.minY;
+
+  // Span direction is along the shorter dimension
+  // horizontal (angle=0) if width < height, vertical (angle=PI/2) if height < width
+  let spanDirection: number;
+  let shorterDim: number;
+  if (width <= height) {
+    spanDirection = 0;          // horizontal arrow
+    shorterDim = width;
+  } else {
+    spanDirection = Math.PI / 2; // vertical arrow
+    shorterDim = height;
+  }
+
+  // Arrow length: 70% of the shorter dimension, but at least 200mm
+  const spanLength = Math.max(shorterDim * 0.7, 200);
+
+  return {
+    position: { x: cx, y: cy },
+    spanDirection,
+    spanLength,
+  };
 }

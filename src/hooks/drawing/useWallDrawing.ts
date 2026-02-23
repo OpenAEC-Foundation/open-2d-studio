@@ -6,13 +6,40 @@
  * Hatching is now derived from the wall type's material at render time.
  * The wall shape still stores hatchType etc. for backward compatibility,
  * but the renderer will prefer the wall type's hatch settings when available.
+ *
+ * Grouped wall support: when the active wall type is a GroupedWallType,
+ * a single draw action creates multiple parallel wall shapes grouped together.
  */
 
 import { useCallback, useRef } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
-import type { Point, WallShape, WallJustification, WallEndCap, Shape } from '../../types/geometry';
+import type { Point, WallShape, WallJustification, WallEndCap, Shape, GroupedWallType } from '../../types/geometry';
 import { snapToAngle, calculateBulgeFrom3Points } from '../../engine/geometry/GeometryUtils';
 import { miterJoinWalls } from '../../engine/geometry/Modify';
+
+/**
+ * Compute a parallel offset of a line segment (start, end) by a perpendicular distance.
+ * Positive offset = to the left of the direction vector (from start to end).
+ */
+function offsetLineSegment(
+  start: Point,
+  end: Point,
+  offset: number
+): { start: Point; end: Point } {
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const len = Math.hypot(dx, dy);
+  if (len < 1e-9) return { start: { ...start }, end: { ...end } };
+
+  // Perpendicular unit vector (pointing left of direction)
+  const px = -dy / len;
+  const py = dx / len;
+
+  return {
+    start: { x: start.x + px * offset, y: start.y + py * offset },
+    end: { x: end.x + px * offset, y: end.y + py * offset },
+  };
+}
 
 export function useWallDrawing() {
   const {
@@ -31,6 +58,15 @@ export function useWallDrawing() {
 
   // Track the ID of the most recently placed wall for auto miter joining
   const previousWallIdRef = useRef<string | null>(null);
+
+  /**
+   * Check if the current pendingWall references a GroupedWallType.
+   */
+  const getGroupedWallType = useCallback((): GroupedWallType | undefined => {
+    if (!pendingWall?.wallTypeId) return undefined;
+    const state = useAppStore.getState();
+    return state.groupedWallTypes.find(g => g.id === pendingWall.wallTypeId);
+  }, [pendingWall?.wallTypeId]);
 
   /**
    * Resolve baseLevel and topLevel from the current drawing's storey assignment.
@@ -79,11 +115,15 @@ export function useWallDrawing() {
       thickness: number,
       options?: {
         wallTypeId?: string;
+        wallSystemId?: string;
         justification?: WallJustification;
         showCenterline?: boolean;
         startCap?: WallEndCap;
         endCap?: WallEndCap;
         bulge?: number;
+        groupId?: string;
+        groupedWallTypeId?: string;
+        groupedWallLayerIndex?: number;
       }
     ) => {
       // Resolve default base/top levels from the current drawing's storey
@@ -101,6 +141,7 @@ export function useWallDrawing() {
         end,
         thickness,
         wallTypeId: options?.wallTypeId,
+        wallSystemId: options?.wallSystemId,
         justification: options?.justification || 'center',
         showCenterline: options?.showCenterline ?? false,
         startCap: options?.startCap || 'butt',
@@ -113,11 +154,123 @@ export function useWallDrawing() {
         hatchType: 'none',
         hatchAngle: 45,
         hatchSpacing: 50,
+        // Grouped wall fields
+        ...(options?.groupId ? { groupId: options.groupId } : {}),
+        ...(options?.groupedWallTypeId ? { groupedWallTypeId: options.groupedWallTypeId } : {}),
+        ...(options?.groupedWallLayerIndex !== undefined ? { groupedWallLayerIndex: options.groupedWallLayerIndex } : {}),
       };
       addShape(wallShape);
       return wallShape.id;
     },
     [activeLayerId, activeDrawingId, currentStyle, addShape, resolveWallLevels]
+  );
+
+  /**
+   * Create a grouped wall assembly: multiple parallel walls from a GroupedWallType.
+   * Returns the array of created wall IDs.
+   *
+   * Offset calculation:
+   * - Calculate total thickness from all layers (thicknesses + gaps)
+   * - Based on alignmentLine, determine the baseline offset
+   * - For each drawn layer, compute its center offset from the draw line
+   * - Create a parallel wall at that offset
+   *
+   * The draw line represents the alignment face:
+   * - 'exterior': draw line = exterior face (first layer's outer edge)
+   * - 'interior': draw line = interior face (last layer's inner edge)
+   * - 'center': draw line = center of the total assembly
+   *
+   * Offset convention: positive offset = left of draw direction (exterior side).
+   */
+  const createGroupedWalls = useCallback(
+    (
+      start: Point,
+      end: Point,
+      gwt: GroupedWallType,
+      options?: {
+        justification?: WallJustification;
+        showCenterline?: boolean;
+        startCap?: WallEndCap;
+        endCap?: WallEndCap;
+        bulge?: number;
+      }
+    ): string[] => {
+      const groupId = generateId();
+      const wallTypes = useAppStore.getState().wallTypes;
+
+      // Calculate layer positions (cumulative offset from exterior face)
+      // Exterior face is at offset 0; interior face is at totalThickness
+      let runningOffset = 0;
+      const layerCenters: { layerIndex: number; centerOffset: number; thickness: number; wallTypeId: string }[] = [];
+
+      for (let i = 0; i < gwt.layers.length; i++) {
+        const layer = gwt.layers[i];
+        const layerCenter = runningOffset + layer.thickness / 2;
+
+        if (layer.isDrawn) {
+          // Resolve actual wall type for this layer
+          const wt = wallTypes.find(w => w.id === layer.wallTypeId);
+          layerCenters.push({
+            layerIndex: i,
+            centerOffset: layerCenter,
+            thickness: layer.thickness,
+            wallTypeId: wt ? wt.id : layer.wallTypeId,
+          });
+        }
+
+        runningOffset += layer.thickness + layer.gap;
+      }
+
+      // Determine baseline offset based on alignment line
+      // baseline = how far the draw line is from the exterior face
+      let baseline: number;
+      switch (gwt.alignmentLine) {
+        case 'exterior':
+          baseline = 0;
+          break;
+        case 'interior':
+          baseline = gwt.totalThickness;
+          break;
+        case 'center':
+        default:
+          baseline = gwt.totalThickness / 2;
+          break;
+      }
+
+      // Create wall shapes
+      const wallIds: string[] = [];
+      for (const lc of layerCenters) {
+        // Offset from the draw line: positive = towards exterior (left)
+        // centerOffset is from exterior face, baseline is draw line position from exterior face
+        // So: perpendicular offset = baseline - centerOffset
+        // (positive when draw line is more interior than the layer = layer is exterior of draw line)
+        const perpOffset = baseline - lc.centerOffset;
+
+        // Compute parallel start/end points
+        const { start: layerStart, end: layerEnd } = offsetLineSegment(start, end, perpOffset);
+
+        const wallId = createWall(layerStart, layerEnd, lc.thickness, {
+          wallTypeId: lc.wallTypeId,
+          justification: 'center', // Each sub-wall is centered on its own centerline
+          showCenterline: options?.showCenterline ?? false,
+          startCap: options?.startCap || 'butt',
+          endCap: options?.endCap || 'butt',
+          bulge: options?.bulge,
+          groupId,
+          groupedWallTypeId: gwt.id,
+          groupedWallLayerIndex: lc.layerIndex,
+        });
+        wallIds.push(wallId);
+      }
+
+      // Register the group in the store (add to groups array)
+      useAppStore.setState((storeState) => ({
+        groups: [...storeState.groups, { id: groupId, drawingId: activeDrawingId }],
+      }));
+
+      return wallIds;
+    },
+    [createWall, activeDrawingId]
   );
 
   /**
@@ -136,6 +289,7 @@ export function useWallDrawing() {
 
       const wallOpts = {
         wallTypeId: pendingWall.wallTypeId,
+        wallSystemId: pendingWall.wallSystemId,
         justification: pendingWall.justification,
         showCenterline: pendingWall.showCenterline,
         startCap: pendingWall.startCap,
@@ -203,6 +357,7 @@ export function useWallDrawing() {
 
       const wallOpts = {
         wallTypeId: pendingWall.wallTypeId,
+        wallSystemId: pendingWall.wallSystemId,
         justification: pendingWall.justification,
         showCenterline: pendingWall.showCenterline,
         startCap: pendingWall.startCap,
@@ -286,52 +441,69 @@ export function useWallDrawing() {
         // Only create if there's a meaningful distance
         let newWallId: string | null = null;
         if (dx > 1 || dy > 1) {
-          newWallId = createWall(
-            startPoint,
-            finalPos,
-            pendingWall.thickness,
-            {
-              wallTypeId: pendingWall.wallTypeId,
-              justification: pendingWall.justification,
+          // Check if this is a grouped wall type
+          const gwt = getGroupedWallType();
+
+          if (gwt) {
+            // Grouped wall: create multiple parallel walls
+            const wallIds = createGroupedWalls(startPoint, finalPos, gwt, {
               showCenterline: pendingWall.showCenterline,
               startCap: pendingWall.startCap,
               endCap: pendingWall.endCap,
               bulge,
-            }
-          );
+            });
+            // Use the first wall as the reference for miter joining (outermost wall)
+            newWallId = wallIds.length > 0 ? wallIds[0] : null;
+          } else {
+            // Regular single wall
+            newWallId = createWall(
+              startPoint,
+              finalPos,
+              pendingWall.thickness,
+              {
+                wallTypeId: pendingWall.wallTypeId,
+                wallSystemId: pendingWall.wallSystemId,
+                justification: pendingWall.justification,
+                showCenterline: pendingWall.showCenterline,
+                startCap: pendingWall.startCap,
+                endCap: pendingWall.endCap,
+                bulge,
+              }
+            );
 
-          // Auto miter join with the previous wall in continuous drawing mode (only for line mode)
-          if (!isArcMode && pendingWall.continueDrawing !== false && previousWallIdRef.current && newWallId) {
-            // Get the latest shapes from the store (includes the just-added wall)
-            const currentShapes = useAppStore.getState().shapes;
-            const prevWall = currentShapes.find((s: Shape) => s.id === previousWallIdRef.current) as WallShape | undefined;
-            const newWall = currentShapes.find((s: Shape) => s.id === newWallId) as WallShape | undefined;
+            // Auto miter join with the previous wall in continuous drawing mode (only for line mode)
+            if (!isArcMode && pendingWall.continueDrawing !== false && previousWallIdRef.current && newWallId) {
+              // Get the latest shapes from the store (includes the just-added wall)
+              const currentShapes = useAppStore.getState().shapes;
+              const prevWall = currentShapes.find((s: Shape) => s.id === previousWallIdRef.current) as WallShape | undefined;
+              const newWall = currentShapes.find((s: Shape) => s.id === newWallId) as WallShape | undefined;
 
-            if (prevWall && newWall) {
-              // Check that the new wall's start matches the previous wall's end (shared endpoint)
-              const tolerance = 1; // snap tolerance in drawing units
-              const endToStartDist = Math.hypot(
-                newWall.start.x - prevWall.end.x,
-                newWall.start.y - prevWall.end.y
-              );
+              if (prevWall && newWall) {
+                // Check that the new wall's start matches the previous wall's end (shared endpoint)
+                const tolerance = 1; // snap tolerance in drawing units
+                const endToStartDist = Math.hypot(
+                  newWall.start.x - prevWall.end.x,
+                  newWall.start.y - prevWall.end.y
+                );
 
-              if (endToStartDist <= tolerance) {
-                // Check that the walls are not collinear (straight continuation)
-                // Compute direction angles of both walls
-                const angle1 = Math.atan2(prevWall.end.y - prevWall.start.y, prevWall.end.x - prevWall.start.x);
-                const angle2 = Math.atan2(newWall.end.y - newWall.start.y, newWall.end.x - newWall.start.x);
-                // Normalize difference to [0, PI]
-                let angleDiff = Math.abs(angle2 - angle1);
-                if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
-                // Skip if collinear (angle difference ~0 or ~180 degrees)
-                const collinearTolerance = 0.02; // ~1 degree in radians
-                if (angleDiff > collinearTolerance && Math.abs(angleDiff - Math.PI) > collinearTolerance) {
-                  const result = miterJoinWalls(prevWall, newWall);
-                  if (result) {
-                    updateShapes([
-                      { id: prevWall.id, updates: result.shape1Update },
-                      { id: newWall.id, updates: result.shape2Update },
-                    ]);
+                if (endToStartDist <= tolerance) {
+                  // Check that the walls are not collinear (straight continuation)
+                  // Compute direction angles of both walls
+                  const angle1 = Math.atan2(prevWall.end.y - prevWall.start.y, prevWall.end.x - prevWall.start.x);
+                  const angle2 = Math.atan2(newWall.end.y - newWall.start.y, newWall.end.x - newWall.start.x);
+                  // Normalize difference to [0, PI]
+                  let angleDiff = Math.abs(angle2 - angle1);
+                  if (angleDiff > Math.PI) angleDiff = 2 * Math.PI - angleDiff;
+                  // Skip if collinear (angle difference ~0 or ~180 degrees)
+                  const collinearTolerance = 0.02; // ~1 degree in radians
+                  if (angleDiff > collinearTolerance && Math.abs(angleDiff - Math.PI) > collinearTolerance) {
+                    const result = miterJoinWalls(prevWall, newWall);
+                    if (result) {
+                      updateShapes([
+                        { id: prevWall.id, updates: result.shape1Update },
+                        { id: newWall.id, updates: result.shape2Update },
+                      ]);
+                    }
                   }
                 }
               }
@@ -354,7 +526,7 @@ export function useWallDrawing() {
         return true;
       }
     },
-    [pendingWall, drawingPoints, addDrawingPoint, clearDrawingPoints, setDrawingPreview, createWall, createRectangleWalls, createCircleWalls, updateShapes]
+    [pendingWall, drawingPoints, addDrawingPoint, clearDrawingPoints, setDrawingPreview, createWall, createGroupedWalls, getGroupedWallType, createRectangleWalls, createCircleWalls, updateShapes]
   );
 
   /**

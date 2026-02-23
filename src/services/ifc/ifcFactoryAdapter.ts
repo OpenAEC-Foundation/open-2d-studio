@@ -304,6 +304,16 @@ export class IfcBuilder {
     return this.add('IFCPILE', `(${stepString(globalId)},${stepRef(ownerHistory)},${stepString(name)},$,$,${stepRef(placement)},${stepRef(representation)},$,$,$)`);
   }
 
+  addBuildingElementProxy(
+    globalId: string, ownerHistory: number, name: string,
+    description: string | null, placement: number, representation: number,
+    predefinedType?: string
+  ): number {
+    const descStr = description ? stepString(description) : '$';
+    const typeStr = predefinedType ? stepEnum(predefinedType) : '.NOTDEFINED.';
+    return this.add('IFCBUILDINGELEMENTPROXY', `(${stepString(globalId)},${stepRef(ownerHistory)},${stepString(name)},${descStr},$,${stepRef(placement)},${stepRef(representation)},$,${typeStr})`);
+  }
+
   addSpace(
     globalId: string, ownerHistory: number, name: string,
     description: string | null, placement: number, representation: number | null,

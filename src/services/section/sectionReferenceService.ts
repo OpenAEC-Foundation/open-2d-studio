@@ -14,6 +14,8 @@ import type {
   Shape,
   GridlineShape,
   LevelShape,
+  RectangleShape,
+  SlabShape,
   SectionCalloutShape,
   Drawing,
   SectionReference,
@@ -56,6 +58,40 @@ function lineWithInfiniteLineIntersection(
     point: {
       x: secStart.x + t * dx1,
       y: secStart.y + t * dy1,
+    },
+  };
+}
+
+/**
+ * Compute intersection of two finite line segments.
+ * Returns the parameter t along the first segment and u along the second
+ * where the intersection occurs, plus the intersection point.
+ * Returns null if the segments do not intersect.
+ */
+function segmentSegmentIntersection(
+  p1: Point, p2: Point,
+  p3: Point, p4: Point,
+): { t: number; u: number; point: Point } | null {
+  const dx1 = p2.x - p1.x;
+  const dy1 = p2.y - p1.y;
+  const dx2 = p4.x - p3.x;
+  const dy2 = p4.y - p3.y;
+
+  const denom = dx1 * dy2 - dy1 * dx2;
+  if (Math.abs(denom) < 1e-10) return null; // Parallel
+
+  const t = ((p3.x - p1.x) * dy2 - (p3.y - p1.y) * dx2) / denom;
+  const u = ((p3.x - p1.x) * dy1 - (p3.y - p1.y) * dx1) / denom;
+
+  // Both parameters must be within [0, 1] for finite segment intersection
+  if (t < -1e-6 || t > 1 + 1e-6 || u < -1e-6 || u > 1 + 1e-6) return null;
+
+  return {
+    t: Math.max(0, Math.min(1, t)),
+    u: Math.max(0, Math.min(1, u)),
+    point: {
+      x: p1.x + t * dx1,
+      y: p1.y + t * dy1,
     },
   };
 }
@@ -177,6 +213,144 @@ export function findGridlineIntersections(
   intersections.sort((a, b) => a.t - b.t);
 
   return intersections;
+}
+
+// ============================================================================
+// Slab Intersection Computation
+// ============================================================================
+
+export interface SlabIntersection {
+  /** The source slab shape from the plan */
+  sourceSlab: SlabShape;
+  /** Start parameter t along the section cut line (where cut enters slab polygon) */
+  tStart: number;
+  /** End parameter t along the section cut line (where cut exits slab polygon) */
+  tEnd: number;
+  /** X start position in section view coordinates */
+  sectionXStart: number;
+  /** X end position in section view coordinates */
+  sectionXEnd: number;
+}
+
+/**
+ * Find all slabs from a plan drawing that intersect the section cut line.
+ * For each slab, compute the entry and exit points of the section line
+ * through the slab's boundary polygon.
+ */
+export function findSlabIntersections(
+  planShapes: Shape[],
+  callout: SectionCalloutShape,
+  coordSystem: SectionCoordinateSystem,
+): SlabIntersection[] {
+  const slabs = planShapes.filter(
+    (s): s is SlabShape => s.type === 'slab'
+  );
+
+  const results: SlabIntersection[] = [];
+
+  for (const slab of slabs) {
+    if (slab.points.length < 3) continue; // Need at least a triangle
+
+    // Find all intersections of the section cut line with the slab polygon edges
+    const tValues: number[] = [];
+
+    for (let i = 0; i < slab.points.length; i++) {
+      const p1 = slab.points[i];
+      const p2 = slab.points[(i + 1) % slab.points.length];
+
+      const result = segmentSegmentIntersection(
+        callout.start, callout.end,
+        p1, p2,
+      );
+
+      if (result) {
+        tValues.push(result.t);
+      }
+    }
+
+    if (tValues.length < 2) continue; // Need at least entry and exit
+
+    // Sort t values and take the min and max to get the full cut extent
+    tValues.sort((a, b) => a - b);
+    const tStart = tValues[0];
+    const tEnd = tValues[tValues.length - 1];
+
+    // Only include if there is a meaningful intersection width
+    if ((tEnd - tStart) * coordSystem.length < 1) continue; // Less than 1mm, skip
+
+    results.push({
+      sourceSlab: slab,
+      tStart,
+      tEnd,
+      sectionXStart: tStart * coordSystem.length,
+      sectionXEnd: tEnd * coordSystem.length,
+    });
+  }
+
+  return results;
+}
+
+// ============================================================================
+// Section Slab Shape Generation
+// ============================================================================
+
+/**
+ * Material color mapping for slab section rendering.
+ * These are muted fill colors appropriate for section cuts.
+ */
+const SLAB_MATERIAL_COLORS: Record<string, { fill: string; stroke: string }> = {
+  concrete: { fill: '#c8c8c8', stroke: '#666666' },
+  timber:   { fill: '#deb887', stroke: '#8b6914' },
+  steel:    { fill: '#b0b0b0', stroke: '#505050' },
+  generic:  { fill: '#d0d0d0', stroke: '#808080' },
+};
+
+/**
+ * Generate RectangleShape objects for slabs in a section drawing.
+ *
+ * In section view coordinates:
+ * - A slab appears as a horizontal bar (filled rectangle)
+ * - X range: from sectionXStart to sectionXEnd (where the cut line enters/exits the slab)
+ * - Y position: -elevation (top of slab), height = thickness (downward)
+ * - Fill color based on material type
+ */
+export function generateSectionSlabs(
+  intersections: SlabIntersection[],
+  sectionDrawingId: string,
+  sectionLayerId: string,
+): RectangleShape[] {
+  return intersections.map((intersection): RectangleShape => {
+    const { sourceSlab, sectionXStart, sectionXEnd } = intersection;
+    const width = sectionXEnd - sectionXStart;
+    const thickness = sourceSlab.thickness || 200; // Default 200mm
+
+    // Section view Y = -elevation (canvas Y is inverted)
+    // The top of the slab is at -elevation, slab extends downward by thickness
+    const yTop = -sourceSlab.elevation;
+
+    const colors = SLAB_MATERIAL_COLORS[sourceSlab.material] || SLAB_MATERIAL_COLORS.generic;
+
+    return {
+      id: `section-ref-slab-${sourceSlab.id}`,
+      type: 'rectangle',
+      layerId: sectionLayerId,
+      drawingId: sectionDrawingId,
+      style: {
+        strokeColor: colors.stroke,
+        strokeWidth: 1.5,
+        lineStyle: 'solid',
+        fillColor: colors.fill,
+      },
+      visible: true,
+      locked: false,
+      topLeft: { x: sectionXStart, y: yTop },
+      width,
+      height: thickness,
+      rotation: 0,
+      // Mark as section reference via group ID pattern
+      groupId: `section-ref:${sourceSlab.id}`,
+    };
+  });
 }
 
 // ============================================================================
@@ -420,6 +594,7 @@ export function getSourceIdFromSectionRef(shape: Shape): string | null {
 export function buildSectionReferences(
   gridlines: GridlineShape[],
   levels: LevelShape[],
+  slabs: RectangleShape[],
   sourceDrawingId: string,
 ): SectionReference[] {
   const refs: SectionReference[] = [];
@@ -446,6 +621,17 @@ export function buildSectionReferences(
     }
   }
 
+  for (const slab of slabs) {
+    const sourceId = getSourceIdFromSectionRef(slab);
+    if (sourceId) {
+      refs.push({
+        sourceDrawingId,
+        sourceShapeId: sourceId,
+        position: slab.topLeft.y, // Y position in section coords (= -elevation)
+      });
+    }
+  }
+
   return refs;
 }
 
@@ -460,6 +646,8 @@ export interface SectionReferenceResult {
   levels: LevelShape[];
   /** Generated dimension shapes between section gridlines (when sectionGridlineDimensioning is enabled) */
   dimensions: DimensionShape[];
+  /** Generated slab shapes (rectangles) for slabs cut by the section line */
+  slabs: RectangleShape[];
   /** Section reference entries for the Drawing.sectionReferences field */
   references: SectionReference[];
   /** The coordinate system used */
@@ -506,6 +694,9 @@ export function computeSectionReferences(
   // Find gridline intersections
   const intersections = findGridlineIntersections(planShapes, callout, coordSystem);
 
+  // Find slab intersections
+  const slabIntersections = findSlabIntersections(planShapes, callout, coordSystem);
+
   // Get the default layer for the section drawing
   // We use the section drawing ID for the layerId; the actual layer resolution
   // happens at render time. We'll use a convention: first layer of the drawing.
@@ -532,7 +723,14 @@ export function computeSectionReferences(
     sectionLayerId,
   );
 
-  const references = buildSectionReferences(gridlines, levels, planDrawing.id);
+  // Generate slab section shapes
+  const slabs = generateSectionSlabs(
+    slabIntersections,
+    sectionDrawing.id,
+    sectionLayerId,
+  );
+
+  const references = buildSectionReferences(gridlines, levels, slabs, planDrawing.id);
 
   // Generate dimension shapes between gridlines if enabled
   const dimensions = sectionGridlineDimensioning
@@ -543,6 +741,7 @@ export function computeSectionReferences(
     gridlines,
     levels,
     dimensions,
+    slabs,
     references,
     coordSystem,
   };

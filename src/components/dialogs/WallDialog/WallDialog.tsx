@@ -18,6 +18,7 @@ interface WallDialogProps {
     thickness: number,
     options: {
       wallTypeId?: string;
+      wallSystemId?: string;
       justification: WallJustification;
       showCenterline: boolean;
       startCap: WallEndCap;
@@ -27,7 +28,7 @@ interface WallDialogProps {
 }
 
 export function WallDialog({ isOpen, onClose, onDraw }: WallDialogProps) {
-  const { wallTypes, addWallType, deleteWallType, lastUsedWallTypeId } = useAppStore();
+  const { wallTypes, addWallType, deleteWallType, lastUsedWallTypeId, groupedWallTypes, wallSystemTypes } = useAppStore();
 
   const [selectedWallTypeId, setSelectedWallTypeId] = useState<string>(lastUsedWallTypeId ?? 'beton-200');
   const [customThickness, setCustomThickness] = useState(200);
@@ -63,12 +64,17 @@ export function WallDialog({ isOpen, onClose, onDraw }: WallDialogProps) {
     setIsDragging(false);
   }, []);
 
-  // Auto-fill thickness from selected wall type
+  // Auto-fill thickness from selected wall type (or grouped wall type)
   const selectedType = wallTypes.find(t => t.id === selectedWallTypeId);
+  const selectedGroupedType = groupedWallTypes.find(g => g.id === selectedWallTypeId);
+  const selectedWallSystem = wallSystemTypes.find(ws => ws.id === selectedWallTypeId);
 
   const handleDraw = () => {
+    // Determine if this is a wall system or regular wall type
+    const isWallSystem = wallSystemTypes.some(ws => ws.id === selectedWallTypeId);
     onDraw(customThickness, {
-      wallTypeId: selectedWallTypeId,
+      wallTypeId: isWallSystem ? undefined : selectedWallTypeId,
+      wallSystemId: isWallSystem ? selectedWallTypeId : undefined,
       justification,
       showCenterline,
       startCap: endCap,
@@ -102,8 +108,12 @@ export function WallDialog({ isOpen, onClose, onDraw }: WallDialogProps) {
   useEffect(() => {
     if (selectedType) {
       setCustomThickness(selectedType.thickness);
+    } else if (selectedGroupedType) {
+      setCustomThickness(selectedGroupedType.totalThickness);
+    } else if (selectedWallSystem) {
+      setCustomThickness(selectedWallSystem.totalThickness);
     }
-  }, [selectedWallTypeId, selectedType]);
+  }, [selectedWallTypeId, selectedType, selectedGroupedType, selectedWallSystem]);
 
   if (!isOpen) return null;
 
@@ -217,6 +227,22 @@ export function WallDialog({ isOpen, onClose, onDraw }: WallDialogProps) {
                       {wt.name} {wt.thickness}mm
                     </option>
                   ))}
+                  {groupedWallTypes.length > 0 && (
+                    <option disabled>── Grouped Walls ──</option>
+                  )}
+                  {groupedWallTypes.map(gwt => (
+                    <option key={gwt.id} value={gwt.id}>
+                      {gwt.name} ({gwt.totalThickness}mm)
+                    </option>
+                  ))}
+                  {wallSystemTypes.length > 0 && (
+                    <option disabled>── Wall Systems ──</option>
+                  )}
+                  {wallSystemTypes.map(ws => (
+                    <option key={ws.id} value={ws.id}>
+                      {ws.name} ({ws.totalThickness.toFixed(0)}mm)
+                    </option>
+                  ))}
                 </select>
                 <button
                   onClick={() => setShowTypeManager(true)}
@@ -232,6 +258,41 @@ export function WallDialog({ isOpen, onClose, onDraw }: WallDialogProps) {
                 <div className="px-2 py-1.5 bg-cad-bg rounded border border-cad-border">
                   <div className="text-[10px] text-cad-text-dim">
                     Material: {selectedType.material}
+                  </div>
+                </div>
+              )}
+
+              {/* Grouped wall layer info */}
+              {selectedGroupedType && (
+                <div className="px-2 py-1.5 bg-cad-bg rounded border border-cad-border space-y-0.5">
+                  <div className="text-[10px] text-cad-text-dim font-medium">Layers:</div>
+                  {selectedGroupedType.layers.map((layer) => (
+                    <div key={layer.id} className="text-[10px] text-cad-text-secondary flex justify-between">
+                      <span>{layer.isDrawn ? '\u2588' : '\u2591'} {layer.name}</span>
+                      <span>{layer.thickness}mm{layer.gap > 0 ? ` +${layer.gap}` : ''}</span>
+                    </div>
+                  ))}
+                  <div className="text-[10px] text-cad-text-dim pt-0.5">
+                    Alignment: {selectedGroupedType.alignmentLine} | Total: {selectedGroupedType.totalThickness}mm
+                  </div>
+                </div>
+              )}
+
+              {/* Wall System layer info */}
+              {selectedWallSystem && (
+                <div className="px-2 py-1.5 bg-cad-bg rounded border border-cad-border space-y-0.5">
+                  <div className="text-[10px] text-cad-text-dim font-medium">
+                    {selectedWallSystem.category} &middot; {selectedWallSystem.layers.length} layers
+                  </div>
+                  {selectedWallSystem.layers.map((layer) => (
+                    <div key={layer.id} className="text-[10px] text-cad-text-secondary flex items-center gap-1">
+                      <span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: layer.color }} />
+                      <span className="flex-1">{layer.name}</span>
+                      <span>{layer.thickness}mm</span>
+                    </div>
+                  ))}
+                  <div className="text-[10px] text-cad-text-dim pt-0.5">
+                    Stud: {selectedWallSystem.defaultStud.name} @ {selectedWallSystem.grid.verticalSpacing}mm c/c
                   </div>
                 </div>
               )}

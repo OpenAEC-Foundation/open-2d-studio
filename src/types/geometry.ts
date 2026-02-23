@@ -129,6 +129,10 @@ export interface GridlineShape extends BaseShape {
   bubblePosition: GridlineBubblePosition;
   bubbleRadius: number;                   // Circle radius (drawing units)
   fontSize: number;                       // Font size (drawing units)
+  /** Shared project-level grid ID.  Gridlines with the same projectGridId
+   *  across different plan drawings represent the same structural grid axis.
+   *  Edits are propagated automatically. */
+  projectGridId?: string;
 }
 
 // Level shape - horizontal reference plane (floor level)
@@ -264,6 +268,8 @@ export interface CPTShape extends BaseShape {
   waterspanning?: boolean;
   /** CPT has been executed / completed */
   uitgevoerd?: boolean;
+  /** Probe depth in mm (default: 30000 = 30m). Used for 3D IFC representation. */
+  depth?: number;
 }
 
 // Foundation zone shape - auto-generated region linked to a CPT
@@ -319,6 +325,25 @@ export interface WallType {
    *  New code should use `material` (MaterialCategory) directly. */
   materialId?: string;
   color?: string;               // Optional color override
+}
+
+// A layer in a grouped wall definition
+export interface GroupedWallLayer {
+  id: string;
+  name: string;              // e.g., "Metselwerk", "Isolatie PIR", "Kalkzandsteen"
+  wallTypeId: string;        // References a WallType for material/color/thickness
+  thickness: number;         // Layer thickness in mm (drawing units)
+  gap: number;               // Gap AFTER this layer (e.g., cavity/spouw) in mm
+  isDrawn: boolean;          // Whether this layer creates a wall shape (false for pure air gaps/insulation cavities)
+}
+
+// A grouped wall type - creates multiple walls in one draw action
+export interface GroupedWallType {
+  id: string;
+  name: string;              // e.g., "Spouwmuur 360mm", "HSB binnenwand"
+  layers: GroupedWallLayer[];
+  totalThickness: number;    // Calculated: sum of all layer thicknesses + gaps
+  alignmentLine: 'center' | 'exterior' | 'interior'; // Which face the draw line represents
 }
 
 // Slab type definition
@@ -391,6 +416,106 @@ export interface WallShape extends BaseShape {
   spaceBounding?: boolean;         // Whether wall bounds rooms/spaces (default true; undefined = true)
   baseLevel?: string;              // IFC base constraint: storey ID for bottom of wall
   topLevel?: string;               // IFC top constraint: storey ID for top of wall (or 'unconnected')
+  // Wall System (multi-layered wall assembly) fields
+  wallSystemId?: string;           // Reference to WallSystemType
+  wallSystemOpenings?: WallSystemOpening[];  // Openings in this wall instance
+  wallSystemStudOverrides?: Record<string, string>;  // Per-instance stud overrides (cellKey -> studId)
+  wallSystemPanelOverrides?: Record<string, string>; // Per-instance panel overrides (cellKey -> panelId)
+  groupedWallTypeId?: string;    // Reference to GroupedWallType if part of a grouped wall assembly
+  groupedWallLayerIndex?: number; // Which layer in the grouped wall this wall represents
+}
+
+// ============================================================================
+// Wall System - Multi-layered wall assembly (like Revit curtain wall)
+// ============================================================================
+
+/** Function/role of a wall layer within the assembly */
+export type WallLayerFunction = 'structure' | 'insulation' | 'finish' | 'membrane' | 'air-gap' | 'substrate';
+
+/** Category of wall system */
+export type WallSystemCategory = 'timber-frame' | 'metal-stud' | 'curtain-wall' | 'masonry' | 'custom';
+
+/** Stud/mullion profile type */
+export type WallStudProfile = 'rectangular' | 'c-channel' | 'i-beam' | 'custom';
+
+/** A single layer in the wall assembly */
+export interface WallSystemLayer {
+  id: string;
+  name: string;           // e.g., "Outer board", "Insulation", "Inner board"
+  material: string;       // Material identifier
+  thickness: number;      // Layer thickness in mm
+  offset: number;         // Offset from wall centerline (calculated)
+  function: WallLayerFunction;
+  color: string;          // Display color (hex)
+  hatchPattern?: string;  // Hatch pattern for section view
+}
+
+/** Stud/mullion definition within a wall system */
+export interface WallSystemStud {
+  id: string;
+  name: string;           // e.g., "Timber stud 38x140", "CW75 metal stud"
+  width: number;          // Stud width (along wall) in mm
+  depth: number;          // Stud depth (through wall) in mm
+  material: string;
+  profile: WallStudProfile;
+  color: string;
+  layerIds: string[];     // Which layers this stud spans
+}
+
+/** Panel definition for infill between studs */
+export interface WallSystemPanel {
+  id: string;
+  name: string;           // e.g., "Glass panel", "Insulated panel", "Spandrel"
+  material: string;
+  thickness: number;
+  color: string;
+  opacity: number;        // 0-1, for glass panels
+  hatchPattern?: string;
+}
+
+/** Grid configuration for stud/mullion spacing */
+export interface WallSystemGrid {
+  // Vertical divisions (studs/mullions)
+  verticalSpacing: number;      // Default spacing in mm (e.g., 600 for HSB)
+  verticalJustification: 'center' | 'left' | 'right';
+  // Horizontal divisions (rails/transoms)
+  horizontalSpacing: number;    // Default spacing in mm
+  horizontalJustification: 'center' | 'top' | 'bottom';
+  // Custom grid lines (overrides) - positions along the wall as fraction 0-1
+  customVerticalLines: number[];
+  customHorizontalLines: number[];
+}
+
+/** Opening (window/door) in a wall system instance */
+export interface WallSystemOpening {
+  id: string;
+  name: string;
+  type: 'window' | 'door' | 'custom';
+  width: number;          // Opening width in mm
+  height: number;         // Opening height in mm
+  sillHeight: number;     // Height from bottom of wall to bottom of opening
+  position: number;       // Position along wall (0-1 fraction or mm from start)
+  positionType: 'fraction' | 'absolute';
+  frameProfile?: WallSystemStud;  // Frame profile (like a mullion)
+  frameDepth?: number;    // Frame depth
+  panelId?: string;       // Panel type to fill (e.g., glass)
+}
+
+/** A complete wall system definition (reusable template) */
+export interface WallSystemType {
+  id: string;
+  name: string;           // e.g., "HSB 140mm", "Metal Stud CW75", "Curtain Wall"
+  category: WallSystemCategory;
+  totalThickness: number; // Calculated from layers
+  layers: WallSystemLayer[];
+  defaultStud: WallSystemStud;
+  alternateStuds: WallSystemStud[];   // Available stud replacements
+  defaultPanel: WallSystemPanel;
+  alternatePanels: WallSystemPanel[];  // Available panel replacements
+  grid: WallSystemGrid;
+  // Per-cell overrides (key = "col-row", e.g., "2-1")
+  studOverrides: Record<string, string>;   // cellKey -> studId
+  panelOverrides: Record<string, string>;  // cellKey -> panelId
 }
 
 // Slab material type
@@ -667,6 +792,13 @@ export interface TextShape extends BaseShape {
   // Label template for linked labels: e.g. "{Name}\n{Area} m²"
   // Placeholders: {Name}, {Number}, {Area}, {Level}, {Type}, {Thickness}, {Section}, {Profile}
   labelTemplate?: string;    // Template string with property placeholders
+  // Border around the text (solid rectangle outline around the background mask area)
+  showBorder?: boolean;      // If true, draw a solid border around the text background
+  borderColor?: string;      // Border stroke color (defaults to text color)
+  // Span arrow (overspanningspijl) for slab labels
+  spanArrow?: boolean;       // If true, render as double-headed span arrow with text in the middle
+  spanDirection?: number;    // Span direction angle in radians (along the slab's shorter dimension)
+  spanLength?: number;       // Arrow length in drawing units (typically ~70% of slab's shorter dimension)
 }
 
 export interface PointShape extends BaseShape {
@@ -930,6 +1062,23 @@ export type PaperOrientation = 'portrait' | 'landscape';
 // Using import type to avoid circular dependency
 import type { SheetAnnotation } from './sheet';
 
+// Query table placed on a sheet
+export interface SheetQueryTable {
+  id: string;
+  queryId: string;        // References a SavedQuery by ID
+  x: number;              // Position on sheet in mm
+  y: number;
+  width: number;          // Computed from columns (mm)
+  height: number;         // Computed from rows (mm)
+  columnWidths: number[]; // mm per column
+  rowHeight: number;      // mm, default 6
+  headerHeight: number;   // mm, default 8
+  fontSize: number;       // pt, default 7
+  headerFontSize: number; // pt, default 8
+  locked: boolean;
+  visible: boolean;
+}
+
 // Sheet - printable layout
 export interface Sheet {
   id: string;
@@ -939,6 +1088,8 @@ export interface Sheet {
   customWidth?: number;   // mm, only used when paperSize is 'Custom'
   customHeight?: number;  // mm, only used when paperSize is 'Custom'
   viewports: SheetViewport[];
+  /** Query tables placed on this sheet */
+  queryTables?: SheetQueryTable[];
   titleBlock: TitleBlock;
   /** Sheet-level annotations (text, dimensions, leaders, etc.) */
   annotations: SheetAnnotation[];

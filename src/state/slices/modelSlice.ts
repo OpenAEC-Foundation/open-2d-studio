@@ -19,7 +19,7 @@ import type {
   TextStyle,
 } from './types';
 
-import type { BlockDefinition } from '../../types/geometry';
+import type { BlockDefinition, SheetQueryTable } from '../../types/geometry';
 
 import type {
   TitleBlockTemplate,
@@ -283,6 +283,11 @@ export interface ModelActions {
   centerViewportOnDrawing: (viewportId: string) => void;
   fitViewportToDrawing: (viewportId: string) => void;
 
+  // Sheet Query Table actions
+  addSheetQueryTable: (sheetId: string, table: SheetQueryTable) => void;
+  updateSheetQueryTable: (sheetId: string, tableId: string, updates: Partial<SheetQueryTable>) => void;
+  deleteSheetQueryTable: (sheetId: string, tableId: string) => void;
+
   // Title Block actions
   updateTitleBlockField: (sheetId: string, fieldId: string, value: string) => void;
   setTitleBlockVisible: (sheetId: string, visible: boolean) => void;
@@ -365,6 +370,7 @@ const defaultSheet1: Sheet = {
   paperSize: 'A3',
   orientation: 'landscape',
   viewports: [],
+  queryTables: [],
   titleBlock: createDefaultTitleBlock(),
   annotations: [],
   createdAt: new Date().toISOString(),
@@ -377,6 +383,7 @@ const defaultSheet2: Sheet = {
   paperSize: 'A3',
   orientation: 'portrait',
   viewports: [],
+  queryTables: [],
   titleBlock: createDefaultTitleBlock(),
   annotations: [],
   createdAt: new Date().toISOString(),
@@ -456,6 +463,53 @@ function withHistory(state: FullStore, mutate: (draft: Shape[]) => void): void {
   state.isModified = true;
 }
 
+/**
+ * Clone all project gridlines from existing plan drawings into a new plan drawing.
+ * Each cloned gridline gets a new unique ID but keeps the same projectGridId so
+ * that edits propagate across all plan drawings sharing the same grid axis.
+ * Gridlines that don't have a projectGridId yet get one assigned retroactively.
+ */
+function cloneProjectGridlines(
+  state: { shapes: Shape[]; drawings: Drawing[] },
+  newDrawingId: string,
+  newLayerId: string,
+): Shape[] {
+  // Find the first existing plan drawing that has gridlines
+  const planDrawingIds = state.drawings
+    .filter(d => d.drawingType === 'plan')
+    .map(d => d.id);
+
+  // Collect unique gridlines by projectGridId (prefer the first occurrence)
+  const seenProjectGridIds = new Set<string>();
+  const sourceGridlines: GridlineShape[] = [];
+
+  for (const drawingId of planDrawingIds) {
+    const gridlines = (state.shapes as Shape[]).filter(
+      (s): s is GridlineShape => s.type === 'gridline' && s.drawingId === drawingId
+        && !s.id.startsWith('section-ref-')
+    );
+    for (const gl of gridlines) {
+      // Assign a projectGridId if missing (retroactive migration)
+      if (!gl.projectGridId) {
+        gl.projectGridId = gl.id; // Use own id as the canonical project grid id
+      }
+      if (!seenProjectGridIds.has(gl.projectGridId)) {
+        seenProjectGridIds.add(gl.projectGridId);
+        sourceGridlines.push(gl);
+      }
+    }
+  }
+
+  // Clone each unique gridline into the new drawing
+  return sourceGridlines.map(gl => ({
+    ...gl,
+    id: generateId(),
+    drawingId: newDrawingId,
+    layerId: newLayerId,
+    // projectGridId stays the same — links them together
+  }));
+}
+
 export const createModelSlice = (
   set: (fn: (state: FullStore) => void) => void,
   get: () => FullStore
@@ -466,14 +520,68 @@ export const createModelSlice = (
 
   addShape: (shape) =>
     set((state) => {
-      withHistory(state, (draft) => { draft.push(shape); });
+      withHistory(state, (draft) => {
+        // Auto-assign projectGridId and clone to other plan drawings
+        if (shape.type === 'gridline') {
+          const gl = shape as GridlineShape;
+          const drawing = state.drawings.find(d => d.id === gl.drawingId);
+          if (drawing?.drawingType === 'plan') {
+            // Assign projectGridId if missing
+            if (!gl.projectGridId) {
+              gl.projectGridId = gl.id;
+            }
+            // Clone to all other plan drawings
+            const otherPlanDrawings = state.drawings.filter(
+              d => d.drawingType === 'plan' && d.id !== gl.drawingId
+            );
+            for (const otherDrawing of otherPlanDrawings) {
+              const otherLayer = state.layers.find(l => l.drawingId === otherDrawing.id);
+              if (otherLayer) {
+                draft.push({
+                  ...gl,
+                  id: generateId(),
+                  drawingId: otherDrawing.id,
+                  layerId: otherLayer.id,
+                } as unknown as Shape);
+              }
+            }
+          }
+        }
+        draft.push(shape);
+      });
     }),
 
   addShapes: (shapes) =>
     set((state) => {
       if (shapes.length === 0) return;
       withHistory(state, (draft) => {
-        for (const shape of shapes) draft.push(shape);
+        for (const shape of shapes) {
+          // Auto-assign projectGridId and clone gridlines to other plan drawings
+          if (shape.type === 'gridline') {
+            const gl = shape as GridlineShape;
+            const drawing = state.drawings.find(d => d.id === gl.drawingId);
+            if (drawing?.drawingType === 'plan') {
+              if (!gl.projectGridId) {
+                gl.projectGridId = gl.id;
+              }
+              const otherPlanDrawings = state.drawings.filter(
+                d => d.drawingType === 'plan' && d.id !== gl.drawingId
+              );
+              for (const otherDrawing of otherPlanDrawings) {
+                const otherLayer = state.layers.find(l => l.drawingId === otherDrawing.id);
+                if (otherLayer) {
+                  draft.push({
+                    ...gl,
+                    id: generateId(),
+                    drawingId: otherDrawing.id,
+                    layerId: otherLayer.id,
+                  } as unknown as Shape);
+                }
+              }
+            }
+          }
+          draft.push(shape);
+        }
       });
     }),
 
@@ -495,6 +603,22 @@ export const createModelSlice = (
         const index = draft.findIndex((s) => s.id === id);
         if (index !== -1) {
           draft[index] = { ...draft[index], ...updates } as Shape;
+
+          // Propagate gridline edits to linked gridlines in other plan drawings
+          const shape = draft[index];
+          if (shape.type === 'gridline' && (shape as GridlineShape).projectGridId) {
+            const pgId = (shape as GridlineShape).projectGridId!;
+            // Build a propagation payload (exclude per-shape/per-drawing fields)
+            const { id: _id, drawingId: _did, layerId: _lid, ...propagated } = updates as any;
+            if (Object.keys(propagated).length > 0) {
+              for (const other of draft) {
+                if (other.id !== id && other.type === 'gridline' &&
+                    (other as GridlineShape).projectGridId === pgId) {
+                  Object.assign(other, propagated);
+                }
+              }
+            }
+          }
         }
       });
     }),
@@ -503,10 +627,38 @@ export const createModelSlice = (
     set((state) => {
       if (updates.length === 0) return;
       withHistory(state, (draft) => {
+        // Collect gridline propagation to apply after primary updates
+        const gridlinePropagations: { projectGridId: string; sourceId: string; propagated: Record<string, any> }[] = [];
+
         for (const { id, updates: u } of updates) {
           const index = draft.findIndex((s) => s.id === id);
           if (index !== -1) {
             draft[index] = { ...draft[index], ...u } as Shape;
+
+            // Check if this is a gridline with projectGridId
+            const shape = draft[index];
+            if (shape.type === 'gridline' && (shape as GridlineShape).projectGridId) {
+              const { id: _id, drawingId: _did, layerId: _lid, ...propagated } = u as any;
+              if (Object.keys(propagated).length > 0) {
+                gridlinePropagations.push({
+                  projectGridId: (shape as GridlineShape).projectGridId!,
+                  sourceId: id,
+                  propagated,
+                });
+              }
+            }
+          }
+        }
+
+        // Apply gridline propagations
+        for (const { projectGridId, sourceId, propagated } of gridlinePropagations) {
+          for (const other of draft) {
+            if (other.id !== sourceId && other.type === 'gridline' &&
+                (other as GridlineShape).projectGridId === projectGridId) {
+              // Skip if this shape is already being explicitly updated
+              if (updates.some(u => u.id === other.id)) continue;
+              Object.assign(other, propagated);
+            }
           }
         }
       });
@@ -519,6 +671,21 @@ export const createModelSlice = (
       for (const s of state.shapes) {
         if (s.type === 'text' && (s as any).linkedShapeId === id) {
           linkedLabelIds.add(s.id);
+        }
+      }
+
+      // If deleting a gridline with projectGridId, also delete all siblings in other drawings
+      const projectGridSiblingIds = new Set<string>();
+      const deletedGridline = state.shapes.find(s => s.id === id);
+      if (deletedGridline && deletedGridline.type === 'gridline') {
+        const pgId = (deletedGridline as GridlineShape).projectGridId;
+        if (pgId) {
+          for (const s of state.shapes) {
+            if (s.id !== id && s.type === 'gridline' &&
+                (s as GridlineShape).projectGridId === pgId) {
+              projectGridSiblingIds.add(s.id);
+            }
+          }
         }
       }
 
@@ -551,12 +718,13 @@ export const createModelSlice = (
 
       withHistory(state, (draft) => {
         for (let i = draft.length - 1; i >= 0; i--) {
-          if (draft[i].id === id || linkedLabelIds.has(draft[i].id) || plateSystemChildIds.has(draft[i].id)) {
+          if (draft[i].id === id || linkedLabelIds.has(draft[i].id) ||
+              plateSystemChildIds.has(draft[i].id) || projectGridSiblingIds.has(draft[i].id)) {
             draft.splice(i, 1);
           }
         }
       });
-      const allRemoved = new Set([id, ...linkedLabelIds, ...plateSystemChildIds]);
+      const allRemoved = new Set([id, ...linkedLabelIds, ...plateSystemChildIds, ...projectGridSiblingIds]);
       state.selectedShapeIds = state.selectedShapeIds.filter(
         (sid) => !allRemoved.has(sid)
       );
@@ -570,6 +738,21 @@ export const createModelSlice = (
       for (const s of state.shapes) {
         if (s.type === 'text' && (s as any).linkedShapeId && idSet.has((s as any).linkedShapeId)) {
           idSet.add(s.id);
+        }
+      }
+
+      // If deleting gridlines with projectGridId, also delete their siblings in other drawings
+      for (const s of state.shapes) {
+        if (s.type === 'gridline' && idSet.has(s.id)) {
+          const pgId = (s as GridlineShape).projectGridId;
+          if (pgId) {
+            for (const other of state.shapes) {
+              if (other.type === 'gridline' && !idSet.has(other.id) &&
+                  (other as GridlineShape).projectGridId === pgId) {
+                idSet.add(other.id);
+              }
+            }
+          }
         }
       }
 
@@ -616,9 +799,24 @@ export const createModelSlice = (
 
     const selectedIds = [...store.selectedShapeIds];
 
-    // Delete regular shapes (with plate system cascade)
+    // Delete regular shapes (with plate system and project gridline cascade)
     set((state) => {
       const selected = new Set(selectedIds);
+
+      // If deleting gridlines with projectGridId, also delete their siblings in other drawings
+      for (const s of state.shapes) {
+        if (s.type === 'gridline' && selected.has(s.id)) {
+          const pgId = (s as GridlineShape).projectGridId;
+          if (pgId) {
+            for (const other of state.shapes) {
+              if (other.type === 'gridline' && !selected.has(other.id) &&
+                  (other as GridlineShape).projectGridId === pgId) {
+                selected.add(other.id);
+              }
+            }
+          }
+        }
+      }
 
       // If deleting plate systems, also delete their child beams
       for (const s of state.shapes) {
@@ -978,6 +1176,14 @@ export const createModelSlice = (
         state.canvasSize.height || ASSUMED_CANVAS_HEIGHT
       );
 
+      // For plan drawings: clone all project gridlines from existing plan drawings
+      if (drawingType === 'plan') {
+        const clonedGridlines = cloneProjectGridlines(state, id, newLayer.id);
+        for (const gl of clonedGridlines) {
+          (state.shapes as Shape[]).push(gl);
+        }
+      }
+
       // Switch to the new drawing
       state.activeDrawingId = id;
       state.activeLayerId = newLayer.id;
@@ -1032,6 +1238,14 @@ export const createModelSlice = (
         state.canvasSize.width || ASSUMED_CANVAS_WIDTH,
         state.canvasSize.height || ASSUMED_CANVAS_HEIGHT
       );
+
+      // For plan drawings: clone all project gridlines from existing plan drawings
+      if (drawingType === 'plan') {
+        const clonedGridlines = cloneProjectGridlines(state, id, newLayer.id);
+        for (const gl of clonedGridlines) {
+          (state.shapes as Shape[]).push(gl);
+        }
+      }
 
       state.isModified = true;
     });
@@ -1284,6 +1498,7 @@ export const createModelSlice = (
           const fixedGridlines = result.gridlines.map(gl => ({ ...gl, layerId: sectionLayerId }));
           const fixedLevels = result.levels.map(lv => ({ ...lv, layerId: sectionLayerId }));
           const fixedDimensions = result.dimensions.map(dim => ({ ...dim, layerId: sectionLayerId }));
+          const fixedSlabs = result.slabs.map(sl => ({ ...sl, layerId: sectionLayerId }));
 
           // Add new section reference shapes
           for (const gl of fixedGridlines) {
@@ -1294,6 +1509,9 @@ export const createModelSlice = (
           }
           for (const dim of fixedDimensions) {
             (state.shapes as Shape[]).push(dim as unknown as Shape);
+          }
+          for (const sl of fixedSlabs) {
+            (state.shapes as Shape[]).push(sl as unknown as Shape);
           }
 
           // Update the drawing's sectionReferences
@@ -1336,6 +1554,7 @@ export const createModelSlice = (
         const fixedGridlines = result.gridlines.map(gl => ({ ...gl, layerId: sectionLayerId }));
         const fixedLevels = result.levels.map(lv => ({ ...lv, layerId: sectionLayerId }));
         const fixedDimensions = result.dimensions.map(dim => ({ ...dim, layerId: sectionLayerId }));
+        const fixedSlabs = result.slabs.map(sl => ({ ...sl, layerId: sectionLayerId }));
 
         // Add new section reference shapes
         for (const gl of fixedGridlines) {
@@ -1346,6 +1565,9 @@ export const createModelSlice = (
         }
         for (const dim of fixedDimensions) {
           (state.shapes as Shape[]).push(dim as unknown as Shape);
+        }
+        for (const sl of fixedSlabs) {
+          (state.shapes as Shape[]).push(sl as unknown as Shape);
         }
 
         // Update the drawing's sectionReferences
@@ -1386,6 +1608,9 @@ export const createModelSlice = (
           }
           for (const dim of result.dimensions) {
             (state.shapes as Shape[]).push({ ...dim, layerId: sectionLayerId } as unknown as Shape);
+          }
+          for (const sl of result.slabs) {
+            (state.shapes as Shape[]).push({ ...sl, layerId: sectionLayerId } as unknown as Shape);
           }
 
           // Update the drawing's sectionReferences
@@ -1433,8 +1658,21 @@ export const createModelSlice = (
           withHistory(state, (draft) => {
             const idx = draft.findIndex(s => s.id === sourceId);
             if (idx !== -1) {
-              (draft[idx] as GridlineShape).start = newPos.start;
-              (draft[idx] as GridlineShape).end = newPos.end;
+              const sourceGl = draft[idx] as GridlineShape;
+              sourceGl.start = newPos.start;
+              sourceGl.end = newPos.end;
+
+              // Propagate to all linked gridlines via projectGridId
+              if (sourceGl.projectGridId) {
+                const pgId = sourceGl.projectGridId;
+                for (const other of draft) {
+                  if (other.id !== sourceId && other.type === 'gridline' &&
+                      (other as GridlineShape).projectGridId === pgId) {
+                    (other as GridlineShape).start = { ...newPos.start };
+                    (other as GridlineShape).end = { ...newPos.end };
+                  }
+                }
+              }
             }
           });
         });
@@ -1498,6 +1736,7 @@ export const createModelSlice = (
     set((state) => {
       const drawing = state.drawings.find((d) => d.id === id);
       if (drawing) {
+        const wasPlan = drawing.drawingType === 'plan';
         drawing.drawingType = drawingType;
         if (drawingType !== 'plan') {
           // Clear storeyId and planSubtype if switching away from plan type
@@ -1512,6 +1751,18 @@ export const createModelSlice = (
             }
           }
         }
+
+        // When switching TO plan: clone project gridlines from existing plan drawings
+        if (!wasPlan && drawingType === 'plan') {
+          const layerInDrawing = state.layers.find(l => l.drawingId === id);
+          if (layerInDrawing) {
+            const clonedGridlines = cloneProjectGridlines(state, id, layerInDrawing.id);
+            for (const gl of clonedGridlines) {
+              (state.shapes as Shape[]).push(gl);
+            }
+          }
+        }
+
         drawing.modifiedAt = new Date().toISOString();
         state.isModified = true;
       }
@@ -1565,6 +1816,7 @@ export const createModelSlice = (
         paperSize,
         orientation,
         viewports: [],
+        queryTables: [],
         titleBlock,
         annotations: [],
         createdAt: new Date().toISOString(),
@@ -1771,6 +2023,37 @@ export const createModelSlice = (
       if (state.viewportEditState.selectedViewportId === viewportId) {
         state.viewportEditState.selectedViewportId = null;
       }
+    }),
+
+  // Sheet Query Table actions
+  addSheetQueryTable: (sheetId, table) =>
+    set((state) => {
+      const sheet = state.sheets.find((s) => s.id === sheetId);
+      if (!sheet) return;
+      if (!sheet.queryTables) sheet.queryTables = [];
+      sheet.queryTables.push(table);
+      sheet.modifiedAt = new Date().toISOString();
+      state.isModified = true;
+    }),
+
+  updateSheetQueryTable: (sheetId, tableId, updates) =>
+    set((state) => {
+      const sheet = state.sheets.find((s) => s.id === sheetId);
+      if (!sheet || !sheet.queryTables) return;
+      const table = sheet.queryTables.find((t) => t.id === tableId);
+      if (!table) return;
+      Object.assign(table, updates);
+      sheet.modifiedAt = new Date().toISOString();
+      state.isModified = true;
+    }),
+
+  deleteSheetQueryTable: (sheetId, tableId) =>
+    set((state) => {
+      const sheet = state.sheets.find((s) => s.id === sheetId);
+      if (!sheet || !sheet.queryTables) return;
+      sheet.queryTables = sheet.queryTables.filter((t) => t.id !== tableId);
+      sheet.modifiedAt = new Date().toISOString();
+      state.isModified = true;
     }),
 
   centerViewportOnDrawing: (viewportId) =>
@@ -2044,6 +2327,7 @@ export const createModelSlice = (
         paperSize: template!.paperSize as PaperSize,
         orientation: template!.orientation as PaperOrientation,
         viewports,
+        queryTables: [],
         titleBlock: createDefaultTitleBlock(),
         annotations: [],
         createdAt: new Date().toISOString(),

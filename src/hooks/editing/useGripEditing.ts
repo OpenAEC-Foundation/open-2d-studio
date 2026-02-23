@@ -377,9 +377,19 @@ function getGripPoints(shape: Shape, drawingScale?: number, zoom?: number): Poin
         { x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 },
       ];
     }
-    case 'slab':
-      // Slab handles: all polygon vertices
-      return [...shape.points];
+    case 'slab': {
+      // Slab handles: all polygon vertices + edge midpoints
+      const slabPts: Point[] = [...shape.points];
+      // Add edge midpoint grips (one per edge of the closed polygon)
+      for (let si = 0; si < shape.points.length; si++) {
+        const sj = (si + 1) % shape.points.length;
+        slabPts.push({
+          x: (shape.points[si].x + shape.points[sj].x) / 2,
+          y: (shape.points[si].y + shape.points[sj].y) / 2,
+        });
+      }
+      return slabPts;
+    }
     case 'puntniveau': {
       // Puntniveau handles: all polygon vertices (same as slab)
       const pnv = shape as PuntniveauShape;
@@ -1409,12 +1419,59 @@ function computeGripUpdates(shape: Shape, gripIndex: number, newPos: Point, edge
     }
 
     case 'slab': {
-      // Slab grips are polygon vertex indices — move the individual vertex
-      if (gripIndex < 0 || gripIndex >= shape.points.length) return null;
-      const newPoints = shape.points.map((p, i) =>
-        i === gripIndex ? { x: newPos.x, y: newPos.y } : p
-      );
-      return { points: newPoints } as Partial<Shape>;
+      const slabVertexCount = shape.points.length;
+      if (gripIndex < 0) return null;
+
+      if (gripIndex < slabVertexCount) {
+        // Vertex grip: move the individual vertex
+        const newPoints = shape.points.map((p, i) =>
+          i === gripIndex ? { x: newPos.x, y: newPos.y } : p
+        );
+        return { points: newPoints } as Partial<Shape>;
+      }
+
+      // Edge midpoint grip: move both adjacent vertices perpendicular to the edge
+      const slabEdgeIdx = gripIndex - slabVertexCount;
+      if (slabEdgeIdx < 0 || slabEdgeIdx >= slabVertexCount) return null;
+
+      const svi = slabEdgeIdx;
+      const svj = (slabEdgeIdx + 1) % slabVertexCount;
+      const slabMidX = (shape.points[svi].x + shape.points[svj].x) / 2;
+      const slabMidY = (shape.points[svi].y + shape.points[svj].y) / 2;
+
+      // Calculate the perpendicular offset from original midpoint to new position
+      const edgeDx = shape.points[svj].x - shape.points[svi].x;
+      const edgeDy = shape.points[svj].y - shape.points[svi].y;
+      const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
+
+      if (edgeLen < 0.001) {
+        // Degenerate edge — just translate both vertices
+        const tdx = newPos.x - slabMidX;
+        const tdy = newPos.y - slabMidY;
+        const newPts = shape.points.map((p, i) => {
+          if (i === svi || i === svj) return { x: p.x + tdx, y: p.y + tdy };
+          return p;
+        });
+        return { points: newPts } as Partial<Shape>;
+      }
+
+      // Perpendicular direction (pointing "outward" from the edge)
+      const perpX = -edgeDy / edgeLen;
+      const perpY = edgeDx / edgeLen;
+
+      // Project the drag vector onto the perpendicular direction
+      const dragVecX = newPos.x - slabMidX;
+      const dragVecY = newPos.y - slabMidY;
+      const perpProj = dragVecX * perpX + dragVecY * perpY;
+
+      // Move both vertices by the perpendicular offset only
+      const offsetX = perpProj * perpX;
+      const offsetY = perpProj * perpY;
+      const newSlabPoints = shape.points.map((p, i) => {
+        if (i === svi || i === svj) return { x: p.x + offsetX, y: p.y + offsetY };
+        return p;
+      });
+      return { points: newSlabPoints } as Partial<Shape>;
     }
 
     case 'puntniveau': {
@@ -2002,7 +2059,7 @@ export function useGripEditing() {
             axisConstraint: effectiveAxisHit, originalGripPoint: { ...grips[i] },
             clickOffset: { x: worldPos.x - grips[i].x, y: worldPos.y - grips[i].y },
             axisAngle: gripAxisAngle || undefined,
-            enableSnapping: shape.type === 'plate-system',
+            enableSnapping: shape.type === 'plate-system' || shape.type === 'slab',
           };
           return true;
         }
@@ -2066,8 +2123,8 @@ export function useGripEditing() {
             const forceXAxisConstraint = shape.type === 'text' && (i === 1 || i === 2);
 
             // Enable snapping for dimension reference point handles (gripIndex >= 4)
-            // and for all plate-system grips (vertex and edge midpoint)
-            const enableSnapping = (shape.type === 'dimension' && i >= 4) || shape.type === 'plate-system';
+            // and for all plate-system and slab grips (vertex and edge midpoint)
+            const enableSnapping = (shape.type === 'dimension' && i >= 4) || shape.type === 'plate-system' || shape.type === 'slab';
 
             // For text rotation handle (grip 3), calculate initial angle
             let initialRotationAngle: number | undefined;

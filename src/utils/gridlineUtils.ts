@@ -321,12 +321,15 @@ export function createGridlinesFromPattern(
       currentLabel = incrementGridLabel(currentLabel);
     }
     existingLabels.add(currentLabel);
+    const newId = crypto.randomUUID();
     return {
       ...gridline,
-      id: crypto.randomUUID(),
+      id: newId,
       label: currentLabel,
       start: { x: gridline.start.x + px * offset, y: gridline.start.y + py * offset },
       end: { x: gridline.end.x + px * offset, y: gridline.end.y + py * offset },
+      // Each pattern gridline gets its own projectGridId (will be cloned to other plan drawings by addShapes)
+      projectGridId: newId,
     };
   });
 }

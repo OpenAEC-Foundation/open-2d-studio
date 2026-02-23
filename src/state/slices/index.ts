@@ -119,6 +119,7 @@ export {
   type ParametricState,
   type ParametricActions,
   type ParametricSlice,
+  type SavedQuery,
   initialParametricState,
   createParametricSlice,
 } from './parametricSlice';

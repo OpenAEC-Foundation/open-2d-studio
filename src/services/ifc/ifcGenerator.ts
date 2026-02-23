@@ -12,7 +12,8 @@
  *   GridlineShape      -> IfcGrid + IfcGridAxis
  *   LevelShape         -> IfcBuildingStorey + IfcAnnotation
  *   PileShape          -> IfcPile + Pset_PileCommon + IfcMaterial
- *   CPTShape           -> IfcAnnotation + OpenNDStudio_CPT properties
+ *   PuntniveauShape    -> IfcBuildingElementProxy (extruded slab at NAP elevation) + OpenNDStudio_Puntniveau
+ *   CPTShape           -> IfcBuildingElementProxy + 3D cylinder + OpenNDStudio_CPT properties
  *   (Column beams)     -> IfcColumn
  *   LineShape          -> IfcAnnotation (Curve2D IfcPolyline)
  *   ArcShape           -> IfcAnnotation (Curve2D IfcTrimmedCurve)
@@ -329,6 +330,8 @@ export function generateIFC(
 
   // Gridlines (collect for IfcGrid)
   const gridlineAxes: { axis: number; curve: number; shape: GridlineShape }[] = [];
+  // Track exported projectGridIds to avoid duplicating linked gridlines across plan drawings
+  const exportedProjectGridIds = new Set<string>();
 
   // Filter out section-reference shapes
   const exportShapes = shapes.filter(s => !s.id.startsWith('section-ref-'));
@@ -546,6 +549,10 @@ export function generateIFC(
       case 'pile': {
         const pile = shape as PileShape;
 
+        // Only export piles from plan drawings (skip section-drawing representations
+        // to prevent the same physical pile from appearing at every level/storey)
+        if (!isShapeInPlanDrawing(pile)) break;
+
         // Resolve pile type definition (if referenced)
         const pileTypeDef = pile.pileTypeId && pileTypes
           ? pileTypes.find(pt => pt.id === pile.pileTypeId)
@@ -567,14 +574,14 @@ export function generateIFC(
         const pileAxisPlace = b.addAxis2Placement3D(pilePlacePt, zDir, xDir);
         const pilePlacement = b.addLocalPlacement(defaultStoreyPlacement, pileAxisPlace);
 
-        // Use IFC predefined type from PileTypeDefinition, fallback to DRIVEN
-        const ifcPredefinedType = pileTypeDef?.ifcPredefinedType || 'DRIVEN';
-
         const pileEntityId = b.addPile(
           shapeToIfcGuid(pile.id), ownerHistoryId, pile.label || 'Pile',
           pilePlacement, pileProdShape
         );
-        addElementToStorey(pileEntityId, resolveStoreyForShape(pile));
+        // Piles are foundation elements — always assign to the default (ground/foundation)
+        // storey rather than the drawing's linked storey, so they appear only once in the
+        // spatial tree instead of being duplicated at every building level.
+        addElementToStorey(pileEntityId, defaultStoreyId);
 
         // Material: determine from pile type method
         const pileMaterial = pileTypeDef?.method === 'Stalen buispaal' ? 'steel'
@@ -583,28 +590,49 @@ export function generateIFC(
         const pileMatId = materials.getOrCreate(pileMaterial as MaterialCategory);
         materialAssociations.push({ elementIds: [pileEntityId], materialId: pileMatId });
 
-        // Pset_PileCommon
-        const constructionType = ifcPredefinedType;
+        // Pset_PileCommon (IFC4 standard property set with English property names)
         const psetPileCommonProps = [
           b.addPropertySingleValue('Reference', null, ifcIdentifier(pile.label || 'Pile'), null),
-          b.addPropertySingleValue('ConstructionType', null, ifcLabel(constructionType), null),
+          b.addPropertySingleValue('Status', null, ifcLabel('New'), null),
+          b.addPropertySingleValue('Diameter', null, ifcPositiveLengthMeasure(pile.diameter), lengthUnit),
+          b.addPropertySingleValue('Length', null, ifcPositiveLengthMeasure(pileLength), lengthUnit),
         ];
         if (pile.puntniveauNAP != null) {
-          psetPileCommonProps.push(b.addPropertySingleValue('PuntniveauNAP', null, ifcLengthMeasure(pile.puntniveauNAP), lengthUnit));
+          // DesignParameters captures the designed tip level (puntniveau) relative to NAP
+          psetPileCommonProps.push(b.addPropertySingleValue('DesignParameters', null, ifcLabel(`TipLevel=${pile.puntniveauNAP}m NAP`), null));
         }
         if (pile.bkPaalPeil != null) {
-          psetPileCommonProps.push(b.addPropertySingleValue('BkPaalPeil', null, ifcLengthMeasure(pile.bkPaalPeil), lengthUnit));
+          // LoadCapacity slot used for cutoff level (top of pile) relative to reference datum
+          psetPileCommonProps.push(b.addPropertySingleValue('CutoffLevel', null, ifcLengthMeasure(pile.bkPaalPeil), lengthUnit));
         }
         assignPropertySet(pileEntityId, pile.id, 'pset', 'Pset_PileCommon', 'Common pile properties', psetPileCommonProps);
 
         // OpenNDStudio_PileType - pile type information from PileTypeDefinition
         if (pileTypeDef) {
-          assignPropertySet(pileEntityId, pile.id, 'pset', 'OpenNDStudio_PileType', 'Pile type properties from Open nD Studio', [
+          assignPropertySet(pileEntityId, pile.id, 'ptpset', 'OpenNDStudio_PileType', 'Pile type properties from Open nD Studio', [
             b.addPropertySingleValue('PileTypeName', null, ifcLabel(pileTypeDef.name), null),
-            b.addPropertySingleValue('PileShapeType', null, ifcLabel(pileTypeDef.shape), null),
+            b.addPropertySingleValue('CrossSectionShape', null, ifcLabel(pileTypeDef.shape), null),
             b.addPropertySingleValue('ConstructionMethod', null, ifcLabel(pileTypeDef.method), null),
-            b.addPropertySingleValue('IfcPredefinedType', null, ifcLabel(pileTypeDef.ifcPredefinedType), null),
+            b.addPropertySingleValue('PredefinedType', null, ifcLabel(pileTypeDef.ifcPredefinedType), null),
           ]);
+        }
+
+        // OpenNDStudio_PileElevations - Dutch geotechnical elevation data preserved for domain users
+        const pileElevProps: number[] = [];
+        if (pile.puntniveauNAP != null) {
+          pileElevProps.push(b.addPropertySingleValue('TipLevelNAP', null, ifcLengthMeasure(pile.puntniveauNAP * 1000), lengthUnit));
+        }
+        if (pile.bkPaalPeil != null) {
+          pileElevProps.push(b.addPropertySingleValue('CutoffLevel', null, ifcLengthMeasure(pile.bkPaalPeil), lengthUnit));
+        }
+        if (pile.cutoffLevel != null) {
+          pileElevProps.push(b.addPropertySingleValue('CutoffLevelNAP', null, ifcLengthMeasure(pile.cutoffLevel * 1000), lengthUnit));
+        }
+        if (pile.tipLevel != null) {
+          pileElevProps.push(b.addPropertySingleValue('ActualTipLevelNAP', null, ifcLengthMeasure(pile.tipLevel * 1000), lengthUnit));
+        }
+        if (pileElevProps.length > 0) {
+          assignPropertySet(pileEntityId, pile.id, 'elevpset', 'OpenNDStudio_PileElevations', 'Pile elevation data from Open nD Studio', pileElevProps);
         }
 
         // OpenNDStudio_PileDimensions
@@ -621,31 +649,73 @@ export function generateIFC(
 
       case 'cpt': {
         const cpt = shape as CPTShape;
-        const cptPt = b.addCartesianPoint(cpt.position.x, cpt.position.y, 0);
-        const cptPolyline = b.addPolyline([cptPt, cptPt]);
 
-        const { annotationId: cptAnnotId } = createCurveAnnotation(
-          ctx, shapeToIfcGuid(cpt.id),
-          cpt.name || 'CPT', 'Cone Penetration Test',
-          [cptPolyline], defaultStoreyPlacement
+        // CPT probe dimensions
+        // Standard CPT cone diameter is 35.7mm (10 cm² cross-section), we use 36mm
+        const cptDiameter = 36;  // mm
+        const cptRadius = cptDiameter / 2;
+        const cptDepth = cpt.depth ?? 30000;  // Default 30m probe depth (in mm)
+
+        // Cone tip: 60° apex angle, height = radius / tan(30°) ≈ radius * 1.732
+        const coneHeight = Math.min(cptRadius * 1.732, 100);  // ~31mm cone tip
+
+        // 3D Body: extruded cylinder (rod) from ground level downward
+        // The extrusion goes along negative Z (into the ground)
+        const cptProfile = b.addCircleProfileDef('.AREA.', null, profilePlacement2D, cptRadius);
+        const downDir = b.addDirection(0, 0, -1);
+        const cptRodSolid = b.addExtrudedAreaSolid(cptProfile, identityPlacement, downDir, cptDepth);
+
+        // Body shape representation
+        const cptBodyRep = b.addShapeRepresentation(bodySubContext, 'Body', 'SweptSolid', [cptRodSolid]);
+        const cptProdShape = b.addProductDefinitionShape(null, null, [cptBodyRep]);
+
+        // Placement at CPT position (at ground level, probe goes down)
+        const cptPlacePt = b.addCartesianPoint(cpt.position.x, cpt.position.y, 0);
+        const cptAxisPlace = b.addAxis2Placement3D(cptPlacePt, zDir, xDir);
+        const cptPlacement = b.addLocalPlacement(defaultStoreyPlacement, cptAxisPlace);
+
+        // Create as IfcBuildingElementProxy (IfcBorehole is IFC4x3 only, not yet widely supported)
+        const cptEntityId = b.addBuildingElementProxy(
+          shapeToIfcGuid(cpt.id), ownerHistoryId,
+          cpt.name || 'CPT', 'Cone Penetration Test (Sondering)',
+          cptPlacement, cptProdShape
         );
-        addElementToStorey(cptAnnotId, resolveStoreyForShape(cpt));
+        addElementToStorey(cptEntityId, resolveStoreyForShape(cpt));
 
-        // OpenNDStudio_CPT property set
+        // Material: steel for the CPT rod
+        const cptMatId = materials.getOrCreate('steel');
+        materialAssociations.push({ elementIds: [cptEntityId], materialId: cptMatId });
+
+        // Pset_BuildingElementProxyCommon - standard IFC property set
+        assignPropertySet(cptEntityId, cpt.id, 'proxy-pset', 'Pset_BuildingElementProxyCommon', 'Common proxy properties', [
+          b.addPropertySingleValue('Reference', null, ifcIdentifier(cpt.name || 'CPT'), null),
+        ]);
+
+        // OpenNDStudio_CPT property set with geotechnical data
         const cptProps: number[] = [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('cpt'), null),
           b.addPropertySingleValue('Name', null, ifcLabel(cpt.name || ''), null),
+          b.addPropertySingleValue('ObjectType', null, ifcLabel('IfcBorehole'), null),
+          b.addPropertySingleValue('Depth', null, ifcPositiveLengthMeasure(cptDepth), lengthUnit),
+          b.addPropertySingleValue('ConeDiameter', null, ifcPositiveLengthMeasure(cptDiameter), lengthUnit),
+          b.addPropertySingleValue('ConeHeight', null, ifcPositiveLengthMeasure(coneHeight), lengthUnit),
           b.addPropertySingleValue('Kleefmeting', null, ifcBoolean(cpt.kleefmeting ?? false), null),
           b.addPropertySingleValue('Waterspanning', null, ifcBoolean(cpt.waterspanning ?? false), null),
           b.addPropertySingleValue('Uitgevoerd', null, ifcBoolean(cpt.uitgevoerd ?? false), null),
         ];
-        assignPropertySet(cptAnnotId, cpt.id, 'pset', 'OpenNDStudio_CPT', 'CPT sensor properties from Open nD Studio', cptProps);
+        assignPropertySet(cptEntityId, cpt.id, 'pset', 'OpenNDStudio_CPT', 'CPT geotechnical properties from Open nD Studio', cptProps);
         break;
       }
 
       case 'gridline': {
         const gridline = shape as GridlineShape;
         if (!isShapeInPlanDrawing(gridline)) break;
+
+        // Deduplicate project gridlines — only export the first occurrence per projectGridId
+        if (gridline.projectGridId) {
+          if (exportedProjectGridIds.has(gridline.projectGridId)) break;
+          exportedProjectGridIds.add(gridline.projectGridId);
+        }
 
         const startPt = b.addCartesianPoint(gridline.start.x, gridline.start.y, 0);
         const endPt = b.addCartesianPoint(gridline.end.x, gridline.end.y, 0);
@@ -774,23 +844,52 @@ export function generateIFC(
         const pnv = shape as PuntniveauShape;
         if (pnv.points.length < 3) break;
 
-        const pnvPts: number[] = [];
+        // Build 2D profile from polygon boundary points
+        const pnvProfilePts: number[] = [];
         for (const pt of pnv.points) {
-          pnvPts.push(b.addCartesianPoint(pt.x, pt.y, 0));
+          pnvProfilePts.push(b.addCartesianPoint2D(pt.x, pt.y));
         }
         // Close the polygon
-        pnvPts.push(b.addCartesianPoint(pnv.points[0].x, pnv.points[0].y, 0));
-        const pnvPolyline = b.addPolyline(pnvPts);
+        pnvProfilePts.push(b.addCartesianPoint2D(pnv.points[0].x, pnv.points[0].y));
+        const pnvPolyline = b.addPolyline(pnvProfilePts);
+        const pnvProfile = b.addArbitraryClosedProfileDef('.AREA.', null, pnvPolyline);
 
-        const { annotationId: pnvAnnotId } = createCurveAnnotation(
-          ctx, shapeToIfcGuid(pnv.id),
-          'Puntniveau', null, [pnvPolyline], defaultStoreyPlacement
+        // Extrude with 10mm thickness to create a thin horizontal surface
+        const pnvThickness = 10; // mm
+        const pnvSolid = b.addExtrudedAreaSolid(pnvProfile, identityPlacement, extrusionDir, pnvThickness);
+        const pnvBodyRep = b.addShapeRepresentation(bodySubContext, 'Body', 'SweptSolid', [pnvSolid]);
+        const pnvProdShape = b.addProductDefinitionShape(null, null, [pnvBodyRep]);
+
+        // Place at Z = puntniveauNAP elevation (convert meters to mm)
+        const pnvElevationMm = pnv.puntniveauNAP * 1000;
+        const pnvPlacePt = b.addCartesianPoint(0, 0, pnvElevationMm);
+        const pnvAxisPlace = b.addAxis2Placement3D(pnvPlacePt, zDir, xDir);
+        const pnvPlacement = b.addLocalPlacement(defaultStoreyPlacement, pnvAxisPlace);
+
+        const pnvName = `Puntniveau ${pnv.puntniveauNAP} m NAP`;
+        const pnvEntityId = b.addBuildingElementProxy(
+          shapeToIfcGuid(pnv.id), ownerHistoryId, pnvName,
+          'Designed pile tip level zone', pnvPlacement, pnvProdShape,
+          'USERDEFINED'
         );
-        addElementToStorey(pnvAnnotId, resolveStoreyForShape(pnv));
+        addElementToStorey(pnvEntityId, resolveStoreyForShape(pnv));
 
-        assignPropertySet(pnvAnnotId, pnv.id, 'pset', 'OpenNDStudio_Puntniveau', 'Puntniveau properties', [
+        // Calculate area using Shoelace formula (points are in mm, result in mm²)
+        let pnvArea = 0;
+        const pnvPts = pnv.points;
+        for (let i = 0; i < pnvPts.length; i++) {
+          const j = (i + 1) % pnvPts.length;
+          pnvArea += pnvPts[i].x * pnvPts[j].y;
+          pnvArea -= pnvPts[j].x * pnvPts[i].y;
+        }
+        pnvArea = Math.abs(pnvArea) / 2; // mm²
+
+        // OpenNDStudio_Puntniveau property set
+        assignPropertySet(pnvEntityId, pnv.id, 'pset', 'OpenNDStudio_Puntniveau', 'Puntniveau properties from Open nD Studio', [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('puntniveau'), null),
-          b.addPropertySingleValue('PuntniveauNAP', null, ifcLengthMeasure(pnv.puntniveauNAP), lengthUnit),
+          b.addPropertySingleValue('PuntniveauNAP', null, ifcLengthMeasure(pnv.puntniveauNAP * 1000), lengthUnit),
+          b.addPropertySingleValue('PuntniveauNAP_m', null, ifcLabel(`${pnv.puntniveauNAP} m NAP`), null),
+          b.addPropertySingleValue('Area', null, ifcAreaMeasure(pnvArea / 1e6), areaUnit),
         ]);
         break;
       }

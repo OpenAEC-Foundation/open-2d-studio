@@ -9,8 +9,9 @@
 
 import { useCallback } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
-import type { Point, PuntniveauShape } from '../../types/geometry';
+import type { Point, PuntniveauShape, TextShape } from '../../types/geometry';
 import { snapToAngle } from '../../engine/geometry/GeometryUtils';
+import { formatDutchNumber } from '../../engine/geometry/LabelUtils';
 
 export function usePuntniveauDrawing() {
   const {
@@ -27,14 +28,17 @@ export function usePuntniveauDrawing() {
   } = useAppStore();
 
   /**
-   * Create a puntniveau shape from polygon points
+   * Create a puntniveau shape from polygon points,
+   * plus a linked TextShape label at the polygon centroid.
    */
   const createPuntniveau = useCallback(
     (points: Point[], puntniveauNAP: number, fontSize: number) => {
       if (points.length < 3) return null;
 
+      const puntniveauId = generateId();
+
       const shape: PuntniveauShape = {
-        id: generateId(),
+        id: puntniveauId,
         type: 'puntniveau',
         layerId: activeLayerId,
         drawingId: activeDrawingId,
@@ -50,7 +54,52 @@ export function usePuntniveauDrawing() {
         fontSize,
       };
       addShape(shape);
-      return shape.id;
+
+      // Compute centroid for label placement
+      let cx = 0, cy = 0;
+      for (const p of points) { cx += p.x; cy += p.y; }
+      cx /= points.length;
+      cy /= points.length;
+
+      // Create a linked TextShape label at the centroid
+      const napFormatted = formatDutchNumber(puntniveauNAP);
+      const labelText = `PUNTNIVEAU: ${napFormatted} m N.A.P.`;
+
+      const label: TextShape = {
+        id: generateId(),
+        type: 'text',
+        layerId: activeLayerId,
+        drawingId: activeDrawingId,
+        style: {
+          ...currentStyle,
+          lineStyle: 'solid',
+          strokeWidth: 0.5,
+        },
+        visible: true,
+        locked: false,
+        position: { x: cx, y: cy },
+        text: labelText,
+        fontSize,            // same font size as the puntniveau (mm)
+        fontFamily: 'Osifont',
+        rotation: 0,
+        alignment: 'center',
+        verticalAlignment: 'middle',
+        bold: true,
+        italic: false,
+        underline: false,
+        color: currentStyle.strokeColor,
+        lineHeight: 1.2,
+        isModelText: true,   // Label is in model units (scales with geometry)
+        backgroundMask: true,
+        backgroundColor: '#1a1a2e',
+        backgroundPadding: fontSize * 0.4,
+        showBorder: true,
+        borderColor: currentStyle.strokeColor,
+        linkedShapeId: puntniveauId,
+      };
+      addShape(label);
+
+      return puntniveauId;
     },
     [activeLayerId, activeDrawingId, currentStyle, addShape]
   );

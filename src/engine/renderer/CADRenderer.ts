@@ -12,7 +12,7 @@
  * - Future extensibility
  */
 
-import type { Shape, Viewport, SnapPoint, DrawingBoundary, Sheet, Drawing, SheetViewport, Layer, WallType } from '../../types/geometry';
+import type { Shape, Viewport, SnapPoint, DrawingBoundary, Sheet, Drawing, SheetViewport, Layer, WallType, WallSystemType } from '../../types/geometry';
 import type { DrawingPreview, SelectionBox } from '../../state/appStore';
 import type { TrackingLine } from '../geometry/Tracking';
 import type { IPoint } from '../geometry/Point';
@@ -72,6 +72,10 @@ interface RenderOptions {
   showLineweight?: boolean;
   /** Wall types for material-based hatch lookup */
   wallTypes?: WallType[];
+  /** Wall system types (multi-layered assemblies) */
+  wallSystemTypes?: WallSystemType[];
+  /** Currently selected wall sub-element */
+  selectedWallSubElement?: { wallId: string; type: 'stud' | 'panel'; key: string } | null;
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
   /** Gridline extension distance in mm */
@@ -110,6 +114,10 @@ interface SheetModeRenderOptions {
   showLineweight?: boolean;
   /** Wall types for material-based hatch lookup */
   wallTypes?: WallType[];
+  /** Wall system types (multi-layered assemblies) */
+  wallSystemTypes?: WallSystemType[];
+  /** Currently selected wall sub-element */
+  selectedWallSubElement?: { wallId: string; type: 'stud' | 'panel'; key: string } | null;
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
   /** Gridline extension distance in mm */
@@ -118,6 +126,8 @@ interface SheetModeRenderOptions {
   seaLevelDatum?: number;
   /** Hidden IFC categories — shapes in these categories are not rendered */
   hiddenIfcCategories?: string[];
+  /** Saved queries for rendering query tables */
+  queries?: import('../../state/slices/parametricSlice').SavedQuery[];
 }
 
 export class CADRenderer {
@@ -185,6 +195,8 @@ export class CADRenderer {
       cursor2DVisible: options.cursor2DVisible,
       showLineweight: options.showLineweight,
       wallTypes: options.wallTypes,
+      wallSystemTypes: options.wallSystemTypes,
+      selectedWallSubElement: options.selectedWallSubElement,
       materialHatchSettings: options.materialHatchSettings,
       gridlineExtension: options.gridlineExtension,
       seaLevelDatum: options.seaLevelDatum,
@@ -215,10 +227,13 @@ export class CADRenderer {
       customPatterns: options.customPatterns,
       showLineweight: options.showLineweight,
       wallTypes: options.wallTypes,
+      wallSystemTypes: options.wallSystemTypes,
+      selectedWallSubElement: options.selectedWallSubElement,
       materialHatchSettings: options.materialHatchSettings,
       gridlineExtension: options.gridlineExtension,
       seaLevelDatum: options.seaLevelDatum,
       hiddenIfcCategories: options.hiddenIfcCategories,
+      queries: options.queries,
     };
 
     this.sheetRenderer.render(sheetOptions);

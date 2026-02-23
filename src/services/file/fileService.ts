@@ -222,6 +222,8 @@ export interface ProjectFileV2 {
   projectPatterns?: import('../../types/hatch').CustomHatchPattern[];
   // Wall types (optional, backward compatible)
   wallTypes?: import('../../types/geometry').WallType[];
+  // Wall system types (optional, backward compatible)
+  wallSystemTypes?: import('../../types/geometry').WallSystemType[];
 }
 
 /**
@@ -233,6 +235,8 @@ export interface ProjectFileV2 {
  */
 export interface ProjectFileV3 extends Omit<ProjectFileV2, 'version'> {
   version: 3;
+  // Saved queries (optional, backward compatible)
+  queries?: import('../../state/slices/parametricSlice').SavedQuery[];
 }
 
 // Current project file type

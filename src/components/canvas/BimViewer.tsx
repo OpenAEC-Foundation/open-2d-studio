@@ -6,6 +6,9 @@
 
 import { useRef, useEffect, useState, memo } from 'react';
 import * as OBC from '@thatopen/components';
+import * as OBCF from '@thatopen/components-front';
+import * as FRAGS from '@thatopen/fragments';
+import * as THREE from 'three';
 import { useAppStore } from '../../state/appStore';
 
 /** Convert IFC STEP text to Uint8Array for the loader */
@@ -112,7 +115,55 @@ export const BimViewer = memo(function BimViewer() {
           });
         }
 
-        console.log('[BimViewer] 8/8 Init complete! Ready to load IFC.');
+        console.log('[BimViewer] 8/9 Setting up Highlighter for element selection...');
+        try {
+          const highlighter = components.get(OBCF.Highlighter);
+          highlighter.setup({
+            world,
+            autoHighlightOnClick: true,
+            selectEnabled: true,
+            selectMaterialDefinition: {
+              color: new THREE.Color(0x4ade80),
+              opacity: 0.6,
+              transparent: true,
+              renderedFaces: FRAGS.RenderedFaces.TWO,
+            },
+          });
+          highlighter.zoomToSelection = false;
+          highlighter.multiple = 'ctrlKey';
+
+          // Sync 3D selection → 2D selection via IFC GUID mapping
+          highlighter.events.select.onHighlight.add((fragmentIdMap: OBC.ModelIdMap) => {
+            const store = useAppStore.getState();
+            const selectedIds: string[] = [];
+
+            // Map fragment express IDs back to shape IDs via ifcEntityId
+            for (const [_fragmentId, expressIds] of Object.entries(fragmentIdMap)) {
+              for (const expressId of expressIds) {
+                // Find shape that has this express ID in its metadata
+                const shape = store.shapes.find(s => {
+                  const eid = (s as any).ifcExpressId;
+                  return eid !== undefined && eid === expressId;
+                });
+                if (shape) {
+                  selectedIds.push(shape.id);
+                }
+              }
+            }
+
+            if (selectedIds.length > 0) {
+              store.selectShapes(selectedIds);
+            }
+          });
+
+          highlighter.events.select.onClear.add(() => {
+            useAppStore.getState().deselectAll();
+          });
+        } catch (hlErr) {
+          console.warn('[BimViewer] Highlighter setup failed (selection disabled):', hlErr);
+        }
+
+        console.log('[BimViewer] 9/9 Init complete! Ready to load IFC.');
         if (!disposed) {
           setStatus('ready');
         }

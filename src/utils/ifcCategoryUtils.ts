@@ -17,7 +17,7 @@ export const ALL_IFC_CATEGORIES = [
   'IfcBeam',
   'IfcSlab',
   'IfcPile',
-  'IfcSensor',
+  'IfcBuildingElementProxy',
   'IfcSpace',
   'IfcGrid',
   'IfcBuildingStorey',
@@ -36,7 +36,7 @@ export const IFC_CATEGORY_LABELS: Record<string, string> = {
   IfcBeam: 'Beams',
   IfcSlab: 'Slabs',
   IfcPile: 'Piles',
-  IfcSensor: 'CPT Sensors',
+  IfcBuildingElementProxy: 'Proxy Elements',
   IfcSpace: 'Spaces',
   IfcGrid: 'Gridlines',
   IfcBuildingStorey: 'Levels',
@@ -57,12 +57,12 @@ export function getIfcCategory(shape: Shape): string {
     }
     case 'slab': return 'IfcSlab';
     case 'pile': return 'IfcPile';
-    case 'cpt': return 'IfcSensor';
+    case 'cpt': return 'IfcBuildingElementProxy';
+    case 'puntniveau': return 'IfcBuildingElementProxy';
     case 'gridline': return 'IfcGrid';
     case 'level': return 'IfcBuildingStorey';
     case 'space': return 'IfcSpace';
     case 'plate-system': return 'IfcPlateSystem';
-    case 'puntniveau':
     case 'line':
     case 'arc':
     case 'circle':

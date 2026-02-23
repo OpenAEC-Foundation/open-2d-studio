@@ -63,6 +63,9 @@ export function useGlobalKeyboard() {
     cancelViewportDrag,
     selectViewport,
     deselectAll,
+    // Wall sub-element selection
+    selectedWallSubElement,
+    clearWallSubElement,
     // Terminal
     toggleTerminal,
   } = useAppStore();
@@ -294,6 +297,10 @@ export function useGlobalKeyboard() {
           } else if (boundaryEditState.isSelected) {
             e.preventDefault();
             deselectBoundary();
+          } else if (selectedWallSubElement) {
+            // Clear wall sub-element selection before deselecting the wall itself
+            e.preventDefault();
+            clearWallSubElement();
           } else if (selectedShapeIds.length > 0) {
             e.preventDefault();
             deselectAll();
@@ -310,5 +317,5 @@ export function useGlobalKeyboard() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [handleNew, handleOpen, handleSave, handleSaveAs, undo, redo, deleteSelectedShapes, selectedShapeIds, boundaryEditState, cancelBoundaryDrag, deselectBoundary, editorMode, viewportEditState, cancelViewportDrag, selectViewport, deselectAll, toggleTerminal]);
+  }, [handleNew, handleOpen, handleSave, handleSaveAs, undo, redo, deleteSelectedShapes, selectedShapeIds, boundaryEditState, cancelBoundaryDrag, deselectBoundary, editorMode, viewportEditState, cancelViewportDrag, selectViewport, deselectAll, toggleTerminal, selectedWallSubElement, clearWallSubElement]);
 }

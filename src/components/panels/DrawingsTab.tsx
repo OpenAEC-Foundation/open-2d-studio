@@ -22,7 +22,6 @@ export function DrawingsTab() {
     startDrawingPlacement,
     isPlacing,
     placingDrawingId,
-    updateDrawingType,
   } = useAppStore();
 
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -79,19 +78,8 @@ export function DrawingsTab() {
     setShowNewDrawingMenu(false);
   };
 
-  // Handle changing a drawing's type
-  const handleTypeChange = (drawingId: string, newType: DrawingType) => {
-    updateDrawingType(drawingId, newType);
-  };
-
   // Check if we can place drawings (only in sheet mode)
   const canPlace = editorMode === 'sheet';
-
-  // Get the badge config for a drawing based on its type
-  const getBadgeConfig = (drawing: typeof drawings[0]) => {
-    const drawingType = drawing.drawingType || 'standalone';
-    return DRAWING_TYPE_CONFIG[drawingType];
-  };
 
   return (
     <div className="flex flex-col h-full">
@@ -131,8 +119,6 @@ export function DrawingsTab() {
       <div className="flex-1 overflow-auto p-2">
         <div className="space-y-1">
           {drawings.map((drawing) => {
-            const drawingType = drawing.drawingType || 'standalone';
-            const badgeCfg = getBadgeConfig(drawing);
             const isActive = drawing.id === activeDrawingId && editorMode === 'drawing';
 
             return (
@@ -146,7 +132,7 @@ export function DrawingsTab() {
                       : 'hover:bg-cad-border/50 border border-transparent'
                   }`}
                   onClick={() => switchToDrawing(drawing.id)}
-                  onDoubleClick={() => handleStartEdit(drawing.id, drawing.name)}
+                  onDoubleClick={() => switchToDrawing(drawing.id)}
                 >
                   {editingId === drawing.id ? (
                     <>
@@ -182,36 +168,10 @@ export function DrawingsTab() {
                     </>
                   ) : (
                     <>
-                      {/* Drawing type badge */}
-                      <span
-                        className={`text-[9px] font-medium px-1 rounded shrink-0 ${badgeCfg.color}`}
-                        title={badgeCfg.title}
-                      >
-                        {badgeCfg.abbr}
-                      </span>
-
                       {/* Drawing name */}
                       <span className="flex-1 text-xs text-cad-text truncate">
                         {drawing.name}
                       </span>
-
-                      {/* Drawing type selector (visible on hover for active drawing) */}
-                      {isActive && (
-                        <select
-                          value={drawingType}
-                          onChange={(e) => {
-                            e.stopPropagation();
-                            handleTypeChange(drawing.id, e.target.value as DrawingType);
-                          }}
-                          onClick={(e) => e.stopPropagation()}
-                          className="opacity-0 group-hover:opacity-100 bg-cad-bg border border-cad-border rounded text-[10px] text-cad-text px-0.5 py-0 transition-all cursor-default"
-                          title="Drawing type"
-                        >
-                          <option value="standalone">Stand Alone</option>
-                          <option value="plan">Plan</option>
-                          <option value="section">Section</option>
-                        </select>
-                      )}
 
                       {/* Place on Sheet button (visible in sheet mode) */}
                       {canPlace && (

@@ -3,7 +3,8 @@
  */
 
 import type { Shape, DrawingPreview, CurrentStyle, Viewport } from '../types';
-import type { HatchShape, HatchPatternType, BeamShape, ImageShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, WallShape, SlabShape, WallType, SectionCalloutShape, SpaceShape, PlateSystemShape, SpotElevationShape, CPTShape, FoundationZoneShape } from '../../../types/geometry';
+import type { HatchShape, HatchPatternType, BeamShape, ImageShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, WallShape, SlabShape, WallType, WallSystemType, SectionCalloutShape, SpaceShape, PlateSystemShape, SpotElevationShape, CPTShape, FoundationZoneShape } from '../../../types/geometry';
+import { generateWallSystemGrid, calculateLayerOffsets } from '../../../services/wallSystem/wallSystemService';
 import type { CustomHatchPattern, LineFamily, SvgHatchPattern, MaterialHatchSettings } from '../../../types/hatch';
 import { BUILTIN_PATTERNS, isSvgHatchPattern, DEFAULT_MATERIAL_HATCH_SETTINGS } from '../../../types/hatch';
 import { BaseRenderer } from './BaseRenderer';
@@ -40,6 +41,10 @@ export class ShapeRenderer extends BaseRenderer {
   private imageCache: Map<string, HTMLImageElement> = new Map();
   // Wall types for material-based hatch lookup
   private wallTypes: WallType[] = [];
+  // Wall system types (multi-layered assemblies)
+  private wallSystemTypes: WallSystemType[] = [];
+  // Currently selected wall sub-element for highlighting
+  private selectedWallSubElement: { wallId: string; type: 'stud' | 'panel'; key: string } | null = null;
   // Material hatch settings from Drawing Standards
   private materialHatchSettings: MaterialHatchSettings = { ...DEFAULT_MATERIAL_HATCH_SETTINGS };
   // Gridline extension distance in mm (distance beyond start/end before the bubble)
@@ -131,6 +136,20 @@ export class ShapeRenderer extends BaseRenderer {
    */
   setWallTypes(wallTypes: WallType[]): void {
     this.wallTypes = wallTypes;
+  }
+
+  /**
+   * Set wall system types for multi-layered wall rendering.
+   */
+  setWallSystemTypes(types: WallSystemType[]): void {
+    this.wallSystemTypes = types;
+  }
+
+  /**
+   * Set the currently selected wall sub-element for highlight rendering.
+   */
+  setSelectedWallSubElement(sel: { wallId: string; type: 'stud' | 'panel'; key: string } | null): void {
+    this.selectedWallSubElement = sel;
   }
 
   /**
@@ -757,6 +776,21 @@ export class ShapeRenderer extends BaseRenderer {
         break;
       }
 
+      case 'puntniveau': {
+        const pnSelShape = shape as PuntniveauShape;
+        const { points: pnSelPts } = pnSelShape;
+        if (pnSelPts.length < 3) break;
+        ctx.fillStyle = COLORS.selectionFill;
+        ctx.beginPath();
+        ctx.moveTo(pnSelPts[0].x, pnSelPts[0].y);
+        for (let i = 1; i < pnSelPts.length; i++) {
+          ctx.lineTo(pnSelPts[i].x, pnSelPts[i].y);
+        }
+        ctx.closePath();
+        ctx.fill();
+        break;
+      }
+
       case 'space': {
         const spaceShape = shape as SpaceShape;
         const { contourPoints } = spaceShape;
@@ -1293,7 +1327,8 @@ export class ShapeRenderer extends BaseRenderer {
       }
 
       case 'puntniveau': {
-        // Draw puntniveau preview: dashed polygon outline + label at centroid
+        // Draw puntniveau preview: dashed polygon outline only
+        // (Label is now a separate linked TextShape created when polygon is closed)
         const pnPts = preview.points;
         const pnCurrent = preview.currentPoint;
         const allPnPts = [...pnPts, pnCurrent];
@@ -1309,51 +1344,6 @@ export class ShapeRenderer extends BaseRenderer {
           ctx.lineTo(allPnPts[0].x, allPnPts[0].y);
           ctx.closePath();
           ctx.stroke();
-          ctx.restore();
-        }
-
-        // Boxed label at centroid (matches final puntniveau rendering)
-        if (allPnPts.length >= 3) {
-          const pnNAP = preview.puntniveauNAP;
-          let pnCx = 0, pnCy = 0;
-          for (const p of allPnPts) { pnCx += p.x; pnCy += p.y; }
-          pnCx /= allPnPts.length;
-          pnCy /= allPnPts.length;
-
-          const pnScaleFactor = LINE_DASH_REFERENCE_SCALE / this.drawingScale;
-          const pnFontSize = 300 * pnScaleFactor;
-          const pnNapFormatted = this.formatDutchNumber(pnNAP);
-          const pnLabel = `PUNTNIVEAU: ${pnNapFormatted} m N.A.P.`;
-
-          ctx.save();
-          ctx.font = `bold ${pnFontSize}px ${CAD_DEFAULT_FONT}`;
-          ctx.textAlign = 'center';
-          ctx.textBaseline = 'middle';
-
-          // Measure text for background box
-          const pnTextMetrics = ctx.measureText(pnLabel);
-          const pnTextW = pnTextMetrics.width;
-          const pnTextH = pnFontSize;
-          const pnPadH = pnFontSize * 0.5;
-          const pnPadV = pnFontSize * 0.35;
-          const pnBoxW = pnTextW + pnPadH * 2;
-          const pnBoxH = pnTextH + pnPadV * 2;
-          const pnBoxX = pnCx - pnBoxW / 2;
-          const pnBoxY = pnCy - pnBoxH / 2;
-
-          // Background
-          ctx.fillStyle = '#1a1a2e';
-          ctx.fillRect(pnBoxX, pnBoxY, pnBoxW, pnBoxH);
-
-          // Solid border
-          ctx.strokeStyle = strokeColor;
-          ctx.lineWidth = this.getLineWidth(0.5);
-          ctx.setLineDash([]);
-          ctx.strokeRect(pnBoxX, pnBoxY, pnBoxW, pnBoxH);
-
-          // Text
-          ctx.fillStyle = strokeColor;
-          ctx.fillText(pnLabel, pnCx, pnCy);
           ctx.restore();
         }
         break;
@@ -2898,6 +2888,15 @@ export class ShapeRenderer extends BaseRenderer {
       }
     }
 
+    // =========================================================================
+    // Span arrow rendering (overspanningspijl) for slab labels
+    // Draws a double-headed arrow with text centered in the middle.
+    // =========================================================================
+    if (shape.spanArrow && shape.spanDirection !== undefined && shape.spanLength) {
+      this.drawSpanArrow(shape, text, invertColors);
+      return;
+    }
+
     ctx.save();
 
     // Apply rotation around position
@@ -3057,6 +3056,18 @@ export class ShapeRenderer extends BaseRenderer {
       }
       ctx.fillStyle = bgColor;
       ctx.fillRect(bgX, bgY, bgWidth, bgHeight);
+
+      // Draw border if showBorder is enabled
+      if (shape.showBorder) {
+        let borderStroke = shape.borderColor || textColor;
+        if (invertColors && borderStroke === '#ffffff') {
+          borderStroke = '#000000';
+        }
+        ctx.strokeStyle = borderStroke;
+        ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 0.8;
+        ctx.setLineDash([]);
+        ctx.strokeRect(bgX, bgY, bgWidth, bgHeight);
+      }
 
       // Reset fill style for text
       ctx.fillStyle = textColor;
@@ -3332,6 +3343,144 @@ export class ShapeRenderer extends BaseRenderer {
     if (isSelected) {
       this.drawTextSelectionBox(shape);
     }
+  }
+
+  /**
+   * Draw a span arrow (overspanningspijl) for slab labels.
+   * Renders a double-headed arrow with the label text centered on it.
+   * The arrow is oriented along the slab's span direction (shorter dimension).
+   */
+  private drawSpanArrow(shape: Shape & { type: 'text' }, text: string, invertColors: boolean): void {
+    const ctx = this.ctx;
+    const {
+      position,
+      fontSize,
+      fontFamily,
+      bold,
+      italic,
+      color,
+      isModelText = false,
+      backgroundMask = false,
+      backgroundColor = '#1a1a2e',
+      backgroundPadding = 0.5,
+      textCase = 'none',
+      widthFactor = 1,
+      spanDirection = 0,
+      spanLength = 500,
+    } = shape;
+
+    // Effective font size (same logic as drawText)
+    const effectiveFontSize = isModelText
+      ? fontSize
+      : fontSize / this.drawingScale;
+
+    // Resolve text color
+    let textColor = color || shape.style.strokeColor;
+    if (invertColors && textColor === '#ffffff') {
+      textColor = '#000000';
+    }
+
+    // Apply text case
+    let displayText = text;
+    switch (textCase) {
+      case 'uppercase': displayText = text.toUpperCase(); break;
+      case 'lowercase': displayText = text.toLowerCase(); break;
+      case 'capitalize': displayText = text.replace(/\b\w/g, c => c.toUpperCase()); break;
+    }
+
+    ctx.save();
+
+    // Translate to position and rotate to span direction
+    ctx.translate(position.x, position.y);
+    ctx.rotate(spanDirection);
+
+    // Set font for text measurement
+    const fontStyle = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}`;
+    ctx.font = `${fontStyle}${effectiveFontSize}px ${fontFamily}`;
+
+    // Measure text width
+    const textMetrics = ctx.measureText(displayText);
+    const textWidth = textMetrics.width * widthFactor;
+
+    // Arrow extends from -halfLen to +halfLen along the local X axis
+    const halfLen = spanLength / 2;
+
+    // Arrowhead dimensions (proportional to font size)
+    const arrowHeadLength = effectiveFontSize * 1.2;
+    const arrowHeadWidth = effectiveFontSize * 0.6;
+
+    // Line weight for the arrow
+    const arrowLineWidth = this.getLineWidth(shape.style.strokeWidth) * 1.2;
+
+    // Gap around text (padding on each side)
+    const textGap = effectiveFontSize * 0.6;
+    const halfTextZone = textWidth / 2 + textGap;
+
+    // Draw the arrow line (two segments with a gap for text)
+    ctx.strokeStyle = textColor;
+    ctx.lineWidth = arrowLineWidth;
+    ctx.setLineDash([]);
+
+    // Left segment: from left arrowhead tip to the text gap
+    const leftLineStart = -halfLen + arrowHeadLength;
+    const leftLineEnd = -halfTextZone;
+    if (leftLineStart < leftLineEnd) {
+      ctx.beginPath();
+      ctx.moveTo(leftLineStart, 0);
+      ctx.lineTo(leftLineEnd, 0);
+      ctx.stroke();
+    }
+
+    // Right segment: from text gap to right arrowhead tip
+    const rightLineStart = halfTextZone;
+    const rightLineEnd = halfLen - arrowHeadLength;
+    if (rightLineStart < rightLineEnd) {
+      ctx.beginPath();
+      ctx.moveTo(rightLineStart, 0);
+      ctx.lineTo(rightLineEnd, 0);
+      ctx.stroke();
+    }
+
+    // Draw left arrowhead (pointing left, at -halfLen)
+    ctx.fillStyle = textColor;
+    ctx.beginPath();
+    ctx.moveTo(-halfLen, 0);
+    ctx.lineTo(-halfLen + arrowHeadLength, -arrowHeadWidth);
+    ctx.lineTo(-halfLen + arrowHeadLength, arrowHeadWidth);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw right arrowhead (pointing right, at +halfLen)
+    ctx.beginPath();
+    ctx.moveTo(halfLen, 0);
+    ctx.lineTo(halfLen - arrowHeadLength, -arrowHeadWidth);
+    ctx.lineTo(halfLen - arrowHeadLength, arrowHeadWidth);
+    ctx.closePath();
+    ctx.fill();
+
+    // Draw background behind text if enabled
+    if (backgroundMask) {
+      const padding = backgroundPadding * (isModelText ? 1 : (1 / this.drawingScale));
+      let bgColor = backgroundColor;
+      if (invertColors && bgColor === '#1a1a2e') {
+        bgColor = '#ffffff';
+      }
+      ctx.fillStyle = bgColor;
+      ctx.fillRect(
+        -textWidth / 2 - padding,
+        -effectiveFontSize / 2 - padding,
+        textWidth + padding * 2,
+        effectiveFontSize + padding * 2
+      );
+    }
+
+    // Draw centered text
+    ctx.fillStyle = textColor;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(displayText, 0, 0);
+
+    ctx.restore();
   }
 
   private drawTextSelectionBox(shape: Shape): void {
@@ -4096,9 +4245,19 @@ export class ShapeRenderer extends BaseRenderer {
           shape.end,
           { x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 },
         ];
-      case 'slab':
-        // Slab handles: all polygon vertices
-        return [...(shape as SlabShape).points];
+      case 'slab': {
+        // Slab handles: all polygon vertices + edge midpoints
+        const slabS = shape as SlabShape;
+        const slabHandles: { x: number; y: number }[] = [...slabS.points];
+        for (let i = 0; i < slabS.points.length; i++) {
+          const j = (i + 1) % slabS.points.length;
+          slabHandles.push({
+            x: (slabS.points[i].x + slabS.points[j].x) / 2,
+            y: (slabS.points[i].y + slabS.points[j].y) / 2,
+          });
+        }
+        return slabHandles;
+      }
       case 'plate-system': {
         // Plate system handles: contour vertices + edge/arc midpoints
         const psS = shape as PlateSystemShape;
@@ -4936,30 +5095,13 @@ export class ShapeRenderer extends BaseRenderer {
   }
 
   /**
-   * Format a number using Dutch locale (comma as decimal separator).
-   * Removes trailing zeros after the comma for clean display.
-   * Examples: -18.5 -> "-18,5", 12.0 -> "12", -3.25 -> "-3,25"
-   */
-  private formatDutchNumber(value: number): string {
-    // Format with up to 2 decimal places, then replace dot with comma
-    const formatted = value.toFixed(2);
-    // Remove trailing zeros after decimal point, and the dot itself if no decimals remain
-    const cleaned = formatted.replace(/\.?0+$/, '');
-    return cleaned.replace('.', ',');
-  }
-
-  /**
    * Draw a puntniveau shape (pile tip level zone: closed dashed polygon with elevation label)
    */
   private drawPuntniveau(shape: PuntniveauShape, invertColors: boolean = false): void {
     const ctx = this.ctx;
-    const { points, puntniveauNAP } = shape;
+    const { points } = shape;
 
     if (points.length < 3) return;
-
-    // Scale text so it appears at constant paper size across drawing scales
-    const scaleFactor = LINE_DASH_REFERENCE_SCALE / this.drawingScale;
-    const fontSize = shape.fontSize * scaleFactor;
 
     let strokeColor = shape.style.strokeColor;
     if (invertColors && strokeColor === '#ffffff') {
@@ -4967,6 +5109,7 @@ export class ShapeRenderer extends BaseRenderer {
     }
 
     // Draw closed polygon outline with dashed line, 0.50mm stroke width
+    // (Label is now a separate linked TextShape — not rendered here)
     ctx.save();
     ctx.strokeStyle = strokeColor;
     ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth);
@@ -4978,54 +5121,6 @@ export class ShapeRenderer extends BaseRenderer {
     }
     ctx.closePath();
     ctx.stroke();
-    ctx.restore();
-
-    // --- Puntniveau Label (boxed text annotation) ---
-    const napFormatted = this.formatDutchNumber(puntniveauNAP);
-    const label = `PUNTNIVEAU: ${napFormatted} m N.A.P.`;
-
-    // Label position: use custom labelPosition if set, otherwise centroid
-    let cx: number, cy: number;
-    if (shape.labelPosition) {
-      cx = shape.labelPosition.x;
-      cy = shape.labelPosition.y;
-    } else {
-      cx = 0; cy = 0;
-      for (const p of points) { cx += p.x; cy += p.y; }
-      cx /= points.length;
-      cy /= points.length;
-    }
-
-    ctx.save();
-    ctx.font = `bold ${fontSize}px ${CAD_DEFAULT_FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-
-    // Measure text for the background box
-    const textMetrics = ctx.measureText(label);
-    const textWidth = textMetrics.width;
-    const textHeight = fontSize;
-    const paddingH = fontSize * 0.5;  // Horizontal padding
-    const paddingV = fontSize * 0.35; // Vertical padding
-    const boxWidth = textWidth + paddingH * 2;
-    const boxHeight = textHeight + paddingV * 2;
-    const boxX = cx - boxWidth / 2;
-    const boxY = cy - boxHeight / 2;
-    const borderWidth = this.getLineWidth(shape.style.strokeWidth) * 0.8;
-
-    // Draw white/light background rectangle (opaque, so label is readable)
-    ctx.fillStyle = invertColors ? '#ffffff' : '#1a1a2e';
-    ctx.fillRect(boxX, boxY, boxWidth, boxHeight);
-
-    // Draw solid border around the label box
-    ctx.strokeStyle = strokeColor;
-    ctx.lineWidth = borderWidth;
-    ctx.setLineDash([]); // Solid border (not dashed like the contour)
-    ctx.strokeRect(boxX, boxY, boxWidth, boxHeight);
-
-    // Draw the label text
-    ctx.fillStyle = strokeColor;
-    ctx.fillText(label, cx, cy);
     ctx.restore();
   }
 
@@ -5248,10 +5343,6 @@ export class ShapeRenderer extends BaseRenderer {
       const toRad = (d: number) => (d * Math.PI) / 180;
       const x1 = cx + R * Math.cos(toRad(startDeg));
       const y1 = cy + R * Math.sin(toRad(startDeg));
-      const x2 = cx + R * Math.cos(toRad(endDeg));
-      const y2 = cy + R * Math.sin(toRad(endDeg));
-      const sweep = endDeg - startDeg;
-      const largeArc = Math.abs(sweep) > 180;
       ctx.moveTo(cx, cy);
       ctx.lineTo(x1, y1);
       ctx.arc(cx, cy, R, toRad(startDeg), toRad(endDeg), false);
@@ -5627,46 +5718,39 @@ export class ShapeRenderer extends BaseRenderer {
 
     // --- Miter at start ---
     if (startCap === 'miter' && startMiterAngle !== undefined) {
-      // The other wall's direction (away from intersection, i.e. from intersection outward)
+      // Compute miter corners by intersecting wall edges with the miter line.
+      // The miter line passes through the junction along the bisector of the
+      // two wall directions pointing AWAY from the junction.
+      //
+      // At the start endpoint, the wall direction (start->end) already points
+      // away from the junction, so we use (dirX, dirY) as-is.
       const otherDirX = Math.cos(startMiterAngle);
       const otherDirY = Math.sin(startMiterAngle);
-      // Other wall's perpendicular offset (use halfThick as we don't know the other wall's justification)
-      const otherPerpX = Math.sin(startMiterAngle) * halfThick;
-      const otherPerpY = Math.cos(startMiterAngle) * halfThick;
 
-      // The intersection point is `start` (the centerline already meets there).
-      const otherLeftBase = { x: start.x + otherPerpX, y: start.y - otherPerpY };
-      const otherRightBase = { x: start.x - otherPerpX, y: start.y + otherPerpY };
+      // Bisector of wall direction and other wall direction (both pointing away from junction)
+      const bisX = dirX + otherDirX;
+      const bisY = dirY + otherDirY;
+      const bisLen = Math.hypot(bisX, bisY);
 
-      const wallDir = { x: dirX, y: dirY };
-      const otherDir = { x: otherDirX, y: otherDirY };
+      if (bisLen > 1e-10) {
+        // Miter line direction = along the bisector (splits the angle equally)
+        const miterDir = { x: bisX / bisLen, y: bisY / bisLen };
+        const wallDir = { x: dirX, y: dirY };
 
-      // Intersect our left edge with both of the other wall's edges; pick the nearest.
-      const leftWithOtherLeft = ShapeRenderer.lineIntersection(startLeft, wallDir, otherLeftBase, otherDir);
-      const leftWithOtherRight = ShapeRenderer.lineIntersection(startLeft, wallDir, otherRightBase, otherDir);
+        const leftInt = ShapeRenderer.lineIntersection(startLeft, wallDir, start, miterDir);
+        const rightInt = ShapeRenderer.lineIntersection(startRight, wallDir, start, miterDir);
 
-      if (leftWithOtherLeft && leftWithOtherRight) {
-        const dLL = Math.hypot(leftWithOtherLeft.x - start.x, leftWithOtherLeft.y - start.y);
-        const dLR = Math.hypot(leftWithOtherRight.x - start.x, leftWithOtherRight.y - start.y);
-        startLeft = dLL < dLR ? leftWithOtherLeft : leftWithOtherRight;
-      } else if (leftWithOtherLeft) {
-        startLeft = leftWithOtherLeft;
-      } else if (leftWithOtherRight) {
-        startLeft = leftWithOtherRight;
-      }
-
-      // Intersect our right edge with both of the other wall's edges; pick the nearest.
-      const rightWithOtherLeft = ShapeRenderer.lineIntersection(startRight, wallDir, otherLeftBase, otherDir);
-      const rightWithOtherRight = ShapeRenderer.lineIntersection(startRight, wallDir, otherRightBase, otherDir);
-
-      if (rightWithOtherLeft && rightWithOtherRight) {
-        const dRL = Math.hypot(rightWithOtherLeft.x - start.x, rightWithOtherLeft.y - start.y);
-        const dRR = Math.hypot(rightWithOtherRight.x - start.x, rightWithOtherRight.y - start.y);
-        startRight = dRL < dRR ? rightWithOtherLeft : rightWithOtherRight;
-      } else if (rightWithOtherLeft) {
-        startRight = rightWithOtherLeft;
-      } else if (rightWithOtherRight) {
-        startRight = rightWithOtherRight;
+        // Miter limit: cap extension to 3x wall thickness to prevent extreme
+        // spikes at very acute angles.
+        const maxExt = thickness * 3;
+        if (leftInt) {
+          const dist = Math.hypot(leftInt.x - startLeft.x, leftInt.y - startLeft.y);
+          if (dist < maxExt) startLeft = leftInt;
+        }
+        if (rightInt) {
+          const dist = Math.hypot(rightInt.x - startRight.x, rightInt.y - startRight.y);
+          if (dist < maxExt) startRight = rightInt;
+        }
       }
     }
 
@@ -5674,41 +5758,36 @@ export class ShapeRenderer extends BaseRenderer {
     if (endCap === 'miter' && endMiterAngle !== undefined) {
       const otherDirX = Math.cos(endMiterAngle);
       const otherDirY = Math.sin(endMiterAngle);
-      const otherPerpX = Math.sin(endMiterAngle) * halfThick;
-      const otherPerpY = Math.cos(endMiterAngle) * halfThick;
 
-      const otherLeftBase = { x: end.x + otherPerpX, y: end.y - otherPerpY };
-      const otherRightBase = { x: end.x - otherPerpX, y: end.y + otherPerpY };
+      // At the end endpoint, the wall direction (start->end) points TOWARD the
+      // junction. We need the direction pointing AWAY from the junction, which
+      // is the reverse: (-dirX, -dirY).
+      const awayDirX = -dirX;
+      const awayDirY = -dirY;
 
-      const wallDir = { x: dirX, y: dirY };
-      const otherDir = { x: otherDirX, y: otherDirY };
+      // Bisector of this wall's away direction and other wall's away direction
+      const bisX = awayDirX + otherDirX;
+      const bisY = awayDirY + otherDirY;
+      const bisLen = Math.hypot(bisX, bisY);
 
-      // Our left edge at end
-      const leftWithOtherLeft = ShapeRenderer.lineIntersection(endLeft, wallDir, otherLeftBase, otherDir);
-      const leftWithOtherRight = ShapeRenderer.lineIntersection(endLeft, wallDir, otherRightBase, otherDir);
+      if (bisLen > 1e-10) {
+        // Miter line direction = along the bisector (splits the angle equally)
+        const miterDir = { x: bisX / bisLen, y: bisY / bisLen };
+        const wallDir = { x: dirX, y: dirY };
 
-      if (leftWithOtherLeft && leftWithOtherRight) {
-        const dLL = Math.hypot(leftWithOtherLeft.x - end.x, leftWithOtherLeft.y - end.y);
-        const dLR = Math.hypot(leftWithOtherRight.x - end.x, leftWithOtherRight.y - end.y);
-        endLeft = dLL < dLR ? leftWithOtherLeft : leftWithOtherRight;
-      } else if (leftWithOtherLeft) {
-        endLeft = leftWithOtherLeft;
-      } else if (leftWithOtherRight) {
-        endLeft = leftWithOtherRight;
-      }
+        const leftInt = ShapeRenderer.lineIntersection(endLeft, wallDir, end, miterDir);
+        const rightInt = ShapeRenderer.lineIntersection(endRight, wallDir, end, miterDir);
 
-      // Our right edge at end
-      const rightWithOtherLeft = ShapeRenderer.lineIntersection(endRight, wallDir, otherLeftBase, otherDir);
-      const rightWithOtherRight = ShapeRenderer.lineIntersection(endRight, wallDir, otherRightBase, otherDir);
-
-      if (rightWithOtherLeft && rightWithOtherRight) {
-        const dRL = Math.hypot(rightWithOtherLeft.x - end.x, rightWithOtherLeft.y - end.y);
-        const dRR = Math.hypot(rightWithOtherRight.x - end.x, rightWithOtherRight.y - end.y);
-        endRight = dRL < dRR ? rightWithOtherLeft : rightWithOtherRight;
-      } else if (rightWithOtherLeft) {
-        endRight = rightWithOtherLeft;
-      } else if (rightWithOtherRight) {
-        endRight = rightWithOtherRight;
+        // Miter limit: cap extension to 3x wall thickness
+        const maxExt = thickness * 3;
+        if (leftInt) {
+          const dist = Math.hypot(leftInt.x - endLeft.x, leftInt.y - endLeft.y);
+          if (dist < maxExt) endLeft = leftInt;
+        }
+        if (rightInt) {
+          const dist = Math.hypot(rightInt.x - endRight.x, rightInt.y - endRight.y);
+          if (dist < maxExt) endRight = rightInt;
+        }
       }
     }
 
@@ -5744,31 +5823,65 @@ export class ShapeRenderer extends BaseRenderer {
     let endRight   = { x: end.x - perpX,   y: end.y + perpY };
 
     // --- Miter at start ---
-    // Simple cut-line approach: a single line through `start` at `startMiterAngle`
-    // is intersected with the beam's left and right edge lines.
+    // Bisector-based miter: same algorithm as computeWallCorners.
+    // At the start, the beam direction (dirX, dirY) points away from the junction.
     if (startCap === 'miter' && startMiterAngle !== undefined) {
-      const cutDir = { x: Math.cos(startMiterAngle), y: Math.sin(startMiterAngle) };
-      const beamDir = { x: dirX, y: dirY };
+      const otherDirX = Math.cos(startMiterAngle);
+      const otherDirY = Math.sin(startMiterAngle);
 
-      const newStartLeft = ShapeRenderer.lineIntersection(startLeft, beamDir, start, cutDir);
-      const newStartRight = ShapeRenderer.lineIntersection(startRight, beamDir, start, cutDir);
+      const bisX = dirX + otherDirX;
+      const bisY = dirY + otherDirY;
+      const bisLen = Math.hypot(bisX, bisY);
 
-      if (newStartLeft) startLeft = newStartLeft;
-      if (newStartRight) startRight = newStartRight;
+      if (bisLen > 1e-10) {
+        const miterDir = { x: bisX / bisLen, y: bisY / bisLen };
+        const beamDir = { x: dirX, y: dirY };
+
+        const newStartLeft = ShapeRenderer.lineIntersection(startLeft, beamDir, start, miterDir);
+        const newStartRight = ShapeRenderer.lineIntersection(startRight, beamDir, start, miterDir);
+
+        const maxExt = flangeWidth * 3;
+        if (newStartLeft) {
+          const dist = Math.hypot(newStartLeft.x - startLeft.x, newStartLeft.y - startLeft.y);
+          if (dist < maxExt) startLeft = newStartLeft;
+        }
+        if (newStartRight) {
+          const dist = Math.hypot(newStartRight.x - startRight.x, newStartRight.y - startRight.y);
+          if (dist < maxExt) startRight = newStartRight;
+        }
+      }
     }
 
     // --- Miter at end ---
-    // Simple cut-line approach: a single line through `end` at `endMiterAngle`
-    // is intersected with the beam's left and right edge lines.
+    // At the end, the beam direction points TOWARD the junction, so negate it.
     if (endCap === 'miter' && endMiterAngle !== undefined) {
-      const cutDir = { x: Math.cos(endMiterAngle), y: Math.sin(endMiterAngle) };
-      const beamDir = { x: dirX, y: dirY };
+      const otherDirX = Math.cos(endMiterAngle);
+      const otherDirY = Math.sin(endMiterAngle);
 
-      const newEndLeft = ShapeRenderer.lineIntersection(endLeft, beamDir, end, cutDir);
-      const newEndRight = ShapeRenderer.lineIntersection(endRight, beamDir, end, cutDir);
+      const awayDirX = -dirX;
+      const awayDirY = -dirY;
 
-      if (newEndLeft) endLeft = newEndLeft;
-      if (newEndRight) endRight = newEndRight;
+      const bisX = awayDirX + otherDirX;
+      const bisY = awayDirY + otherDirY;
+      const bisLen = Math.hypot(bisX, bisY);
+
+      if (bisLen > 1e-10) {
+        const miterDir = { x: bisX / bisLen, y: bisY / bisLen };
+        const beamDir = { x: dirX, y: dirY };
+
+        const newEndLeft = ShapeRenderer.lineIntersection(endLeft, beamDir, end, miterDir);
+        const newEndRight = ShapeRenderer.lineIntersection(endRight, beamDir, end, miterDir);
+
+        const maxExt = flangeWidth * 3;
+        if (newEndLeft) {
+          const dist = Math.hypot(newEndLeft.x - endLeft.x, newEndLeft.y - endLeft.y);
+          if (dist < maxExt) endLeft = newEndLeft;
+        }
+        if (newEndRight) {
+          const dist = Math.hypot(newEndRight.x - endRight.x, newEndRight.y - endRight.y);
+          if (dist < maxExt) endRight = newEndRight;
+        }
+      }
     }
 
     return [startLeft, endLeft, endRight, startRight];
@@ -5782,6 +5895,15 @@ export class ShapeRenderer extends BaseRenderer {
     if (shape.bulge && Math.abs(shape.bulge) > 0.0001) {
       this.drawArcWall(shape, invertColors);
       return;
+    }
+
+    // Wall System rendering: if the wall has a wallSystemId, render multi-layer view
+    if (shape.wallSystemId) {
+      const wallSystem = this.wallSystemTypes.find(ws => ws.id === shape.wallSystemId);
+      if (wallSystem) {
+        this.drawWallSystem(shape, wallSystem, invertColors);
+        return;
+      }
     }
 
     const ctx = this.ctx;
@@ -6176,6 +6298,247 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.lineWidth = origLineWidth * 0.5;
       ctx.beginPath();
       ctx.arc(center.x, center.y, radius, startAngle, endAngle, clockwise);
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Draw a wall with a multi-layered wall system (HSB, metal stud, curtain wall, etc.)
+   * Shows layers as parallel lines with different colors and studs as rectangles.
+   */
+  private drawWallSystem(shape: WallShape, system: WallSystemType, invertColors: boolean = false): void {
+    const ctx = this.ctx;
+    const { start, end, showCenterline } = shape;
+
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const wallAngle = Math.atan2(dy, dx);
+    const wallLength = Math.sqrt(dx * dx + dy * dy);
+
+    // Perpendicular direction (left side when looking from start to end)
+    const perpX = Math.sin(wallAngle);
+    const perpY = -Math.cos(wallAngle);
+
+    // Direction along wall
+    const dirX = Math.cos(wallAngle);
+    const dirY = Math.sin(wallAngle);
+
+    // Calculate layer offsets from centerline
+    const layers = calculateLayerOffsets(system);
+    const totalThickness = layers.reduce((sum, l) => sum + l.thickness, 0);
+    const halfTotal = totalThickness / 2;
+
+    const strokeWidth = ctx.lineWidth;
+
+    // --- Draw layers as colored bands ---
+    let accumulatedOffset = -halfTotal;
+    for (const layer of layers) {
+      const layerStart = accumulatedOffset;
+      const layerEnd = accumulatedOffset + layer.thickness;
+      accumulatedOffset = layerEnd;
+
+      // Skip very thin layers (membranes) at low zoom
+      if (layer.thickness < 1 && this._currentZoom < 0.5) continue;
+
+      // Four corners of this layer band
+      const sl = { x: start.x + perpX * layerStart, y: start.y + perpY * layerStart };
+      const sr = { x: start.x + perpX * layerEnd, y: start.y + perpY * layerEnd };
+      const el = { x: end.x + perpX * layerStart, y: end.y + perpY * layerStart };
+      const er = { x: end.x + perpX * layerEnd, y: end.y + perpY * layerEnd };
+
+      // Fill layer
+      ctx.save();
+      ctx.fillStyle = invertColors ? '#ffffff' : layer.color;
+      ctx.globalAlpha = layer.function === 'air-gap' ? 0.15 : 0.5;
+      ctx.beginPath();
+      ctx.moveTo(sl.x, sl.y);
+      ctx.lineTo(el.x, el.y);
+      ctx.lineTo(er.x, er.y);
+      ctx.lineTo(sr.x, sr.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+      ctx.restore();
+
+      // Stroke layer boundary lines
+      ctx.beginPath();
+      ctx.moveTo(sl.x, sl.y);
+      ctx.lineTo(el.x, el.y);
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.moveTo(sr.x, sr.y);
+      ctx.lineTo(er.x, er.y);
+      ctx.stroke();
+    }
+
+    // --- Draw end caps ---
+    const outerStart1 = { x: start.x + perpX * (-halfTotal), y: start.y + perpY * (-halfTotal) };
+    const outerStart2 = { x: start.x + perpX * halfTotal, y: start.y + perpY * halfTotal };
+    const outerEnd1 = { x: end.x + perpX * (-halfTotal), y: end.y + perpY * (-halfTotal) };
+    const outerEnd2 = { x: end.x + perpX * halfTotal, y: end.y + perpY * halfTotal };
+
+    if (shape.startCap !== 'miter') {
+      ctx.beginPath();
+      ctx.moveTo(outerStart1.x, outerStart1.y);
+      ctx.lineTo(outerStart2.x, outerStart2.y);
+      ctx.stroke();
+    }
+    if (shape.endCap !== 'miter') {
+      ctx.beginPath();
+      ctx.moveTo(outerEnd1.x, outerEnd1.y);
+      ctx.lineTo(outerEnd2.x, outerEnd2.y);
+      ctx.stroke();
+    }
+
+    // --- Draw studs at grid positions ---
+    const gridData = generateWallSystemGrid(shape, system);
+
+    // Find the structural layer for stud placement
+    const structuralLayer = layers.find(l => l.function === 'structure');
+    const structStart = structuralLayer ? structuralLayer.offset - structuralLayer.thickness / 2 : -halfTotal;
+    const structEnd = structuralLayer ? structuralLayer.offset + structuralLayer.thickness / 2 : halfTotal;
+
+    for (const studPos of gridData.studs) {
+      // Skip studs at the very start and end (they're the wall end caps)
+      if (studPos.positionAlongWall <= 0 || studPos.positionAlongWall >= wallLength) continue;
+
+      const stud = studPos.stud;
+      const halfW = stud.width / 2;
+
+      // Stud rectangle: along wall = studWidth, perpendicular = stud depth within structural layer
+      const cx = studPos.worldPosition.x;
+      const cy = studPos.worldPosition.y;
+
+      // Determine perpendicular extent (stud spans the structural layer)
+      const studPerpStart = structStart;
+      const studPerpEnd = structEnd;
+
+      const c1 = { x: cx - dirX * halfW + perpX * studPerpStart, y: cy - dirY * halfW + perpY * studPerpStart };
+      const c2 = { x: cx + dirX * halfW + perpX * studPerpStart, y: cy + dirY * halfW + perpY * studPerpStart };
+      const c3 = { x: cx + dirX * halfW + perpX * studPerpEnd, y: cy + dirY * halfW + perpY * studPerpEnd };
+      const c4 = { x: cx - dirX * halfW + perpX * studPerpEnd, y: cy - dirY * halfW + perpY * studPerpEnd };
+
+      // Check if this stud is the selected sub-element
+      const isSelected = this.selectedWallSubElement?.wallId === shape.id
+        && this.selectedWallSubElement?.type === 'stud'
+        && this.selectedWallSubElement?.key === studPos.key;
+
+      ctx.save();
+      ctx.fillStyle = isSelected ? '#00ff88' : (invertColors ? '#333333' : stud.color);
+      ctx.globalAlpha = isSelected ? 0.7 : 0.6;
+      ctx.beginPath();
+      ctx.moveTo(c1.x, c1.y);
+      ctx.lineTo(c2.x, c2.y);
+      ctx.lineTo(c3.x, c3.y);
+      ctx.lineTo(c4.x, c4.y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.globalAlpha = 1;
+
+      // Stroke stud outline
+      ctx.strokeStyle = isSelected ? '#00ff88' : ctx.strokeStyle;
+      ctx.lineWidth = strokeWidth * 0.5;
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    // --- Draw panel highlights for selected panels ---
+    if (this.selectedWallSubElement?.wallId === shape.id && this.selectedWallSubElement?.type === 'panel') {
+      for (const panelPos of gridData.panels) {
+        if (panelPos.key !== this.selectedWallSubElement.key) continue;
+
+        const halfLen = (panelPos.endAlongWall - panelPos.startAlongWall) / 2;
+        const cx = panelPos.worldCenter.x;
+        const cy = panelPos.worldCenter.y;
+
+        const c1 = { x: cx - dirX * halfLen + perpX * structStart, y: cy - dirY * halfLen + perpY * structStart };
+        const c2 = { x: cx + dirX * halfLen + perpX * structStart, y: cy + dirY * halfLen + perpY * structStart };
+        const c3 = { x: cx + dirX * halfLen + perpX * structEnd, y: cy + dirY * halfLen + perpY * structEnd };
+        const c4 = { x: cx - dirX * halfLen + perpX * structEnd, y: cy - dirY * halfLen + perpY * structEnd };
+
+        ctx.save();
+        ctx.fillStyle = '#00ff88';
+        ctx.globalAlpha = 0.3;
+        ctx.beginPath();
+        ctx.moveTo(c1.x, c1.y);
+        ctx.lineTo(c2.x, c2.y);
+        ctx.lineTo(c3.x, c3.y);
+        ctx.lineTo(c4.x, c4.y);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = '#00ff88';
+        ctx.lineWidth = strokeWidth * 0.8;
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // --- Draw openings ---
+    if (shape.wallSystemOpenings) {
+      for (const opening of shape.wallSystemOpenings) {
+        const openingPos = opening.positionType === 'fraction'
+          ? opening.position * wallLength
+          : opening.position;
+        const halfOpenW = opening.width / 2;
+
+        // Opening clears through the full wall thickness
+        const o1 = {
+          x: start.x + dirX * (openingPos - halfOpenW) + perpX * (-halfTotal),
+          y: start.y + dirY * (openingPos - halfOpenW) + perpY * (-halfTotal),
+        };
+        const o2 = {
+          x: start.x + dirX * (openingPos + halfOpenW) + perpX * (-halfTotal),
+          y: start.y + dirY * (openingPos + halfOpenW) + perpY * (-halfTotal),
+        };
+        const o3 = {
+          x: start.x + dirX * (openingPos + halfOpenW) + perpX * halfTotal,
+          y: start.y + dirY * (openingPos + halfOpenW) + perpY * halfTotal,
+        };
+        const o4 = {
+          x: start.x + dirX * (openingPos - halfOpenW) + perpX * halfTotal,
+          y: start.y + dirY * (openingPos - halfOpenW) + perpY * halfTotal,
+        };
+
+        // Clear the opening area (draw with background color)
+        ctx.save();
+        ctx.fillStyle = invertColors ? '#ffffff' : '#1a1a2e';
+        ctx.beginPath();
+        ctx.moveTo(o1.x, o1.y);
+        ctx.lineTo(o2.x, o2.y);
+        ctx.lineTo(o3.x, o3.y);
+        ctx.lineTo(o4.x, o4.y);
+        ctx.closePath();
+        ctx.fill();
+
+        // Draw frame lines
+        ctx.strokeStyle = invertColors ? '#333333' : '#ffffff';
+        ctx.lineWidth = strokeWidth * 0.5;
+        ctx.beginPath();
+        // Left jamb
+        ctx.moveTo(o1.x, o1.y);
+        ctx.lineTo(o4.x, o4.y);
+        // Right jamb
+        ctx.moveTo(o2.x, o2.y);
+        ctx.lineTo(o3.x, o3.y);
+        ctx.stroke();
+        ctx.restore();
+      }
+    }
+
+    // Draw centerline (dashed)
+    if (showCenterline) {
+      const origLineWidth = ctx.lineWidth;
+      ctx.save();
+      ctx.setLineDash(this.getLineDash('dashdot'));
+      const centerColor = invertColors ? 'rgba(0, 0, 0, 0.4)' : 'rgba(255, 255, 255, 0.4)';
+      ctx.strokeStyle = centerColor;
+      ctx.lineWidth = origLineWidth * 0.5;
+      ctx.beginPath();
+      ctx.moveTo(start.x, start.y);
+      ctx.lineTo(end.x, end.y);
       ctx.stroke();
       ctx.restore();
     }

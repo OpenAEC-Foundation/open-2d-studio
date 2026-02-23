@@ -7,9 +7,11 @@
  */
 
 import type { Shape, Sheet, Drawing, Viewport, SheetViewport, Layer } from '../types';
-import type { WallType } from '../../../types/geometry';
+import type { WallType, WallSystemType, SheetQueryTable } from '../../../types/geometry';
 import type { ParametricShape } from '../../../types/parametric';
 import type { CustomHatchPattern, MaterialHatchSettings } from '../../../types/hatch';
+import type { SavedQuery } from '../../../state/slices/parametricSlice';
+import { executeQuery } from '../../../services/query/queryEngine';
 import { BaseRenderer } from '../core/BaseRenderer';
 import { ViewportRenderer } from '../sheet/ViewportRenderer';
 import { TitleBlockRenderer } from '../sheet/TitleBlockRenderer';
@@ -25,12 +27,14 @@ interface Point {
   y: number;
 }
 
-/** Drawing placement preview info */
+/** Drawing/query placement preview info */
 export interface PlacementPreviewInfo {
   /** Whether placement mode is active */
   isPlacing: boolean;
   /** ID of drawing being placed */
   placingDrawingId: string | null;
+  /** ID of query being placed as table */
+  placingQueryId: string | null;
   /** Preview position on sheet (in mm) */
   previewPosition: Point | null;
   /** Scale for the new viewport */
@@ -64,6 +68,10 @@ export interface SheetRenderOptions {
   showLineweight?: boolean;
   /** Wall types for material-based hatch lookup */
   wallTypes?: WallType[];
+  /** Wall system types (multi-layered assemblies) */
+  wallSystemTypes?: WallSystemType[];
+  /** Currently selected wall sub-element */
+  selectedWallSubElement?: { wallId: string; type: 'stud' | 'panel'; key: string } | null;
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
   /** Gridline extension distance in mm */
@@ -72,6 +80,8 @@ export interface SheetRenderOptions {
   seaLevelDatum?: number;
   /** Hidden IFC categories — shapes in these categories are not rendered */
   hiddenIfcCategories?: string[];
+  /** Saved queries for rendering query tables and placement preview */
+  queries?: SavedQuery[];
 }
 
 export class SheetRenderer extends BaseRenderer {
@@ -213,6 +223,7 @@ export class SheetRenderer extends BaseRenderer {
           totalViewportsOnSheet: visibleViewports.length,
           showLineweight: options.showLineweight,
           wallTypes: options.wallTypes,
+          wallSystemTypes: options.wallSystemTypes,
           materialHatchSettings: options.materialHatchSettings,
           gridlineExtension: options.gridlineExtension,
           seaLevelDatum: options.seaLevelDatum,
@@ -226,9 +237,20 @@ export class SheetRenderer extends BaseRenderer {
       this.drawAlignmentGuides(sheet, selectedViewportId, viewport.zoom);
     }
 
+    // Draw query tables
+    const queryTables = sheet.queryTables || [];
+    const visibleQueryTables = queryTables.filter(t => t.visible);
+    if (visibleQueryTables.length > 0) {
+      this.drawQueryTables(visibleQueryTables, options.queries || [], options.shapes, options.drawings, viewport.zoom);
+    }
+
     // Draw placement preview if active
-    if (placementPreview?.isPlacing && placementPreview.previewPosition && placementPreview.placingDrawingId) {
-      this.drawPlacementPreview(placementPreview, drawings, viewport.zoom);
+    if (placementPreview?.isPlacing && placementPreview.previewPosition) {
+      if (placementPreview.placingDrawingId) {
+        this.drawPlacementPreview(placementPreview, drawings, viewport.zoom);
+      } else if (placementPreview.placingQueryId) {
+        this.drawQueryPlacementPreview(placementPreview, options.queries || [], viewport.zoom);
+      }
     }
 
     // Draw sheet annotations (text, dimensions, leaders, etc.)
@@ -479,5 +501,270 @@ export class SheetRenderer extends BaseRenderer {
     tolerance: number = 5
   ): ViewportHandleType | null {
     return this.handleRenderer.findViewportHandleAtPoint(point, vp, tolerance);
+  }
+
+  /**
+   * Check if a point is inside a query table
+   */
+  isPointInQueryTable(point: { x: number; y: number }, table: SheetQueryTable): boolean {
+    const px = point.x * MM_TO_PIXELS;
+    const py = point.y * MM_TO_PIXELS;
+    const tx = table.x * MM_TO_PIXELS;
+    const ty = table.y * MM_TO_PIXELS;
+    const tw = table.width * MM_TO_PIXELS;
+    const th = table.height * MM_TO_PIXELS;
+    return px >= tx && px <= tx + tw && py >= ty && py <= ty + th;
+  }
+
+  /**
+   * Draw query tables on the sheet
+   */
+  private drawQueryTables(
+    tables: SheetQueryTable[],
+    queries: SavedQuery[],
+    shapes: Shape[],
+    drawings: Drawing[],
+    _sheetZoom: number
+  ): void {
+    const ctx = this.ctx;
+
+    for (const table of tables) {
+      const query = queries.find(q => q.id === table.queryId);
+      if (!query) continue;
+
+      // Execute the query to get fresh data
+      const result = executeQuery(query.sql, { shapes, drawings, pileTypes: [] });
+      if (result.error) continue;
+
+      const columns = result.columns;
+      const rows = result.rows;
+
+      // Calculate column widths: use stored widths or distribute evenly
+      let colWidths: number[];
+      if (table.columnWidths.length === columns.length) {
+        colWidths = table.columnWidths;
+      } else {
+        const defaultWidth = 25; // mm
+        colWidths = columns.map(() => defaultWidth);
+      }
+
+      const totalWidth = colWidths.reduce((a, b) => a + b, 0);
+      const totalHeight = table.headerHeight + rows.length * table.rowHeight;
+
+      // Convert to pixels
+      const x = table.x * MM_TO_PIXELS;
+      const y = table.y * MM_TO_PIXELS;
+      const w = totalWidth * MM_TO_PIXELS;
+      const h = totalHeight * MM_TO_PIXELS;
+      const headerH = table.headerHeight * MM_TO_PIXELS;
+      const rowH = table.rowHeight * MM_TO_PIXELS;
+
+      ctx.save();
+
+      // White background
+      ctx.fillStyle = '#ffffff';
+      ctx.fillRect(x, y, w, h);
+
+      // Table border
+      ctx.strokeStyle = '#000000';
+      ctx.lineWidth = 0.8;
+      ctx.strokeRect(x, y, w, h);
+
+      // Header background
+      ctx.fillStyle = '#f0f0f0';
+      ctx.fillRect(x, y, w, headerH);
+
+      // Header bottom line
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(x, y + headerH);
+      ctx.lineTo(x + w, y + headerH);
+      ctx.stroke();
+
+      // Draw column headers and vertical lines
+      let colX = x;
+      for (let c = 0; c < columns.length; c++) {
+        const colW = colWidths[c] * MM_TO_PIXELS;
+
+        // Vertical column separator (not for last column)
+        if (c > 0) {
+          ctx.beginPath();
+          ctx.lineWidth = 0.4;
+          ctx.moveTo(colX, y);
+          ctx.lineTo(colX, y + h);
+          ctx.stroke();
+        }
+
+        // Header text
+        const fontSize = table.headerFontSize * (MM_TO_PIXELS / 2.83); // pt to px approx
+        ctx.font = `bold ${fontSize}px ${CAD_DEFAULT_FONT}`;
+        ctx.fillStyle = '#000000';
+        ctx.textAlign = 'left';
+        ctx.textBaseline = 'middle';
+
+        // Clip text to column width with small padding
+        const padding = 1.5 * MM_TO_PIXELS;
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(colX + padding / 2, y, colW - padding, headerH);
+        ctx.clip();
+        ctx.fillText(columns[c], colX + padding, y + headerH / 2);
+        ctx.restore();
+
+        colX += colW;
+      }
+
+      // Draw data rows
+      const cellFontSize = table.fontSize * (MM_TO_PIXELS / 2.83);
+      ctx.font = `${cellFontSize}px ${CAD_DEFAULT_FONT}`;
+      ctx.fillStyle = '#000000';
+
+      for (let r = 0; r < rows.length; r++) {
+        const rowY = y + headerH + r * rowH;
+
+        // Alternate row background
+        if (r % 2 === 1) {
+          ctx.save();
+          ctx.fillStyle = '#f8f8f8';
+          ctx.fillRect(x, rowY, w, rowH);
+          ctx.restore();
+          ctx.fillStyle = '#000000';
+        }
+
+        // Row separator line
+        if (r > 0) {
+          ctx.save();
+          ctx.strokeStyle = '#e0e0e0';
+          ctx.lineWidth = 0.3;
+          ctx.beginPath();
+          ctx.moveTo(x, rowY);
+          ctx.lineTo(x + w, rowY);
+          ctx.stroke();
+          ctx.restore();
+        }
+
+        // Cell data
+        let cellX = x;
+        for (let c = 0; c < columns.length; c++) {
+          const colW = colWidths[c] * MM_TO_PIXELS;
+          const val = rows[r][columns[c]];
+          const text = val === null || val === undefined ? '' : String(val);
+
+          const padding = 1.5 * MM_TO_PIXELS;
+          ctx.save();
+          ctx.font = `${cellFontSize}px ${CAD_DEFAULT_FONT}`;
+          ctx.fillStyle = '#000000';
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.beginPath();
+          ctx.rect(cellX + padding / 2, rowY, colW - padding, rowH);
+          ctx.clip();
+          ctx.fillText(text, cellX + padding, rowY + rowH / 2);
+          ctx.restore();
+
+          cellX += colW;
+        }
+      }
+
+      // Draw query name as title above the table
+      const titleFontSize = (table.headerFontSize + 1) * (MM_TO_PIXELS / 2.83);
+      ctx.font = `bold ${titleFontSize}px ${CAD_DEFAULT_FONT}`;
+      ctx.fillStyle = '#333333';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(query.name, x, y - 2 * MM_TO_PIXELS);
+
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Draw query table placement preview
+   */
+  private drawQueryPlacementPreview(
+    preview: PlacementPreviewInfo,
+    queries: SavedQuery[],
+    sheetZoom: number
+  ): void {
+    const ctx = this.ctx;
+    const { placingQueryId, previewPosition } = preview;
+
+    if (!previewPosition || !placingQueryId) return;
+
+    const query = queries.find(q => q.id === placingQueryId);
+    if (!query) return;
+
+    // Estimate table size for preview
+    const numCols = 4;
+    const defaultColWidth = 25; // mm
+    const headerHeight = 8;     // mm
+    const rowHeight = 6;        // mm
+    const numRows = 5;
+
+    const totalWidth = numCols * defaultColWidth;
+    const totalHeight = headerHeight + numRows * rowHeight;
+
+    const width = totalWidth * MM_TO_PIXELS;
+    const height = totalHeight * MM_TO_PIXELS;
+
+    // Calculate top-left position (preview is centered on cursor)
+    const x = (previewPosition.x * MM_TO_PIXELS) - width / 2;
+    const y = (previewPosition.y * MM_TO_PIXELS) - height / 2;
+
+    ctx.save();
+
+    // Fill with light green tint
+    ctx.fillStyle = 'rgba(34, 197, 94, 0.15)';
+    ctx.fillRect(x, y, width, height);
+
+    // Dashed border
+    ctx.strokeStyle = '#22c55e';
+    ctx.lineWidth = 2 / sheetZoom;
+    ctx.setLineDash([6 / sheetZoom, 4 / sheetZoom]);
+    ctx.strokeRect(x, y, width, height);
+
+    // Draw grid lines inside preview
+    ctx.strokeStyle = 'rgba(34, 197, 94, 0.3)';
+    ctx.lineWidth = 1 / sheetZoom;
+
+    // Header line
+    const headerPx = headerHeight * MM_TO_PIXELS;
+    ctx.beginPath();
+    ctx.moveTo(x, y + headerPx);
+    ctx.lineTo(x + width, y + headerPx);
+    ctx.stroke();
+
+    // Column lines
+    for (let c = 1; c < numCols; c++) {
+      const colX = x + c * defaultColWidth * MM_TO_PIXELS;
+      ctx.beginPath();
+      ctx.moveTo(colX, y);
+      ctx.lineTo(colX, y + height);
+      ctx.stroke();
+    }
+
+    // Row lines
+    for (let r = 1; r < numRows; r++) {
+      const rowY = y + headerPx + r * rowHeight * MM_TO_PIXELS;
+      ctx.beginPath();
+      ctx.moveTo(x, rowY);
+      ctx.lineTo(x + width, rowY);
+      ctx.stroke();
+    }
+
+    // Draw query name label
+    ctx.setLineDash([]);
+    const fontSize = 12 / sheetZoom;
+    ctx.font = `${fontSize}px ${CAD_DEFAULT_FONT}`;
+    ctx.fillStyle = '#22c55e';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'bottom';
+    ctx.fillText(`Query: ${query.name}`, x + width / 2, y - 4 / sheetZoom);
+
+    // Draw table icon indicator
+    ctx.textBaseline = 'top';
+    ctx.fillText('(table)', x + width / 2, y + height + 4 / sheetZoom);
+
+    ctx.restore();
   }
 }

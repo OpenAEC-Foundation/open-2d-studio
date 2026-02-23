@@ -7,7 +7,7 @@
  */
 
 import type { Shape, Drawing, SheetViewport, Viewport, Layer, CropRegion, ViewportLayerOverride } from '../types';
-import type { WallType } from '../../../types/geometry';
+import type { WallType, WallSystemType } from '../../../types/geometry';
 import type { ParametricShape, ProfileParametricShape } from '../../../types/parametric';
 import type { CustomHatchPattern, MaterialHatchSettings } from '../../../types/hatch';
 import { BaseRenderer } from '../core/BaseRenderer';
@@ -38,6 +38,8 @@ export interface ViewportRenderOptions {
   showLineweight?: boolean;
   /** Wall types for material-based hatch lookup */
   wallTypes?: WallType[];
+  /** Wall system types (multi-layered assemblies) */
+  wallSystemTypes?: WallSystemType[];
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
   /** Gridline extension distance in mm */
@@ -231,6 +233,11 @@ export class ViewportRenderer extends BaseRenderer {
     // Set wall types for material-based hatch lookup
     if (options?.wallTypes) {
       this.shapeRenderer.setWallTypes(options.wallTypes);
+    }
+
+    // Set wall system types for multi-layered wall rendering
+    if (options?.wallSystemTypes) {
+      this.shapeRenderer.setWallSystemTypes(options.wallSystemTypes);
     }
 
     // Set material hatch settings from Drawing Standards

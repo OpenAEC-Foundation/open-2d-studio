@@ -2,10 +2,14 @@
  * useIfcAutoRegenerate - Hook that watches for shape changes
  * and triggers IFC regeneration with a 500ms debounce.
  *
- * Only regenerates when:
- * - ifcAutoGenerate is enabled
- * - The shapes array actually changes (add/delete/modify)
- * - The IFC panel is open (to avoid unnecessary computation)
+ * Continuously regenerates whenever:
+ * - ifcAutoGenerate is enabled (default: true)
+ * - The shapes, wallTypes, slabTypes, pileTypes, drawings, or
+ *   projectStructure change
+ *
+ * The IFC is always kept up-to-date regardless of whether the IFC
+ * panel or 3D view is open, so that Bonsai sync and file export
+ * always have a fresh IFC model.
  */
 
 import { useEffect, useRef } from 'react';
@@ -17,15 +21,19 @@ export function useIfcAutoRegenerate(): void {
   useEffect(() => {
     // Subscribe to store changes
     const unsubscribe = useAppStore.subscribe((state, prevState) => {
-      // Only regenerate if auto-generate is on and panel or 3D view is open
-      if (!state.ifcAutoGenerate || (!state.ifcPanelOpen && !state.show3DView)) return;
+      // Only regenerate if auto-generate is on
+      if (!state.ifcAutoGenerate) return;
 
-      // Check if shapes, wallTypes, or slabTypes actually changed
+      // Check if any model data changed
       const shapesChanged = state.shapes !== prevState.shapes;
       const wallTypesChanged = state.wallTypes !== prevState.wallTypes;
       const slabTypesChanged = state.slabTypes !== prevState.slabTypes;
+      const pileTypesChanged = state.pileTypes !== prevState.pileTypes;
+      const drawingsChanged = state.drawings !== prevState.drawings;
+      const projectStructureChanged = state.projectStructure !== prevState.projectStructure;
 
-      if (!shapesChanged && !wallTypesChanged && !slabTypesChanged) return;
+      if (!shapesChanged && !wallTypesChanged && !slabTypesChanged &&
+          !pileTypesChanged && !drawingsChanged && !projectStructureChanged) return;
 
       // Debounce: clear any pending regeneration
       if (timerRef.current !== null) {
@@ -37,7 +45,7 @@ export function useIfcAutoRegenerate(): void {
         timerRef.current = null;
         // Get latest state and regenerate
         const currentState = useAppStore.getState();
-        if (currentState.ifcAutoGenerate && (currentState.ifcPanelOpen || currentState.show3DView)) {
+        if (currentState.ifcAutoGenerate) {
           currentState.regenerateIFC();
         }
       }, 500);
@@ -51,19 +59,12 @@ export function useIfcAutoRegenerate(): void {
     };
   }, []);
 
-  // Also trigger regeneration when IFC panel is first opened
+  // Trigger an initial regeneration on mount so the IFC model is
+  // available immediately after app startup.
   useEffect(() => {
-    const unsubscribe = useAppStore.subscribe((state, prevState) => {
-      if (state.ifcPanelOpen && !prevState.ifcPanelOpen && state.ifcAutoGenerate) {
-        // Panel just opened, regenerate immediately
-        state.regenerateIFC();
-      }
-      if (state.show3DView && !prevState.show3DView && state.ifcAutoGenerate) {
-        // 3D view just opened, regenerate immediately
-        state.regenerateIFC();
-      }
-    });
-
-    return unsubscribe;
+    const state = useAppStore.getState();
+    if (state.ifcAutoGenerate && state.shapes.length > 0) {
+      state.regenerateIFC();
+    }
   }, []);
 }

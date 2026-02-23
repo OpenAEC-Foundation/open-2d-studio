@@ -204,6 +204,7 @@ export interface DocumentState {
   // Drawing placement
   isPlacing: boolean;
   placingDrawingId: string | null;
+  placingQueryId: string | null;
   previewPosition: Point | null;
   placementScale: number;
 
@@ -414,8 +415,9 @@ export interface DocumentActions {
   moveAnnotations: (sheetId: string, annotationIds: string[], delta: Point) => void;
   duplicateAnnotations: (sheetId: string, annotationIds: string[]) => string[];
 
-  // Drawing placement actions
+  // Drawing/query placement actions
   startDrawingPlacement: (drawingId: string) => void;
+  startQueryPlacement: (queryId: string) => void;
   updatePlacementPreview: (sheetPosition: Point | null) => void;
   confirmPlacement: () => void;
   cancelPlacement: () => void;
@@ -553,6 +555,7 @@ export function createEmptyDocumentState(projectName = 'Untitled'): DocumentStat
     },
     isPlacing: false,
     placingDrawingId: null,
+    placingQueryId: null,
     previewPosition: null,
     placementScale: 0.01,
     customTitleBlockTemplates: [],
@@ -2375,6 +2378,17 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
           if (!drawing) return;
           state.isPlacing = true;
           state.placingDrawingId = drawingId;
+          state.placingQueryId = null;
+          state.previewPosition = null;
+        }),
+
+      startQueryPlacement: (queryId) =>
+        set((state) => {
+          if (state.editorMode !== 'sheet') return;
+          if (!state.activeSheetId) return;
+          state.isPlacing = true;
+          state.placingDrawingId = null;
+          state.placingQueryId = queryId;
           state.previewPosition = null;
         }),
 
@@ -2383,24 +2397,57 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
 
       confirmPlacement: () =>
         set((state) => {
-          if (!state.isPlacing || !state.placingDrawingId || !state.previewPosition || !state.activeSheetId) return;
+          if (!state.isPlacing || !state.previewPosition || !state.activeSheetId) return;
           const sheet = state.sheets.find((s) => s.id === state.activeSheetId);
-          const drawing = state.drawings.find((d) => d.id === state.placingDrawingId);
-          if (!sheet || !drawing) return;
-          const { width, height } = calculateViewportSize(drawing, state.placementScale);
-          const drawingCenterX = drawing.boundary.x + drawing.boundary.width / 2;
-          const drawingCenterY = drawing.boundary.y + drawing.boundary.height / 2;
-          const newViewport: SheetViewport = {
-            id: generateId(), drawingId: state.placingDrawingId,
-            x: state.previewPosition.x - width / 2, y: state.previewPosition.y - height / 2,
-            width, height,
-            centerX: drawingCenterX, centerY: drawingCenterY,
-            scale: state.placementScale, locked: false, visible: true,
-          };
-          sheet.viewports.push(newViewport);
+          if (!sheet) return;
+
+          if (state.placingDrawingId) {
+            const drawing = state.drawings.find((d) => d.id === state.placingDrawingId);
+            if (!drawing) return;
+            const { width, height } = calculateViewportSize(drawing, state.placementScale);
+            const drawingCenterX = drawing.boundary.x + drawing.boundary.width / 2;
+            const drawingCenterY = drawing.boundary.y + drawing.boundary.height / 2;
+            const newViewport: SheetViewport = {
+              id: generateId(), drawingId: state.placingDrawingId,
+              x: state.previewPosition.x - width / 2, y: state.previewPosition.y - height / 2,
+              width, height,
+              centerX: drawingCenterX, centerY: drawingCenterY,
+              scale: state.placementScale, locked: false, visible: true,
+            };
+            sheet.viewports.push(newViewport);
+          }
+
+          if (state.placingQueryId) {
+            const numCols = 4;
+            const defaultColWidth = 25;
+            const headerHeight = 8;
+            const rowHeight = 6;
+            const numRows = 5;
+            const columnWidths = Array(numCols).fill(defaultColWidth);
+            const tableWidth = columnWidths.reduce((a: number, b: number) => a + b, 0);
+            const tableHeight = headerHeight + numRows * rowHeight;
+            if (!sheet.queryTables) sheet.queryTables = [];
+            sheet.queryTables.push({
+              id: generateId(),
+              queryId: state.placingQueryId,
+              x: state.previewPosition.x - tableWidth / 2,
+              y: state.previewPosition.y - tableHeight / 2,
+              width: tableWidth,
+              height: tableHeight,
+              columnWidths,
+              rowHeight,
+              headerHeight,
+              fontSize: 7,
+              headerFontSize: 8,
+              locked: false,
+              visible: true,
+            });
+          }
+
           sheet.modifiedAt = new Date().toISOString();
           state.isPlacing = false;
           state.placingDrawingId = null;
+          state.placingQueryId = null;
           state.previewPosition = null;
           state.isModified = true;
         }),
@@ -2409,6 +2456,7 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
         set((state) => {
           state.isPlacing = false;
           state.placingDrawingId = null;
+          state.placingQueryId = null;
           state.previewPosition = null;
         }),
 

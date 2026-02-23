@@ -164,9 +164,6 @@ export function renderPileSymbol(
   const C = size / 2; // center
   const crossExt = size * 0.475; // crosshair half-length (~95% of size)
   const circR = size * 0.38; // inner circle radius
-  const sqSide = size * 0.72;
-  const sqHalf = sqSide / 2;
-
   // Crosshair lines (always present)
   const crosshairs = (
     <>
@@ -206,7 +203,7 @@ export function renderPileSymbol(
   );
 }
 
-function renderContour(contour: ContourType, C: number, circR: number, size: number): React.ReactNode {
+function renderContour(contour: ContourType, C: number, _circR: number, size: number): React.ReactNode {
   const sqSide = size * 0.72;
   const sqHalf = sqSide / 2;
 

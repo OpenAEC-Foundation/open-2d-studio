@@ -32,6 +32,7 @@ import { PlateSystemDialog } from './components/dialogs/PlateSystemDialog/PlateS
 import { DrawingStandardsDialog } from './components/dialogs/DrawingStandardsDialog';
 import { MaterialsDialog } from './components/dialogs/MaterialsDialog';
 import { WallTypesDialog } from './components/dialogs/WallTypesDialog';
+import { WallSystemDialog } from './components/dialogs/WallSystemDialog/WallSystemDialog';
 import { FindReplaceDialog } from './components/dialogs/FindReplaceDialog';
 import { ProjectStructureDialog } from './components/dialogs/ProjectStructureDialog';
 import { PileSymbolsDialog } from './components/dialogs/PileSymbolsDialog';
@@ -356,7 +357,6 @@ function App() {
     gridlineDialogOpen,
     closeGridlineDialog,
     setPendingGridline,
-    setPendingPile,
     pileSymbolsDialogOpen,
     closePileSymbolsDialog,
     wallDialogOpen,
@@ -372,6 +372,8 @@ function App() {
     closeMaterialsDialog,
     wallTypesDialogOpen,
     closeWallTypesDialog,
+    wallSystemDialogOpen,
+    closeWallSystemDialog,
     setActiveTool,
     patternManagerOpen,
     setPatternManagerOpen,
@@ -653,6 +655,7 @@ function App() {
           setPendingWall({
             thickness,
             wallTypeId: options.wallTypeId,
+            wallSystemId: options.wallSystemId,
             justification: options.justification,
             showCenterline: options.showCenterline,
             startCap: options.startCap,
@@ -712,6 +715,12 @@ function App() {
       <WallTypesDialog
         isOpen={wallTypesDialogOpen}
         onClose={closeWallTypesDialog}
+      />
+
+      {/* Wall System Dialog (multi-layered wall assemblies) */}
+      <WallSystemDialog
+        isOpen={wallSystemDialogOpen}
+        onClose={closeWallSystemDialog}
       />
 
       {/* Project Structure Dialog */}

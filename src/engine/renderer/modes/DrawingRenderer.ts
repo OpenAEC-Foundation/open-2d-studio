@@ -6,7 +6,7 @@ import type { Shape, Viewport, SnapPoint, DrawingBoundary } from '../types';
 import type { DrawingPreview, SelectionBox, TrackingLine, Point } from '../types';
 import type { ParametricShape } from '../../../types/parametric';
 import type { CustomHatchPattern, MaterialHatchSettings } from '../../../types/hatch';
-import type { WallType, ImageShape } from '../../../types/geometry';
+import type { WallType, WallSystemType, ImageShape } from '../../../types/geometry';
 import { BaseRenderer } from '../core/BaseRenderer';
 import { ShapeRenderer } from '../core/ShapeRenderer';
 import { ParametricRenderer } from '../core/ParametricRenderer';
@@ -64,6 +64,10 @@ export interface DrawingRenderOptions {
   showLineweight?: boolean;
   /** Wall types for material-based hatch lookup */
   wallTypes?: WallType[];
+  /** Wall system types (multi-layered assemblies) */
+  wallSystemTypes?: WallSystemType[];
+  /** Currently selected wall sub-element */
+  selectedWallSubElement?: { wallId: string; type: 'stud' | 'panel'; key: string } | null;
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
   /** Gridline extension distance in mm */
@@ -161,6 +165,14 @@ export class DrawingRenderer extends BaseRenderer {
     if (options.wallTypes) {
       this.shapeRenderer.setWallTypes(options.wallTypes);
     }
+
+    // Set wall system types for multi-layered wall rendering
+    if (options.wallSystemTypes) {
+      this.shapeRenderer.setWallSystemTypes(options.wallSystemTypes);
+    }
+
+    // Set selected wall sub-element for highlight rendering
+    this.shapeRenderer.setSelectedWallSubElement(options.selectedWallSubElement || null);
 
     // Set material hatch settings from Drawing Standards
     if (options.materialHatchSettings) {

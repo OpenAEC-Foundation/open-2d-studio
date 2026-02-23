@@ -104,6 +104,7 @@ interface FullStore {
   wallTypes: WallType[];
   slabTypes: SlabType[];
   projectStructure: ProjectStructure;
+  pileTypes: import('../../types/geometry').PileTypeDefinition[];
   ifcContent: string;
   ifcAutoGenerate: boolean;
   ifcEntityCount: number;

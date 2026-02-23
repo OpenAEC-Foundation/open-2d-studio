@@ -191,6 +191,7 @@ function extractPerDocState(s: any) {
     // Drawing placement
     isPlacing: s.isPlacing,
     placingDrawingId: s.placingDrawingId,
+    placingQueryId: s.placingQueryId,
     previewPosition: s.previewPosition,
     placementScale: s.placementScale,
     // Parametric shapes
@@ -273,6 +274,7 @@ function restoreDocState(docId: string, set: any) {
     state.annotationEditState = saved.annotationEditState;
     state.isPlacing = saved.isPlacing;
     state.placingDrawingId = saved.placingDrawingId;
+    state.placingQueryId = saved.placingQueryId;
     state.previewPosition = saved.previewPosition;
     state.placementScale = saved.placementScale;
     // Parametric shapes

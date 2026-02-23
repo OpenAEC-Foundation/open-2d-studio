@@ -15,7 +15,8 @@ import { useCallback, useRef } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
 import type { Point, TextShape } from '../../types/geometry';
 import { CAD_DEFAULT_LINE_HEIGHT } from '../../constants/cadDefaults';
-import { getElementLabelText, computeLinkedLabelPosition } from '../../engine/geometry/LabelUtils';
+import { getElementLabelText, computeLinkedLabelPosition, computeSlabSpanArrow } from '../../engine/geometry/LabelUtils';
+import type { SlabShape } from '../../types/geometry';
 
 export function useLeaderDrawing() {
   const {
@@ -70,18 +71,35 @@ export function useLeaderDrawing() {
       const labelText = getElementLabelText(linkedShape, wallTypes);
 
       // Calculate position and rotation from the element's geometry.
-      // Uses computeLinkedLabelPosition which offsets the label perpendicular
-      // to the element direction so it appears above (not overlapping).
-      const labelPos = computeLinkedLabelPosition(linkedShape);
+      // For slabs: use span arrow (overspanningspijl) placement at centroid.
+      // For linear elements: offset label perpendicular to the element direction.
       let textPosition: Point;
       let rotation = 0;
+      let spanArrow = false;
+      let spanDirection: number | undefined;
+      let spanLength: number | undefined;
 
-      if (labelPos) {
-        textPosition = labelPos.position;
-        rotation = labelPos.rotation;
+      if (linkedShape.type === 'slab') {
+        // Slab: create a span arrow label at the slab centroid
+        const spanInfo = computeSlabSpanArrow(linkedShape as SlabShape);
+        if (spanInfo) {
+          textPosition = spanInfo.position;
+          spanDirection = spanInfo.spanDirection;
+          spanLength = spanInfo.spanLength;
+          spanArrow = true;
+          rotation = spanInfo.spanDirection;
+        } else {
+          textPosition = clickPos;
+        }
       } else {
-        // Fallback: place label at click position with no rotation
-        textPosition = clickPos;
+        const labelPos = computeLinkedLabelPosition(linkedShape);
+        if (labelPos) {
+          textPosition = labelPos.position;
+          rotation = labelPos.rotation;
+        } else {
+          // Fallback: place label at click position with no rotation
+          textPosition = clickPos;
+        }
       }
 
       // Resolve active text style
@@ -101,9 +119,9 @@ export function useLeaderDrawing() {
         text: labelText,
         fontSize: activeStyle?.fontSize ?? defaultTextStyle.fontSize,
         fontFamily: activeStyle?.fontFamily ?? defaultTextStyle.fontFamily,
-        rotation,
-        alignment: activeStyle?.alignment ?? defaultTextStyle.alignment,
-        verticalAlignment: activeStyle?.verticalAlignment ?? 'top',
+        rotation: 0, // Span arrow uses spanDirection; non-slab uses rotation set below
+        alignment: spanArrow ? 'center' : (activeStyle?.alignment ?? defaultTextStyle.alignment),
+        verticalAlignment: spanArrow ? 'middle' : (activeStyle?.verticalAlignment ?? 'top'),
         bold: activeStyle?.bold ?? defaultTextStyle.bold,
         italic: activeStyle?.italic ?? defaultTextStyle.italic,
         underline: activeStyle?.underline ?? defaultTextStyle.underline,
@@ -116,14 +134,23 @@ export function useLeaderDrawing() {
         obliqueAngle: activeStyle?.obliqueAngle,
         paragraphSpacing: activeStyle?.paragraphSpacing,
         isModelText: activeStyle?.isModelText,
-        backgroundMask: activeStyle?.backgroundMask,
+        backgroundMask: spanArrow ? true : (activeStyle?.backgroundMask),
         backgroundColor: activeStyle?.backgroundColor,
         backgroundPadding: activeStyle?.backgroundPadding,
         textStyleId: activeTextStyleId ?? undefined,
         // No leader line for labels - just plain text
         // Link to the element
         linkedShapeId: shapeId,
+        // Span arrow properties for slab labels
+        spanArrow: spanArrow || undefined,
+        spanDirection,
+        spanLength,
       };
+
+      // For non-slab labels, set the rotation from the element direction
+      if (!spanArrow) {
+        textShape.rotation = rotation;
+      }
 
       addShape(textShape);
       // Label text is auto-generated, no editor needed

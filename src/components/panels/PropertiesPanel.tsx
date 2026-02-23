@@ -1793,6 +1793,156 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
                 ))}
               </select>
             </div>
+            {/* Grouped wall info */}
+            {w.groupedWallTypeId && (() => {
+              const gwTypes = useAppStore.getState().groupedWallTypes;
+              const gwt = gwTypes.find(g => g.id === w.groupedWallTypeId);
+              const layerInfo = gwt && w.groupedWallLayerIndex !== undefined
+                ? gwt.layers[w.groupedWallLayerIndex]
+                : undefined;
+              return (
+                <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
+                  <div className="text-[10px] text-cad-text-dim font-medium">
+                    Grouped Wall: {gwt?.name || w.groupedWallTypeId}
+                  </div>
+                  {layerInfo && (
+                    <div className="text-[10px] text-cad-text-secondary">
+                      Layer: {layerInfo.name} ({layerInfo.thickness}mm)
+                    </div>
+                  )}
+                  {w.groupId && (
+                    <button
+                      onClick={() => useAppStore.getState().explodeWallGroup(w.groupId!)}
+                      className="mt-1 px-2 py-1 text-[10px] bg-orange-600/20 text-orange-300 border border-orange-500/30 rounded hover:bg-orange-600/30"
+                    >
+                      Explode Group
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
+            {/* Wall System (multi-layered assembly) */}
+            {(() => {
+              const wallSystemTypes = useAppStore.getState().wallSystemTypes;
+              return (
+                <div className="mb-3">
+                  <label className={labelClass}>Wall System</label>
+                  <select
+                    className={inputClass}
+                    value={w.wallSystemId || ''}
+                    onChange={(e) => {
+                      const wsId = e.target.value || undefined;
+                      if (wsId) {
+                        const ws = wallSystemTypes.find(t => t.id === wsId);
+                        if (ws) {
+                          update({
+                            wallSystemId: wsId,
+                            thickness: ws.totalThickness,
+                          });
+                        }
+                      } else {
+                        update({ wallSystemId: undefined });
+                      }
+                    }}
+                  >
+                    <option value="">(None)</option>
+                    {wallSystemTypes.map((ws) => (
+                      <option key={ws.id} value={ws.id}>{ws.name} ({ws.totalThickness.toFixed(0)}mm)</option>
+                    ))}
+                  </select>
+                  {w.wallSystemId && (() => {
+                    const ws = wallSystemTypes.find(t => t.id === w.wallSystemId);
+                    if (!ws) return null;
+                    return (
+                      <div className="mt-1 p-2 bg-cad-bg rounded border border-cad-border">
+                        <div className="text-[10px] text-cad-text-dim font-medium mb-1">
+                          {ws.category} &middot; {ws.layers.length} layers &middot; {ws.totalThickness.toFixed(1)}mm
+                        </div>
+                        <div className="space-y-0.5">
+                          {ws.layers.map((layer) => (
+                            <div key={layer.id} className="flex items-center gap-1 text-[10px]">
+                              <span className="w-2 h-2 rounded-sm inline-block" style={{ backgroundColor: layer.color }} />
+                              <span className="text-cad-text">{layer.name}</span>
+                              <span className="text-cad-text-dim ml-auto">{layer.thickness}mm</span>
+                            </div>
+                          ))}
+                        </div>
+                        <button
+                          onClick={() => useAppStore.getState().openWallSystemDialog()}
+                          className="mt-1.5 px-2 py-0.5 text-[10px] bg-cad-accent/20 text-cad-accent border border-cad-accent/30 rounded hover:bg-cad-accent/30"
+                        >
+                          Edit Wall System...
+                        </button>
+                      </div>
+                    );
+                  })()}
+                </div>
+              );
+            })()}
+            {/* Sub-element info */}
+            {(() => {
+              const subEl = useAppStore.getState().selectedWallSubElement;
+              if (!subEl || subEl.wallId !== shape.id) return null;
+              const wallSystemTypes = useAppStore.getState().wallSystemTypes;
+              const ws = w.wallSystemId ? wallSystemTypes.find(t => t.id === w.wallSystemId) : null;
+              if (!ws) return null;
+
+              return (
+                <div className="mb-3 p-2 bg-green-900/20 rounded border border-green-500/30">
+                  <div className="text-[10px] font-medium text-green-400 mb-1">
+                    Selected: {subEl.type === 'stud' ? 'Stud' : 'Panel'} [{subEl.key}]
+                  </div>
+                  {subEl.type === 'stud' && (
+                    <div>
+                      <label className={labelClass}>Replace Stud</label>
+                      <select
+                        className={inputClass}
+                        value=""
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          const overrides = { ...(w.wallSystemStudOverrides || {}) };
+                          overrides[subEl.key] = e.target.value;
+                          update({ wallSystemStudOverrides: overrides });
+                        }}
+                      >
+                        <option value="">Select replacement...</option>
+                        <option value={ws.defaultStud.id}>{ws.defaultStud.name} (default)</option>
+                        {ws.alternateStuds.map(s => (
+                          <option key={s.id} value={s.id}>{s.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  {subEl.type === 'panel' && (
+                    <div>
+                      <label className={labelClass}>Replace Panel</label>
+                      <select
+                        className={inputClass}
+                        value=""
+                        onChange={(e) => {
+                          if (!e.target.value) return;
+                          const overrides = { ...(w.wallSystemPanelOverrides || {}) };
+                          overrides[subEl.key] = e.target.value;
+                          update({ wallSystemPanelOverrides: overrides });
+                        }}
+                      >
+                        <option value="">Select replacement...</option>
+                        <option value={ws.defaultPanel.id}>{ws.defaultPanel.name} (default)</option>
+                        {ws.alternatePanels.map(p => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+                  <button
+                    onClick={() => useAppStore.getState().clearWallSubElement()}
+                    className="mt-1 px-2 py-0.5 text-[10px] text-cad-text-dim border border-cad-border rounded hover:bg-cad-hover"
+                  >
+                    Clear Selection
+                  </button>
+                </div>
+              );
+            })()}
             <TextField label="Label" value={w.label || ''} onChange={(v) => update({ label: v || undefined })} />
           </PropertyGroup>
 
@@ -2099,6 +2249,7 @@ function WallToolProperties() {
   const pendingWall = useAppStore(s => s.pendingWall);
   const setPendingWall = useAppStore(s => s.setPendingWall);
   const wallTypes = useAppStore(s => s.wallTypes);
+  const groupedWallTypes = useAppStore(s => s.groupedWallTypes);
   const setLastUsedWallTypeId = useAppStore(s => s.setLastUsedWallTypeId);
 
   if (!pendingWall) return null;
@@ -2106,6 +2257,12 @@ function WallToolProperties() {
   const selectedType = pendingWall.wallTypeId
     ? wallTypes.find(w => w.id === pendingWall.wallTypeId)
     : undefined;
+
+  const selectedGroupedType = pendingWall.wallTypeId
+    ? groupedWallTypes.find(g => g.id === pendingWall.wallTypeId)
+    : undefined;
+
+  const isGroupedWall = !!selectedGroupedType;
 
   return (
     <div className="p-3 border-b border-cad-border">
@@ -2139,11 +2296,13 @@ function WallToolProperties() {
           value={pendingWall.wallTypeId || ''}
           onChange={(e) => {
             const typeId = e.target.value || undefined;
+            // Check regular wall types first, then grouped
             const wt = wallTypes.find(w => w.id === typeId);
+            const gwt = groupedWallTypes.find(g => g.id === typeId);
             setPendingWall({
               ...pendingWall,
               wallTypeId: typeId,
-              thickness: wt ? wt.thickness : pendingWall.thickness,
+              thickness: wt ? wt.thickness : gwt ? gwt.totalThickness : pendingWall.thickness,
             });
             if (typeId) {
               setLastUsedWallTypeId(typeId);
@@ -2155,8 +2314,30 @@ function WallToolProperties() {
           {wallTypes.map(wt => (
             <option key={wt.id} value={wt.id}>{wt.name} ({wt.thickness}mm)</option>
           ))}
+          {groupedWallTypes.length > 0 && (
+            <option disabled>── Grouped Walls ──</option>
+          )}
+          {groupedWallTypes.map(gwt => (
+            <option key={gwt.id} value={gwt.id}>{gwt.name} ({gwt.totalThickness}mm)</option>
+          ))}
         </select>
       </div>
+
+      {/* Grouped wall layer info */}
+      {isGroupedWall && selectedGroupedType && (
+        <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
+          <div className="text-[10px] text-cad-text-dim font-medium mb-1">Layers:</div>
+          {selectedGroupedType.layers.map((layer) => (
+            <div key={layer.id} className="text-[10px] text-cad-text-secondary flex justify-between">
+              <span>{layer.isDrawn ? '\u2588' : '\u2591'} {layer.name}</span>
+              <span>{layer.thickness}mm{layer.gap > 0 ? ` +${layer.gap}mm gap` : ''}</span>
+            </div>
+          ))}
+          <div className="text-[10px] text-cad-text-dim mt-1">
+            Alignment: {selectedGroupedType.alignmentLine}
+          </div>
+        </div>
+      )}
 
       <PropertyGroup label="Properties">
         <NumberField
@@ -3703,6 +3884,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
   const setCurrentStyle = useAppStore(s => s.setCurrentStyle);
   const updateShape = useAppStore(s => s.updateShape);
   const activeTool = useAppStore(s => s.activeTool);
+  const show3DView = useAppStore(s => s.show3DView);
 
   const selectedIdSet = useMemo(() => new Set(selectedShapeIds), [selectedShapeIds]);
   const selectedShapes = shapes.filter((s) => {
@@ -3764,7 +3946,13 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
     return (
       <div className="flex-1 overflow-auto">
         {isToolWithProperties && <ActiveToolProperties activeTool={activeTool} />}
-        <DrawingPropertiesPanel showHeader={false} />
+        {show3DView ? (
+          <div className="p-3 text-xs text-cad-text-dim">
+            Select an element in the 3D view to see its properties.
+          </div>
+        ) : (
+          <DrawingPropertiesPanel showHeader={false} />
+        )}
       </div>
     );
   }
@@ -3798,8 +3986,8 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
     <div className="flex-1 overflow-auto">
       {isToolWithProperties && <ActiveToolProperties activeTool={activeTool} />}
       <div>
-        {/* Hide Style section for walls, gridlines, and piles */}
-        {!(selectedShapes.length > 0 && selectedShapes.every(s => s.type === 'wall' || s.type === 'gridline' || s.type === 'pile')) && <PropertyGroup label="Style">
+        {/* Hide Style section for walls, gridlines, piles, and slabs */}
+        {!(selectedShapes.length > 0 && selectedShapes.every(s => s.type === 'wall' || s.type === 'gridline' || s.type === 'pile' || s.type === 'slab')) && <PropertyGroup label="Style">
           <ColorPalette label="Color" value={displayStyle.strokeColor} onChange={handleColorChange} />
 
           <LineweightInput value={displayStyle.strokeWidth} onChange={handleWidthChange} />
