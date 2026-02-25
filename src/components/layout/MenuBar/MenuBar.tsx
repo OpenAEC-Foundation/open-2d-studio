@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo, memo } from 'react';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { getVersion } from '@tauri-apps/api/app';
 import {
   MousePointer2,
   Hand,
@@ -352,6 +353,11 @@ export const MenuBar = memo(function MenuBar({ onSendFeedback }: MenuBarProps) {
 
   const { handleNew, handleOpen, handleSave, handleSaveAs, handlePrint } = useFileOperations();
 
+  const [appVersion, setAppVersion] = useState('');
+  useEffect(() => {
+    getVersion().then(setAppVersion).catch(() => setAppVersion(''));
+  }, []);
+
   /* visibility state with localStorage persistence */
   const [visibleIds, setVisibleIds] = useState<string[]>(loadVisibleIds);
   const [menuOpen, setMenuOpen] = useState(false);
@@ -490,7 +496,7 @@ export const MenuBar = memo(function MenuBar({ onSendFeedback }: MenuBarProps) {
         onDoubleClick={() => getCurrentWindow().toggleMaximize()}
       >
         <span className="text-cad-text-dim text-sm font-medium pointer-events-none">
-          {isModified ? '* ' : ''}{projectName} - Open 2D Studio
+          {isModified ? '* ' : ''}{projectName} - Open 2D Studio{appVersion ? ` v${appVersion}` : ''}
         </span>
       </div>
 
