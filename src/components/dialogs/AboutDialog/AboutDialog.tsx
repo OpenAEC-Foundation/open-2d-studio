@@ -23,7 +23,7 @@ export function AboutDialog({ isOpen, onClose }: AboutDialogProps) {
       footer={<ModalButton onClick={onClose} variant="primary">OK</ModalButton>}
     >
       <div className="flex-1 p-4 flex flex-col items-center text-center justify-center">
-        <h1 className="text-lg font-bold text-cad-text mb-1">Open nD Studio</h1>
+        <h1 className="text-lg font-bold text-cad-text mb-1">Open 2D Studio</h1>
         <p className="text-xs text-cad-text-dim mb-3">Version {appVersion}</p>
 
         <p className="text-xs text-cad-text-dim mb-3">

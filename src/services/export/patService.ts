@@ -184,7 +184,7 @@ export function exportToPAT(patterns: CustomHatchPattern[]): string {
 
   // Add header comment
   lines.push(';; Custom Hatch Patterns');
-  lines.push(`;; Exported from Open nD Studio`);
+  lines.push(`;; Exported from Open 2D Studio`);
   lines.push(`;; Date: ${new Date().toISOString()}`);
   lines.push('');
 

@@ -91,7 +91,7 @@ export function parseCoordinateInput(
 
     if (isRelative && lastPoint) {
       return {
-        point: { x: lastPoint.x + x, y: lastPoint.y + y },
+        point: { x: lastPoint.x + x, y: lastPoint.y - y }, // negate Y: user Y-up → internal Y-down
         isRelative: true,
         isPolar: false,
         isDirectDistance: false,
@@ -99,7 +99,7 @@ export function parseCoordinateInput(
     }
 
     return {
-      point: { x, y },
+      point: { x, y: -y }, // negate Y: user Y-up → internal Y-down
       isRelative: false,
       isPolar: false,
       isDirectDistance: false,
@@ -125,10 +125,11 @@ export function parseCoordinateInput(
  * Format a point as a coordinate string
  */
 export function formatCoordinate(point: Point, precision: number = 2, unitSettings?: UnitSettings): string {
+  const displayY = -point.y; // negate Y: internal Y-down → display Y-up
   if (unitSettings) {
-    return `${fmtNum(point.x, precision, unitSettings.numberFormat)}, ${fmtNum(point.y, precision, unitSettings.numberFormat)}`;
+    return `${fmtNum(point.x, precision, unitSettings.numberFormat)}, ${fmtNum(displayY, precision, unitSettings.numberFormat)}`;
   }
-  return `${point.x.toFixed(precision)}, ${point.y.toFixed(precision)}`;
+  return `${point.x.toFixed(precision)}, ${displayY.toFixed(precision)}`;
 }
 
 /**

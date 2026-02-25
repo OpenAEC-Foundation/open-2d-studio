@@ -216,8 +216,8 @@ export function PatternPreview({
       ref={canvasRef}
       width={width}
       height={height}
-      className="border border-cad-border"
-      style={{ imageRendering: 'crisp-edges' }}
+      className="border border-cad-border outline-none"
+      style={{ imageRendering: 'crisp-edges', maxWidth: '100%', maxHeight: '100%', objectFit: 'contain' }}
     />
   );
 }

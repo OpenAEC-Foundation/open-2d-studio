@@ -148,6 +148,10 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     isDragging: false, startX: 0, startY: 0, didDrag: false, lastSnappedPos: null,
   });
 
+  // Track middle-mouse-button clicks for manual double-click detection
+  // (browsers only fire dblclick for the primary button)
+  const middleClickRef = useRef<number>(0);
+
   /**
    * Resolve plate system hit: when a child beam is hit, redirect to parent
    * plate system unless we are in edit mode for that specific system.
@@ -232,6 +236,18 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
    */
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
+      // Middle-mouse double-click: zoom extents (standard CAD behavior)
+      if (e.button === 1) {
+        const now = Date.now();
+        if (now - middleClickRef.current < 400) {
+          e.preventDefault();
+          useAppStore.getState().zoomToFit();
+          middleClickRef.current = 0;
+          return;
+        }
+        middleClickRef.current = now;
+      }
+
       const screenPos = panZoom.getMousePos(e);
 
       // Check pan first

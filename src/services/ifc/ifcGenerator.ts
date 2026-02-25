@@ -12,8 +12,8 @@
  *   GridlineShape      -> IfcGrid + IfcGridAxis
  *   LevelShape         -> IfcBuildingStorey + IfcAnnotation
  *   PileShape          -> IfcPile + Pset_PileCommon + IfcMaterial
- *   PuntniveauShape    -> IfcBuildingElementProxy (extruded slab at NAP elevation) + OpenNDStudio_Puntniveau
- *   CPTShape           -> IfcBuildingElementProxy + 3D cylinder + OpenNDStudio_CPT properties
+ *   PuntniveauShape    -> IfcBuildingElementProxy (extruded slab at NAP elevation) + Open2DStudio_Puntniveau
+ *   CPTShape           -> IfcBuildingElementProxy + 3D cylinder + Open2DStudio_CPT properties
  *   (Column beams)     -> IfcColumn
  *   LineShape          -> IfcAnnotation (Curve2D IfcPolyline)
  *   ArcShape           -> IfcAnnotation (Curve2D IfcTrimmedCurve)
@@ -464,7 +464,7 @@ export function generateIFC(
             b.addPropertySingleValue('Span', null, ifcPositiveLengthMeasure(length), lengthUnit),
           ]);
 
-        // OpenNDStudio_BeamDimensions
+        // Open2DStudio_BeamDimensions
         const beamDimProps: number[] = [
           b.addPropertySingleValue('ProfileType', null, ifcLabel(beam.profileType), null),
           b.addPropertySingleValue('FlangeWidth', null, ifcPositiveLengthMeasure(flangeWidth), lengthUnit),
@@ -474,7 +474,7 @@ export function generateIFC(
         if (beam.presetName) {
           beamDimProps.push(b.addPropertySingleValue('PresetName', null, ifcLabel(beam.presetName), null));
         }
-        assignPropertySet(beamEntityId, beam.id, 'dims', 'OpenNDStudio_BeamDimensions', 'Beam profile dimensions from Open nD Studio', beamDimProps);
+        assignPropertySet(beamEntityId, beam.id, 'dims', 'Open2DStudio_BeamDimensions', 'Beam profile dimensions from Open 2D Studio', beamDimProps);
         break;
       }
 
@@ -607,9 +607,9 @@ export function generateIFC(
         }
         assignPropertySet(pileEntityId, pile.id, 'pset', 'Pset_PileCommon', 'Common pile properties', psetPileCommonProps);
 
-        // OpenNDStudio_PileType - pile type information from PileTypeDefinition
+        // Open2DStudio_PileType - pile type information from PileTypeDefinition
         if (pileTypeDef) {
-          assignPropertySet(pileEntityId, pile.id, 'ptpset', 'OpenNDStudio_PileType', 'Pile type properties from Open nD Studio', [
+          assignPropertySet(pileEntityId, pile.id, 'ptpset', 'Open2DStudio_PileType', 'Pile type properties from Open 2D Studio', [
             b.addPropertySingleValue('PileTypeName', null, ifcLabel(pileTypeDef.name), null),
             b.addPropertySingleValue('CrossSectionShape', null, ifcLabel(pileTypeDef.shape), null),
             b.addPropertySingleValue('ConstructionMethod', null, ifcLabel(pileTypeDef.method), null),
@@ -617,7 +617,7 @@ export function generateIFC(
           ]);
         }
 
-        // OpenNDStudio_PileElevations - Dutch geotechnical elevation data preserved for domain users
+        // Open2DStudio_PileElevations - Dutch geotechnical elevation data preserved for domain users
         const pileElevProps: number[] = [];
         if (pile.puntniveauNAP != null) {
           pileElevProps.push(b.addPropertySingleValue('TipLevelNAP', null, ifcLengthMeasure(pile.puntniveauNAP * 1000), lengthUnit));
@@ -632,14 +632,14 @@ export function generateIFC(
           pileElevProps.push(b.addPropertySingleValue('ActualTipLevelNAP', null, ifcLengthMeasure(pile.tipLevel * 1000), lengthUnit));
         }
         if (pileElevProps.length > 0) {
-          assignPropertySet(pileEntityId, pile.id, 'elevpset', 'OpenNDStudio_PileElevations', 'Pile elevation data from Open nD Studio', pileElevProps);
+          assignPropertySet(pileEntityId, pile.id, 'elevpset', 'Open2DStudio_PileElevations', 'Pile elevation data from Open 2D Studio', pileElevProps);
         }
 
-        // OpenNDStudio_PileDimensions
+        // Open2DStudio_PileDimensions
         const pileArea = isSquare
           ? pile.diameter * pile.diameter
           : Math.PI * (pile.diameter / 2) * (pile.diameter / 2);
-        assignPropertySet(pileEntityId, pile.id, 'dims', 'OpenNDStudio_PileDimensions', 'Pile dimensions from Open nD Studio', [
+        assignPropertySet(pileEntityId, pile.id, 'dims', 'Open2DStudio_PileDimensions', 'Pile dimensions from Open 2D Studio', [
           b.addPropertySingleValue('Diameter', null, ifcPositiveLengthMeasure(pile.diameter), lengthUnit),
           b.addPropertySingleValue('Length', null, ifcPositiveLengthMeasure(pileLength), lengthUnit),
           b.addPropertySingleValue('CrossSectionalArea', null, ifcAreaMeasure(pileArea / 1e6), areaUnit),
@@ -691,7 +691,7 @@ export function generateIFC(
           b.addPropertySingleValue('Reference', null, ifcIdentifier(cpt.name || 'CPT'), null),
         ]);
 
-        // OpenNDStudio_CPT property set with geotechnical data
+        // Open2DStudio_CPT property set with geotechnical data
         const cptProps: number[] = [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('cpt'), null),
           b.addPropertySingleValue('Name', null, ifcLabel(cpt.name || ''), null),
@@ -703,7 +703,7 @@ export function generateIFC(
           b.addPropertySingleValue('Waterspanning', null, ifcBoolean(cpt.waterspanning ?? false), null),
           b.addPropertySingleValue('Uitgevoerd', null, ifcBoolean(cpt.uitgevoerd ?? false), null),
         ];
-        assignPropertySet(cptEntityId, cpt.id, 'pset', 'OpenNDStudio_CPT', 'CPT geotechnical properties from Open nD Studio', cptProps);
+        assignPropertySet(cptEntityId, cpt.id, 'pset', 'Open2DStudio_CPT', 'CPT geotechnical properties from Open 2D Studio', cptProps);
         break;
       }
 
@@ -755,7 +755,7 @@ export function generateIFC(
         if (level.description) {
           lvlAnnotProps.push(b.addPropertySingleValue('Description', null, ifcLabel(level.description), null));
         }
-        assignPropertySet(lvlAnnotId, level.id, 'annot-pset', 'OpenNDStudio_Annotation', 'Level annotation properties', lvlAnnotProps);
+        assignPropertySet(lvlAnnotId, level.id, 'annot-pset', 'Open2DStudio_Annotation', 'Level annotation properties', lvlAnnotProps);
         break;
       }
 
@@ -768,7 +768,7 @@ export function generateIFC(
         const { annotationId } = createCurveAnnotation(ctx, shapeToIfcGuid(line.id), 'Line', null, [linePolyline], defaultStoreyPlacement);
         addElementToStorey(annotationId, resolveStoreyForShape(line));
 
-        assignPropertySet(annotationId, line.id, 'pset', 'OpenNDStudio_Annotation', 'Line annotation properties', [
+        assignPropertySet(annotationId, line.id, 'pset', 'Open2DStudio_Annotation', 'Line annotation properties', [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('line'), null),
         ]);
         break;
@@ -789,7 +789,7 @@ export function generateIFC(
         const { annotationId } = createCurveAnnotation(ctx, shapeToIfcGuid(arc.id), 'Arc', null, [arcTrimmed], defaultStoreyPlacement);
         addElementToStorey(annotationId, resolveStoreyForShape(arc));
 
-        assignPropertySet(annotationId, arc.id, 'pset', 'OpenNDStudio_Annotation', 'Arc annotation properties', [
+        assignPropertySet(annotationId, arc.id, 'pset', 'Open2DStudio_Annotation', 'Arc annotation properties', [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('arc'), null),
           b.addPropertySingleValue('Radius', null, ifcPositiveLengthMeasure(arc.radius), lengthUnit),
         ]);
@@ -805,7 +805,7 @@ export function generateIFC(
         const { annotationId } = createCurveAnnotation(ctx, shapeToIfcGuid(circle.id), 'Circle', null, [circleGeom], defaultStoreyPlacement);
         addElementToStorey(annotationId, resolveStoreyForShape(circle));
 
-        assignPropertySet(annotationId, circle.id, 'pset', 'OpenNDStudio_Annotation', 'Circle annotation properties', [
+        assignPropertySet(annotationId, circle.id, 'pset', 'Open2DStudio_Annotation', 'Circle annotation properties', [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('circle'), null),
           b.addPropertySingleValue('Radius', null, ifcPositiveLengthMeasure(circle.radius), lengthUnit),
         ]);
@@ -832,7 +832,7 @@ export function generateIFC(
         );
         addElementToStorey(annotationId, resolveStoreyForShape(polyline));
 
-        assignPropertySet(annotationId, polyline.id, 'pset', 'OpenNDStudio_Annotation', 'Polyline annotation properties', [
+        assignPropertySet(annotationId, polyline.id, 'pset', 'Open2DStudio_Annotation', 'Polyline annotation properties', [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('polyline'), null),
           b.addPropertySingleValue('Closed', null, ifcBoolean(polyline.closed), null),
           b.addPropertySingleValue('VertexCount', null, ifcLabel(String(polyline.points.length)), null),
@@ -884,8 +884,8 @@ export function generateIFC(
         }
         pnvArea = Math.abs(pnvArea) / 2; // mm²
 
-        // OpenNDStudio_Puntniveau property set
-        assignPropertySet(pnvEntityId, pnv.id, 'pset', 'OpenNDStudio_Puntniveau', 'Puntniveau properties from Open nD Studio', [
+        // Open2DStudio_Puntniveau property set
+        assignPropertySet(pnvEntityId, pnv.id, 'pset', 'Open2DStudio_Puntniveau', 'Puntniveau properties from Open 2D Studio', [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('puntniveau'), null),
           b.addPropertySingleValue('PuntniveauNAP', null, ifcLengthMeasure(pnv.puntniveauNAP * 1000), lengthUnit),
           b.addPropertySingleValue('PuntniveauNAP_m', null, ifcLabel(`${pnv.puntniveauNAP} m NAP`), null),
@@ -916,7 +916,7 @@ export function generateIFC(
         const { annotationId } = createCurveAnnotation(ctx, shapeToIfcGuid(rect.id), 'Rectangle', null, [rectPolyline], defaultStoreyPlacement);
         addElementToStorey(annotationId, resolveStoreyForShape(rect));
 
-        assignPropertySet(annotationId, rect.id, 'pset', 'OpenNDStudio_Annotation', 'Rectangle annotation properties', [
+        assignPropertySet(annotationId, rect.id, 'pset', 'Open2DStudio_Annotation', 'Rectangle annotation properties', [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('rectangle'), null),
           b.addPropertySingleValue('Width', null, ifcPositiveLengthMeasure(rect.width), lengthUnit),
           b.addPropertySingleValue('Height', null, ifcPositiveLengthMeasure(rect.height), lengthUnit),
@@ -952,7 +952,7 @@ export function generateIFC(
         if (dim.suffix) {
           dimProps.push(b.addPropertySingleValue('Suffix', null, ifcLabel(dim.suffix), null));
         }
-        assignPropertySet(annotationId, dim.id, 'pset', 'OpenNDStudio_Annotation', 'Dimension annotation properties', dimProps);
+        assignPropertySet(annotationId, dim.id, 'pset', 'Open2DStudio_Annotation', 'Dimension annotation properties', dimProps);
         break;
       }
 
@@ -968,7 +968,7 @@ export function generateIFC(
         );
         addElementToStorey(annotationId, resolveStoreyForShape(text));
 
-        assignPropertySet(annotationId, text.id, 'pset', 'OpenNDStudio_Annotation', 'Text annotation properties', [
+        assignPropertySet(annotationId, text.id, 'pset', 'Open2DStudio_Annotation', 'Text annotation properties', [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('text'), null),
           b.addPropertySingleValue('Content', null, ifcLabel(text.text), null),
           b.addPropertySingleValue('FontSize', null, ifcPositiveLengthMeasure(text.fontSize), lengthUnit),
@@ -1000,7 +1000,7 @@ export function generateIFC(
         if (sc.targetDrawingId) {
           scProps.push(b.addPropertySingleValue('TargetDrawingId', null, ifcLabel(sc.targetDrawingId), null));
         }
-        assignPropertySet(annotationId, sc.id, 'pset', 'OpenNDStudio_Annotation', 'Section callout annotation properties', scProps);
+        assignPropertySet(annotationId, sc.id, 'pset', 'Open2DStudio_Annotation', 'Section callout annotation properties', scProps);
         break;
       }
 
@@ -1052,7 +1052,7 @@ export function generateIFC(
           assignPropertySet(spaceEntityId, space.id, 'pset', 'Pset_SpaceCommon', 'Common space properties', spaceProps);
         }
 
-        // OpenNDStudio custom property set
+        // Open2DStudio custom property set
         const ndProps: number[] = [
           b.addPropertySingleValue('ShapeType', null, ifcLabel('space'), null),
           b.addPropertySingleValue('SpaceName', null, ifcLabel(space.name), null),
@@ -1060,7 +1060,7 @@ export function generateIFC(
         if (space.number) {
           ndProps.push(b.addPropertySingleValue('SpaceNumber', null, ifcLabel(space.number), null));
         }
-        assignPropertySet(spaceEntityId, space.id, 'ndpset', 'OpenNDStudio_Space', 'Space annotation properties', ndProps);
+        assignPropertySet(spaceEntityId, space.id, 'ndpset', 'Open2DStudio_Space', 'Space annotation properties', ndProps);
         break;
       }
 
@@ -1115,7 +1115,7 @@ export function generateIFC(
 
     if (hasPlanGridlines) {
       const gridPset = b.addPropertySet(
-        generateIfcGuid(), ownerHistoryId, 'OpenNDStudio_GridSystem', 'Grid system from Plan drawing', [
+        generateIfcGuid(), ownerHistoryId, 'Open2DStudio_GridSystem', 'Grid system from Plan drawing', [
           b.addPropertySingleValue('GridType', null, ifcLabel('IfcGrid'), null),
           b.addPropertySingleValue('Source', null, ifcLabel('Plan Drawing'), null),
         ]

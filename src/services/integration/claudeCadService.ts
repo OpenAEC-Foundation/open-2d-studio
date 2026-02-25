@@ -28,7 +28,7 @@ interface McpToolCall {
  * Generate the system prompt dynamically using MCP tool definitions
  */
 function generateSystemPrompt(): string {
-  let prompt = `You are integrated into Open nD Studio, a 2D CAD application.
+  let prompt = `You are integrated into Open 2D Studio, a 2D CAD application.
 
 OUTPUT FORMAT: You MUST respond with ONLY a JSON array of tool calls. No explanations, no markdown, no text.
 

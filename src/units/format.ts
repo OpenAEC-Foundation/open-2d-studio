@@ -179,7 +179,7 @@ export function formatAngle(valueDeg: number, settings: UnitSettings): string {
  */
 export function formatCoordinate(xMM: number, yMM: number, settings: UnitSettings): string {
   const x = formatLength(xMM, settings);
-  const y = formatLength(yMM, settings);
+  const y = formatLength(-yMM, settings); // negate Y: internal Y-down → display Y-up
   return `${x}, ${y}`;
 }
 

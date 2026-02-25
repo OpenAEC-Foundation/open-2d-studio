@@ -93,7 +93,7 @@ export class CursorLayer extends BaseRenderer {
 
     const label = unitSettings
       ? `2D Cursor: ${formatCoordinate(position.x, position.y, unitSettings)}`
-      : `2D Cursor: ${position.x.toFixed(2)}, ${position.y.toFixed(2)}`;
+      : `2D Cursor: ${position.x.toFixed(2)}, ${(-position.y).toFixed(2)}`;
 
     ctx.font = '10px Arial, sans-serif';
     const metrics = ctx.measureText(label);

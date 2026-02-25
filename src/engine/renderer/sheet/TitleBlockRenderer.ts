@@ -17,6 +17,7 @@ export class TitleBlockRenderer extends BaseRenderer {
   private logoImageCache: Map<string, HTMLImageElement> = new Map();
   private svgImageCache: Map<string, HTMLImageElement> = new Map();
   private onImageLoadCallback: (() => void) | null = null;
+  private _editingFieldId: string | null = null;
 
   /**
    * Set callback to be invoked when an image finishes loading
@@ -33,8 +34,10 @@ export class TitleBlockRenderer extends BaseRenderer {
     titleBlock: TitleBlock | EnhancedTitleBlock,
     paperWidth: number,
     paperHeight: number,
-    customTemplates?: import('../../../types/sheet').TitleBlockTemplate[]
+    customTemplates?: import('../../../types/sheet').TitleBlockTemplate[],
+    editingFieldId?: string | null
   ): void {
+    this._editingFieldId = editingFieldId || null;
     const ctx = this.ctx;
 
     // Check for SVG template ID
@@ -134,9 +137,10 @@ export class TitleBlockRenderer extends BaseRenderer {
     }
 
     // Build field values from title block fields
+    // Blank out the editing field so its value doesn't appear in the SVG
     const fieldValues: Record<string, string> = {};
     for (const field of titleBlock.fields) {
-      fieldValues[field.id] = field.value || '';
+      fieldValues[field.id] = (field.id === this._editingFieldId) ? '' : (field.value || '');
     }
 
     // Render SVG with substituted values
@@ -286,12 +290,14 @@ export class TitleBlockRenderer extends BaseRenderer {
     ctx.font = `${labelFontSize}px ${CAD_DEFAULT_FONT}`;
     ctx.fillText(field.label, textX, y + padding);
 
-    // Draw value (larger, below label)
-    const valueFontSize = fontSize;
-    ctx.fillStyle = COLORS.titleBlockValue;
-    ctx.font = `${isBold ? 'bold ' : ''}${valueFontSize}px ${CAD_DEFAULT_FONT}`;
-    const value = field.value || '';
-    ctx.fillText(value, textX, y + padding + labelFontSize + 2);
+    // Draw value (larger, below label) — skip if field is being edited
+    if (field.id !== this._editingFieldId) {
+      const valueFontSize = fontSize;
+      ctx.fillStyle = COLORS.titleBlockValue;
+      ctx.font = `${isBold ? 'bold ' : ''}${valueFontSize}px ${CAD_DEFAULT_FONT}`;
+      const value = field.value || '';
+      ctx.fillText(value, textX, y + padding + labelFontSize + 2);
+    }
 
     // Reset text align
     ctx.textAlign = 'left';
@@ -527,11 +533,13 @@ export class TitleBlockRenderer extends BaseRenderer {
       ctx.font = `${Math.max(7, (field.fontSize || 8) - 2)}px ${field.fontFamily || CAD_DEFAULT_FONT}`;
       ctx.fillText(field.label, fieldX, fieldY);
 
-      // Draw value (larger, black, below label)
-      ctx.fillStyle = COLORS.titleBlockValue;
-      ctx.font = `bold ${field.fontSize || 10}px ${field.fontFamily || CAD_DEFAULT_FONT}`;
-      const value = field.value || '';
-      ctx.fillText(value, fieldX, fieldY + 10);
+      // Draw value (larger, black, below label) — skip if field is being edited
+      if (field.id !== this._editingFieldId) {
+        ctx.fillStyle = COLORS.titleBlockValue;
+        ctx.font = `bold ${field.fontSize || 10}px ${field.fontFamily || CAD_DEFAULT_FONT}`;
+        const value = field.value || '';
+        ctx.fillText(value, fieldX, fieldY + 10);
+      }
     }
 
     ctx.textBaseline = 'alphabetic';

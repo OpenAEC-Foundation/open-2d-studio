@@ -569,10 +569,10 @@ export function createProjectContext(): ProjectContext {
 
   // Person, Organization, Application, OwnerHistory
   const personId = b.addPerson('User');
-  const orgId = b.addOrganization('Open nD Studio');
+  const orgId = b.addOrganization('Open 2D Studio');
   const personOrgId = b.addPersonAndOrganization(personId, orgId);
-  const appOrgId = b.addOrganization('Open nD Studio');
-  const appId = b.addApplication(appOrgId, '1.0', 'Open nD Studio', 'OpenNDStudio');
+  const appOrgId = b.addOrganization('Open 2D Studio');
+  const appId = b.addApplication(appOrgId, '1.0', 'Open 2D Studio', 'Open2DStudio');
   const ownerHistoryId = b.addOwnerHistory(personOrgId, appId, '.NOCHANGE.');
 
   // Units (millimeters for length, with degree angle support)
@@ -614,7 +614,7 @@ export function createProjectContext(): ProjectContext {
 
   // Project
   const projectId = b.addProject(
-    generateIfcGuid(), ownerHistoryId, 'Open nD Studio Project',
+    generateIfcGuid(), ownerHistoryId, 'Open 2D Studio Project',
     unitAssignment, [geomContext]
   );
 
@@ -717,7 +717,7 @@ export function assembleStepFile(builder: IfcBuilder): string {
     'ISO-10303-21;',
     'HEADER;',
     `FILE_DESCRIPTION((${stepString('ViewDefinition [CoordinationView_V2.0]')},${stepString('ExchangeRequirement [Architecture]')}),'2;1');`,
-    `FILE_NAME(${stepString('model.ifc')},${stepString(ts)},(${stepString('User')}),(${stepString('Open nD Studio')}),${stepString('Open nD Studio IFC Generator 1.0')},${stepString('Open nD Studio 1.0')},$);`,
+    `FILE_NAME(${stepString('model.ifc')},${stepString(ts)},(${stepString('User')}),(${stepString('Open 2D Studio')}),${stepString('Open 2D Studio IFC Generator 1.0')},${stepString('Open 2D Studio 1.0')},$);`,
     "FILE_SCHEMA(('IFC4'));",
     'ENDSEC;',
     '',

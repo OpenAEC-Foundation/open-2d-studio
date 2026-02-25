@@ -960,13 +960,13 @@ export function DynamicInput() {
           <span className="text-cad-text-dim">X:</span>
           <span className="text-cad-accent">{formatLength(effectivePoint.x, unitSettings)}</span>
           <span className="text-cad-text-dim ml-2">Y:</span>
-          <span className="text-cad-accent">{formatLength(effectivePoint.y, unitSettings)}</span>
+          <span className="text-cad-accent">{formatLength(-effectivePoint.y, unitSettings)}</span>
         </div>
         <div className="flex items-center gap-2 text-cad-text text-[10px]">
           <span className="text-cad-text-dim">{'\u0394'}X:</span>
           <span>{formatLength(deltaX, unitSettings)}</span>
           <span className="text-cad-text-dim ml-2">{'\u0394'}Y:</span>
-          <span>{formatLength(deltaY, unitSettings)}</span>
+          <span>{formatLength(-deltaY, unitSettings)}</span>
         </div>
 
         {/* Hint */}

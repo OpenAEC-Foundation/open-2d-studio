@@ -270,7 +270,7 @@ function FeedbackPanel() {
         ? `[Feature Request] ${message.slice(0, 80)}${message.length > 80 ? '...' : ''}`
         : `[Feedback] ${message.slice(0, 80)}${message.length > 80 ? '...' : ''}`;
 
-    const body = `${message}${ratingText}\n\n---\n*Submitted from Open nD Studio*`;
+    const body = `${message}${ratingText}\n\n---\n*Submitted from Open 2D Studio*`;
 
     try {
       const res = await fetch(`https://api.github.com/repos/${GITHUB_REPO}/issues`, {
@@ -612,7 +612,7 @@ function AboutPanel() {
     <div className="p-8">
       <h2 className="text-lg font-semibold text-cad-text mb-6">About</h2>
       <div className="max-w-md">
-        <h1 className="text-xl font-bold text-cad-text mb-1">Open nD Studio</h1>
+        <h1 className="text-xl font-bold text-cad-text mb-1">Open 2D Studio</h1>
         <p className="text-sm text-cad-text-dim mb-4">Version {appVersion}</p>
         <p className="text-sm text-cad-text-dim mb-4">
           A cross-platform 2D CAD application

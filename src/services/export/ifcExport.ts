@@ -91,9 +91,9 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
 
   // --- Owner history ---
   const person = b.add(`IFCPERSON($,$,'',$,$,$,$,$)`);
-  const org = b.add(`IFCORGANIZATION($,'Open nD Studio',$,$,$)`);
+  const org = b.add(`IFCORGANIZATION($,'Open 2D Studio',$,$,$)`);
   const personOrg = b.add(`IFCPERSONANDORGANIZATION(${person},${org},$)`);
-  const app = b.add(`IFCAPPLICATION(${org},'1.0','Open nD Studio','ONDS')`);
+  const app = b.add(`IFCAPPLICATION(${org},'1.0','Open 2D Studio','ONDS')`);
   const unixTime = Math.floor(Date.now() / 1000);
   const ownerHistory = b.add(`IFCOWNERHISTORY(${personOrg},${app},$,.NOCHANGE.,$,${personOrg},${app},${unixTime})`);
 
@@ -162,8 +162,8 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
 
     switch (shape.type) {
       case 'line': {
-        const p1 = b.point2d(shape.start.x, shape.start.y);
-        const p2 = b.point2d(shape.end.x, shape.end.y);
+        const p1 = b.point2d(shape.start.x, -shape.start.y);
+        const p2 = b.point2d(shape.end.x, -shape.end.y);
         const polyline = b.add(`IFCPOLYLINE((${p1},${p2}))`);
         const style = createCurveStyle(shape);
         b.add(`IFCSTYLEDITEM(${polyline},(${style}),$)`);
@@ -173,11 +173,11 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
 
       case 'rectangle': {
         const cx = shape.topLeft.x + shape.width / 2;
-        const cy = shape.topLeft.y + shape.height / 2;
+        const cy = -(shape.topLeft.y + shape.height / 2); // negate Y for IFC
         const hw = shape.width / 2;
         const hh = shape.height / 2;
-        const cos = Math.cos(shape.rotation || 0);
-        const sin = Math.sin(shape.rotation || 0);
+        const cos = Math.cos(-(shape.rotation || 0)); // negate rotation for Y-flip
+        const sin = Math.sin(-(shape.rotation || 0));
         const corners = [
           [-hw, -hh], [hw, -hh], [hw, hh], [-hw, hh]
         ].map(([lx, ly]) => [
@@ -195,7 +195,7 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
       }
 
       case 'circle': {
-        const center = b.point2d(shape.center.x, shape.center.y);
+        const center = b.point2d(shape.center.x, -shape.center.y);
         const dir = b.direction2d(1, 0);
         const placement = b.axis2placement2d(center, dir);
         const circle = b.add(`IFCCIRCLE(${placement},${b.f(shape.radius)})`);
@@ -206,12 +206,15 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
       }
 
       case 'arc': {
-        const center = b.point2d(shape.center.x, shape.center.y);
+        const center = b.point2d(shape.center.x, -shape.center.y);
         const dir = b.direction2d(1, 0);
         const placement = b.axis2placement2d(center, dir);
         const basisCircle = b.add(`IFCCIRCLE(${placement},${b.f(shape.radius)})`);
+        // Negate and swap angles for Y-flip (same as DXF export)
+        const ifcStartAngle = -shape.endAngle;
+        const ifcEndAngle = -shape.startAngle;
         const trimmed = b.add(
-          `IFCTRIMMEDCURVE(${basisCircle},(IFCPARAMETERVALUE(${b.f(shape.startAngle)})),(IFCPARAMETERVALUE(${b.f(shape.endAngle)})),.T.,.PARAMETER.)`
+          `IFCTRIMMEDCURVE(${basisCircle},(IFCPARAMETERVALUE(${b.f(ifcStartAngle)})),(IFCPARAMETERVALUE(${b.f(ifcEndAngle)})),.T.,.PARAMETER.)`
         );
         const style = createCurveStyle(shape);
         b.add(`IFCSTYLEDITEM(${trimmed},(${style}),$)`);
@@ -220,9 +223,10 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
       }
 
       case 'ellipse': {
-        const center = b.point2d(shape.center.x, shape.center.y);
-        const cos = Math.cos(shape.rotation || 0);
-        const sin = Math.sin(shape.rotation || 0);
+        const center = b.point2d(shape.center.x, -shape.center.y);
+        const rot = -(shape.rotation || 0); // negate rotation for Y-flip
+        const cos = Math.cos(rot);
+        const sin = Math.sin(rot);
         const dir = b.direction2d(cos, sin);
         const placement = b.axis2placement2d(center, dir);
         const semi1 = Math.max(shape.radiusX, shape.radiusY);
@@ -230,8 +234,11 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
         const ellipse = b.add(`IFCELLIPSE(${placement},${b.f(semi1)},${b.f(semi2)})`);
 
         if (shape.startAngle !== undefined && shape.endAngle !== undefined) {
+          // Negate and swap angles for Y-flip
+          const ifcStartAngle = -shape.endAngle;
+          const ifcEndAngle = -shape.startAngle;
           const trimmed = b.add(
-            `IFCTRIMMEDCURVE(${ellipse},(IFCPARAMETERVALUE(${b.f(shape.startAngle)})),(IFCPARAMETERVALUE(${b.f(shape.endAngle)})),.T.,.PARAMETER.)`
+            `IFCTRIMMEDCURVE(${ellipse},(IFCPARAMETERVALUE(${b.f(ifcStartAngle)})),(IFCPARAMETERVALUE(${b.f(ifcEndAngle)})),.T.,.PARAMETER.)`
           );
           const style = createCurveStyle(shape);
           b.add(`IFCSTYLEDITEM(${trimmed},(${style}),$)`);
@@ -246,9 +253,9 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
 
       case 'polyline': {
         if (shape.points.length < 2) break;
-        const pts = shape.points.map(p => b.point2d(p.x, p.y));
+        const pts = shape.points.map(p => b.point2d(p.x, -p.y));
         if (shape.closed) {
-          const closePoint = b.point2d(shape.points[0].x, shape.points[0].y);
+          const closePoint = b.point2d(shape.points[0].x, -shape.points[0].y);
           pts.push(closePoint);
         }
         const polyline = b.add(`IFCPOLYLINE((${pts.join(',')}))`);
@@ -260,7 +267,7 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
 
       case 'spline': {
         if (shape.points.length < 2) break;
-        const controlPts = shape.points.map(p => b.point2d(p.x, p.y));
+        const controlPts = shape.points.map(p => b.point2d(p.x, -p.y));
         const n = shape.points.length;
         const degree = Math.min(3, n - 1);
         const knotMults: number[] = [];
@@ -286,9 +293,10 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
       }
 
       case 'text': {
-        const pos = b.point2d(shape.position.x, shape.position.y);
-        const cos = Math.cos(shape.rotation || 0);
-        const sin = Math.sin(shape.rotation || 0);
+        const pos = b.point2d(shape.position.x, -shape.position.y);
+        const rot = -(shape.rotation || 0); // negate rotation for Y-flip
+        const cos = Math.cos(rot);
+        const sin = Math.sin(rot);
         const dir = b.direction2d(cos, sin);
         const tPlacement = b.axis2placement2d(pos, dir);
         const width = shape.fixedWidth || (shape.text.length * shape.fontSize * 0.6);
@@ -309,8 +317,8 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
 
       case 'hatch': {
         if (shape.points.length < 3) break;
-        const pts = shape.points.map(p => b.point2d(p.x, p.y));
-        const closePoint = b.point2d(shape.points[0].x, shape.points[0].y);
+        const pts = shape.points.map(p => b.point2d(p.x, -p.y));
+        const closePoint = b.point2d(shape.points[0].x, -shape.points[0].y);
         pts.push(closePoint);
         const boundary = b.add(`IFCPOLYLINE((${pts.join(',')}))`);
         const fillArea = b.add(`IFCANNOTATIONFILLAREA(${boundary},$)`);
@@ -432,7 +440,7 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
 
       case 'dimension': {
         if (shape.points.length >= 2) {
-          const pts = shape.points.map(p => b.point2d(p.x, p.y));
+          const pts = shape.points.map(p => b.point2d(p.x, -p.y));
           const line = b.add(`IFCPOLYLINE((${pts.join(',')}))`);
           const style = createCurveStyle(shape);
           b.add(`IFCSTYLEDITEM(${line},(${style}),$)`);
@@ -440,7 +448,7 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
         }
         if (shape.value !== undefined && shape.points.length >= 2) {
           const midX = (shape.points[0].x + shape.points[1].x) / 2;
-          const midY = (shape.points[0].y + shape.points[1].y) / 2;
+          const midY = -(shape.points[0].y + shape.points[1].y) / 2;
           const pos = b.point2d(midX, midY);
           const dir = b.direction2d(1, 0);
           const tPlacement = b.axis2placement2d(pos, dir);
@@ -454,7 +462,7 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
       }
 
       case 'point': {
-        const pt = b.point2d(shape.position.x, shape.position.y);
+        const pt = b.point2d(shape.position.x, -shape.position.y);
         geomItems.push(pt);
         break;
       }
@@ -503,7 +511,7 @@ export function exportToIFC(shapes: Shape[], layers: Layer[], customPatterns?: C
   return `ISO-10303-21;
 HEADER;
 FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
-FILE_NAME('drawing.ifc','${timestamp}',(''),('Open nD Studio'),'Open nD Studio','Open nD Studio','');
+FILE_NAME('drawing.ifc','${timestamp}',(''),('Open 2D Studio'),'Open 2D Studio','Open 2D Studio','');
 FILE_SCHEMA(('IFC4'));
 ENDSEC;
 

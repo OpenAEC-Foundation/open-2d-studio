@@ -112,6 +112,7 @@ export function createCircleShape(
     locked: false,
     center,
     radius: Math.abs(radius),
+    showCenterMark: true,
   };
 }
 
@@ -139,6 +140,7 @@ export function createArcShape(
     radius: Math.abs(radius),
     startAngle,
     endAngle,
+    showCenterMark: true,
   };
 }
 

@@ -115,11 +115,11 @@ fn dirs_discovery() -> Option<String> {
     if cfg!(windows) {
         std::env::var("APPDATA")
             .ok()
-            .map(|d| format!("{}\\OpenNDStudio\\instances", d))
+            .map(|d| format!("{}\\Open2DStudio\\instances", d))
     } else {
         std::env::var("HOME")
             .ok()
-            .map(|d| format!("{}/.config/open-nd-studio/instances", d))
+            .map(|d| format!("{}/.config/open-2d-studio/instances", d))
     }
 }
 

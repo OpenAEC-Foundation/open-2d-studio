@@ -87,7 +87,7 @@ export function getMcpToolsByCategory(): Record<string, McpTool[]> {
  */
 export function generateMcpToolsDocumentation(): string {
   const grouped = getMcpToolsByCategory();
-  const lines: string[] = ['# Open nD Studio MCP Tools', ''];
+  const lines: string[] = ['# Open 2D Studio MCP Tools', ''];
 
   for (const [category, tools] of Object.entries(grouped).sort()) {
     lines.push(`## ${category.charAt(0).toUpperCase() + category.slice(1)} Commands`, '');

@@ -85,6 +85,8 @@ export interface SheetRenderOptions {
   queries?: SavedQuery[];
   /** Unit settings for number formatting in overlays and labels */
   unitSettings?: UnitSettings;
+  /** ID of the title block field currently being edited (to hide canvas text) */
+  editingFieldId?: string | null;
 }
 
 export class SheetRenderer extends BaseRenderer {
@@ -144,6 +146,7 @@ export class SheetRenderer extends BaseRenderer {
       selectedAnnotationIds = [],
       placementPreview,
       customPatterns,
+      editingFieldId,
     } = options;
     const ctx = this.ctx;
 
@@ -183,7 +186,7 @@ export class SheetRenderer extends BaseRenderer {
 
     if (isFullPageTemplate) {
       // For full-page templates, draw the SVG template on top of white background
-      this.titleBlockRenderer.drawTitleBlock(sheet.titleBlock, paperWidth, paperHeight);
+      this.titleBlockRenderer.drawTitleBlock(sheet.titleBlock, paperWidth, paperHeight, undefined, editingFieldId);
     } else {
       // Draw thin paper edge
       ctx.strokeStyle = '#cccccc';
@@ -268,7 +271,7 @@ export class SheetRenderer extends BaseRenderer {
 
     // Draw title block (skip if full-page template - already drawn as background)
     if (sheet.titleBlock.visible && !isFullPageTemplate) {
-      this.titleBlockRenderer.drawTitleBlock(sheet.titleBlock, paperWidth, paperHeight);
+      this.titleBlockRenderer.drawTitleBlock(sheet.titleBlock, paperWidth, paperHeight, undefined, editingFieldId);
     }
 
     ctx.restore();

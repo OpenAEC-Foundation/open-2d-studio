@@ -38,7 +38,7 @@ confinement: strict
 
 apps:
   open-2d-studio:
-    command: usr/bin/open-nd-studio
+    command: usr/bin/open-2d-studio
     desktop: usr/share/applications/open-2d-studio.desktop
     extensions: [gnome]
     plugs:
@@ -65,11 +65,11 @@ parts:
       [Desktop Entry]
       Name=Open 2D Studio
       Comment=Free, open-source 2D CAD application
-      Exec=open-nd-studio %F
-      Icon=${SNAP}/usr/share/icons/hicolor/128x128/apps/open-nd-studio.png
+      Exec=open-2d-studio %F
+      Icon=${SNAP}/usr/share/icons/hicolor/128x128/apps/open-2d-studio.png
       Terminal=false
       Type=Application
       Categories=Graphics;Engineering;
       MimeType=application/x-onds;
-      StartupWMClass=open-nd-studio
+      StartupWMClass=open-2d-studio
       EOF

@@ -2,7 +2,7 @@
  * PatternManagerDialog - Dialog for managing custom hatch patterns
  */
 
-import { useState, useMemo, useRef, useEffect } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import {
   Plus,
   Copy,
@@ -90,38 +90,8 @@ export function PatternManagerDialog({
   // Preview expand/collapse on double-click
   const [previewExpanded, setPreviewExpanded] = useState(false);
 
-  // Dynamic preview sizing - observe the right panel, calculate preview from available space
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const detailsRef = useRef<HTMLDivElement>(null);
-  const [previewSize, setPreviewSize] = useState({ width: 200, height: 150 });
-
-  useEffect(() => {
-    const panel = rightPanelRef.current;
-    if (!panel) return;
-
-    const recalc = () => {
-      const padding = 32; // p-4 = 16px each side
-      const gap = 16; // pt-4 gap between preview and details
-      const panelW = panel.clientWidth - padding;
-      const panelH = panel.clientHeight - padding;
-      const detailsH = (!previewExpanded && detailsRef.current) ? detailsRef.current.offsetHeight + gap : 0;
-      const availW = Math.max(60, panelW);
-      const availH = Math.max(60, panelH - detailsH);
-      // Fit canvas: 4:3 aspect ratio within available space
-      const fitByWidth = { w: availW, h: availW * 0.75 };
-      const fitByHeight = { w: availH * (4 / 3), h: availH };
-      const fit = fitByWidth.h <= availH ? fitByWidth : fitByHeight;
-      setPreviewSize({
-        width: Math.round(Math.max(60, fit.w)),
-        height: Math.round(Math.max(60, fit.h)),
-      });
-    };
-
-    const observer = new ResizeObserver(recalc);
-    observer.observe(panel);
-    recalc();
-    return () => observer.disconnect();
-  }, [isOpen, selectedPatternId, previewExpanded]); // re-attach on open, pattern change, or expand toggle
 
   // Resolve favorite patterns (only those that still exist)
   const allPatternsFlat = useMemo(() => [
@@ -706,20 +676,20 @@ export function PatternManagerDialog({
             <>
               {/* Preview - fills remaining space above details */}
               <div
-                className="flex-1 flex items-center justify-center min-h-[60px] cursor-pointer"
+                className="flex-1 flex items-center justify-center min-h-[60px] overflow-hidden cursor-pointer"
                 onDoubleClick={() => setPreviewExpanded(prev => !prev)}
                 title={previewExpanded ? 'Double-click to restore' : 'Double-click to expand'}
               >
                 <PatternPreview
                   pattern={selectedPattern}
-                  width={previewSize.width}
-                  height={previewSize.height}
+                  width={400}
+                  height={300}
                   scale={1.5}
                 />
               </div>
 
-              {/* Pattern details - natural height at bottom, hidden when expanded */}
-              <div ref={detailsRef} className={`flex-shrink-0 space-y-3 pt-4 ${previewExpanded ? 'hidden' : ''}`}>
+              {/* Pattern details - fixed height at bottom, hidden when expanded */}
+              <div ref={detailsRef} className={`flex-shrink-0 h-[200px] space-y-3 pt-4 overflow-y-auto ${previewExpanded ? 'hidden' : ''}`}>
                 <div>
                   <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Name</label>
                   <div className="text-sm font-medium">{selectedPattern.name}</div>

@@ -373,7 +373,6 @@ function CropRegionSection({
   onEndEdit,
   onReset,
 }: CropRegionSectionProps) {
-  const hasCropRegion = !!cropRegion;
   const isEnabled = cropRegion?.enabled ?? false;
 
   return (
@@ -393,34 +392,32 @@ function CropRegionSection({
         </div>
       </div>
 
-      {hasCropRegion && (
-        <div className="flex gap-1">
-          {isEditing ? (
-            <button
-              onClick={onEndEdit}
-              className="flex-1 px-2 py-1.5 text-xs bg-cad-accent text-white"
-            >
-              Done Editing
-            </button>
-          ) : (
-            <button
-              onClick={onStartEdit}
-              disabled={isLocked}
-              className="flex-1 px-2 py-1.5 text-xs bg-cad-input border border-cad-border text-cad-text hover:bg-cad-hover disabled:opacity-50"
-            >
-              Edit Crop
-            </button>
-          )}
+      <div className="flex gap-1">
+        {isEditing ? (
           <button
-            onClick={onReset}
-            disabled={isLocked}
-            className="px-2 py-1.5 text-xs bg-cad-input border border-cad-border text-cad-text hover:bg-cad-hover disabled:opacity-50"
-            title="Reset crop region to draft boundary"
+            onClick={onEndEdit}
+            className="flex-1 px-2 py-1.5 text-xs bg-cad-accent text-white"
           >
-            Reset
+            Done Editing
           </button>
-        </div>
-      )}
+        ) : (
+          <button
+            onClick={onStartEdit}
+            disabled={isLocked || !isEnabled}
+            className="flex-1 px-2 py-1.5 text-xs bg-cad-input border border-cad-border text-cad-text hover:bg-cad-hover disabled:opacity-50"
+          >
+            Edit Crop
+          </button>
+        )}
+        <button
+          onClick={onReset}
+          disabled={isLocked || !isEnabled}
+          className="px-2 py-1.5 text-xs bg-cad-input border border-cad-border text-cad-text hover:bg-cad-hover disabled:opacity-50"
+          title="Reset crop region to draft boundary"
+        >
+          Reset
+        </button>
+      </div>
 
       {isEditing && (
         <div className="mt-2 p-2 bg-cyan-500/10 border border-cyan-500/20 text-xs text-cyan-400">

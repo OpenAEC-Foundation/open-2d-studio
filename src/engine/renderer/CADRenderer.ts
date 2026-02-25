@@ -133,6 +133,8 @@ interface SheetModeRenderOptions {
   queries?: import('../../state/slices/parametricSlice').SavedQuery[];
   /** Unit settings for number formatting in overlays and labels */
   unitSettings?: UnitSettings;
+  /** ID of the title block field currently being edited (to hide canvas text) */
+  editingFieldId?: string | null;
 }
 
 export class CADRenderer {
@@ -241,6 +243,7 @@ export class CADRenderer {
       hiddenIfcCategories: options.hiddenIfcCategories,
       queries: options.queries,
       unitSettings: options.unitSettings,
+      editingFieldId: options.editingFieldId,
     };
 
     this.sheetRenderer.render(sheetOptions);

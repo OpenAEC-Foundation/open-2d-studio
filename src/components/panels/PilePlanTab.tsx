@@ -98,7 +98,7 @@ export function PilePlanTab() {
                     {formatNumber(pile.position.x, 0, unitSettings.numberFormat)}
                   </td>
                   <td className="px-2 py-1 text-cad-text text-right tabular-nums">
-                    {formatNumber(pile.position.y, 0, unitSettings.numberFormat)}
+                    {formatNumber(-pile.position.y, 0, unitSettings.numberFormat)}
                   </td>
                   <td className="px-2 py-1 text-cad-text text-right tabular-nums">
                     {formatNumber(pile.diameter, 0, unitSettings.numberFormat)}

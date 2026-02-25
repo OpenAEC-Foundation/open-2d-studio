@@ -989,7 +989,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               onChange={(v) => update({ verticalAlignment: v })} />
             <NumberField label="Rotation (deg)" value={shape.rotation * RAD2DEG} onChange={(v) => update({ rotation: v * DEG2RAD })} step={1} />
             <NumberField label="Position X" value={shape.position.x} onChange={(v) => update({ position: { ...shape.position, x: v } })} step={0.1} />
-            <NumberField label="Position Y" value={shape.position.y} onChange={(v) => update({ position: { ...shape.position, y: v } })} step={0.1} />
+            <NumberField label="Position Y" value={-shape.position.y} onChange={(v) => update({ position: { ...shape.position, y: -v } })} step={0.1} />
 
             {shape.leaderPoints && shape.leaderPoints.length > 0 && (
               <>
@@ -1106,9 +1106,9 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
       return (
         <PropertyGroup label="Geometry">
           <NumberField label="Start X" value={shape.start.x} onChange={(v) => update({ start: { ...shape.start, x: v } })} step={0.1} />
-          <NumberField label="Start Y" value={shape.start.y} onChange={(v) => update({ start: { ...shape.start, y: v } })} step={0.1} />
+          <NumberField label="Start Y" value={-shape.start.y} onChange={(v) => update({ start: { ...shape.start, y: -v } })} step={0.1} />
           <NumberField label="End X" value={shape.end.x} onChange={(v) => update({ end: { ...shape.end, x: v } })} step={0.1} />
-          <NumberField label="End Y" value={shape.end.y} onChange={(v) => update({ end: { ...shape.end, y: v } })} step={0.1} />
+          <NumberField label="End Y" value={-shape.end.y} onChange={(v) => update({ end: { ...shape.end, y: -v } })} step={0.1} />
         </PropertyGroup>
       );
 
@@ -1116,7 +1116,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
       return (
         <PropertyGroup label="Geometry">
           <NumberField label="Top-Left X" value={shape.topLeft.x} onChange={(v) => update({ topLeft: { ...shape.topLeft, x: v } })} step={0.1} />
-          <NumberField label="Top-Left Y" value={shape.topLeft.y} onChange={(v) => update({ topLeft: { ...shape.topLeft, y: v } })} step={0.1} />
+          <NumberField label="Top-Left Y" value={-shape.topLeft.y} onChange={(v) => update({ topLeft: { ...shape.topLeft, y: -v } })} step={0.1} />
           <NumberField label="Width" value={shape.width} onChange={(v) => update({ width: v })} step={0.1} min={0.1} />
           <NumberField label="Height" value={shape.height} onChange={(v) => update({ height: v })} step={0.1} min={0.1} />
           <NumberField label="Rotation (deg)" value={shape.rotation * RAD2DEG} onChange={(v) => update({ rotation: v * DEG2RAD })} step={1} />
@@ -1127,8 +1127,9 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
       return (
         <PropertyGroup label="Geometry">
           <NumberField label="Center X" value={shape.center.x} onChange={(v) => update({ center: { ...shape.center, x: v } })} step={0.1} />
-          <NumberField label="Center Y" value={shape.center.y} onChange={(v) => update({ center: { ...shape.center, y: v } })} step={0.1} />
+          <NumberField label="Center Y" value={-shape.center.y} onChange={(v) => update({ center: { ...shape.center, y: -v } })} step={0.1} />
           <NumberField label="Radius" value={shape.radius} onChange={(v) => update({ radius: v })} step={0.1} min={0.1} />
+          <CheckboxField label="Center Mark" value={shape.showCenterMark ?? true} onChange={(v) => update({ showCenterMark: v })} />
         </PropertyGroup>
       );
 
@@ -1136,10 +1137,11 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
       return (
         <PropertyGroup label="Geometry">
           <NumberField label="Center X" value={shape.center.x} onChange={(v) => update({ center: { ...shape.center, x: v } })} step={0.1} />
-          <NumberField label="Center Y" value={shape.center.y} onChange={(v) => update({ center: { ...shape.center, y: v } })} step={0.1} />
+          <NumberField label="Center Y" value={-shape.center.y} onChange={(v) => update({ center: { ...shape.center, y: -v } })} step={0.1} />
           <NumberField label="Radius" value={shape.radius} onChange={(v) => update({ radius: v })} step={0.1} min={0.1} />
           <NumberField label="Start Angle (deg)" value={shape.startAngle * RAD2DEG} onChange={(v) => update({ startAngle: v * DEG2RAD })} step={1} />
           <NumberField label="End Angle (deg)" value={shape.endAngle * RAD2DEG} onChange={(v) => update({ endAngle: v * DEG2RAD })} step={1} />
+          <CheckboxField label="Center Mark" value={shape.showCenterMark ?? true} onChange={(v) => update({ showCenterMark: v })} />
         </PropertyGroup>
       );
 
@@ -1147,7 +1149,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
       return (
         <PropertyGroup label="Geometry">
           <NumberField label="Center X" value={shape.center.x} onChange={(v) => update({ center: { ...shape.center, x: v } })} step={0.1} />
-          <NumberField label="Center Y" value={shape.center.y} onChange={(v) => update({ center: { ...shape.center, y: v } })} step={0.1} />
+          <NumberField label="Center Y" value={-shape.center.y} onChange={(v) => update({ center: { ...shape.center, y: -v } })} step={0.1} />
           <NumberField label="Radius X" value={shape.radiusX} onChange={(v) => update({ radiusX: v })} step={0.1} min={0.1} />
           <NumberField label="Radius Y" value={shape.radiusY} onChange={(v) => update({ radiusY: v })} step={0.1} min={0.1} />
           <NumberField label="Rotation (deg)" value={shape.rotation * RAD2DEG} onChange={(v) => update({ rotation: v * DEG2RAD })} step={1} />
@@ -1380,8 +1382,8 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
                 />
                 <NumberField
                   label="Y"
-                  value={beam.start.y}
-                  onChange={(v) => update({ start: { ...beam.start, y: v } })}
+                  value={-beam.start.y}
+                  onChange={(v) => update({ start: { ...beam.start, y: -v } })}
                   step={1}
                 />
               </div>
@@ -1398,8 +1400,8 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
                 />
                 <NumberField
                   label="Y"
-                  value={beam.end.y}
-                  onChange={(v) => update({ end: { ...beam.end, y: v } })}
+                  value={-beam.end.y}
+                  onChange={(v) => update({ end: { ...beam.end, y: -v } })}
                   step={1}
                 />
               </div>
@@ -1565,7 +1567,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               <label className="block text-xs font-semibold text-cad-text mb-2">Start Point</label>
               <div className="grid grid-cols-2 gap-2">
                 <NumberField label="X" value={gl.start.x} onChange={(v) => update({ start: { ...gl.start, x: v } })} step={1} />
-                <NumberField label="Y" value={gl.start.y} onChange={(v) => update({ start: { ...gl.start, y: v } })} step={1} />
+                <NumberField label="Y" value={-gl.start.y} onChange={(v) => update({ start: { ...gl.start, y: -v } })} step={1} />
               </div>
             </div>
 
@@ -1573,7 +1575,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               <label className="block text-xs font-semibold text-cad-text mb-2">End Point</label>
               <div className="grid grid-cols-2 gap-2">
                 <NumberField label="X" value={gl.end.x} onChange={(v) => update({ end: { ...gl.end, x: v } })} step={1} />
-                <NumberField label="Y" value={gl.end.y} onChange={(v) => update({ end: { ...gl.end, y: v } })} step={1} />
+                <NumberField label="Y" value={-gl.end.y} onChange={(v) => update({ end: { ...gl.end, y: -v } })} step={1} />
               </div>
             </div>
           </PropertyGroup>
@@ -1660,11 +1662,12 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               <label className="block text-xs font-semibold text-cad-text mb-2">Start Point</label>
               <div className="grid grid-cols-2 gap-2">
                 <NumberField label="X" value={lv.start.x} onChange={(v) => update({ start: { ...lv.start, x: v } })} step={1} />
-                <NumberField label="Y" value={lv.start.y} onChange={(v) => {
-                  const newPeil = calculatePeilFromY(v);
+                <NumberField label="Y" value={-lv.start.y} onChange={(v) => {
+                  const internalY = -v;
+                  const newPeil = calculatePeilFromY(internalY);
                   update({
-                    start: { ...lv.start, y: v },
-                    end: { ...lv.end, y: v },
+                    start: { ...lv.start, y: internalY },
+                    end: { ...lv.end, y: internalY },
                     peil: newPeil,
                     elevation: newPeil,
                     label: formatPeilLabel(newPeil),
@@ -1677,11 +1680,12 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               <label className="block text-xs font-semibold text-cad-text mb-2">End Point</label>
               <div className="grid grid-cols-2 gap-2">
                 <NumberField label="X" value={lv.end.x} onChange={(v) => update({ end: { ...lv.end, x: v } })} step={1} />
-                <NumberField label="Y" value={lv.end.y} onChange={(v) => {
-                  const newPeil = calculatePeilFromY(v);
+                <NumberField label="Y" value={-lv.end.y} onChange={(v) => {
+                  const internalY = -v;
+                  const newPeil = calculatePeilFromY(internalY);
                   update({
-                    start: { ...lv.start, y: v },
-                    end: { ...lv.end, y: v },
+                    start: { ...lv.start, y: internalY },
+                    end: { ...lv.end, y: internalY },
                     peil: newPeil,
                     elevation: newPeil,
                     label: formatPeilLabel(newPeil),
@@ -1995,14 +1999,14 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               <label className="block text-xs font-semibold text-cad-text mb-2">Start Point</label>
               <div className="grid grid-cols-2 gap-2">
                 <NumberField label="X" value={w.start.x} onChange={(v) => update({ start: { ...w.start, x: v } })} step={1} />
-                <NumberField label="Y" value={w.start.y} onChange={(v) => update({ start: { ...w.start, y: v } })} step={1} />
+                <NumberField label="Y" value={-w.start.y} onChange={(v) => update({ start: { ...w.start, y: -v } })} step={1} />
               </div>
             </div>
             <div className="mb-3">
               <label className="block text-xs font-semibold text-cad-text mb-2">End Point</label>
               <div className="grid grid-cols-2 gap-2">
                 <NumberField label="X" value={w.end.x} onChange={(v) => update({ end: { ...w.end, x: v } })} step={1} />
-                <NumberField label="Y" value={w.end.y} onChange={(v) => update({ end: { ...w.end, y: v } })} step={1} />
+                <NumberField label="Y" value={-w.end.y} onChange={(v) => update({ end: { ...w.end, y: -v } })} step={1} />
               </div>
             </div>
           </PropertyGroup>
@@ -2173,7 +2177,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               <label className="block text-xs font-semibold text-cad-text mb-2">Start Point</label>
               <div className="grid grid-cols-2 gap-2">
                 <NumberField label="X" value={sc.start.x} onChange={(v) => update({ start: { ...sc.start, x: v } })} step={1} />
-                <NumberField label="Y" value={sc.start.y} onChange={(v) => update({ start: { ...sc.start, y: v } })} step={1} />
+                <NumberField label="Y" value={-sc.start.y} onChange={(v) => update({ start: { ...sc.start, y: -v } })} step={1} />
               </div>
             </div>
 
@@ -2181,7 +2185,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               <label className="block text-xs font-semibold text-cad-text mb-2">End Point</label>
               <div className="grid grid-cols-2 gap-2">
                 <NumberField label="X" value={sc.end.x} onChange={(v) => update({ end: { ...sc.end, x: v } })} step={1} />
-                <NumberField label="Y" value={sc.end.y} onChange={(v) => update({ end: { ...sc.end, y: v } })} step={1} />
+                <NumberField label="Y" value={-sc.end.y} onChange={(v) => update({ end: { ...sc.end, y: -v } })} step={1} />
               </div>
             </div>
           </PropertyGroup>
@@ -2227,7 +2231,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
             <NumberField label="Marker Size (mm)" value={cpt.markerSize} onChange={(v) => update({ markerSize: v })} step={50} min={100} />
             <NumberField label="Font Size (mm)" value={cpt.fontSize} onChange={(v) => update({ fontSize: v })} step={25} min={50} />
             <NumberField label="Position X" value={cpt.position.x} onChange={(v) => update({ position: { ...cpt.position, x: v } })} step={1} />
-            <NumberField label="Position Y" value={cpt.position.y} onChange={(v) => update({ position: { ...cpt.position, y: v } })} step={1} />
+            <NumberField label="Position Y" value={-cpt.position.y} onChange={(v) => update({ position: { ...cpt.position, y: -v } })} step={1} />
           </PropertyGroup>
         </>
       );
@@ -3560,7 +3564,7 @@ function PlateSystemShapeProperties({ shape, updateShape }: { shape: PlateSystem
               }}
             />
             <div className="text-[10px] text-cad-text-dim mt-1">
-              Position: ({formatNumber(opening.position.x, 0, unitSettings.numberFormat)}, {formatNumber(opening.position.y, 0, unitSettings.numberFormat)})
+              Position: ({formatNumber(opening.position.x, 0, unitSettings.numberFormat)}, {formatNumber(-opening.position.y, 0, unitSettings.numberFormat)})
             </div>
           </div>
         ))}

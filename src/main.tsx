@@ -1,7 +1,17 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import App from './App';
+import { isMobileViewer } from './utils/platform';
 import './styles/globals.css';
+
+const AppComponent = React.lazy(() =>
+  isMobileViewer()
+    ? import('./components/tablet/TabletApp')
+    : import('./App')
+);
+
+const LoadingFallback = () => (
+  <div style={{ width: '100vw', height: '100vh', background: '#1a1a2e' }} />
+);
 
 class ErrorBoundary extends React.Component<
   { children: React.ReactNode },
@@ -44,7 +54,9 @@ class ErrorBoundary extends React.Component<
 ReactDOM.createRoot(document.getElementById('root') as HTMLElement).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      <React.Suspense fallback={<LoadingFallback />}>
+        <AppComponent />
+      </React.Suspense>
     </ErrorBoundary>
   </React.StrictMode>
 );

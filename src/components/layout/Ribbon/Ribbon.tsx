@@ -695,7 +695,7 @@ export function PilePlanRibbonTable() {
               >
                 <td className="px-1 text-cad-text">{p.label || '\u2014'}</td>
                 <td className="px-1 text-cad-text text-right tabular-nums">{formatNumber(p.position.x, 0, unitSettings.numberFormat)}</td>
-                <td className="px-1 text-cad-text text-right tabular-nums">{formatNumber(p.position.y, 0, unitSettings.numberFormat)}</td>
+                <td className="px-1 text-cad-text text-right tabular-nums">{formatNumber(-p.position.y, 0, unitSettings.numberFormat)}</td>
                 <td className="px-1 text-cad-text text-right tabular-nums">{formatNumber(p.diameter, 0, unitSettings.numberFormat)}</td>
                 <td className="px-1 text-cad-text text-right tabular-nums">{p.puntniveauNAP != null ? formatNumber(p.puntniveauNAP, 1, unitSettings.numberFormat) : '\u2014'}</td>
                 <td className="px-1 text-cad-text text-right tabular-nums">{p.bkPaalPeil != null ? formatNumber(p.bkPaalPeil, 0, unitSettings.numberFormat) : '\u2014'}</td>
@@ -1776,7 +1776,7 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage, hidden }: RibbonPr
                 />
                 {ifcFilterOpen && (
                   <div
-                    className="absolute top-full left-0 mt-1 z-50 bg-cad-panel border border-cad-border rounded shadow-lg"
+                    className="absolute top-full left-0 mt-1 z-50 bg-cad-surface-elevated border border-cad-border rounded shadow-lg"
                     style={{ minWidth: 260 }}
                   >
                     <div className="px-3 py-2 border-b border-cad-border flex items-center justify-between">

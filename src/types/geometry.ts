@@ -693,6 +693,7 @@ export interface CircleShape extends BaseShape {
   type: 'circle';
   center: Point;
   radius: number;
+  showCenterMark?: boolean;
 }
 
 export interface ArcShape extends BaseShape {
@@ -701,6 +702,7 @@ export interface ArcShape extends BaseShape {
   radius: number;
   startAngle: number;
   endAngle: number;
+  showCenterMark?: boolean;
 }
 
 export interface EllipseShape extends BaseShape {

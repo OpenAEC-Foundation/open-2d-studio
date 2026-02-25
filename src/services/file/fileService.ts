@@ -137,7 +137,7 @@ const DEFAULT_DRAWING_SCALE = 0.02;
 // File extension for project files
 export const PROJECT_EXTENSION = 'o2d';
 export const PROJECT_FILTER = {
-  name: 'Open nD Studio Project',
+  name: 'Open 2D Studio Project',
   extensions: [PROJECT_EXTENSION],
 };
 

@@ -440,9 +440,9 @@ export const StatusBar = memo(function StatusBar() {
     }
   }
 
-  // Convert screen position to world position
+  // Convert screen position to world position (negate Y for CAD convention: positive up)
   const worldX = (mousePosition.x - viewport.offsetX) / viewport.zoom;
-  const worldY = (mousePosition.y - viewport.offsetY) / viewport.zoom;
+  const worldY = -((mousePosition.y - viewport.offsetY) / viewport.zoom);
 
   return (
     <div className="h-6 bg-cad-surface border-t border-cad-border flex items-center px-3 text-xs text-cad-text-dim gap-6">
@@ -459,7 +459,7 @@ export const StatusBar = memo(function StatusBar() {
         <div className="flex items-center gap-2">
           <span className="text-red-400">Cursor:</span>
           <span className="text-red-300 font-mono w-20">{formatLength(cursor2D.x, unitSettings)}</span>
-          <span className="text-red-300 font-mono w-20">{formatLength(cursor2D.y, unitSettings)}</span>
+          <span className="text-red-300 font-mono w-20">{formatLength(-cursor2D.y, unitSettings)}</span>
         </div>
       )}
 

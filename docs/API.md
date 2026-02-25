@@ -1,6 +1,6 @@
-# Open nD Studio - MCP API Reference
+# Open 2D Studio - MCP API Reference
 
-This document describes the MCP (Model Context Protocol) tool-based API for Open nD Studio. All commands use JSON format.
+This document describes the MCP (Model Context Protocol) tool-based API for Open 2D Studio. All commands use JSON format.
 
 ## Table of Contents
 

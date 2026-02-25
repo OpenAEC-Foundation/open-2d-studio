@@ -265,14 +265,30 @@ function getTemplateFieldRects(
       const field = titleBlock.fields.find(f => f.id === cell.fieldId);
 
       if (field) {
+        // Position the rect exactly over the value text, matching the renderer layout
+        const cellPadding = 2 * MM_TO_PIXELS;
+        const labelFontSize = Math.max(6, cell.fontSize - 2);
+        const valueY = currentY + cellPadding + labelFontSize + 2;
+
+        // Match the text X position from the renderer
+        let textX = cellX + cellPadding;
+        let textWidth = cellWidth - cellPadding;
+        if (cell.alignment === 'center') {
+          textX = cellX;
+          textWidth = cellWidth;
+        } else if (cell.alignment === 'right') {
+          textX = cellX;
+          textWidth = cellWidth - cellPadding;
+        }
+
         rects.push({
           fieldId: field.id,
           label: field.label,
           value: field.value || '',
-          x: cellX,
-          y: currentY,
-          width: cellWidth,
-          height: rowHeight,
+          x: textX,
+          y: valueY,
+          width: textWidth,
+          height: cell.fontSize + 2,
           fontSize: cell.fontSize,
           fontFamily: CAD_DEFAULT_FONT,
           align: cell.alignment,
@@ -304,17 +320,20 @@ function getLegacyFieldRects(
   for (const field of titleBlock.fields) {
     // Use field dimensions if available, otherwise fall back to cell-based defaults
     const fieldW = field.width > 0 ? field.width * MM_TO_PIXELS : 30 * MM_TO_PIXELS;
-    const fieldH = field.height > 0 ? field.height * MM_TO_PIXELS : 10 * MM_TO_PIXELS;
+    const valueFontSize = field.fontSize || 10;
+    // Position exactly over the value text, matching the renderer layout
+    // Legacy renderer draws value at (fieldX, fieldY + 10) with textBaseline: 'top'
+    const valueYOffset = 10;
 
     rects.push({
       fieldId: field.id,
       label: field.label,
       value: field.value || '',
       x: tbX + field.x * MM_TO_PIXELS,
-      y: tbY + field.y * MM_TO_PIXELS,
+      y: tbY + field.y * MM_TO_PIXELS + valueYOffset,
       width: fieldW,
-      height: fieldH,
-      fontSize: field.fontSize || 10,
+      height: valueFontSize + 2,
+      fontSize: valueFontSize,
       fontFamily: field.fontFamily || CAD_DEFAULT_FONT,
       align: field.align || 'left',
       isBold: true,

@@ -311,7 +311,7 @@ export function TerminalPanel({ isOpen, onClose, height, onHeightChange }: Termi
 
     // Welcome message
     term.write('\x1b[36m╔══════════════════════════════════════════════════════════════╗\x1b[0m\r\n');
-    term.write('\x1b[36m║\x1b[0m      \x1b[1;35mOpen nD Studio - AI Command Interface\x1b[0m                  \x1b[36m║\x1b[0m\r\n');
+    term.write('\x1b[36m║\x1b[0m      \x1b[1;35mOpen 2D Studio - AI Command Interface\x1b[0m                  \x1b[36m║\x1b[0m\r\n');
     term.write('\x1b[36m╚══════════════════════════════════════════════════════════════╝\x1b[0m\r\n');
     term.write('\r\n');
     term.write('\x1b[32mI know all commands!\x1b[0m Just type what you want to do.\r\n');

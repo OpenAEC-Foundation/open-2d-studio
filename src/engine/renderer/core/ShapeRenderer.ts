@@ -292,10 +292,10 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawRectangle(shape);
         break;
       case 'circle':
-        this.drawCircle(shape);
+        this.drawCircle(shape, isSelected);
         break;
       case 'arc':
-        this.drawArc(shape);
+        this.drawArc(shape, isSelected);
         break;
       case 'polyline':
         this.drawPolyline(shape);
@@ -359,11 +359,6 @@ export class ShapeRenderer extends BaseRenderer {
         break;
       default:
         break;
-    }
-
-    // Draw selection fill overlay (solid green fill over the shape area)
-    if (isSelected) {
-      this.drawSelectionFillOverlay(shape);
     }
 
     // Draw selection handles (hidden during modify tool operations)
@@ -483,491 +478,6 @@ export class ShapeRenderer extends BaseRenderer {
     }
 
     ctx.setLineDash([]);
-  }
-
-  /**
-   * Draw a semi-transparent green fill overlay on a selected shape.
-   * For shapes with area (rectangles, circles, polygons, etc.), the area is
-   * filled. For line-only shapes (line, arc, spline, open polyline), a thicker
-   * green stroke is drawn instead.
-   */
-  private drawSelectionFillOverlay(shape: Shape): void {
-    const ctx = this.ctx;
-    ctx.save();
-    ctx.setLineDash([]);
-
-    switch (shape.type) {
-      case 'line': {
-        // Lines have no area -- draw a thicker green stroke
-        ctx.strokeStyle = COLORS.selectionFill;
-        ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 4;
-        ctx.beginPath();
-        ctx.moveTo(shape.start.x, shape.start.y);
-        ctx.lineTo(shape.end.x, shape.end.y);
-        ctx.stroke();
-        break;
-      }
-
-      case 'rectangle': {
-        ctx.fillStyle = COLORS.selectionFill;
-        if (shape.rotation) {
-          ctx.translate(shape.topLeft.x, shape.topLeft.y);
-          ctx.rotate(shape.rotation);
-          ctx.translate(-shape.topLeft.x, -shape.topLeft.y);
-        }
-        const r = shape.cornerRadius ?? 0;
-        ctx.beginPath();
-        if (r > 0) {
-          const maxR = Math.min(r, shape.width / 2, shape.height / 2);
-          const x = shape.topLeft.x;
-          const y = shape.topLeft.y;
-          const w = shape.width;
-          const h = shape.height;
-          ctx.moveTo(x + maxR, y);
-          ctx.lineTo(x + w - maxR, y);
-          ctx.arcTo(x + w, y, x + w, y + maxR, maxR);
-          ctx.lineTo(x + w, y + h - maxR);
-          ctx.arcTo(x + w, y + h, x + w - maxR, y + h, maxR);
-          ctx.lineTo(x + maxR, y + h);
-          ctx.arcTo(x, y + h, x, y + h - maxR, maxR);
-          ctx.lineTo(x, y + maxR);
-          ctx.arcTo(x, y, x + maxR, y, maxR);
-          ctx.closePath();
-        } else {
-          ctx.rect(shape.topLeft.x, shape.topLeft.y, shape.width, shape.height);
-        }
-        ctx.fill();
-        break;
-      }
-
-      case 'circle': {
-        ctx.fillStyle = COLORS.selectionFill;
-        ctx.beginPath();
-        ctx.arc(shape.center.x, shape.center.y, shape.radius, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      }
-
-      case 'arc': {
-        // Arcs have no area -- draw a thicker green stroke
-        ctx.strokeStyle = COLORS.selectionFill;
-        ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 4;
-        ctx.beginPath();
-        ctx.arc(shape.center.x, shape.center.y, shape.radius, shape.startAngle, shape.endAngle);
-        ctx.stroke();
-        break;
-      }
-
-      case 'polyline': {
-        const { points, closed, bulge } = shape;
-        if (points.length < 2) break;
-
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 0; i < points.length - 1; i++) {
-          const b = bulge?.[i] ?? 0;
-          if (b !== 0) {
-            const arc = bulgeToArc(points[i], points[i + 1], b);
-            ctx.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
-          } else {
-            ctx.lineTo(points[i + 1].x, points[i + 1].y);
-          }
-        }
-
-        if (closed) {
-          const lastB = bulge?.[points.length - 1] ?? 0;
-          if (lastB !== 0) {
-            const arc = bulgeToArc(points[points.length - 1], points[0], lastB);
-            ctx.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
-          } else {
-            ctx.closePath();
-          }
-          ctx.fillStyle = COLORS.selectionFill;
-          ctx.fill();
-        } else {
-          // Open polyline -- thicker green stroke
-          ctx.strokeStyle = COLORS.selectionFill;
-          ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 4;
-          ctx.stroke();
-        }
-        break;
-      }
-
-      case 'spline': {
-        // Splines have no area -- draw a thicker green stroke
-        if (shape.points.length < 2) break;
-        ctx.strokeStyle = COLORS.selectionFill;
-        ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 4;
-        drawSplinePath(ctx, shape.points);
-        ctx.stroke();
-        break;
-      }
-
-      case 'ellipse': {
-        const startAngle = shape.startAngle ?? 0;
-        const endAngle = shape.endAngle ?? Math.PI * 2;
-        const isPartial = shape.startAngle !== undefined && shape.endAngle !== undefined;
-        ctx.beginPath();
-        ctx.ellipse(shape.center.x, shape.center.y, shape.radiusX, shape.radiusY, shape.rotation, startAngle, isPartial ? endAngle : Math.PI * 2);
-        if (isPartial) {
-          // Partial ellipse (arc) -- thicker green stroke
-          ctx.strokeStyle = COLORS.selectionFill;
-          ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 4;
-          ctx.stroke();
-        } else {
-          ctx.fillStyle = COLORS.selectionFill;
-          ctx.fill();
-        }
-        break;
-      }
-
-      case 'hatch': {
-        const hatchShape = shape as HatchShape;
-        const { points, bulge: hBulge } = hatchShape;
-        if (points.length < 3) break;
-        ctx.fillStyle = COLORS.selectionFill;
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 0; i < points.length - 1; i++) {
-          const b = hBulge?.[i] ?? 0;
-          if (b !== 0) {
-            const arc = bulgeToArc(points[i], points[i + 1], b);
-            ctx.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
-          } else {
-            ctx.lineTo(points[i + 1].x, points[i + 1].y);
-          }
-        }
-        const lastB = hBulge?.[points.length - 1] ?? 0;
-        if (lastB !== 0) {
-          const arc = bulgeToArc(points[points.length - 1], points[0], lastB);
-          ctx.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
-        } else {
-          ctx.closePath();
-        }
-        ctx.fill();
-        break;
-      }
-
-      case 'beam': {
-        const beamShape = shape as BeamShape;
-        const viewMode = beamShape.viewMode || 'plan';
-        ctx.fillStyle = COLORS.selectionFill;
-
-        if (viewMode === 'plan') {
-          if (beamShape.bulge && Math.abs(beamShape.bulge) > 0.0001) {
-            // Arc beam fill
-            const { center, radius, startAngle, endAngle, clockwise } = bulgeToArc(beamShape.start, beamShape.end, beamShape.bulge);
-            let innerR: number, outerR: number;
-            if (beamShape.justification === 'left') {
-              innerR = radius; outerR = radius + beamShape.flangeWidth;
-            } else if (beamShape.justification === 'right') {
-              innerR = radius - beamShape.flangeWidth; outerR = radius;
-            } else {
-              innerR = radius - beamShape.flangeWidth / 2; outerR = radius + beamShape.flangeWidth / 2;
-            }
-            if (innerR < 0) innerR = 0;
-            ctx.beginPath();
-            ctx.arc(center.x, center.y, outerR, startAngle, endAngle, clockwise);
-            ctx.lineTo(center.x + innerR * Math.cos(endAngle), center.y + innerR * Math.sin(endAngle));
-            ctx.arc(center.x, center.y, innerR, endAngle, startAngle, !clockwise);
-            ctx.closePath();
-            ctx.fill();
-          } else {
-            // Straight beam fill using computed corners
-            const corners = this.computeBeamCorners(beamShape);
-            ctx.beginPath();
-            ctx.moveTo(corners[0].x, corners[0].y);
-            ctx.lineTo(corners[1].x, corners[1].y);
-            ctx.lineTo(corners[2].x, corners[2].y);
-            ctx.lineTo(corners[3].x, corners[3].y);
-            ctx.closePath();
-            ctx.fill();
-          }
-        } else if (viewMode === 'section') {
-          // Section view: fill profile outlines
-          try {
-            const midX = (beamShape.start.x + beamShape.end.x) / 2;
-            const midY = (beamShape.start.y + beamShape.end.y) / 2;
-            const geometry = generateProfileGeometry(
-              beamShape.profileType as ProfileType,
-              beamShape.profileParameters as ParameterValues,
-              { x: midX, y: midY },
-              beamShape.rotation,
-              1
-            );
-            for (let i = 0; i < geometry.outlines.length; i++) {
-              const outline = geometry.outlines[i];
-              if (outline.length < 2 || !geometry.closed[i]) continue;
-              ctx.beginPath();
-              ctx.moveTo(outline[0].x, outline[0].y);
-              for (let j = 1; j < outline.length; j++) {
-                ctx.lineTo(outline[j].x, outline[j].y);
-              }
-              ctx.closePath();
-              ctx.fill();
-            }
-          } catch {
-            // Fallback: same as plan
-            const corners = this.computeBeamCorners(beamShape);
-            ctx.beginPath();
-            ctx.moveTo(corners[0].x, corners[0].y);
-            ctx.lineTo(corners[1].x, corners[1].y);
-            ctx.lineTo(corners[2].x, corners[2].y);
-            ctx.lineTo(corners[3].x, corners[3].y);
-            ctx.closePath();
-            ctx.fill();
-          }
-        } else {
-          // Elevation / side view: rectangle from perpendicular offset
-          const depth = (viewMode === 'elevation')
-            ? ((beamShape.profileParameters.webHeight as number) || (beamShape.profileParameters.height as number) || (beamShape.profileParameters.outerDiameter as number) || beamShape.flangeWidth)
-            : beamShape.flangeWidth;
-          const beamAngle = Math.atan2(beamShape.end.y - beamShape.start.y, beamShape.end.x - beamShape.start.x);
-          const halfDepth = depth / 2;
-          const perpX = Math.sin(beamAngle) * halfDepth;
-          const perpY = Math.cos(beamAngle) * halfDepth;
-          ctx.beginPath();
-          ctx.moveTo(beamShape.start.x + perpX, beamShape.start.y - perpY);
-          ctx.lineTo(beamShape.end.x + perpX, beamShape.end.y - perpY);
-          ctx.lineTo(beamShape.end.x - perpX, beamShape.end.y + perpY);
-          ctx.lineTo(beamShape.start.x - perpX, beamShape.start.y + perpY);
-          ctx.closePath();
-          ctx.fill();
-        }
-        break;
-      }
-
-      case 'wall': {
-        const wallShape = shape as WallShape;
-        ctx.fillStyle = COLORS.selectionFill;
-
-        if (wallShape.bulge && Math.abs(wallShape.bulge) > 0.0001) {
-          // Arc wall fill
-          const { center, radius, startAngle, endAngle, clockwise } = bulgeToArc(wallShape.start, wallShape.end, wallShape.bulge);
-          let innerR: number, outerR: number;
-          if (wallShape.justification === 'left') {
-            innerR = radius; outerR = radius + wallShape.thickness;
-          } else if (wallShape.justification === 'right') {
-            innerR = radius - wallShape.thickness; outerR = radius;
-          } else {
-            innerR = radius - wallShape.thickness / 2; outerR = radius + wallShape.thickness / 2;
-          }
-          if (innerR < 0) innerR = 0;
-          ctx.beginPath();
-          ctx.arc(center.x, center.y, outerR, startAngle, endAngle, clockwise);
-          ctx.lineTo(center.x + innerR * Math.cos(endAngle), center.y + innerR * Math.sin(endAngle));
-          ctx.arc(center.x, center.y, innerR, endAngle, startAngle, !clockwise);
-          ctx.closePath();
-          ctx.fill();
-        } else {
-          // Straight wall fill using computed corners
-          const corners = this.computeWallCorners(wallShape);
-          ctx.beginPath();
-          ctx.moveTo(corners[0].x, corners[0].y);
-          ctx.lineTo(corners[1].x, corners[1].y);
-          ctx.lineTo(corners[2].x, corners[2].y);
-          ctx.lineTo(corners[3].x, corners[3].y);
-          ctx.closePath();
-          ctx.fill();
-        }
-        break;
-      }
-
-      case 'slab': {
-        const slabShape = shape as SlabShape;
-        const { points } = slabShape;
-        if (points.length < 3) break;
-        ctx.fillStyle = COLORS.selectionFill;
-        ctx.beginPath();
-        ctx.moveTo(points[0].x, points[0].y);
-        for (let i = 1; i < points.length; i++) {
-          ctx.lineTo(points[i].x, points[i].y);
-        }
-        ctx.closePath();
-        ctx.fill();
-        break;
-      }
-
-      case 'puntniveau': {
-        const pnSelShape = shape as PuntniveauShape;
-        const { points: pnSelPts } = pnSelShape;
-        if (pnSelPts.length < 3) break;
-        ctx.fillStyle = COLORS.selectionFill;
-        ctx.beginPath();
-        ctx.moveTo(pnSelPts[0].x, pnSelPts[0].y);
-        for (let i = 1; i < pnSelPts.length; i++) {
-          ctx.lineTo(pnSelPts[i].x, pnSelPts[i].y);
-        }
-        ctx.closePath();
-        ctx.fill();
-        break;
-      }
-
-      case 'space': {
-        const spaceShape = shape as SpaceShape;
-        const { contourPoints } = spaceShape;
-        if (contourPoints.length < 3) break;
-        ctx.fillStyle = COLORS.selectionFill;
-        ctx.beginPath();
-        ctx.moveTo(contourPoints[0].x, contourPoints[0].y);
-        for (let i = 1; i < contourPoints.length; i++) {
-          ctx.lineTo(contourPoints[i].x, contourPoints[i].y);
-        }
-        ctx.closePath();
-        ctx.fill();
-        break;
-      }
-
-      case 'plate-system': {
-        const psShape = shape as PlateSystemShape;
-        const { contourPoints: psPts, contourBulges: psBulges } = psShape;
-        if (psPts.length < 3) break;
-        ctx.fillStyle = COLORS.selectionFill;
-        ctx.beginPath();
-        ctx.moveTo(psPts[0].x, psPts[0].y);
-        for (let i = 0; i < psPts.length; i++) {
-          const j = (i + 1) % psPts.length;
-          const b = psBulges?.[i] ?? 0;
-          if (b !== 0 && Math.abs(b) > 0.0001) {
-            const arc = bulgeToArc(psPts[i], psPts[j], b);
-            ctx.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
-          } else if (j !== 0) {
-            ctx.lineTo(psPts[j].x, psPts[j].y);
-          } else {
-            ctx.closePath();
-          }
-        }
-        ctx.fill();
-        break;
-      }
-
-      case 'pile': {
-        const pileShape = shape as PileShape;
-        const radius = pileShape.diameter / 2;
-        ctx.fillStyle = COLORS.selectionFill;
-        ctx.beginPath();
-        ctx.arc(pileShape.position.x, pileShape.position.y, radius, 0, Math.PI * 2);
-        ctx.fill();
-        break;
-      }
-
-      case 'cpt': {
-        const cptShape = shape as CPTShape;
-        const cptSf = LINE_DASH_REFERENCE_SCALE / this.drawingScale;
-        const ms = (cptShape.markerSize || 300) * cptSf;
-        ctx.fillStyle = COLORS.selectionFill;
-        ctx.beginPath();
-        ctx.moveTo(cptShape.position.x, cptShape.position.y - ms * 0.6);
-        ctx.lineTo(cptShape.position.x - ms * 0.5, cptShape.position.y + ms * 0.4);
-        ctx.lineTo(cptShape.position.x + ms * 0.5, cptShape.position.y + ms * 0.4);
-        ctx.closePath();
-        ctx.fill();
-        break;
-      }
-
-      case 'foundation-zone': {
-        const fzShape = shape as FoundationZoneShape;
-        if (fzShape.contourPoints.length >= 3) {
-          ctx.fillStyle = COLORS.selectionFill;
-          ctx.beginPath();
-          ctx.moveTo(fzShape.contourPoints[0].x, fzShape.contourPoints[0].y);
-          for (let i = 1; i < fzShape.contourPoints.length; i++) {
-            ctx.lineTo(fzShape.contourPoints[i].x, fzShape.contourPoints[i].y);
-          }
-          ctx.closePath();
-          ctx.fill();
-        }
-        break;
-      }
-
-      case 'gridline': {
-        // Gridlines are line-like -- thicker green stroke
-        const gridShape = shape as GridlineShape;
-        const scaleFactor = LINE_DASH_REFERENCE_SCALE / this.drawingScale;
-        const ext = this.gridlineExtension * scaleFactor;
-        const angle = Math.atan2(gridShape.end.y - gridShape.start.y, gridShape.end.x - gridShape.start.x);
-        const dx = Math.cos(angle);
-        const dy = Math.sin(angle);
-        ctx.strokeStyle = COLORS.selectionFill;
-        ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 4;
-        ctx.beginPath();
-        ctx.moveTo(gridShape.start.x - dx * ext, gridShape.start.y - dy * ext);
-        ctx.lineTo(gridShape.end.x + dx * ext, gridShape.end.y + dy * ext);
-        ctx.stroke();
-        break;
-      }
-
-      case 'level': {
-        // Levels are line-like -- thicker green stroke
-        const levelShape = shape as LevelShape;
-        ctx.strokeStyle = COLORS.selectionFill;
-        ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 4;
-        ctx.beginPath();
-        ctx.moveTo(levelShape.start.x, levelShape.start.y);
-        ctx.lineTo(levelShape.end.x, levelShape.end.y);
-        ctx.stroke();
-        break;
-      }
-
-      case 'puntniveau': {
-        // Puntniveau is polygon-based -- thicker green stroke around polygon
-        const pnShape = shape as PuntniveauShape;
-        if (pnShape.points.length >= 3) {
-          ctx.strokeStyle = COLORS.selectionFill;
-          ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 4;
-          ctx.beginPath();
-          ctx.moveTo(pnShape.points[0].x, pnShape.points[0].y);
-          for (let i = 1; i < pnShape.points.length; i++) {
-            ctx.lineTo(pnShape.points[i].x, pnShape.points[i].y);
-          }
-          ctx.closePath();
-          ctx.stroke();
-        }
-        break;
-      }
-
-      case 'section-callout': {
-        // Section callouts are line-like -- thicker green stroke
-        const sectionShape = shape as SectionCalloutShape;
-        ctx.strokeStyle = COLORS.selectionFill;
-        ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 4;
-        ctx.beginPath();
-        ctx.moveTo(sectionShape.start.x, sectionShape.start.y);
-        ctx.lineTo(sectionShape.end.x, sectionShape.end.y);
-        ctx.stroke();
-        break;
-      }
-
-      case 'image': {
-        const imgShape = shape as ImageShape;
-        ctx.fillStyle = COLORS.selectionFill;
-        if (imgShape.rotation) {
-          ctx.translate(imgShape.position.x, imgShape.position.y);
-          ctx.rotate(imgShape.rotation);
-          ctx.fillRect(0, 0, imgShape.width, imgShape.height);
-        } else {
-          ctx.fillRect(imgShape.position.x, imgShape.position.y, imgShape.width, imgShape.height);
-        }
-        break;
-      }
-
-      case 'text': {
-        // Text has its own selection box rendering (drawTextSelectionBox).
-        // No additional fill overlay needed here.
-        break;
-      }
-
-      case 'dimension': {
-        // Dimensions have their own selection rendering in DimensionRenderer.
-        // No additional fill overlay needed here.
-        break;
-      }
-
-      default:
-        break;
-    }
-
-    ctx.restore();
   }
 
   /**
@@ -2777,7 +2287,7 @@ export class ShapeRenderer extends BaseRenderer {
     ctx.restore();
   }
 
-  private drawCircle(shape: Shape): void {
+  private drawCircle(shape: Shape, isSelected: boolean = false): void {
     if (shape.type !== 'circle') return;
     const ctx = this.ctx;
     ctx.beginPath();
@@ -2787,14 +2297,35 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.fill();
     }
     ctx.stroke();
+
+    if (isSelected && shape.showCenterMark !== false) {
+      this.drawCenterMark(ctx, shape.center, shape.radius);
+    }
   }
 
-  private drawArc(shape: Shape): void {
+  private drawArc(shape: Shape, isSelected: boolean = false): void {
     if (shape.type !== 'arc') return;
     const ctx = this.ctx;
     ctx.beginPath();
     ctx.arc(shape.center.x, shape.center.y, shape.radius, shape.startAngle, shape.endAngle);
     ctx.stroke();
+
+    if (isSelected && shape.showCenterMark !== false) {
+      this.drawCenterMark(ctx, shape.center, shape.radius);
+    }
+  }
+
+  private drawCenterMark(ctx: CanvasRenderingContext2D, center: { x: number; y: number }, radius: number): void {
+    ctx.save();
+    ctx.setLineDash([]);
+    ctx.lineWidth = 1 / this._currentZoom;
+    ctx.beginPath();
+    ctx.moveTo(center.x - radius, center.y);
+    ctx.lineTo(center.x + radius, center.y);
+    ctx.moveTo(center.x, center.y - radius);
+    ctx.lineTo(center.x, center.y + radius);
+    ctx.stroke();
+    ctx.restore();
   }
 
   private drawPolyline(shape: Shape): void {

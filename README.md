@@ -1,4 +1,4 @@
-# Open nD Studio
+# Open 2D Studio
 
 A comprehensive, cross-platform 2D CAD application. Built with modern technologies for performance, extensibility, and ease of use.
 
@@ -9,7 +9,7 @@ A comprehensive, cross-platform 2D CAD application. Built with modern technologi
 
 ## Overview
 
-Open nD Studio is a free, open-source 2D CAD (Computer-Aided Design) application that provides professional-grade drawing tools for technical drawings, floor plans, mechanical designs, and more. It aims to be a lightweight, fast alternative to commercial CAD software.
+Open 2D Studio is a free, open-source 2D CAD (Computer-Aided Design) application that provides professional-grade drawing tools for technical drawings, floor plans, mechanical designs, and more. It aims to be a lightweight, fast alternative to commercial CAD software.
 
 ### Key Features
 
@@ -72,8 +72,8 @@ Open nD Studio is a free, open-source 2D CAD (Computer-Aided Design) application
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/your-username/open-nD-studio.git
-   cd open-nD-studio
+   git clone https://github.com/your-username/open-2D-studio.git
+   cd open-2D-studio
    ```
 
 2. Install dependencies:
@@ -131,7 +131,7 @@ Open nD Studio is a free, open-source 2D CAD (Computer-Aided Design) application
 ## Project Structure
 
 ```
-open-nD-studio/
+open-2D-studio/
 ├── src/                      # Frontend source code
 │   ├── components/           # React components
 │   │   ├── Canvas/          # Drawing canvas

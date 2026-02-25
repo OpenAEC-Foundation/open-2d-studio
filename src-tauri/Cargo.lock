@@ -2901,8 +2901,8 @@ dependencies = [
 ]
 
 [[package]]
-name = "open-nd-studio"
-version = "0.28.0"
+name = "open-2d-studio"
+version = "0.29.0"
 dependencies = [
  "clap",
  "dxf",

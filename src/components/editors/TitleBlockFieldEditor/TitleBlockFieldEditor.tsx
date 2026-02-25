@@ -1,7 +1,8 @@
 /**
  * TitleBlockFieldEditor - Inline input overlay for editing title block fields
  *
- * Follows the TextEditor pattern: absolutely positioned HTML input over the canvas,
+ * Uses a contentEditable span (not <input>) to avoid browser-imposed white
+ * background on form elements. Absolutely positioned over the canvas,
  * pre-filled with the current field value.
  *
  * Enter → save, Escape → cancel, blur → save
@@ -39,26 +40,34 @@ export function TitleBlockFieldEditor({
   onSave,
   onCancel,
 }: TitleBlockFieldEditorProps) {
-  const inputRef = useRef<HTMLInputElement>(null);
-  const [value, setValue] = useState(fieldRect.value);
+  const spanRef = useRef<HTMLSpanElement>(null);
+  const [committed, setCommitted] = useState(false);
 
-  // Focus and select on mount
+  // Focus and select all text on mount
   useEffect(() => {
-    const input = inputRef.current;
-    if (input) {
-      input.focus();
-      input.select();
+    const el = spanRef.current;
+    if (el) {
+      el.focus();
+      // Select all text
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const sel = window.getSelection();
+      sel?.removeAllRanges();
+      sel?.addRange(range);
     }
   }, []);
 
   // Dismiss on wheel zoom
   useEffect(() => {
     const handleWheel = () => {
-      onSave(value);
+      if (!committed) {
+        setCommitted(true);
+        onSave(spanRef.current?.textContent || '');
+      }
     };
     window.addEventListener('wheel', handleWheel, { once: true, passive: true });
     return () => window.removeEventListener('wheel', handleWheel);
-  }, [value, onSave]);
+  }, [onSave, committed]);
 
   const handleKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
@@ -66,59 +75,61 @@ export function TitleBlockFieldEditor({
 
       if (e.key === 'Escape') {
         e.preventDefault();
+        setCommitted(true);
         onCancel();
-      } else if (e.key === 'Enter') {
+      } else if (e.key === 'Enter' || e.key === 'Tab') {
         e.preventDefault();
-        onSave(value);
-      } else if (e.key === 'Tab') {
-        e.preventDefault();
-        onSave(value);
+        setCommitted(true);
+        onSave(spanRef.current?.textContent || '');
       }
     },
-    [value, onSave, onCancel]
+    [onSave, onCancel]
   );
 
   const handleBlur = useCallback(() => {
-    onSave(value);
-  }, [value, onSave]);
+    if (!committed) {
+      setCommitted(true);
+      onSave(spanRef.current?.textContent || '');
+    }
+  }, [onSave, committed]);
 
   // Scale font size with zoom
   const fontSize = Math.max(8, fieldRect.fontSize * zoom);
 
+  // Canvas draws text with textBaseline:'top' (flush at Y), but the span
+  // may have slight vertical centering. Compensate to prevent text shift.
+  const verticalOffset = (height - fontSize) / 2;
+
   return (
-    <div
+    <span
+      ref={spanRef}
+      contentEditable
+      suppressContentEditableWarning
+      onKeyDown={handleKeyDown}
+      onBlur={handleBlur}
       style={{
         position: 'absolute',
         left: `${x}px`,
-        top: `${y}px`,
+        top: `${y - verticalOffset}px`,
         width: `${width}px`,
         height: `${height}px`,
         zIndex: 1000,
-        display: 'flex',
-        alignItems: 'center',
+        font: `${fieldRect.isBold ? 'bold ' : ''}${fontSize}px/${height}px ${fieldRect.fontFamily}`,
+        color: '#000000',
+        background: 'transparent',
+        border: 'none',
+        outline: 'none',
+        padding: 0,
+        margin: 0,
+        textAlign: fieldRect.align,
+        boxSizing: 'border-box',
+        display: 'inline-block',
+        whiteSpace: 'nowrap',
+        overflow: 'hidden',
+        caretColor: '#000000',
       }}
     >
-      <input
-        ref={inputRef}
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        onKeyDown={handleKeyDown}
-        onBlur={handleBlur}
-        style={{
-          width: '100%',
-          height: '100%',
-          font: `${fieldRect.isBold ? 'bold ' : ''}${fontSize}px ${fieldRect.fontFamily}`,
-          color: '#000000',
-          backgroundColor: 'rgba(255, 255, 255, 0.95)',
-          border: '2px solid #0066ff',
-          outline: 'none',
-          padding: '2px 4px',
-          textAlign: fieldRect.align,
-          boxSizing: 'border-box',
-          boxShadow: '0 2px 8px rgba(0, 102, 255, 0.3)',
-        }}
-      />
-    </div>
+      {fieldRect.value}
+    </span>
   );
 }

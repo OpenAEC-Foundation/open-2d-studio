@@ -188,7 +188,6 @@ export const COLORS = {
   axisY: '#44ff44',
   hover: '#00bfff',
   selection: '#00B400',
-  selectionFill: 'rgba(0, 180, 0, 0.25)',
   selectionHandle: '#00B400',
   selectionHandleStroke: '#ffffff',
   commandPreview: '#00ff00',

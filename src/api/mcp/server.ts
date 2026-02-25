@@ -104,7 +104,7 @@ export interface McpServerConfig {
  */
 export function getMcpServerInfo(): McpServerConfig {
   return {
-    name: 'open-nd-studio',
+    name: 'open-2d-studio',
     version: '1.0.0',
     capabilities: {
       tools: true,

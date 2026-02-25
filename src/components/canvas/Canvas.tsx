@@ -538,6 +538,7 @@ export function Canvas() {
               seaLevelDatum: s.projectStructure?.seaLevelDatum ?? 0,
               hiddenIfcCategories: s.hiddenIfcCategories ?? [],
               unitSettings: s.unitSettings,
+              editingFieldId: getActiveDocumentStore().getState().titleBlockEditingFieldId,
             });
           }
         } else {
