@@ -6,20 +6,20 @@ import { ProjectInfoPanel } from '../ProjectInfoDialog';
 import { ExtensionManagerPanel } from './ExtensionManagerPanel';
 import { useAppStore } from '../../../state/appStore';
 import { checkForUpdates, downloadAndInstall, type UpdateStatus } from '../../../services/updater/updaterService';
-import type { ExtensionBackstagePanel } from '../../../extensions/types';
+import type { ExtensionAppMenuPanel } from '../../../extensions/types';
 import type { LengthUnit, NumberFormat } from '../../../units/types';
 
-export type BackstageView = 'none' | 'recent' | 'import' | 'export' | 'shortcuts' | 'about' | 'projectInfo' | 'units' | 'extensions' | `ext:${string}`;
+export type AppMenuView = 'none' | 'recent' | 'import' | 'export' | 'shortcuts' | 'about' | 'projectInfo' | 'units' | 'extensions' | `ext:${string}`;
 
-interface BackstageProps {
+interface AppMenuProps {
   isOpen: boolean;
   onClose: () => void;
-  initialView?: BackstageView;
+  initialView?: AppMenuView;
   /** Callback to open the Sheet Template Import dialog (rendered in App.tsx) */
   onOpenSheetTemplateImport?: () => void;
 }
 
-interface BackstageItemProps {
+interface AppMenuItemProps {
   icon: React.ReactNode;
   label: string;
   onClick: () => void;
@@ -28,7 +28,7 @@ interface BackstageItemProps {
   shortcut?: string;
 }
 
-function BackstageItem({ icon, label, onClick, onMouseEnter, active, shortcut }: BackstageItemProps) {
+function AppMenuItem({ icon, label, onClick, onMouseEnter, active, shortcut }: AppMenuItemProps) {
   return (
     <button
       className={`w-full flex items-center gap-3 px-6 py-3 text-left text-sm text-cad-text hover:bg-cad-hover transition-colors cursor-default ${active ? 'bg-cad-hover' : ''}`}
@@ -168,7 +168,7 @@ function UnitsPanel() {
   );
 }
 
-function ExtensionPanelHost({ panel }: { panel: ExtensionBackstagePanel }) {
+function ExtensionPanelHost({ panel }: { panel: ExtensionAppMenuPanel }) {
   const containerRef = useRef<HTMLDivElement>(null);
   const cleanupRef = useRef<(() => void) | null>(null);
 
@@ -180,7 +180,7 @@ function ExtensionPanelHost({ panel }: { panel: ExtensionBackstagePanel }) {
           cleanupRef.current = result;
         }
       } catch (err) {
-        console.error(`[Extensions] Error rendering backstage panel "${panel.id}":`, err);
+        console.error(`[Extensions] Error rendering app menu panel "${panel.id}":`, err);
       }
     }
     return () => {
@@ -387,10 +387,10 @@ function AboutPanel() {
   );
 }
 
-export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImport }: BackstageProps) {
+export function AppMenu({ isOpen, onClose, initialView, onOpenSheetTemplateImport }: AppMenuProps) {
   const { handleNew, handleOpen, handleOpenPath, handleSave, handleSaveAs, handleExportSVG, handleExportDXF, handleExportIFC, handleExportJSON, handleImportDXF, handleImportDXFAsUnderlay, handlePrint, handleExit } = useFileOperations();
-  const [activeView, setActiveView] = useState<BackstageView>('none');
-  const extensionBackstagePanels = useAppStore((s) => s.extensionBackstagePanels);
+  const [activeView, setActiveView] = useState<AppMenuView>('none');
+  const extensionAppMenuPanels = useAppStore((s) => s.extensionAppMenuPanels);
 
   const handleEscape = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose();
@@ -406,9 +406,9 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
 
   if (!isOpen) return null;
 
-  // Helper to close Backstage before executing an action.
+  // Helper to close AppMenu before executing an action.
   // IMPORTANT: Always use action() wrapper for Import/Export buttons
-  // so the Backstage closes before the dialog appears.
+  // so the AppMenu closes before the dialog appears.
   const action = (fn: () => void | Promise<void>) => async () => {
     onClose();
     await fn();
@@ -433,21 +433,21 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
         </button>
 
         <div className="flex flex-col py-2">
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg>}
             label="New"
             shortcut="Ctrl+N"
             onClick={action(handleNew)}
             onMouseEnter={clearView}
           />
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>}
             label="Open"
             shortcut="Ctrl+O"
             onClick={action(handleOpen)}
             onMouseEnter={clearView}
           />
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>}
             label="Recent"
             onClick={() => setActiveView('recent')}
@@ -457,14 +457,14 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
 
           <div className="h-px bg-cad-border my-1 mx-4" />
 
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>}
             label="Save"
             shortcut="Ctrl+S"
             onClick={action(handleSave)}
             onMouseEnter={clearView}
           />
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>}
             label="Save As"
             shortcut="Ctrl+Shift+S"
@@ -474,21 +474,21 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
 
           <div className="h-px bg-cad-border my-1 mx-4" />
 
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>}
             label="Import"
             onClick={() => setActiveView('import')}
             onMouseEnter={() => setActiveView('import')}
             active={activeView === 'import'}
           />
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>}
             label="Export"
             onClick={() => setActiveView('export')}
             onMouseEnter={() => setActiveView('export')}
             active={activeView === 'export'}
           />
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>}
             label="Print"
             shortcut="Ctrl+P"
@@ -498,21 +498,21 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
 
           <div className="h-px bg-cad-border my-1 mx-4" />
 
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"/><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"/></svg>}
             label="Project Info"
             onClick={() => setActiveView('projectInfo')}
             onMouseEnter={() => setActiveView('projectInfo')}
             active={activeView === 'projectInfo'}
           />
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>}
             label="Units"
             onClick={() => setActiveView('units')}
             onMouseEnter={() => setActiveView('units')}
             active={activeView === 'units'}
           />
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>}
             label="Extensions"
             onClick={() => setActiveView('extensions')}
@@ -520,20 +520,20 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
             active={activeView === 'extensions'}
           />
 
-          {/* Extension-registered backstage panels */}
-          {extensionBackstagePanels.length > 0 && (
+          {/* Extension-registered app menu panels */}
+          {extensionAppMenuPanels.length > 0 && (
             <>
               <div className="h-px bg-cad-border my-1 mx-4" />
-              {extensionBackstagePanels
+              {extensionAppMenuPanels
                 .slice()
                 .sort((a, b) => a.order - b.order)
                 .map((panel) => (
-                  <BackstageItem
+                  <AppMenuItem
                     key={panel.id}
                     icon={panel.icon ? <span dangerouslySetInnerHTML={{ __html: panel.icon }} /> : <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="3" width="18" height="18" rx="2"/></svg>}
                     label={panel.label}
-                    onClick={() => setActiveView(`ext:${panel.id}` as BackstageView)}
-                    onMouseEnter={() => setActiveView(`ext:${panel.id}` as BackstageView)}
+                    onClick={() => setActiveView(`ext:${panel.id}` as AppMenuView)}
+                    onMouseEnter={() => setActiveView(`ext:${panel.id}` as AppMenuView)}
                     active={activeView === `ext:${panel.id}`}
                   />
                 ))}
@@ -545,21 +545,21 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
 
           <div className="h-px bg-cad-border my-1 mx-4" />
 
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h4"/><path d="M14 8h4"/><path d="M6 12h3"/><path d="M13 12h5"/><path d="M8 16h8"/></svg>}
             label="Keyboard Shortcuts"
             onClick={() => setActiveView('shortcuts')}
             onMouseEnter={() => setActiveView('shortcuts')}
             active={activeView === 'shortcuts'}
           />
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>}
             label="About"
             onClick={() => setActiveView('about')}
             onMouseEnter={() => setActiveView('about')}
             active={activeView === 'about'}
           />
-          <BackstageItem
+          <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>}
             label="Exit"
             shortcut="Alt+F4"
@@ -860,7 +860,7 @@ export function Backstage({ isOpen, onClose, initialView, onOpenSheetTemplateImp
         {activeView === 'extensions' && <ExtensionManagerPanel />}
         {activeView.startsWith('ext:') && (() => {
           const panelId = activeView.slice(4);
-          const panel = extensionBackstagePanels.find((p) => p.id === panelId);
+          const panel = extensionAppMenuPanels.find((p) => p.id === panelId);
           if (!panel) return null;
           return <ExtensionPanelHost key={panelId} panel={panel} />;
         })()}

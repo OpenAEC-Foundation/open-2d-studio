@@ -129,7 +129,7 @@ export const SelectionFilterBar = memo(function SelectionFilterBar() {
 
   return (
     <>
-      <span className="quick-access-separator" />
+      <div className="w-px h-4 bg-cad-border" />
       <span className="selection-filter-label">Filter:</span>
       <button
         className={`selection-filter-chip ${selectionFilter === null ? 'active' : ''}`}

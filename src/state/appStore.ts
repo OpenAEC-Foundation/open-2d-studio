@@ -445,6 +445,7 @@ export const useAppStore = create<AppState>()(
       // ========================================================================
 
       switchToDrawingTool: (tool: ToolState['activeTool']) => {
+        get().deselectAll();
         get().setActiveTool(tool);
       },
 

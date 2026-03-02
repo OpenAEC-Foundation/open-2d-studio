@@ -7,7 +7,7 @@ import type {
   ExtensionStatus,
   ExtensionRibbonButton,
   ExtensionRibbonTab,
-  ExtensionBackstagePanel,
+  ExtensionAppMenuPanel,
   CatalogEntry,
 } from '../../extensions/types';
 
@@ -19,7 +19,7 @@ export interface ExtensionState {
   installedExtensions: Record<string, InstalledExtension>;
   extensionRibbonButtons: ExtensionRibbonButton[];
   extensionRibbonTabs: ExtensionRibbonTab[];
-  extensionBackstagePanels: ExtensionBackstagePanel[];
+  extensionAppMenuPanels: ExtensionAppMenuPanel[];
   catalogEntries: CatalogEntry[];
   catalogLoading: boolean;
   catalogError: string | null;
@@ -39,8 +39,8 @@ export interface ExtensionActions {
   removeExtensionRibbonButton: (extensionId: string, label: string) => void;
   addExtensionRibbonTab: (tab: ExtensionRibbonTab) => void;
   removeExtensionRibbonTab: (extensionId: string, tabId: string) => void;
-  addExtensionBackstagePanel: (panel: ExtensionBackstagePanel) => void;
-  removeExtensionBackstagePanel: (extensionId: string, panelId: string) => void;
+  addExtensionAppMenuPanel: (panel: ExtensionAppMenuPanel) => void;
+  removeExtensionAppMenuPanel: (extensionId: string, panelId: string) => void;
   removeAllExtensionUI: (extensionId: string) => void;
 
   setCatalog: (entries: CatalogEntry[], fetchedAt: number) => void;
@@ -58,7 +58,7 @@ export const initialExtensionState: ExtensionState = {
   installedExtensions: {},
   extensionRibbonButtons: [],
   extensionRibbonTabs: [],
-  extensionBackstagePanels: [],
+  extensionAppMenuPanels: [],
   catalogEntries: [],
   catalogLoading: false,
   catalogError: null,
@@ -127,19 +127,19 @@ export const createExtensionSlice = (
       );
     }),
 
-  addExtensionBackstagePanel: (panel) =>
+  addExtensionAppMenuPanel: (panel) =>
     set((state) => {
-      const exists = state.extensionBackstagePanels.some(
+      const exists = state.extensionAppMenuPanels.some(
         (p) => p.extensionId === panel.extensionId && p.id === panel.id
       );
       if (!exists) {
-        state.extensionBackstagePanels.push(panel);
+        state.extensionAppMenuPanels.push(panel);
       }
     }),
 
-  removeExtensionBackstagePanel: (extensionId, panelId) =>
+  removeExtensionAppMenuPanel: (extensionId, panelId) =>
     set((state) => {
-      state.extensionBackstagePanels = state.extensionBackstagePanels.filter(
+      state.extensionAppMenuPanels = state.extensionAppMenuPanels.filter(
         (p) => !(p.extensionId === extensionId && p.id === panelId)
       );
     }),
@@ -152,7 +152,7 @@ export const createExtensionSlice = (
       state.extensionRibbonTabs = state.extensionRibbonTabs.filter(
         (t) => t.extensionId !== extensionId
       );
-      state.extensionBackstagePanels = state.extensionBackstagePanels.filter(
+      state.extensionAppMenuPanels = state.extensionAppMenuPanels.filter(
         (p) => p.extensionId !== extensionId
       );
     }),

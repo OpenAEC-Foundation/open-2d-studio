@@ -4,6 +4,7 @@ import type { DimensionType } from '../../../types/dimension';
 import type { HatchPatternType, LeaderArrowType } from '../../../types/geometry';
 import { BUILTIN_PATTERNS } from '../../../types/hatch';
 import { PatternPreview } from '../../editors/PatternManager/PatternPreview';
+import { SelectionFilterBar } from '../../layout/Ribbon/SelectionFilterBar';
 
 /**
  * Small reusable select dropdown for the options bar
@@ -902,10 +903,10 @@ function LeaderOptions() {
 }
 
 /**
- * Options Bar - Always visible below the Ribbon.
+ * Tool Options Bar - Always visible below the Ribbon.
  * Shows per-tool settings based on the active tool.
  */
-export const OptionsBar = memo(function OptionsBar() {
+export const ToolOptionsBar = memo(function ToolOptionsBar() {
   const activeTool = useAppStore((s) => s.activeTool);
 
   const renderToolOptions = () => {
@@ -961,6 +962,7 @@ export const OptionsBar = memo(function OptionsBar() {
   return (
     <div className="h-7 bg-cad-surface border-b border-cad-border flex items-center px-3 gap-4 text-xs font-mono">
       {renderToolOptions()}
+      <SelectionFilterBar />
     </div>
   );
 });

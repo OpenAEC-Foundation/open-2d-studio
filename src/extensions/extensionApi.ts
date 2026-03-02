@@ -7,7 +7,7 @@ import type {
   ExtensionPermission,
   RibbonButtonRegistration,
   RibbonTabRegistration,
-  BackstagePanelRegistration,
+  AppMenuPanelRegistration,
   ExtensionCommandDefinition,
 } from './types';
 import { useAppStore } from '../state/appStore';
@@ -198,9 +198,9 @@ export function createExtensionApi(
         });
         registeredTabs.push(reg.id);
       },
-      addBackstagePanel: (reg: BackstagePanelRegistration) => {
-        if (!has('backstage')) throw new Error(`Extension "${extensionId}" lacks "backstage" permission`);
-        useAppStore.getState().addExtensionBackstagePanel({
+      addAppMenuPanel: (reg: AppMenuPanelRegistration) => {
+        if (!has('app-menu')) throw new Error(`Extension "${extensionId}" lacks "app-menu" permission`);
+        useAppStore.getState().addExtensionAppMenuPanel({
           extensionId,
           id: reg.id,
           label: reg.label,

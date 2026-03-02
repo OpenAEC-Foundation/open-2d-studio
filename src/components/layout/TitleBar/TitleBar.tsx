@@ -327,11 +327,11 @@ function saveVisibleIds(ids: string[]): void {
 
 /* ── Component ────────────────────────────────────────────────────────── */
 
-interface MenuBarProps {
+interface TitleBarProps {
   onSendFeedback?: () => void;
 }
 
-export const MenuBar = memo(function MenuBar({ onSendFeedback }: MenuBarProps) {
+export const TitleBar = memo(function TitleBar({ onSendFeedback }: TitleBarProps) {
   /* existing store selectors */
   const canUndo = useAppStore(s => s.canUndo());
   const canRedo = useAppStore(s => s.canRedo());

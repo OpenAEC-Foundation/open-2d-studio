@@ -96,8 +96,6 @@ import {
   SpotElevationIcon,
 } from '../../shared/CadIcons';
 import { useFileOperations } from '../../../hooks/file/useFileOperations';
-import { SelectionFilterBar } from './SelectionFilterBar';
-import { QuickAccessBar } from './QuickAccessBar';
 import type { Shape, BeamShape, PileShape, PileType } from '../../../types/geometry';
 import type { ProjectStructure } from '../../../state/slices/parametricSlice';
 import { triggerBonsaiSync, saveBonsaiSyncSettings, generateBlenderWatcherScript } from '../../../services/bonsaiSync';
@@ -710,11 +708,11 @@ export function PilePlanRibbonTable() {
 }
 
 interface RibbonProps {
-  onOpenBackstage: () => void;
+  onOpenAppMenu: () => void;
   hidden?: boolean;
 }
 
-export const Ribbon = memo(function Ribbon({ onOpenBackstage, hidden }: RibbonProps) {
+export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProps) {
   const [activeTab, setActiveTab] = useState<RibbonTab>('home');
   const [ifcFilterOpen, setIfcFilterOpen] = useState(false);
   const ifcFilterRef = useRef<HTMLDivElement>(null);
@@ -1002,7 +1000,7 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage, hidden }: RibbonPr
       <div className="ribbon-tabs">
         <button
           className="ribbon-tab file"
-          onClick={onOpenBackstage}
+          onClick={onOpenAppMenu}
         >
           File
         </button>
@@ -2215,11 +2213,6 @@ export const Ribbon = memo(function Ribbon({ onOpenBackstage, hidden }: RibbonPr
 
       </div>
 
-      {/* Combined Quick Access + Selection Filter Bar - always visible, fixed height */}
-      <div className="quick-access-bar">
-        <QuickAccessBar />
-        <SelectionFilterBar />
-      </div>
     </div>
   );
 });

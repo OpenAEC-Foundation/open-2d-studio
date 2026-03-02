@@ -2,14 +2,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { PanelLeftOpen, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import { getSetting, setSetting } from './utils/settings';
 // Layout components
-import { MenuBar } from './components/layout/MenuBar/MenuBar';
+import { TitleBar } from './components/layout/TitleBar/TitleBar';
 import { Ribbon } from './components/layout/Ribbon/Ribbon';
 import { StatusBar } from './components/layout/StatusBar/StatusBar';
 import { FileTabBar } from './components/layout/FileTabBar/FileTabBar';
 
 // Canvas components
 import { Canvas } from './components/canvas/Canvas';
-import { OptionsBar } from './components/canvas/OptionsBar/OptionsBar';
+import { ToolOptionsBar } from './components/canvas/ToolOptionsBar/ToolOptionsBar';
 import { BimViewer } from './components/canvas/BimViewer';
 
 // Panel components
@@ -20,7 +20,7 @@ import { RightPanelLayout } from './components/panels/RightPanelLayout';
 // Dialog components
 import { PrintDialog } from './components/dialogs/PrintDialog/PrintDialog';
 import { SettingsDialog } from './components/dialogs/SettingsDialog/SettingsDialog';
-import { Backstage } from './components/dialogs/Backstage/Backstage';
+import { AppMenu } from './components/dialogs/AppMenu/AppMenu';
 import { FeedbackDialog } from './components/dialogs/FeedbackDialog/FeedbackDialog';
 import { TitleBlockEditor } from './components/dialogs/TitleBlockEditor';
 import { TitleBlockImportDialog } from './components/dialogs/TitleBlockImportDialog';
@@ -108,12 +108,12 @@ function App() {
     return () => { unlisten.then(fn => fn()); };
   }, [handleOpenPath]);
 
-  // Backstage view
-  const [backstageOpen, setBackstageOpen] = useState(false);
-  const openBackstage = useCallback(() => setBackstageOpen(true), []);
-  const closeBackstage = useCallback(() => { setBackstageOpen(false); }, []);
+  // App Menu
+  const [appMenuOpen, setAppMenuOpen] = useState(false);
+  const openAppMenu = useCallback(() => setAppMenuOpen(true), []);
+  const closeAppMenu = useCallback(() => { setAppMenuOpen(false); }, []);
 
-  // Sheet Template Import dialog (opened from Backstage > Import)
+  // Sheet Template Import dialog (opened from AppMenu > Import)
   const [sheetTemplateImportOpen, setSheetTemplateImportOpen] = useState(false);
   const openSheetTemplateImport = useCallback(() => setSheetTemplateImportOpen(true), []);
 
@@ -429,13 +429,13 @@ function App() {
   return (
     <div className="flex flex-col h-full w-full bg-cad-bg text-cad-text no-select">
       {/* Menu Bar */}
-      <MenuBar onSendFeedback={() => setFeedbackDialogOpen(true)} />
+      <TitleBar onSendFeedback={() => setFeedbackDialogOpen(true)} />
 
       {/* Ribbon */}
-      <Ribbon onOpenBackstage={openBackstage} hidden={backstageOpen} />
+      <Ribbon onOpenAppMenu={openAppMenu} hidden={appMenuOpen} />
 
       {/* Options Bar (shows when Array or similar commands are active) */}
-      <OptionsBar />
+      <ToolOptionsBar />
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
@@ -575,10 +575,10 @@ function App() {
         />
       )}
 
-      {/* Backstage View */}
-      <Backstage
-        isOpen={backstageOpen}
-        onClose={closeBackstage}
+      {/* App Menu */}
+      <AppMenu
+        isOpen={appMenuOpen}
+        onClose={closeAppMenu}
         onOpenSheetTemplateImport={openSheetTemplateImport}
       />
 

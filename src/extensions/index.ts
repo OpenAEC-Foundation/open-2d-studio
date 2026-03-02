@@ -13,10 +13,10 @@ export type {
   ExtensionCommandDefinition,
   RibbonButtonRegistration,
   RibbonTabRegistration,
-  BackstagePanelRegistration,
+  AppMenuPanelRegistration,
   ExtensionRibbonButton,
   ExtensionRibbonTab,
-  ExtensionBackstagePanel,
+  ExtensionAppMenuPanel,
   CatalogEntry,
   ExtensionCatalog,
 } from './types';

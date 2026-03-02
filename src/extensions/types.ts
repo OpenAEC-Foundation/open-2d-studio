@@ -19,7 +19,7 @@ export type ExtensionCategory =
 export type ExtensionPermission =
   | 'commands'
   | 'ribbon'
-  | 'backstage'
+  | 'app-menu'
   | 'events'
   | 'filesystem'
   | 'network';
@@ -119,7 +119,7 @@ export interface ExtensionApi {
   ui: {
     addRibbonButton(reg: RibbonButtonRegistration): void;
     addRibbonTab(reg: RibbonTabRegistration): void;
-    addBackstagePanel(reg: BackstagePanelRegistration): void;
+    addAppMenuPanel(reg: AppMenuPanelRegistration): void;
     showNotification(message: string, type?: 'info' | 'warning' | 'error'): void;
   };
 
@@ -170,7 +170,7 @@ export interface RibbonTabRegistration {
   order?: number;
 }
 
-export interface BackstagePanelRegistration {
+export interface AppMenuPanelRegistration {
   id: string;
   label: string;
   icon?: string;
@@ -201,7 +201,7 @@ export interface ExtensionRibbonTab {
   order: number;
 }
 
-export interface ExtensionBackstagePanel {
+export interface ExtensionAppMenuPanel {
   extensionId: string;
   id: string;
   label: string;
