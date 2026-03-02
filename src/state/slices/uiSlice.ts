@@ -68,6 +68,7 @@ export interface UIState {
   titleBlockEditorOpen: boolean;
   newSheetDialogOpen: boolean;
   findReplaceDialogOpen: boolean;
+  feedbackDialogOpen: boolean;
   settingsDialogOpen: boolean;
   settingsDialogTab: SettingsDialogTab;
 
@@ -99,6 +100,7 @@ export interface UIActions {
   setTitleBlockEditorOpen: (open: boolean) => void;
   setNewSheetDialogOpen: (open: boolean) => void;
   setFindReplaceDialogOpen: (open: boolean) => void;
+  setFeedbackDialogOpen: (open: boolean) => void;
   setSettingsDialogOpen: (open: boolean) => void;
   setSettingsDialogTab: (tab: SettingsDialogTab) => void;
   openSettings: (tab?: SettingsDialogTab) => void;
@@ -148,6 +150,7 @@ export const initialUIState: UIState = {
   titleBlockEditorOpen: false,
   newSheetDialogOpen: false,
   findReplaceDialogOpen: false,
+  feedbackDialogOpen: false,
   settingsDialogOpen: false,
   settingsDialogTab: 'drawing-aids' as SettingsDialogTab,
   terminalOpen: false,
@@ -173,6 +176,7 @@ interface FullStore {
   titleBlockEditorOpen: boolean;
   newSheetDialogOpen: boolean;
   findReplaceDialogOpen: boolean;
+  feedbackDialogOpen: boolean;
   settingsDialogOpen: boolean;
   settingsDialogTab: SettingsDialogTab;
   terminalOpen: boolean;
@@ -243,6 +247,11 @@ export const createUISlice = (
   setFindReplaceDialogOpen: (open) =>
     set((state) => {
       state.findReplaceDialogOpen = open;
+    }),
+
+  setFeedbackDialogOpen: (open) =>
+    set((state) => {
+      state.feedbackDialogOpen = open;
     }),
 
   setSettingsDialogOpen: (open) =>

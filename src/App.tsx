@@ -20,7 +20,8 @@ import { RightPanelLayout } from './components/panels/RightPanelLayout';
 // Dialog components
 import { PrintDialog } from './components/dialogs/PrintDialog/PrintDialog';
 import { SettingsDialog } from './components/dialogs/SettingsDialog/SettingsDialog';
-import { Backstage, type BackstageView } from './components/dialogs/Backstage/Backstage';
+import { Backstage } from './components/dialogs/Backstage/Backstage';
+import { FeedbackDialog } from './components/dialogs/FeedbackDialog/FeedbackDialog';
 import { TitleBlockEditor } from './components/dialogs/TitleBlockEditor';
 import { TitleBlockImportDialog } from './components/dialogs/TitleBlockImportDialog';
 import { NewSheetDialog } from './components/dialogs/NewSheetDialog';
@@ -109,10 +110,8 @@ function App() {
 
   // Backstage view
   const [backstageOpen, setBackstageOpen] = useState(false);
-  const [backstageInitialView, setBackstageInitialView] = useState<BackstageView | undefined>();
   const openBackstage = useCallback(() => setBackstageOpen(true), []);
-  const closeBackstage = useCallback(() => { setBackstageOpen(false); setBackstageInitialView(undefined); }, []);
-  const onSendFeedback = useCallback(() => { setBackstageInitialView('feedback'); setBackstageOpen(true); }, []);
+  const closeBackstage = useCallback(() => { setBackstageOpen(false); }, []);
 
   // Sheet Template Import dialog (opened from Backstage > Import)
   const [sheetTemplateImportOpen, setSheetTemplateImportOpen] = useState(false);
@@ -395,6 +394,8 @@ function App() {
     setRegionTypeManagerOpen,
     findReplaceDialogOpen,
     setFindReplaceDialogOpen,
+    feedbackDialogOpen,
+    setFeedbackDialogOpen,
     textStyleManagerOpen,
     setTextStyleManagerOpen,
     leftSidebarCollapsed,
@@ -428,7 +429,7 @@ function App() {
   return (
     <div className="flex flex-col h-full w-full bg-cad-bg text-cad-text no-select">
       {/* Menu Bar */}
-      <MenuBar onSendFeedback={onSendFeedback} />
+      <MenuBar onSendFeedback={() => setFeedbackDialogOpen(true)} />
 
       {/* Ribbon */}
       <Ribbon onOpenBackstage={openBackstage} hidden={backstageOpen} />
@@ -578,7 +579,6 @@ function App() {
       <Backstage
         isOpen={backstageOpen}
         onClose={closeBackstage}
-        initialView={backstageInitialView}
         onOpenSheetTemplateImport={openSheetTemplateImport}
       />
 
@@ -765,6 +765,12 @@ function App() {
       <FindReplaceDialog
         isOpen={findReplaceDialogOpen}
         onClose={() => setFindReplaceDialogOpen(false)}
+      />
+
+      {/* Feedback Dialog */}
+      <FeedbackDialog
+        isOpen={feedbackDialogOpen}
+        onClose={() => setFeedbackDialogOpen(false)}
       />
     </div>
   );
