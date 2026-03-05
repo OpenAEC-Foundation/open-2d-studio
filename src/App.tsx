@@ -1,4 +1,5 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import './extensionSdkGlobal';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { PanelLeftOpen, PanelRightOpen, PanelRightClose } from 'lucide-react';
 import { getSetting, setSetting } from './utils/settings';
 // Layout components
@@ -10,7 +11,6 @@ import { FileTabBar } from './components/layout/FileTabBar/FileTabBar';
 // Canvas components
 import { Canvas } from './components/canvas/Canvas';
 import { ToolOptionsBar } from './components/canvas/ToolOptionsBar/ToolOptionsBar';
-import { BimViewer } from './components/canvas/BimViewer';
 
 // Panel components
 import { NavigationPanel } from './components/panels/NavigationPanel';
@@ -25,18 +25,8 @@ import { FeedbackDialog } from './components/dialogs/FeedbackDialog/FeedbackDial
 import { TitleBlockEditor } from './components/dialogs/TitleBlockEditor';
 import { TitleBlockImportDialog } from './components/dialogs/TitleBlockImportDialog';
 import { NewSheetDialog } from './components/dialogs/NewSheetDialog';
-import { SectionDialog } from './components/dialogs/SectionDialog';
-import { BeamDialog } from './components/dialogs/BeamDialog';
-import { GridlineDialog } from './components/dialogs/GridlineDialog';
-import { WallDialog } from './components/dialogs/WallDialog';
-import { PlateSystemDialog } from './components/dialogs/PlateSystemDialog/PlateSystemDialog';
 import { DrawingStandardsDialog } from './components/dialogs/DrawingStandardsDialog';
-import { MaterialsDialog } from './components/dialogs/MaterialsDialog';
-import { WallTypesDialog } from './components/dialogs/WallTypesDialog';
-import { WallSystemDialog } from './components/dialogs/WallSystemDialog/WallSystemDialog';
 import { FindReplaceDialog } from './components/dialogs/FindReplaceDialog';
-import { ProjectStructureDialog } from './components/dialogs/ProjectStructureDialog';
-import { PileSymbolsDialog } from './components/dialogs/PileSymbolsDialog';
 
 // Editor components
 import { PatternManagerDialog } from './components/editors/PatternManager';
@@ -45,11 +35,6 @@ import { TextStyleManager } from './components/editors/TextStyleManager/TextStyl
 import { TerminalPanel } from './components/editors/TerminalPanel';
 import { IfcPanel } from './components/panels/IfcPanel';
 import { IfcDashboard } from './components/panels/IfcDashboard';
-import { useIfcAutoRegenerate } from './hooks/useIfcAutoRegenerate';
-import { useSpaceAutoUpdate } from './hooks/useSpaceAutoUpdate';
-import { usePileAutoNumbering } from './hooks/usePileAutoNumbering';
-import { usePileAutoDimensioning } from './hooks/usePileAutoDimensioning';
-import { usePileAutoPuntniveau } from './hooks/usePileAutoPuntniveau';
 import { useKeyboardShortcuts } from './hooks/keyboard/useKeyboardShortcuts';
 import { useGlobalKeyboard } from './hooks/keyboard/useGlobalKeyboard';
 import { useFileOperations } from './hooks/file/useFileOperations';
@@ -58,6 +43,8 @@ import { getDocumentStoreIfExists } from './state/documentStore';
 import { CadApi } from './api';
 import { loadAllExtensions } from './extensions';
 import { logger } from './services/log/logService';
+import { automationRegistry } from './engine/registry/AutomationRegistry';
+import { dialogRegistry } from './engine/registry/DialogRegistry';
 import { checkForUpdates } from './services/updater/updaterService';
 import { startAutoSave, restoreAutoSave } from './services/autosave/autoSaveService';
 import { startBonsaiSync } from './services/bonsaiSync';
@@ -70,25 +57,34 @@ import {
   type ProjectFile,
 } from './services/file/fileService';
 
+function AutomationHookRunner({ useHook }: { useHook: () => void }) {
+  useHook();
+  return null;
+}
+
+function ExtensionAutomations() {
+  const hooks = automationRegistry.getAll();
+  return (
+    <>
+      {hooks.map(h => <AutomationHookRunner key={h.id} useHook={h.useHook} />)}
+    </>
+  );
+}
+
+function ExtensionDialogs() {
+  const dialogs = dialogRegistry.getAll();
+  return (
+    <>
+      {dialogs.map(d => <d.Component key={d.id} />)}
+    </>
+  );
+}
+
 function App() {
   // Initialize keyboard shortcuts
   useKeyboardShortcuts();
   useGlobalKeyboard();
 
-  // IFC auto-regeneration (watches shapes and regenerates with 500ms debounce)
-  useIfcAutoRegenerate();
-
-  // Space auto-update (recalculates space contours when walls change)
-  useSpaceAutoUpdate();
-
-  // Pile auto-numbering (renumbers piles top-left to bottom-right when piles change)
-  usePileAutoNumbering();
-
-  // Pile auto-dimensioning (creates dimension lines between piles when enabled)
-  usePileAutoDimensioning();
-
-  // Pile auto-puntniveau (assigns puntniveauNAP to piles inside puntniveau polygons)
-  usePileAutoPuntniveau();
 
   // Apply theme on mount
   const uiTheme = useAppStore(s => s.uiTheme);
@@ -211,6 +207,57 @@ function App() {
   // Silent auto-check for updates on startup
   useEffect(() => {
     checkForUpdates(true).catch(() => {});
+  }, []);
+
+  // Restore persisted settings
+  useEffect(() => {
+    (async () => {
+      const [
+        dynamicInput, showLw,
+        gridSz, gridVis, snapEn, activeSnps, snapTol,
+        trackEn, polarEn, ortho, objTrack, polarAngle,
+        whiteBg, boundVis, theme, rotGizmo, axesVis,
+      ] = await Promise.all([
+        getSetting<boolean>('dynamicInputEnabled', true),
+        getSetting<boolean>('showLineweight', false),
+        getSetting<number>('gridSize', 10),
+        getSetting<boolean>('gridVisible', false),
+        getSetting<boolean>('snapEnabled', true),
+        getSetting<string[]>('activeSnaps', ['endpoint', 'midpoint', 'center', 'intersection', 'origin']),
+        getSetting<number>('snapTolerance', 10),
+        getSetting<boolean>('trackingEnabled', true),
+        getSetting<boolean>('polarTrackingEnabled', true),
+        getSetting<boolean>('orthoMode', false),
+        getSetting<boolean>('objectTrackingEnabled', true),
+        getSetting<number>('polarAngleIncrement', 45),
+        getSetting<boolean>('whiteBackground', true),
+        getSetting<boolean>('boundaryVisible', false),
+        getSetting<string>('uiTheme', 'dark'),
+        getSetting<boolean>('showRotationGizmo', true),
+        getSetting<boolean>('axesVisible', false),
+      ]);
+      useAppStore.setState((s: any) => {
+        s.dynamicInputEnabled = dynamicInput;
+        s.showLineweight = showLw;
+        s.gridSize = gridSz;
+        s.gridVisible = gridVis;
+        s.snapEnabled = snapEn;
+        s.activeSnaps = activeSnps;
+        s.snapTolerance = snapTol;
+        s.trackingEnabled = trackEn;
+        s.polarTrackingEnabled = polarEn;
+        s.orthoMode = ortho;
+        s.objectTrackingEnabled = objTrack;
+        s.polarAngleIncrement = polarAngle;
+        s.whiteBackground = whiteBg;
+        s.boundaryVisible = boundVis;
+        s.uiTheme = theme;
+        s.showRotationGizmo = rotGizmo;
+        s.axesVisible = axesVis;
+      });
+      // Apply theme to DOM
+      document.documentElement.setAttribute('data-theme', theme);
+    })();
   }, []);
 
   // Auto-save: restore on startup, subscribe for ongoing saves
@@ -360,34 +407,8 @@ function App() {
     setTerminalHeight,
     activeSheetId,
     editorMode,
-    sectionDialogOpen,
-    closeSectionDialog,
-    setPendingSection,
-    beamDialogOpen,
-    beamDialogInitialViewMode,
-    closeBeamDialog,
-    setPendingBeam,
-    gridlineDialogOpen,
-    closeGridlineDialog,
-    setPendingGridline,
-    pileSymbolsDialogOpen,
-    closePileSymbolsDialog,
-    wallDialogOpen,
-    closeWallDialog,
-    setPendingWall,
-    setLastUsedWallTypeId,
-    plateSystemDialogOpen,
-    closePlateSystemDialog,
-    setPendingPlateSystem,
     drawingStandardsDialogOpen,
     closeDrawingStandardsDialog,
-    materialsDialogOpen,
-    closeMaterialsDialog,
-    wallTypesDialogOpen,
-    closeWallTypesDialog,
-    wallSystemDialogOpen,
-    closeWallSystemDialog,
-    setActiveTool,
     patternManagerOpen,
     setPatternManagerOpen,
     regionTypeManagerOpen,
@@ -405,26 +426,7 @@ function App() {
     ifcPanelOpen,
     setIfcPanelOpen,
     ifcDashboardVisible,
-    show3DView,
-    projectStructureDialogOpen,
-    closeProjectStructureDialog,
   } = useAppStore();
-
-  // Compute default name for new plate systems: "Plate System 1", "Plate System 2", etc.
-  const shapes = useAppStore(s => s.shapes);
-  const nextPlateSystemName = useMemo(() => {
-    const existingPlateSystems = shapes.filter(s => s.type === 'plate-system');
-    let maxNum = 0;
-    for (const ps of existingPlateSystems) {
-      const psShape = ps as import('./types/geometry').PlateSystemShape;
-      const match = psShape.name?.match(/^Plate System (\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxNum) maxNum = num;
-      }
-    }
-    return `Plate System ${maxNum + 1}`;
-  }, [shapes]);
 
   return (
     <div className="flex flex-col h-full w-full bg-cad-bg text-cad-text no-select">
@@ -461,7 +463,6 @@ function App() {
           <div className="flex-1 relative overflow-hidden">
             <Canvas />
             {ifcDashboardVisible && <IfcDashboard />}
-            {show3DView && <BimViewer />}
           </div>
         </div>
 
@@ -594,153 +595,10 @@ function App() {
         onClose={() => setNewSheetDialogOpen(false)}
       />
 
-      {/* Section Dialog - for inserting structural profiles */}
-      <SectionDialog
-        isOpen={sectionDialogOpen}
-        onClose={closeSectionDialog}
-        onInsert={(profileType, parameters, presetId, rotation) => {
-          // Set pending section - user will click on canvas to place it
-          setPendingSection({
-            profileType,
-            parameters,
-            presetId,
-            rotation: rotation ? rotation * (Math.PI / 180) : 0,
-          });
-          closeSectionDialog();
-        }}
-      />
-
-      {/* Column/Beam Dialog - for inserting columns or drawing structural beams */}
-      <BeamDialog
-        isOpen={beamDialogOpen}
-        onClose={closeBeamDialog}
-        initialViewMode={beamDialogInitialViewMode}
-        onDraw={(profileType, parameters, flangeWidth, options) => {
-          setPendingBeam({
-            profileType,
-            parameters,
-            flangeWidth,
-            presetId: options.presetId,
-            presetName: options.presetName,
-            material: options.material,
-            justification: options.justification,
-            showCenterline: options.showCenterline,
-            showLabel: options.showLabel,
-            continueDrawing: true,
-            viewMode: options.viewMode,
-            shapeMode: 'line',
-          });
-          setActiveTool('beam');
-          closeBeamDialog();
-        }}
-        onInsertSection={(profileType, parameters, presetId, rotation) => {
-          setPendingSection({
-            profileType,
-            parameters,
-            presetId,
-            rotation: rotation ? rotation * (Math.PI / 180) : 0,
-          });
-          closeBeamDialog();
-        }}
-      />
-
-      {/* Gridline Dialog - for drawing structural grid lines */}
-      <GridlineDialog
-        isOpen={gridlineDialogOpen}
-        onClose={closeGridlineDialog}
-        onDraw={(label, bubblePosition, bubbleRadius, fontSize) => {
-          setPendingGridline({ label, bubblePosition, bubbleRadius, fontSize });
-          setActiveTool('gridline');
-          closeGridlineDialog();
-        }}
-      />
-
-{/* Pile Symbols Dialog - configure pile symbol order */}
-      <PileSymbolsDialog
-        isOpen={pileSymbolsDialogOpen}
-        onClose={closePileSymbolsDialog}
-      />
-
-      {/* Wall Dialog - for drawing structural walls */}
-      <WallDialog
-        isOpen={wallDialogOpen}
-        onClose={closeWallDialog}
-        onDraw={(thickness, options) => {
-          setPendingWall({
-            thickness,
-            wallTypeId: options.wallTypeId,
-            wallSystemId: options.wallSystemId,
-            justification: options.justification,
-            showCenterline: options.showCenterline,
-            startCap: options.startCap,
-            endCap: options.endCap,
-            continueDrawing: true,
-            shapeMode: 'line',
-            spaceBounding: true,
-          });
-          if (options.wallTypeId) {
-            setLastUsedWallTypeId(options.wallTypeId);
-          }
-          setActiveTool('wall');
-          closeWallDialog();
-        }}
-      />
-
-      {/* Plate System Dialog - for drawing plate system assemblies */}
-      <PlateSystemDialog
-        isOpen={plateSystemDialogOpen}
-        onClose={closePlateSystemDialog}
-        defaultName={nextPlateSystemName}
-        onDraw={(settings) => {
-          setPendingPlateSystem({
-            systemType: settings.systemType,
-            mainWidth: settings.mainWidth,
-            mainHeight: settings.mainHeight,
-            mainSpacing: settings.mainSpacing,
-            mainDirection: settings.mainDirection,
-            mainMaterial: settings.mainMaterial,
-            mainProfileId: settings.mainProfileId,
-            edgeWidth: settings.edgeWidth,
-            edgeHeight: settings.edgeHeight,
-            edgeMaterial: settings.edgeMaterial,
-            edgeProfileId: settings.edgeProfileId,
-            layers: settings.layers,
-            name: settings.name,
-            shapeMode: 'line',
-          });
-          setActiveTool('plate-system');
-          closePlateSystemDialog();
-        }}
-      />
-
       {/* Drawing Standards Dialog */}
       <DrawingStandardsDialog
         isOpen={drawingStandardsDialogOpen}
         onClose={closeDrawingStandardsDialog}
-      />
-
-      {/* Materials Dialog */}
-      <MaterialsDialog
-        isOpen={materialsDialogOpen}
-        onClose={closeMaterialsDialog}
-      />
-
-      {/* IfcTypes Dialog (Wall Types + Slab Types) */}
-      <WallTypesDialog
-        isOpen={wallTypesDialogOpen}
-        onClose={closeWallTypesDialog}
-      />
-
-      {/* Wall System Dialog (multi-layered wall assemblies) */}
-      <WallSystemDialog
-        isOpen={wallSystemDialogOpen}
-        onClose={closeWallSystemDialog}
-      />
-
-      {/* Project Structure Dialog */}
-      <ProjectStructureDialog
-        isOpen={projectStructureDialogOpen}
-        onClose={closeProjectStructureDialog}
       />
 
       {/* Pattern Manager Dialog */}
@@ -772,6 +630,10 @@ function App() {
         isOpen={feedbackDialogOpen}
         onClose={() => setFeedbackDialogOpen(false)}
       />
+
+      {/* Extension components */}
+      <ExtensionAutomations />
+      <ExtensionDialogs />
     </div>
   );
 }

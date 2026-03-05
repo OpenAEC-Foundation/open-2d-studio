@@ -32,6 +32,7 @@ export {
 export { fetchCatalog } from './registryService';
 export {
   installExtension,
+  installExtensionFromFile,
   updateExtension,
   removeExtension,
   checkForUpdates,

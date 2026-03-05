@@ -50,9 +50,6 @@ export class CommandRegistry {
    */
   register(definition: CommandDefinition): void {
     const key = getCommandKey(definition.command, definition.action, definition.entity);
-    if (this.commands.has(key)) {
-      console.warn(`Command ${key} is being overwritten`);
-    }
     this.commands.set(key, definition);
   }
 

@@ -18,6 +18,7 @@ import { regeneratePlateSystemBeams } from '../drawing/usePlateSystemDrawing';
 import { QuadTree } from '../../engine/spatial/QuadTree';
 import { isShapeInHiddenCategory } from '../../utils/ifcCategoryUtils';
 import { hitTestWallSubElement } from '../../services/wallSystem/wallSystemService';
+import { drawingToolRegistry } from '../../engine/registry/DrawingToolRegistry';
 
 import { usePanZoom } from '../navigation/usePanZoom';
 import { useBoxSelection } from '../selection/useBoxSelection';
@@ -30,18 +31,8 @@ import { useAnnotationEditing } from '../editing/useAnnotationEditing';
 import { useTitleBlockEditing } from '../editing/useTitleBlockEditing';
 import { useGripEditing } from '../editing/useGripEditing';
 import { useModifyTools } from '../editing/useModifyTools';
-import { useBeamDrawing } from '../drawing/useBeamDrawing';
-import { useGridlineDrawing } from '../drawing/useGridlineDrawing';
-import { usePileDrawing } from '../drawing/usePileDrawing';
-import { useCPTDrawing } from '../drawing/useCPTDrawing';
-import { useWallDrawing } from '../drawing/useWallDrawing';
-import { useSlabDrawing } from '../drawing/useSlabDrawing';
-import { useLevelDrawing } from '../drawing/useLevelDrawing';
-import { usePuntniveauDrawing } from '../drawing/usePuntniveauDrawing';
 import { useLeaderDrawing } from '../drawing/useLeaderDrawing';
-import { useSectionCalloutDrawing } from '../drawing/useSectionCalloutDrawing';
-import { useSpaceDrawing } from '../drawing/useSpaceDrawing';
-import { usePlateSystemDrawing } from '../drawing/usePlateSystemDrawing';
+import { useAecCanvasTools } from './useAecCanvasTools';
 import { showImportImageDialog } from '../../services/file/fileService';
 import { importImage } from '../../services/file/imageImportService';
 import type { ImageShape } from '../../types/geometry';
@@ -59,18 +50,8 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
   const titleBlockEditing = useTitleBlockEditing();
   const gripEditing = useGripEditing();
   const modifyTools = useModifyTools();
-  const beamDrawing = useBeamDrawing();
-  const gridlineDrawing = useGridlineDrawing();
-  const pileDrawing = usePileDrawing();
-  const cptDrawing = useCPTDrawing();
-  const wallDrawing = useWallDrawing();
-  const slabDrawing = useSlabDrawing();
-  const levelDrawing = useLevelDrawing();
-  const puntniveauDrawing = usePuntniveauDrawing();
   const leaderDrawing = useLeaderDrawing();
-  const sectionCalloutDrawing = useSectionCalloutDrawing();
-  const spaceDrawing = useSpaceDrawing();
-  const plateSystemDrawing = usePlateSystemDrawing();
+  const aecTools = useAecCanvasTools();
 
   const {
     viewport,
@@ -92,22 +73,10 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     clearPendingSection,
     insertProfile,
     setSectionPlacementPreview,
-    pendingBeam,
-    pendingGridline,
-    pendingPile,
-    pendingCPT,
-    pendingWall,
-    pendingSlab,
-    pendingLevel,
-    pendingPuntniveau,
-    pendingSectionCallout,
-    pendingSpace,
-    pendingPlateSystem,
     explodeParametricShapes,
     addShapes,
     selectedShapeIds,
     drawings,
-    sourceSnapAngle,
     switchToDrawing,
     updateShape,
     startGridlineLabelEdit,
@@ -281,12 +250,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Skip grip editing when a modify tool or a drawing tool with pending state is active —
       // clicks should go to the tool handler, not start a grip drag
       const modifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'trim-walls'].includes(activeTool);
-      const drawingTools = ['wall', 'beam', 'gridline', 'level', 'slab', 'puntniveau', 'pile', 'cpt', 'section-callout', 'space', 'plate-system'];
+      const drawingTools = [...aecTools.getToolNames(), ...drawingToolRegistry.getToolNames()];
       const isDrawingToolActive = drawingTools.includes(activeTool) || !!pendingSection;
       const drawingToolWithPending = isDrawingToolActive && !!(
-        pendingWall || pendingBeam || pendingGridline || pendingLevel ||
-        pendingSlab || pendingPuntniveau || pendingPile || pendingCPT ||
-        pendingSectionCallout || pendingSpace || pendingPlateSystem || pendingSection
+        aecTools.hasAnyPendingState() || pendingSection ||
+        drawingToolRegistry.hasAnyPendingState()
       );
       if (editorMode === 'drawing' && e.button === 0 && !modifyToolActive && !drawingToolWithPending) {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
@@ -310,7 +278,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         rightDragRef.current = { isDragging: true, startX: e.clientX, startY: e.clientY, didDrag: false, lastSnappedPos: null };
       }
     },
-    [panZoom, editorMode, viewport, annotationEditing, viewportEditing, boundaryEditing, gripEditing, findShapeAtPoint, boxSelection, activeTool, pendingWall, pendingBeam, pendingGridline, pendingLevel, pendingSlab, pendingPuntniveau, pendingPile, pendingCPT, pendingSectionCallout, pendingSpace, pendingPlateSystem, pendingSection]
+    [panZoom, editorMode, viewport, annotationEditing, viewportEditing, boundaryEditing, gripEditing, findShapeAtPoint, boxSelection, activeTool, aecTools, pendingSection]
   );
 
   /**
@@ -367,170 +335,20 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         return;
       }
 
-      // Handle beam drawing
-      if (activeTool === 'beam' && pendingBeam) {
+      // Handle AEC drawing tools
+      if (aecTools.isAecTool(activeTool) && aecTools.hasPendingState(activeTool)) {
         deselectAll();
-        // Pass the source angle from snap result for perpendicular tracking
-        let sourceAngle = snapResult.snapInfo?.sourceAngle;
-
-        // Fallback 1: if snap has sourceShapeId but no sourceAngle, compute it from the shape
-        if (sourceAngle === undefined && snapResult.snapInfo?.sourceShapeId) {
-          // Use getState() to avoid stale closure issues
-          const { shapes: currentShapes } = useAppStore.getState();
-          const sourceShape = currentShapes.find(s => s.id === snapResult.snapInfo?.sourceShapeId);
-          if (sourceShape) {
-            if (sourceShape.type === 'beam') {
-              const beam = sourceShape as any;
-              sourceAngle = Math.atan2(beam.end.y - beam.start.y, beam.end.x - beam.start.x);
-            } else if (sourceShape.type === 'line') {
-              const line = sourceShape as any;
-              sourceAngle = Math.atan2(line.end.y - line.start.y, line.end.x - line.start.x);
-            }
-          }
-        }
-
-        // Fallback 2: find nearest beam/line at click point and use its angle
-        if (sourceAngle === undefined) {
-          const tolerance = 20 / viewport.zoom; // Wider tolerance for finding nearby shapes
-          // Use getState() to avoid stale closure issues
-          const { shapes: currentShapes, activeDrawingId: currentDrawingId } = useAppStore.getState();
-          const drawingShapes = currentShapes.filter(s => s.drawingId === currentDrawingId && s.visible);
-
-          for (const shape of drawingShapes) {
-            if (shape.type === 'beam') {
-              const beam = shape as any;
-              // Check distance to beam
-              const dx = beam.end.x - beam.start.x;
-              const dy = beam.end.y - beam.start.y;
-              const length = Math.sqrt(dx * dx + dy * dy);
-              if (length > 0) {
-                // Project click point onto beam line
-                const t = Math.max(0, Math.min(1,
-                  ((snappedPos.x - beam.start.x) * dx + (snappedPos.y - beam.start.y) * dy) / (length * length)
-                ));
-                const closestX = beam.start.x + t * dx;
-                const closestY = beam.start.y + t * dy;
-                const dist = Math.sqrt((snappedPos.x - closestX) ** 2 + (snappedPos.y - closestY) ** 2);
-
-                if (dist < tolerance + beam.flangeWidth / 2) {
-                  sourceAngle = Math.atan2(dy, dx);
-                  break;
-                }
-              }
-            } else if (shape.type === 'line') {
-              const line = shape as any;
-              const dx = line.end.x - line.start.x;
-              const dy = line.end.y - line.start.y;
-              const length = Math.sqrt(dx * dx + dy * dy);
-              if (length > 0) {
-                const t = Math.max(0, Math.min(1,
-                  ((snappedPos.x - line.start.x) * dx + (snappedPos.y - line.start.y) * dy) / (length * length)
-                ));
-                const closestX = line.start.x + t * dx;
-                const closestY = line.start.y + t * dy;
-                const dist = Math.sqrt((snappedPos.x - closestX) ** 2 + (snappedPos.y - closestY) ** 2);
-
-                if (dist < tolerance) {
-                  sourceAngle = Math.atan2(dy, dx);
-                  break;
-                }
-              }
-            }
-          }
-        }
-
-        // Validate sourceAngle is a valid number before passing
-        const validSourceAngle = (sourceAngle !== undefined && !isNaN(sourceAngle)) ? sourceAngle : undefined;
-
-        if (beamDrawing.handleBeamClick(snappedPos, e.shiftKey, validSourceAngle)) {
+        if (aecTools.handleToolClick(activeTool, snappedPos, e.shiftKey, snapResult)) {
           snapDetection.clearTracking();
           return;
         }
       }
 
-      // Handle gridline drawing
-      if (activeTool === 'gridline' && pendingGridline) {
+      // Handle extension drawing tools
+      const extTool = drawingToolRegistry.get(activeTool);
+      if (extTool) {
         deselectAll();
-        if (gridlineDrawing.handleGridlineClick(snappedPos, e.shiftKey)) {
-          snapDetection.clearTracking();
-          return;
-        }
-      }
-
-      // Handle level drawing (two-click)
-      if (activeTool === 'level' && pendingLevel) {
-        deselectAll();
-        if (levelDrawing.handleLevelClick(snappedPos, e.shiftKey)) {
-          snapDetection.clearTracking();
-          return;
-        }
-      }
-
-      // Handle pile placement (single-click)
-      if (activeTool === 'pile' && pendingPile) {
-        deselectAll();
-        if (pileDrawing.handlePileClick(snappedPos)) {
-          return;
-        }
-      }
-
-      // Handle CPT placement (single-click)
-      if (activeTool === 'cpt' && pendingCPT) {
-        deselectAll();
-        if (cptDrawing.handleCPTClick(snappedPos)) {
-          return;
-        }
-      }
-
-      // Handle wall drawing (two-click for line, three-click for arc)
-      if (activeTool === 'wall' && pendingWall) {
-        deselectAll();
-        if (wallDrawing.handleWallClick(snappedPos, e.shiftKey)) {
-          snapDetection.clearTracking();
-          return;
-        }
-      }
-
-      // Handle slab drawing (multi-click polygon)
-      if (activeTool === 'slab' && pendingSlab) {
-        deselectAll();
-        if (slabDrawing.handleSlabClick(snappedPos, e.shiftKey)) {
-          snapDetection.clearTracking();
-          return;
-        }
-      }
-
-      // Handle puntniveau drawing (multi-click polygon)
-      if (activeTool === 'puntniveau' && pendingPuntniveau) {
-        deselectAll();
-        if (puntniveauDrawing.handlePuntniveauClick(snappedPos, e.shiftKey)) {
-          snapDetection.clearTracking();
-          return;
-        }
-      }
-
-      // Handle plate system drawing (multi-click polygon)
-      if (activeTool === 'plate-system' && pendingPlateSystem) {
-        deselectAll();
-        if (plateSystemDrawing.handlePlateSystemClick(snappedPos, e.shiftKey)) {
-          snapDetection.clearTracking();
-          return;
-        }
-      }
-
-      // Handle section callout drawing (two-click)
-      if (activeTool === 'section-callout' && pendingSectionCallout) {
-        deselectAll();
-        if (sectionCalloutDrawing.handleSectionCalloutClick(snappedPos, e.shiftKey)) {
-          snapDetection.clearTracking();
-          return;
-        }
-      }
-
-      // Handle space drawing (single-click to detect room)
-      if (activeTool === 'space' && pendingSpace) {
-        deselectAll();
-        if (spaceDrawing.handleSpaceClick(snappedPos)) {
+        if (extTool.handleClick(snappedPos, e.shiftKey)) {
           snapDetection.clearTracking();
           return;
         }
@@ -1024,23 +842,8 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       selectShape,
       deselectAll,
       modifyTools,
-      beamDrawing,
-      gridlineDrawing,
-      pileDrawing,
-      cptDrawing,
-      wallDrawing,
+      aecTools,
       leaderDrawing,
-      pendingBeam,
-      pendingGridline,
-      pendingLevel,
-      pendingPile,
-      pendingCPT,
-      pendingWall,
-      levelDrawing,
-      sectionCalloutDrawing,
-      pendingSectionCallout,
-      spaceDrawing,
-      pendingSpace,
       modifyOrtho,
       plateSystemEditMode,
       editingPlateSystemId,
@@ -1141,95 +944,14 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         return;
       }
 
-      // Beam drawing preview
-      if (activeTool === 'beam' && pendingBeam && editorMode === 'drawing') {
+      // AEC drawing tool preview
+      if (aecTools.isAecTool(activeTool) && aecTools.hasPendingState(activeTool) && editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        // Use the beam's first point as base for tracking (shows polar tracking lines)
-        // Pass sourceSnapAngle for perpendicular/parallel tracking to snapped beam edge
-        // IMPORTANT: Use getState() to get fresh sourceSnapAngle (avoids stale closure after click)
-        const basePoint = beamDrawing.getBeamBasePoint();
-        const freshSourceSnapAngle = useAppStore.getState().sourceSnapAngle;
-        const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined, freshSourceSnapAngle ?? undefined);
-        beamDrawing.updateBeamPreview(snapResult.point, e.shiftKey);
-        return;
-      }
-
-      // Gridline drawing preview (snap detection always runs so user can snap before first click)
-      if (activeTool === 'gridline' && pendingGridline && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        const basePoint = gridlineDrawing.getGridlineBasePoint();
-        const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined);
-        gridlineDrawing.updateGridlinePreview(snapResult.point, e.shiftKey);
-        return;
-      }
-
-      // Level drawing preview (snap detection always runs so user can snap before first click)
-      if (activeTool === 'level' && pendingLevel && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        const basePoint = levelDrawing.getLevelBasePoint();
-        const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined);
-        levelDrawing.updateLevelPreview(snapResult.point, e.shiftKey);
-        return;
-      }
-
-      // Pile placement preview (follows cursor)
-      if (activeTool === 'pile' && pendingPile && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        const snapResult = snapDetection.snapPoint(worldPos);
-        pileDrawing.updatePilePreview(snapResult.point);
-        return;
-      }
-
-      // CPT placement preview (follows cursor)
-      if (activeTool === 'cpt' && pendingCPT && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        const snapResult = snapDetection.snapPoint(worldPos);
-        cptDrawing.updateCPTPreview(snapResult.point);
-        return;
-      }
-
-      // Wall drawing preview (snap detection always runs so user can snap before first click)
-      if (activeTool === 'wall' && pendingWall && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        const basePoint = wallDrawing.getWallBasePoint();
-        const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined);
-        wallDrawing.updateWallPreview(snapResult.point, e.shiftKey);
-        return;
-      }
-
-      // Slab drawing preview (snap detection always runs so user can snap before first click)
-      if (activeTool === 'slab' && pendingSlab && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        const basePoint = slabDrawing.getSlabBasePoint();
-        const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined);
-        slabDrawing.updateSlabPreview(snapResult.point, e.shiftKey);
-        return;
-      }
-
-      // Puntniveau drawing preview (snap detection always runs so user can snap before first click)
-      if (activeTool === 'puntniveau' && pendingPuntniveau && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        const basePoint = puntniveauDrawing.getPuntniveauBasePoint();
-        const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined);
-        puntniveauDrawing.updatePuntniveauPreview(snapResult.point, e.shiftKey);
-        return;
-      }
-
-      // Plate system drawing preview (snap detection always runs so user can snap before first click)
-      if (activeTool === 'plate-system' && pendingPlateSystem && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        const basePoint = plateSystemDrawing.getPlateSystemBasePoint();
-        const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined);
-        plateSystemDrawing.updatePlateSystemPreview(snapResult.point, e.shiftKey);
-        return;
-      }
-
-      // Section callout drawing preview (snap detection always runs so user can snap before first click)
-      if (activeTool === 'section-callout' && pendingSectionCallout && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        const basePoint = sectionCalloutDrawing.getSectionCalloutBasePoint();
-        const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined);
-        sectionCalloutDrawing.updateSectionCalloutPreview(snapResult.point, e.shiftKey);
+        const basePoint = aecTools.getToolBasePoint(activeTool);
+        // For beam: pass sourceSnapAngle for perpendicular/parallel tracking
+        const sourceAngle = activeTool === 'beam' ? aecTools.getBeamSourceSnapAngle() : undefined;
+        const snapResult = snapDetection.snapPoint(worldPos, basePoint, sourceAngle);
+        aecTools.handleToolMouseMove(activeTool, snapResult.point, e.shiftKey);
         return;
       }
 
@@ -1240,6 +962,18 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined);
         leaderDrawing.updateLeaderPreview(snapResult.point);
         return;
+      }
+
+      // Extension drawing tool mousemove
+      {
+        const extToolMove = drawingToolRegistry.get(activeTool);
+        if (extToolMove && extToolMove.hasPendingState() && editorMode === 'drawing') {
+          const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
+          const basePoint = extToolMove.getBasePoint?.();
+          const snapResult = snapDetection.snapPoint(worldPos, basePoint ?? undefined);
+          extToolMove.handleMouseMove(snapResult.point, false);
+          return;
+        }
       }
 
       // Label tool: single-click workflow, just show hover highlight for element picking
@@ -1316,7 +1050,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         setHoveredShapeId(null);
       }
     },
-    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, gripEditing, boxSelection, shapeDrawing, snapDetection, activeTool, dimensionMode, pickLinesMode, findShapeAtPoint, setHoveredShapeId, canvasRef, modifyTools, beamDrawing, gridlineDrawing, levelDrawing, puntniveauDrawing, pileDrawing, cptDrawing, wallDrawing, leaderDrawing, sectionCalloutDrawing, plateSystemDrawing, pendingBeam, pendingGridline, pendingLevel, pendingPuntniveau, pendingPile, pendingCPT, pendingWall, pendingSectionCallout, pendingPlateSystem, sourceSnapAngle, setCursor2D, modifyOrtho]
+    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, gripEditing, boxSelection, shapeDrawing, snapDetection, activeTool, dimensionMode, pickLinesMode, findShapeAtPoint, setHoveredShapeId, canvasRef, modifyTools, aecTools, leaderDrawing, setCursor2D, modifyOrtho]
   );
 
   /**
@@ -1436,106 +1170,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         return;
       }
 
-      // Cancel beam drawing
-      if (pendingBeam) {
-        beamDrawing.cancelBeamDrawing();
-        setActiveTool('select');
-        return;
-      }
-
-      // Cancel gridline drawing
-      if (pendingGridline) {
-        gridlineDrawing.cancelGridlineDrawing();
-        setActiveTool('select');
-        return;
-      }
-
-      // Cancel level drawing
-      if (pendingLevel) {
-        levelDrawing.cancelLevelDrawing();
-        setActiveTool('select');
-        return;
-      }
-
-      // Cancel puntniveau drawing
-      if (pendingPuntniveau) {
-        puntniveauDrawing.cancelPuntniveauDrawing();
-        setActiveTool('select');
-        return;
-      }
-
-      if (pendingPile) {
-        pileDrawing.cancelPileDrawing();
-        setActiveTool('select');
-        return;
-      }
-
-      if (pendingCPT) {
-        cptDrawing.cancelCPTDrawing();
-        setActiveTool('select');
-        return;
-      }
-
-      if (pendingWall) {
-        wallDrawing.cancelWallDrawing();
-        setActiveTool('select');
-        return;
-      }
-
-      // Finish or cancel slab drawing on right-click
-      if (pendingSlab) {
-        if (slabDrawing.pointCount >= 3) {
-          // Finish: create the slab with current points
-          slabDrawing.finishSlabDrawing();
-          snapDetection.clearTracking();
-        } else {
-          // Cancel: not enough points
-          slabDrawing.cancelSlabDrawing();
-          setActiveTool('select');
+      // Cancel AEC drawing tools
+      if (aecTools.isAecTool(activeTool) && aecTools.hasPendingState(activeTool)) {
+        if (aecTools.handleToolCancel(activeTool, setActiveTool, snapDetection.clearTracking)) {
+          return;
         }
-        return;
-      }
-
-      // Finish or cancel puntniveau drawing on right-click
-      if (pendingPuntniveau) {
-        if (puntniveauDrawing.pointCount >= 3) {
-          // Finish: create the puntniveau with current points
-          puntniveauDrawing.finishPuntniveauDrawing();
-          snapDetection.clearTracking();
-        } else {
-          // Cancel: not enough points
-          puntniveauDrawing.cancelPuntniveauDrawing();
-          setActiveTool('select');
-        }
-        return;
-      }
-
-      // Finish or cancel plate system drawing on right-click
-      if (pendingPlateSystem) {
-        if (plateSystemDrawing.pointCount >= 3) {
-          // Finish: create the plate system with current points
-          plateSystemDrawing.finishPlateSystemDrawing();
-          snapDetection.clearTracking();
-        } else {
-          // Cancel: not enough points
-          plateSystemDrawing.cancelPlateSystemDrawing();
-          setActiveTool('select');
-        }
-        return;
-      }
-
-      // Cancel section callout drawing
-      if (pendingSectionCallout) {
-        sectionCalloutDrawing.cancelSectionCalloutDrawing();
-        setActiveTool('select');
-        return;
-      }
-
-      // Cancel space drawing
-      if (pendingSpace) {
-        spaceDrawing.cancelSpaceDrawing();
-        setActiveTool('select');
-        return;
       }
 
       // Cancel leader drawing on right-click
@@ -1543,6 +1182,16 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         leaderDrawing.cancelLeader();
         snapDetection.clearTracking();
         return;
+      }
+
+      // Cancel extension drawing tool on right-click
+      {
+        const extToolCancel = drawingToolRegistry.get(activeTool);
+        if (extToolCancel && extToolCancel.hasPendingState()) {
+          extToolCancel.handleCancel();
+          snapDetection.clearTracking();
+          return;
+        }
       }
 
       // If actively drawing, finish the drawing
@@ -1641,7 +1290,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     },
     [editorMode, annotationEditing, shapeDrawing, activeTool, setActiveTool, snapDetection, modifyTools, setPrintDialogOpen,
      panZoom, viewport, findShapeAtPoint, parametricShapes, selectedShapeIds, explodeParametricShapes, addShapes,
-     pendingSection, clearPendingSection, setSectionPlacementPreview, pendingBeam, beamDrawing, pendingGridline, gridlineDrawing, pendingLevel, levelDrawing, pendingPuntniveau, puntniveauDrawing, pendingPile, pileDrawing, pendingCPT, cptDrawing, pendingWall, wallDrawing, pendingSectionCallout, sectionCalloutDrawing, pendingSpace, spaceDrawing, pendingPlateSystem, plateSystemDrawing, leaderDrawing]
+     pendingSection, clearPendingSection, setSectionPlacementPreview, aecTools, leaderDrawing]
   );
 
   /**

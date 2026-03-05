@@ -20,7 +20,7 @@ import { calculateDimensionValue, formatDimAssociateValue } from '../../../engin
 import { ALL_IFC_CATEGORIES, IFC_CATEGORY_LABELS, getIfcCategory } from '../../../utils/ifcCategoryUtils';
 import { DraggableModal, ModalButton } from '../../shared/DraggableModal';
 
-const TEMPLATE_STORAGE_KEY = 'openndstudio_material_hatch_templates';
+const TEMPLATE_STORAGE_KEY = 'open2dstudio_material_hatch_templates';
 
 function loadTemplates(): MaterialHatchTemplate[] {
   try {

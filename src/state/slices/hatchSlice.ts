@@ -22,9 +22,9 @@ import { generateId } from './types';
 // localStorage Keys
 // ============================================================================
 
-const LS_KEY_FAVORITES = 'openndstudio_favorite_patterns';
-const LS_KEY_RECENT = 'openndstudio_recent_patterns';
-const LS_KEY_CUSTOM_REGION_TYPES = 'openndstudio_custom_region_types';
+const LS_KEY_FAVORITES = 'open2dstudio_favorite_patterns';
+const LS_KEY_RECENT = 'open2dstudio_recent_patterns';
+const LS_KEY_CUSTOM_REGION_TYPES = 'open2dstudio_custom_region_types';
 const MAX_RECENT_PATTERNS = 10;
 
 function loadStringArray(key: string): string[] {

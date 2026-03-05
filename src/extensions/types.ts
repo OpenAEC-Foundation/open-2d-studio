@@ -2,6 +2,8 @@
  * Extension System — Type Definitions
  */
 
+import type React from 'react';
+
 // ============================================================================
 // Extension Categories & Permissions
 // ============================================================================
@@ -199,6 +201,7 @@ export interface ExtensionRibbonTab {
   id: string;
   label: string;
   order: number;
+  render?: () => React.ReactNode;
 }
 
 export interface ExtensionAppMenuPanel {

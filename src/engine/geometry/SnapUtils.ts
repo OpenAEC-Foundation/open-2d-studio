@@ -11,14 +11,9 @@ import type {
   PolylineShape,
   BeamShape,
   WallShape,
-  SectionCalloutShape,
-  SpaceShape,
-  PlateSystemShape,
-  SpotElevationShape,
-  CPTShape,
-  FoundationZoneShape,
 } from '../../types/geometry';
-import { bulgeArcMidpoint, bulgeToArc, isAngleInArc } from './GeometryUtils';
+import { bulgeArcMidpoint, bulgeToArc } from './GeometryUtils';
+import { snapProviderRegistry } from '../registry/SnapProviderRegistry';
 
 // Distance between two points
 export function distance(p1: Point, p2: Point): number {
@@ -408,14 +403,14 @@ function getPolylineMidpoints(shape: PolylineShape): SnapPoint[] {
 }
 
 // Calculate beam angle (direction from start to end)
-function getBeamAngle(shape: BeamShape): number {
+export function getBeamAngle(shape: BeamShape): number {
   const dx = shape.end.x - shape.start.x;
   const dy = shape.end.y - shape.start.y;
   return Math.atan2(dy, dx);
 }
 
 // Get beam endpoints (centerline endpoints)
-function getBeamEndpoints(shape: BeamShape): SnapPoint[] {
+export function getBeamEndpoints(shape: BeamShape): SnapPoint[] {
   const angle = getBeamAngle(shape);
   return [
     { point: shape.start, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: angle },
@@ -424,7 +419,7 @@ function getBeamEndpoints(shape: BeamShape): SnapPoint[] {
 }
 
 // Calculate beam corner points (four corners of the beam rectangle in plan view)
-function getBeamCorners(shape: BeamShape): Point[] {
+export function getBeamCorners(shape: BeamShape): Point[] {
   const { start, end, flangeWidth } = shape;
   const halfWidth = flangeWidth / 2;
 
@@ -453,7 +448,7 @@ function getBeamCorners(shape: BeamShape): Point[] {
 }
 
 // Get beam corner snap points (four corners of beam rectangle)
-function getBeamCornerEndpoints(shape: BeamShape): SnapPoint[] {
+export function getBeamCornerEndpoints(shape: BeamShape): SnapPoint[] {
   const corners = getBeamCorners(shape);
   const angle = getBeamAngle(shape);
   return corners.map(corner => ({
@@ -465,7 +460,7 @@ function getBeamCornerEndpoints(shape: BeamShape): SnapPoint[] {
 }
 
 // Get beam midpoint (centerline midpoint)
-function getBeamMidpoint(shape: BeamShape): SnapPoint[] {
+export function getBeamMidpoint(shape: BeamShape): SnapPoint[] {
   const angle = getBeamAngle(shape);
   return [
     {
@@ -481,7 +476,7 @@ function getBeamMidpoint(shape: BeamShape): SnapPoint[] {
 }
 
 // Get beam flange edge midpoints (midpoint of each side line)
-function getBeamFlangeMidpoints(shape: BeamShape): SnapPoint[] {
+export function getBeamFlangeMidpoints(shape: BeamShape): SnapPoint[] {
   const corners = getBeamCorners(shape);
   const angle = getBeamAngle(shape);
   // Left flange midpoint (between start-left and end-left)
@@ -502,7 +497,7 @@ function getBeamFlangeMidpoints(shape: BeamShape): SnapPoint[] {
 }
 
 // Get nearest point on beam (including flange lines, not just centerline)
-function getNearestPointOnBeam(shape: BeamShape, cursor: Point): SnapPoint[] {
+export function getNearestPointOnBeam(shape: BeamShape, cursor: Point): SnapPoint[] {
   const corners = getBeamCorners(shape);
   const snapPoints: SnapPoint[] = [];
 
@@ -565,7 +560,7 @@ function getNearestPointOnBeam(shape: BeamShape, cursor: Point): SnapPoint[] {
 }
 
 // Get beam flange line segments (for intersection detection)
-function getBeamFlangeSegments(shape: BeamShape): { start: Point; end: Point }[] {
+export function getBeamFlangeSegments(shape: BeamShape): { start: Point; end: Point }[] {
   const corners = getBeamCorners(shape);
   return [
     { start: corners[0], end: corners[3] }, // left flange line
@@ -576,14 +571,14 @@ function getBeamFlangeSegments(shape: BeamShape): { start: Point; end: Point }[]
 }
 
 // Calculate wall direction angle
-function getWallAngle(shape: WallShape): number {
+export function getWallAngle(shape: WallShape): number {
   const dx = shape.end.x - shape.start.x;
   const dy = shape.end.y - shape.start.y;
   return Math.atan2(dy, dx);
 }
 
 // Calculate the four corner points of a wall rectangle, respecting justification
-function getWallCorners(shape: WallShape): Point[] {
+export function getWallCorners(shape: WallShape): Point[] {
   const { start, end, thickness, justification } = shape;
   const angle = getWallAngle(shape);
 
@@ -626,7 +621,7 @@ function getWallCorners(shape: WallShape): Point[] {
 }
 
 // Get wall corner snap points (four corners of the wall rectangle)
-function getWallCornerEndpoints(shape: WallShape): SnapPoint[] {
+export function getWallCornerEndpoints(shape: WallShape): SnapPoint[] {
   const corners = getWallCorners(shape);
   const angle = getWallAngle(shape);
   return corners.map(corner => ({
@@ -638,7 +633,7 @@ function getWallCornerEndpoints(shape: WallShape): SnapPoint[] {
 }
 
 // Get wall edge midpoints (midpoint of each of the 4 edges)
-function getWallEdgeMidpoints(shape: WallShape): SnapPoint[] {
+export function getWallEdgeMidpoints(shape: WallShape): SnapPoint[] {
   const corners = getWallCorners(shape);
   const angle = getWallAngle(shape);
 
@@ -664,7 +659,7 @@ function getWallEdgeMidpoints(shape: WallShape): SnapPoint[] {
 }
 
 // Get nearest point on wall outline (all 4 edges + centerline)
-function getNearestPointOnWall(shape: WallShape, cursor: Point): SnapPoint[] {
+export function getNearestPointOnWall(shape: WallShape, cursor: Point): SnapPoint[] {
   const corners = getWallCorners(shape);
   const angle = getWallAngle(shape);
 
@@ -726,7 +721,7 @@ function getNearestPointOnWall(shape: WallShape, cursor: Point): SnapPoint[] {
 }
 
 // Get wall outline segments (for intersection detection), respecting justification
-function getWallOutlineSegments(shape: WallShape): { start: Point; end: Point }[] {
+export function getWallOutlineSegments(shape: WallShape): { start: Point; end: Point }[] {
   const corners = getWallCorners(shape);
   // corners: [start-left, start-right, end-right, end-left]
   return [
@@ -834,79 +829,10 @@ function getShapeSegments(shape: Shape): { start: Point; end: Point }[] {
       }
       return segments;
     }
-    case 'beam':
-      // Use beam flange lines for intersection detection (all four edges)
-      return getBeamFlangeSegments(shape);
-    case 'gridline':
-      return [{ start: shape.start, end: shape.end }];
-    case 'level':
-      return [{ start: shape.start, end: shape.end }];
-    case 'pile':
-      // Piles are point objects, no line segments for intersection
-      return [];
-    case 'cpt':
-      // CPTs are point objects, no line segments for intersection
-      return [];
-    case 'spot-elevation':
-      // Spot elevations are point objects, no line segments for intersection
-      return [];
-    case 'foundation-zone': {
-      // Foundation zone polygon edges
-      const fzPts = (shape as FoundationZoneShape).contourPoints;
-      const fzSegs: { start: Point; end: Point }[] = [];
-      for (let i = 0; i < fzPts.length; i++) {
-        const j = (i + 1) % fzPts.length;
-        fzSegs.push({ start: fzPts[i], end: fzPts[j] });
-      }
-      return fzSegs;
+    default: {
+      const extSegments = snapProviderRegistry.getSegments(shape.type);
+      return extSegments ? extSegments(shape) : [];
     }
-    case 'wall':
-      // Wall outline edges for intersection detection (respects justification)
-      return getWallOutlineSegments(shape);
-    case 'slab': {
-      // Slab polygon edges for intersection detection
-      const slabSegs: { start: Point; end: Point }[] = [];
-      const slabPts = shape.points;
-      for (let i = 0; i < slabPts.length; i++) {
-        const j = (i + 1) % slabPts.length;
-        slabSegs.push({ start: slabPts[i], end: slabPts[j] });
-      }
-      return slabSegs;
-    }
-    case 'puntniveau': {
-      // Puntniveau polygon edges for intersection detection
-      const pnvSegs: { start: Point; end: Point }[] = [];
-      const pnvPts = shape.points;
-      for (let i = 0; i < pnvPts.length; i++) {
-        const j = (i + 1) % pnvPts.length;
-        pnvSegs.push({ start: pnvPts[i], end: pnvPts[j] });
-      }
-      return pnvSegs;
-    }
-    case 'space': {
-      // Space contour edges for intersection detection
-      const spaceSegs: { start: Point; end: Point }[] = [];
-      const spacePts = (shape as SpaceShape).contourPoints;
-      for (let i = 0; i < spacePts.length; i++) {
-        const j = (i + 1) % spacePts.length;
-        spaceSegs.push({ start: spacePts[i], end: spacePts[j] });
-      }
-      return spaceSegs;
-    }
-    case 'plate-system': {
-      // Plate system contour edges for intersection detection
-      const psSegs: { start: Point; end: Point }[] = [];
-      const psPts = (shape as PlateSystemShape).contourPoints;
-      for (let i = 0; i < psPts.length; i++) {
-        const j = (i + 1) % psPts.length;
-        psSegs.push({ start: psPts[i], end: psPts[j] });
-      }
-      return psSegs;
-    }
-    case 'section-callout':
-      return [{ start: (shape as SectionCalloutShape).start, end: (shape as SectionCalloutShape).end }];
-    default:
-      return [];
   }
 }
 
@@ -1068,699 +994,10 @@ export function getShapeSnapPoints(
       }
       break;
 
-    case 'beam': {
-      const beamShape = shape as BeamShape;
-      const isArcBeam = beamShape.bulge && Math.abs(beamShape.bulge) > 0.0001;
-
-      if (isArcBeam) {
-        // --- Arc beam snap points ---
-        const arcInfo = bulgeToArc(beamShape.start, beamShape.end, beamShape.bulge!);
-
-        if (activeSnaps.includes('endpoint')) {
-          const beamAngle = getBeamAngle(beamShape);
-          snapPoints.push(
-            { point: beamShape.start, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: beamAngle },
-            { point: beamShape.end, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: beamAngle },
-          );
-        }
-        if (activeSnaps.includes('midpoint')) {
-          snapPoints.push({
-            point: bulgeArcMidpoint(beamShape.start, beamShape.end, beamShape.bulge!),
-            type: 'midpoint',
-            sourceShapeId: shape.id,
-          });
-        }
-        if (activeSnaps.includes('center')) {
-          snapPoints.push({
-            point: arcInfo.center,
-            type: 'center',
-            sourceShapeId: shape.id,
-          });
-        }
-        if (activeSnaps.includes('nearest') && cursor) {
-          // Project cursor onto the centerline arc
-          const cdx = cursor.x - arcInfo.center.x;
-          const cdy = cursor.y - arcInfo.center.y;
-          const cursorAngle = Math.atan2(cdy, cdx);
-          // Clamp to arc sweep: check if cursor angle is in sweep; if not, snap to nearest endpoint
-          if (isAngleInArc(cursorAngle, arcInfo.startAngle, arcInfo.endAngle, arcInfo.clockwise)) {
-            snapPoints.push({
-              point: {
-                x: arcInfo.center.x + arcInfo.radius * Math.cos(cursorAngle),
-                y: arcInfo.center.y + arcInfo.radius * Math.sin(cursorAngle),
-              },
-              type: 'nearest',
-              sourceShapeId: shape.id,
-            });
-          } else {
-            // Snap to nearest endpoint
-            const d1 = distance(cursor, beamShape.start);
-            const d2 = distance(cursor, beamShape.end);
-            snapPoints.push({
-              point: d1 <= d2 ? beamShape.start : beamShape.end,
-              type: 'nearest',
-              sourceShapeId: shape.id,
-            });
-          }
-        }
-        // Skip perpendicular snaps for arc beams
-      } else {
-        // --- Straight beam snap points ---
-        if (activeSnaps.includes('endpoint')) {
-          // Centerline endpoints
-          snapPoints.push(...getBeamEndpoints(beamShape));
-          // Four corner points of beam rectangle (flange corners)
-          snapPoints.push(...getBeamCornerEndpoints(beamShape));
-        }
-        if (activeSnaps.includes('midpoint')) {
-          // Centerline midpoint
-          snapPoints.push(...getBeamMidpoint(beamShape));
-          // Flange edge midpoints (left and right side lines)
-          snapPoints.push(...getBeamFlangeMidpoints(beamShape));
-        }
-        if (activeSnaps.includes('nearest') && cursor) {
-          // Nearest point on beam edges (flanges, caps, and centerline)
-          snapPoints.push(...getNearestPointOnBeam(beamShape, cursor));
-        }
-        if (activeSnaps.includes('perpendicular') && cursor) {
-          // Perpendicular snap: project basePoint (or cursor) onto beam centerline and side edges
-          const beamAngle = getBeamAngle(beamShape);
-          const projSource = basePoint || cursor;
-          // Centerline perpendicular
-          {
-            const dx = beamShape.end.x - beamShape.start.x;
-            const dy = beamShape.end.y - beamShape.start.y;
-            const lengthSq = dx * dx + dy * dy;
-            if (lengthSq > 0) {
-              const t = ((projSource.x - beamShape.start.x) * dx + (projSource.y - beamShape.start.y) * dy) / lengthSq;
-              if (t >= 0 && t <= 1) {
-                snapPoints.push({
-                  point: { x: beamShape.start.x + t * dx, y: beamShape.start.y + t * dy },
-                  type: 'perpendicular',
-                  sourceShapeId: shape.id,
-                  sourceAngle: beamAngle,
-                });
-              }
-            }
-          }
-          // Side edge perpendiculars (left and right flange lines)
-          const beamCorners = getBeamCorners(beamShape);
-          const beamFlangeEdges = [
-            { start: beamCorners[0], end: beamCorners[3] }, // left flange
-            { start: beamCorners[1], end: beamCorners[2] }, // right flange
-          ];
-          for (const edge of beamFlangeEdges) {
-            const dx = edge.end.x - edge.start.x;
-            const dy = edge.end.y - edge.start.y;
-            const lengthSq = dx * dx + dy * dy;
-            if (lengthSq > 0) {
-              const t = ((projSource.x - edge.start.x) * dx + (projSource.y - edge.start.y) * dy) / lengthSq;
-              if (t >= 0 && t <= 1) {
-                snapPoints.push({
-                  point: { x: edge.start.x + t * dx, y: edge.start.y + t * dy },
-                  type: 'perpendicular',
-                  sourceShapeId: shape.id,
-                  sourceAngle: beamAngle,
-                });
-              }
-            }
-          }
-        }
-      }
-      break;
-    }
-
-    case 'gridline': {
-      const glAngle = Math.atan2(shape.end.y - shape.start.y, shape.end.x - shape.start.x);
-      if (activeSnaps.includes('endpoint')) {
-        snapPoints.push(
-          { point: shape.start, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: glAngle },
-          { point: shape.end, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: glAngle },
-        );
-      }
-      if (activeSnaps.includes('midpoint')) {
-        snapPoints.push({
-          point: {
-            x: (shape.start.x + shape.end.x) / 2,
-            y: (shape.start.y + shape.end.y) / 2,
-          },
-          type: 'midpoint',
-          sourceShapeId: shape.id,
-          sourceAngle: glAngle,
-        });
-      }
-      // Perpendicular snap: project basePoint (or cursor) onto the gridline's infinite line
-      if (activeSnaps.includes('perpendicular') && cursor) {
-        const projSource = basePoint || cursor;
-        const dx = shape.end.x - shape.start.x;
-        const dy = shape.end.y - shape.start.y;
-        const lengthSq = dx * dx + dy * dy;
-        if (lengthSq > 0) {
-          // Project onto the infinite line (no clamping to [0,1])
-          const t = ((projSource.x - shape.start.x) * dx + (projSource.y - shape.start.y) * dy) / lengthSq;
-          snapPoints.push({
-            point: {
-              x: shape.start.x + t * dx,
-              y: shape.start.y + t * dy,
-            },
-            type: 'perpendicular',
-            sourceShapeId: shape.id,
-            sourceAngle: glAngle,
-          });
-        }
-      }
-      // Nearest snap: project cursor onto the gridline segment
-      if (activeSnaps.includes('nearest') && cursor) {
-        const dx = shape.end.x - shape.start.x;
-        const dy = shape.end.y - shape.start.y;
-        const lengthSq = dx * dx + dy * dy;
-        if (lengthSq > 0) {
-          let t = ((cursor.x - shape.start.x) * dx + (cursor.y - shape.start.y) * dy) / lengthSq;
-          t = Math.max(0, Math.min(1, t));
-          snapPoints.push({
-            point: {
-              x: shape.start.x + t * dx,
-              y: shape.start.y + t * dy,
-            },
-            type: 'nearest',
-            sourceShapeId: shape.id,
-            sourceAngle: glAngle,
-          });
-        }
-      }
-      break;
-    }
-
-    case 'level': {
-      const lvAngle = Math.atan2(shape.end.y - shape.start.y, shape.end.x - shape.start.x);
-      if (activeSnaps.includes('endpoint')) {
-        snapPoints.push(
-          { point: shape.start, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: lvAngle },
-          { point: shape.end, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: lvAngle },
-        );
-      }
-      if (activeSnaps.includes('midpoint')) {
-        snapPoints.push({
-          point: {
-            x: (shape.start.x + shape.end.x) / 2,
-            y: (shape.start.y + shape.end.y) / 2,
-          },
-          type: 'midpoint',
-          sourceShapeId: shape.id,
-          sourceAngle: lvAngle,
-        });
-      }
-      break;
-    }
-
-    case 'pile': {
-      // Pile center snap point
-      if (activeSnaps.includes('endpoint')) {
-        snapPoints.push({
-          point: shape.position,
-          type: 'endpoint',
-          sourceShapeId: shape.id,
-        });
-      }
-      // Cardinal points on circle (as center snap type)
-      if (activeSnaps.includes('center')) {
-        const r = shape.diameter / 2;
-        snapPoints.push(
-          { point: { x: shape.position.x + r, y: shape.position.y }, type: 'center', sourceShapeId: shape.id },
-          { point: { x: shape.position.x - r, y: shape.position.y }, type: 'center', sourceShapeId: shape.id },
-          { point: { x: shape.position.x, y: shape.position.y + r }, type: 'center', sourceShapeId: shape.id },
-          { point: { x: shape.position.x, y: shape.position.y - r }, type: 'center', sourceShapeId: shape.id },
-        );
-      }
-      if (activeSnaps.includes('center')) {
-        snapPoints.push({
-          point: shape.position,
-          type: 'center',
-          sourceShapeId: shape.id,
-        });
-      }
-      break;
-    }
-
-    case 'cpt': {
-      // CPT center snap point
-      const cptShape = shape as CPTShape;
-      if (activeSnaps.includes('endpoint')) {
-        snapPoints.push({
-          point: cptShape.position,
-          type: 'endpoint',
-          sourceShapeId: shape.id,
-        });
-      }
-      if (activeSnaps.includes('center')) {
-        snapPoints.push({
-          point: cptShape.position,
-          type: 'center',
-          sourceShapeId: shape.id,
-        });
-      }
-      break;
-    }
-
-    case 'spot-elevation': {
-      // Spot elevation: marker position and label position snaps
-      const seShape = shape as SpotElevationShape;
-      if (activeSnaps.includes('endpoint')) {
-        snapPoints.push({
-          point: seShape.position,
-          type: 'endpoint',
-          sourceShapeId: shape.id,
-        });
-        snapPoints.push({
-          point: seShape.labelPosition,
-          type: 'endpoint',
-          sourceShapeId: shape.id,
-          pointIndex: 1,
-        });
-      }
-      if (activeSnaps.includes('center')) {
-        snapPoints.push({
-          point: seShape.position,
-          type: 'center',
-          sourceShapeId: shape.id,
-        });
-      }
-      break;
-    }
-
-    case 'foundation-zone': {
-      // Foundation zone: endpoint snaps at each contour vertex
-      const fzShape = shape as FoundationZoneShape;
-      if (activeSnaps.includes('endpoint')) {
-        for (let i = 0; i < fzShape.contourPoints.length; i++) {
-          snapPoints.push({
-            point: fzShape.contourPoints[i],
-            type: 'endpoint',
-            sourceShapeId: shape.id,
-            pointIndex: i,
-          });
-        }
-      }
-      // Midpoint snaps on edges
-      if (activeSnaps.includes('midpoint')) {
-        for (let i = 0; i < fzShape.contourPoints.length; i++) {
-          const j = (i + 1) % fzShape.contourPoints.length;
-          snapPoints.push({
-            point: {
-              x: (fzShape.contourPoints[i].x + fzShape.contourPoints[j].x) / 2,
-              y: (fzShape.contourPoints[i].y + fzShape.contourPoints[j].y) / 2,
-            },
-            type: 'midpoint',
-            sourceShapeId: shape.id,
-          });
-        }
-      }
-      break;
-    }
-
-    case 'wall': {
-      const wallShape = shape as WallShape;
-      const isArcWall = wallShape.bulge && Math.abs(wallShape.bulge) > 0.0001;
-      const wAngle = getWallAngle(wallShape);
-
-      if (isArcWall) {
-        // --- Arc wall snap points ---
-        const arcInfo = bulgeToArc(wallShape.start, wallShape.end, wallShape.bulge!);
-
-        if (activeSnaps.includes('endpoint')) {
-          snapPoints.push(
-            { point: wallShape.start, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: wAngle },
-            { point: wallShape.end, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: wAngle },
-          );
-        }
-        if (activeSnaps.includes('midpoint')) {
-          snapPoints.push({
-            point: bulgeArcMidpoint(wallShape.start, wallShape.end, wallShape.bulge!),
-            type: 'midpoint',
-            sourceShapeId: shape.id,
-          });
-        }
-        if (activeSnaps.includes('center')) {
-          snapPoints.push({
-            point: arcInfo.center,
-            type: 'center',
-            sourceShapeId: shape.id,
-          });
-        }
-        if (activeSnaps.includes('nearest') && cursor) {
-          // Project cursor onto the centerline arc
-          const cdx = cursor.x - arcInfo.center.x;
-          const cdy = cursor.y - arcInfo.center.y;
-          const cursorAngle = Math.atan2(cdy, cdx);
-          if (isAngleInArc(cursorAngle, arcInfo.startAngle, arcInfo.endAngle, arcInfo.clockwise)) {
-            snapPoints.push({
-              point: {
-                x: arcInfo.center.x + arcInfo.radius * Math.cos(cursorAngle),
-                y: arcInfo.center.y + arcInfo.radius * Math.sin(cursorAngle),
-              },
-              type: 'nearest',
-              sourceShapeId: shape.id,
-            });
-          } else {
-            // Snap to nearest endpoint
-            const d1 = distance(cursor, wallShape.start);
-            const d2 = distance(cursor, wallShape.end);
-            snapPoints.push({
-              point: d1 <= d2 ? wallShape.start : wallShape.end,
-              type: 'nearest',
-              sourceShapeId: shape.id,
-            });
-          }
-        }
-        // Skip perpendicular snaps for arc walls
-      } else {
-        // --- Straight wall snap points ---
-        if (activeSnaps.includes('endpoint')) {
-          // Centerline endpoints
-          snapPoints.push(
-            { point: wallShape.start, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: wAngle },
-            { point: wallShape.end, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: wAngle },
-          );
-          // Four corner points of the wall rectangle (respects justification)
-          snapPoints.push(...getWallCornerEndpoints(wallShape));
-        }
-        if (activeSnaps.includes('midpoint')) {
-          // Centerline midpoint
-          snapPoints.push({
-            point: {
-              x: (wallShape.start.x + wallShape.end.x) / 2,
-              y: (wallShape.start.y + wallShape.end.y) / 2,
-            },
-            type: 'midpoint',
-            sourceShapeId: shape.id,
-            sourceAngle: wAngle,
-          });
-          // Four edge midpoints (2 long sides + 2 short caps, respects justification)
-          snapPoints.push(...getWallEdgeMidpoints(wallShape));
-        }
-        if (activeSnaps.includes('nearest') && cursor) {
-          // Nearest point on wall outline edges and centerline
-          snapPoints.push(...getNearestPointOnWall(wallShape, cursor));
-        }
-        if (activeSnaps.includes('perpendicular') && cursor) {
-          // Perpendicular snap: project basePoint (or cursor) onto wall centerline and side edges
-          const projSource = basePoint || cursor;
-          // Centerline perpendicular
-          {
-            const dx = wallShape.end.x - wallShape.start.x;
-            const dy = wallShape.end.y - wallShape.start.y;
-            const lengthSq = dx * dx + dy * dy;
-            if (lengthSq > 0) {
-              const t = ((projSource.x - wallShape.start.x) * dx + (projSource.y - wallShape.start.y) * dy) / lengthSq;
-              if (t >= 0 && t <= 1) {
-                snapPoints.push({
-                  point: { x: wallShape.start.x + t * dx, y: wallShape.start.y + t * dy },
-                  type: 'perpendicular',
-                  sourceShapeId: shape.id,
-                  sourceAngle: wAngle,
-                });
-              }
-            }
-          }
-          // Side edge perpendiculars (left and right long sides, respects justification)
-          const wallCorners = getWallCorners(wallShape);
-          // corners: [start-left, start-right, end-right, end-left]
-          const wallSideEdges = [
-            { start: wallCorners[0], end: wallCorners[3] }, // left long side
-            { start: wallCorners[1], end: wallCorners[2] }, // right long side
-          ];
-          for (const edge of wallSideEdges) {
-            const dx = edge.end.x - edge.start.x;
-            const dy = edge.end.y - edge.start.y;
-            const lengthSq = dx * dx + dy * dy;
-            if (lengthSq > 0) {
-              const t = ((projSource.x - edge.start.x) * dx + (projSource.y - edge.start.y) * dy) / lengthSq;
-              if (t >= 0 && t <= 1) {
-                snapPoints.push({
-                  point: { x: edge.start.x + t * dx, y: edge.start.y + t * dy },
-                  type: 'perpendicular',
-                  sourceShapeId: shape.id,
-                  sourceAngle: wAngle,
-                });
-              }
-            }
-          }
-        }
-      }
-      break;
-    }
-
-    case 'slab': {
-      const slabPts = shape.points;
-      if (slabPts.length < 3) break;
-
-      if (activeSnaps.includes('endpoint')) {
-        // All polygon vertices
-        for (let i = 0; i < slabPts.length; i++) {
-          snapPoints.push({
-            point: slabPts[i],
-            type: 'endpoint',
-            sourceShapeId: shape.id,
-            pointIndex: i,
-          });
-        }
-      }
-
-      if (activeSnaps.includes('midpoint')) {
-        // Midpoints of each polygon edge
-        for (let i = 0; i < slabPts.length; i++) {
-          const j = (i + 1) % slabPts.length;
-          snapPoints.push({
-            point: {
-              x: (slabPts[i].x + slabPts[j].x) / 2,
-              y: (slabPts[i].y + slabPts[j].y) / 2,
-            },
-            type: 'midpoint',
-            sourceShapeId: shape.id,
-          });
-        }
-      }
-
-      if (activeSnaps.includes('center')) {
-        // Centroid of the polygon
-        let cx = 0, cy = 0;
-        for (const p of slabPts) {
-          cx += p.x;
-          cy += p.y;
-        }
-        cx /= slabPts.length;
-        cy /= slabPts.length;
-        snapPoints.push({
-          point: { x: cx, y: cy },
-          type: 'center',
-          sourceShapeId: shape.id,
-        });
-      }
-
-      if (activeSnaps.includes('nearest') && cursor) {
-        // Nearest point on each polygon edge
-        let bestDist = Infinity;
-        let bestPoint: Point | null = null;
-        for (let i = 0; i < slabPts.length; i++) {
-          const j = (i + 1) % slabPts.length;
-          const sdx = slabPts[j].x - slabPts[i].x;
-          const sdy = slabPts[j].y - slabPts[i].y;
-          const segLenSq = sdx * sdx + sdy * sdy;
-          let t = 0;
-          if (segLenSq > 0) {
-            t = Math.max(0, Math.min(1, ((cursor.x - slabPts[i].x) * sdx + (cursor.y - slabPts[i].y) * sdy) / segLenSq));
-          }
-          const np = { x: slabPts[i].x + t * sdx, y: slabPts[i].y + t * sdy };
-          const d = Math.sqrt((np.x - cursor.x) ** 2 + (np.y - cursor.y) ** 2);
-          if (d < bestDist) {
-            bestDist = d;
-            bestPoint = np;
-          }
-        }
-        if (bestPoint) {
-          snapPoints.push({
-            point: bestPoint,
-            type: 'nearest',
-            sourceShapeId: shape.id,
-          });
-        }
-      }
-      break;
-    }
-
-    case 'puntniveau': {
-      const pnvSnapPts = shape.points;
-      if (pnvSnapPts.length < 3) break;
-
-      if (activeSnaps.includes('endpoint')) {
-        for (let i = 0; i < pnvSnapPts.length; i++) {
-          snapPoints.push({
-            point: pnvSnapPts[i],
-            type: 'endpoint',
-            sourceShapeId: shape.id,
-            pointIndex: i,
-          });
-        }
-      }
-
-      if (activeSnaps.includes('midpoint')) {
-        for (let i = 0; i < pnvSnapPts.length; i++) {
-          const j = (i + 1) % pnvSnapPts.length;
-          snapPoints.push({
-            point: {
-              x: (pnvSnapPts[i].x + pnvSnapPts[j].x) / 2,
-              y: (pnvSnapPts[i].y + pnvSnapPts[j].y) / 2,
-            },
-            type: 'midpoint',
-            sourceShapeId: shape.id,
-          });
-        }
-      }
-
-      if (activeSnaps.includes('center')) {
-        let cx = 0, cy = 0;
-        for (const p of pnvSnapPts) { cx += p.x; cy += p.y; }
-        cx /= pnvSnapPts.length;
-        cy /= pnvSnapPts.length;
-        snapPoints.push({
-          point: { x: cx, y: cy },
-          type: 'center',
-          sourceShapeId: shape.id,
-        });
-      }
-      break;
-    }
-
-    case 'space': {
-      const spacePts = (shape as SpaceShape).contourPoints;
-      if (spacePts.length < 3) break;
-
-      if (activeSnaps.includes('endpoint')) {
-        for (let i = 0; i < spacePts.length; i++) {
-          snapPoints.push({
-            point: spacePts[i],
-            type: 'endpoint',
-            sourceShapeId: shape.id,
-            pointIndex: i,
-          });
-        }
-      }
-
-      if (activeSnaps.includes('midpoint')) {
-        for (let i = 0; i < spacePts.length; i++) {
-          const j = (i + 1) % spacePts.length;
-          snapPoints.push({
-            point: {
-              x: (spacePts[i].x + spacePts[j].x) / 2,
-              y: (spacePts[i].y + spacePts[j].y) / 2,
-            },
-            type: 'midpoint',
-            sourceShapeId: shape.id,
-          });
-        }
-      }
-
-      if (activeSnaps.includes('center')) {
-        // Use the labelPosition (centroid)
-        snapPoints.push({
-          point: (shape as SpaceShape).labelPosition,
-          type: 'center',
-          sourceShapeId: shape.id,
-        });
-      }
-      break;
-    }
-
-    case 'plate-system': {
-      const psShape = shape as PlateSystemShape;
-      const psPts = psShape.contourPoints;
-      const psBulges = psShape.contourBulges;
-      if (psPts.length < 3) break;
-
-      if (activeSnaps.includes('endpoint')) {
-        for (let i = 0; i < psPts.length; i++) {
-          snapPoints.push({
-            point: psPts[i],
-            type: 'endpoint',
-            sourceShapeId: shape.id,
-            pointIndex: i,
-          });
-        }
-      }
-
-      if (activeSnaps.includes('midpoint')) {
-        for (let i = 0; i < psPts.length; i++) {
-          const j = (i + 1) % psPts.length;
-          const b = psBulges?.[i] ?? 0;
-          if (b !== 0 && Math.abs(b) > 0.0001) {
-            // Arc midpoint (point on the arc at the midpoint of the sweep)
-            snapPoints.push({
-              point: bulgeArcMidpoint(psPts[i], psPts[j], b),
-              type: 'midpoint',
-              sourceShapeId: shape.id,
-            });
-          } else {
-            snapPoints.push({
-              point: {
-                x: (psPts[i].x + psPts[j].x) / 2,
-                y: (psPts[i].y + psPts[j].y) / 2,
-              },
-              type: 'midpoint',
-              sourceShapeId: shape.id,
-            });
-          }
-        }
-      }
-
-      if (activeSnaps.includes('center')) {
-        // For arc segments, also add the arc center as a "center" snap
-        if (psBulges) {
-          for (let i = 0; i < psPts.length; i++) {
-            const b = psBulges[i] ?? 0;
-            if (b !== 0 && Math.abs(b) > 0.0001) {
-              const j = (i + 1) % psPts.length;
-              const arc = bulgeToArc(psPts[i], psPts[j], b);
-              snapPoints.push({
-                point: arc.center,
-                type: 'center',
-                sourceShapeId: shape.id,
-              });
-            }
-          }
-        }
-        // Centroid of polygon
-        let pcx = 0, pcy = 0;
-        for (const pt of psPts) { pcx += pt.x; pcy += pt.y; }
-        pcx /= psPts.length;
-        pcy /= psPts.length;
-        snapPoints.push({
-          point: { x: pcx, y: pcy },
-          type: 'center',
-          sourceShapeId: shape.id,
-        });
-      }
-      break;
-    }
-
-    case 'section-callout': {
-      const scShape = shape as SectionCalloutShape;
-      const scAngle = Math.atan2(scShape.end.y - scShape.start.y, scShape.end.x - scShape.start.x);
-      if (activeSnaps.includes('endpoint')) {
-        snapPoints.push(
-          { point: scShape.start, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: scAngle },
-          { point: scShape.end, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: scAngle },
-        );
-      }
-      if (activeSnaps.includes('midpoint')) {
-        snapPoints.push({
-          point: {
-            x: (scShape.start.x + scShape.end.x) / 2,
-            y: (scShape.start.y + scShape.end.y) / 2,
-          },
-          type: 'midpoint',
-          sourceShapeId: shape.id,
-          sourceAngle: scAngle,
-        });
+    default: {
+      const extSnap = snapProviderRegistry.getSnap(shape.type);
+      if (extSnap) {
+        snapPoints.push(...extSnap(shape, activeSnaps, cursor, basePoint));
       }
       break;
     }

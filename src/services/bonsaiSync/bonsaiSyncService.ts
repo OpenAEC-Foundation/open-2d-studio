@@ -21,10 +21,10 @@ import { generateIFC } from '../ifc/ifcGenerator';
 const SYNC_DEBOUNCE_MS = 2000;
 
 /** localStorage key for persisting the sync path */
-const SYNC_PATH_KEY = 'openndstudio_bonsai_sync_path';
+const SYNC_PATH_KEY = 'open2dstudio_bonsai_sync_path';
 
 /** localStorage key for persisting the sync enabled state */
-const SYNC_ENABLED_KEY = 'openndstudio_bonsai_sync_enabled';
+const SYNC_ENABLED_KEY = 'open2dstudio_bonsai_sync_enabled';
 
 // ============================================================================
 // Tauri FS detection

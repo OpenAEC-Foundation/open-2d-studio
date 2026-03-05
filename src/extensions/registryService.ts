@@ -7,7 +7,7 @@ import type { ExtensionCatalog } from './types';
 import { useAppStore } from '../state/appStore';
 
 const CATALOG_URL =
-  'https://raw.githubusercontent.com/OpenAEC-Foundation/Open-nD-Studio-Extensions/main/catalog.json';
+  'https://raw.githubusercontent.com/OpenAEC-Foundation/Open-2D-Studio-Extensions/main/catalog.json';
 
 const CACHE_DURATION_MS = 30 * 60 * 1000; // 30 minutes
 

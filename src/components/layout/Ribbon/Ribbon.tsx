@@ -15,11 +15,9 @@ import {
   Maximize,
   Grid3X3,
   Trash2,
-  Printer,
   Settings,
   ClipboardPaste,
   ChevronDown,
-  ChevronRight,
   CheckSquare,
   XSquare,
   Sun,
@@ -27,15 +25,10 @@ import {
   Palette,
   Search,
   ImageIcon,
-  Box,
-  Orbit,
-  Footprints,
-  Shapes,
   Layers,
   Eye,
   EyeOff,
   Download,
-  FileText,
   FolderTree,
   Link2,
   Unlink,
@@ -46,8 +39,7 @@ import {
 } from 'lucide-react';
 import type { UITheme } from '../../../state/slices/snapSlice';
 import { UI_THEMES } from '../../../state/slices/snapSlice';
-import { useAppStore, useUnitSettings } from '../../../state/appStore';
-import { formatNumber } from '../../../units';
+import { useAppStore } from '../../../state/appStore';
 import {
   LineIcon,
   ArcIcon,
@@ -69,7 +61,6 @@ import {
   StretchIcon,
   BreakIcon,
   JoinIcon,
-  PinIcon,
   LengthenIcon,
   ExplodeIcon,
   FilledRegionIcon,
@@ -80,292 +71,13 @@ import {
   AngularDimensionIcon,
   RadiusDimensionIcon,
   DiameterDimensionIcon,
-  BeamIcon,
-  GridLineIcon,
-  LevelIcon,
-  SectionDetailIcon,
-  PileIcon,
-  PuntniveauIcon,
-  CPTIcon,
-  WallIcon,
-  SlabIcon,
-  SpaceIcon,
-  LabelIcon,
-  MiterJoinIcon,
-  PlateSystemIcon,
-  SpotElevationIcon,
 } from '../../shared/CadIcons';
 import { useFileOperations } from '../../../hooks/file/useFileOperations';
-import type { Shape, BeamShape, PileShape, PileType } from '../../../types/geometry';
-import type { ProjectStructure } from '../../../state/slices/parametricSlice';
 import { triggerBonsaiSync, saveBonsaiSyncSettings, generateBlenderWatcherScript } from '../../../services/bonsaiSync';
 import { ALL_IFC_CATEGORIES, IFC_CATEGORY_LABELS, getIfcCategory } from '../../../utils/ifcCategoryUtils';
-import { getNextSectionLabel } from '../../../hooks/drawing/useSectionCalloutDrawing';
+import { RibbonButton, RibbonSmallButton, RibbonMediumButton, RibbonMediumButtonStack, RibbonGroup, RibbonButtonStack } from './RibbonComponents';
 import './Ribbon.css';
-
-/**
- * Custom tooltip component - renders below the hovered element
- */
-function RibbonTooltip({ label, shortcut, parentRef }: { label: string; shortcut?: string; parentRef: React.RefObject<HTMLElement> }) {
-  const [pos, setPos] = useState<{ x: number; y: number; align: 'center' | 'left' | 'right' } | null>(null);
-  const tooltipRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (parentRef.current) {
-      const rect = parentRef.current.getBoundingClientRect();
-      const centerX = rect.left + rect.width / 2;
-      const viewportWidth = window.innerWidth;
-
-      // Estimate tooltip width (will be adjusted after render if needed)
-      const estimatedTooltipWidth = 150;
-      const margin = 8;
-
-      let align: 'center' | 'left' | 'right' = 'center';
-      let x = centerX;
-
-      // Check if tooltip would go outside left edge
-      if (centerX - estimatedTooltipWidth / 2 < margin) {
-        align = 'left';
-        x = margin;
-      }
-      // Check if tooltip would go outside right edge
-      else if (centerX + estimatedTooltipWidth / 2 > viewportWidth - margin) {
-        align = 'right';
-        x = viewportWidth - margin;
-      }
-
-      setPos({ x, y: rect.bottom + 4, align });
-    }
-  }, [parentRef]);
-
-  // Adjust position after tooltip renders to ensure it stays in viewport
-  useEffect(() => {
-    if (tooltipRef.current && pos) {
-      const tooltipRect = tooltipRef.current.getBoundingClientRect();
-      const viewportWidth = window.innerWidth;
-      const margin = 8;
-
-      // Re-check with actual tooltip width
-      if (pos.align === 'center') {
-        if (tooltipRect.left < margin) {
-          setPos({ ...pos, x: margin, align: 'left' });
-        } else if (tooltipRect.right > viewportWidth - margin) {
-          setPos({ ...pos, x: viewportWidth - margin, align: 'right' });
-        }
-      }
-    }
-  }, [pos]);
-
-  if (!pos) return null;
-
-  const transformStyle = pos.align === 'center'
-    ? 'translateX(-50%)'
-    : pos.align === 'right'
-      ? 'translateX(-100%)'
-      : 'none';
-
-  return (
-    <div
-      ref={tooltipRef}
-      style={{
-        position: 'fixed',
-        left: pos.x,
-        top: pos.y,
-        transform: transformStyle,
-        zIndex: 9999,
-        pointerEvents: 'none',
-      }}
-    >
-      <div className="ribbon-tooltip">
-        <span className="ribbon-tooltip-label">{label}</span>
-        {shortcut && <span className="ribbon-tooltip-shortcut">{shortcut}</span>}
-      </div>
-    </div>
-  );
-}
-
-/**
- * Hook for tooltip show/hide with delay
- */
-function useTooltip(delay = 400) {
-  const [show, setShow] = useState(false);
-  const ref = useRef<HTMLButtonElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
-
-  const onEnter = useCallback(() => {
-    timerRef.current = setTimeout(() => setShow(true), delay);
-  }, [delay]);
-
-  const onLeave = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    setShow(false);
-  }, []);
-
-  useEffect(() => {
-    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
-  }, []);
-
-  return { show, ref, onEnter, onLeave };
-}
-
-type RibbonTab = 'home' | 'modify' | 'structural' | 'view' | 'tools' | string;
-
-interface RibbonButtonProps {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  active?: boolean;
-  disabled?: boolean;
-  shortcut?: string;
-  tooltip?: string;
-}
-
-function RibbonButton({ icon, label, onClick, active, disabled, shortcut, tooltip }: RibbonButtonProps) {
-  const tt = useTooltip();
-  return (
-    <>
-      <button
-        ref={tt.ref}
-        className={`ribbon-btn ${active ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
-        onClick={onClick}
-        disabled={disabled}
-        onMouseEnter={tt.onEnter}
-        onMouseLeave={tt.onLeave}
-      >
-        <span className="ribbon-btn-icon">{icon}</span>
-        <span className="ribbon-btn-label">{label}</span>
-      </button>
-      {tt.show && <RibbonTooltip label={tooltip || label} shortcut={shortcut} parentRef={tt.ref as React.RefObject<HTMLElement>} />}
-    </>
-  );
-}
-
-
-interface RibbonSmallButtonProps {
-  icon: React.ReactNode;
-  label: string;
-  onClick: () => void;
-  active?: boolean;
-  disabled?: boolean;
-  shortcut?: string;
-}
-
-function RibbonSmallButton({ icon, label, onClick, active, disabled, shortcut }: RibbonSmallButtonProps) {
-  const tt = useTooltip();
-  return (
-    <>
-      <button
-        ref={tt.ref}
-        className={`ribbon-btn small ${active ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
-        onClick={onClick}
-        disabled={disabled}
-        onMouseEnter={tt.onEnter}
-        onMouseLeave={tt.onLeave}
-      >
-        <span className="ribbon-btn-icon">{icon}</span>
-        <span className="ribbon-btn-label">{label}</span>
-      </button>
-      {tt.show && <RibbonTooltip label={label} shortcut={shortcut} parentRef={tt.ref as React.RefObject<HTMLElement>} />}
-    </>
-  );
-}
-
-function RibbonMediumButton({ icon, label, onClick, active, disabled, shortcut }: RibbonSmallButtonProps) {
-  const tt = useTooltip();
-  return (
-    <>
-      <button
-        ref={tt.ref}
-        className={`ribbon-btn medium ${active ? 'active' : ''} ${disabled ? 'disabled' : ''}`}
-        onClick={onClick}
-        disabled={disabled}
-        onMouseEnter={tt.onEnter}
-        onMouseLeave={tt.onLeave}
-      >
-        <span className="ribbon-btn-icon">{icon}</span>
-        <span className="ribbon-btn-label">{label}</span>
-      </button>
-      {tt.show && <RibbonTooltip label={label} shortcut={shortcut} parentRef={tt.ref as React.RefObject<HTMLElement>} />}
-    </>
-  );
-}
-
-function RibbonMediumButtonStack({ children }: { children: React.ReactNode }) {
-  return <div className="ribbon-btn-medium-stack">{children}</div>;
-}
-
-function RibbonGroup({ label, children, noLabels, expandContent }: { label: string; children: React.ReactNode; noLabels?: boolean; expandContent?: React.ReactNode }) {
-  const [expanded, setExpanded] = useState(false);
-  const [pinned, setPinned] = useState(false);
-  const groupRef = useRef<HTMLDivElement>(null);
-  const leaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    if (!expanded || pinned) return;
-    const handleClickOutside = (e: MouseEvent) => {
-      if (groupRef.current && !groupRef.current.contains(e.target as Node)) {
-        setExpanded(false);
-      }
-    };
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [expanded, pinned]);
-
-  const handleMouseLeave = useCallback(() => {
-    if (!expanded || pinned) return;
-    leaveTimerRef.current = setTimeout(() => setExpanded(false), 500);
-  }, [expanded, pinned]);
-
-  const handleMouseEnter = useCallback(() => {
-    if (leaveTimerRef.current) {
-      clearTimeout(leaveTimerRef.current);
-      leaveTimerRef.current = null;
-    }
-  }, []);
-
-  useEffect(() => {
-    return () => {
-      if (leaveTimerRef.current) clearTimeout(leaveTimerRef.current);
-    };
-  }, []);
-
-  return (
-    <div ref={groupRef} className={`ribbon-group ${noLabels ? 'no-labels' : ''} ${expandContent ? 'expandable' : ''} ${expanded ? 'expanded' : ''}`} onMouseLeave={handleMouseLeave} onMouseEnter={handleMouseEnter}>
-      <div className="ribbon-group-content">{children}</div>
-      {expandContent ? (
-        !expanded && (
-          <button className="ribbon-group-expand-trigger" onClick={() => setExpanded(true)}>
-            <span className="ribbon-group-label">{label}</span>
-            <ChevronDown size={8} className="ribbon-expand-chevron" />
-          </button>
-        )
-      ) : (
-        <div className="ribbon-group-label">{label}</div>
-      )}
-      {expanded && expandContent && (
-        <div className="ribbon-expand-panel">
-          <div className="ribbon-expand-panel-content">
-            {expandContent}
-          </div>
-          <div className="ribbon-expand-panel-footer">
-            <button
-              className={`ribbon-expand-panel-action ${pinned ? 'active' : ''}`}
-              onClick={() => setPinned(!pinned)}
-              title={pinned ? 'Unpin panel' : 'Pin panel open'}
-            >
-              <PinIcon size={10} />
-            </button>
-            <span className="ribbon-group-label">{label}</span>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function RibbonButtonStack({ children }: { children: React.ReactNode }) {
-  return <div className="ribbon-btn-stack">{children}</div>;
-}
+type RibbonTab = 'home' | 'modify' | 'structural' | 'view' | string;
 
 /**
  * Theme Selector - DevExpress-style dropdown for selecting UI theme
@@ -436,277 +148,6 @@ function ThemeSelector({ currentTheme, onThemeChange }: ThemeSelectorProps) {
 }
 
 // ============================================================================
-// IFC Spatial Tree — helper to categorize shapes by IFC type
-// ============================================================================
-
-/** Map a shape to its IFC entity class name */
-function shapeToIfcClass(shape: Shape): string {
-  switch (shape.type) {
-    case 'wall': return 'IfcWall';
-    case 'beam': {
-      const beam = shape as BeamShape;
-      return beam.viewMode === 'section' ? 'IfcColumn' : 'IfcBeam';
-    }
-    case 'slab': return 'IfcSlab';
-    case 'pile': return 'IfcPile';
-    case 'cpt': return 'IfcBuildingElementProxy';
-    case 'foundation-zone': return 'IfcBuildingElementProxy';
-    case 'gridline': return 'IfcGrid';
-    case 'level': return 'IfcBuildingStorey';
-    case 'spot-elevation': return 'IfcAnnotation';
-    case 'space': return 'IfcSpace';
-    case 'line':
-    case 'arc':
-    case 'circle':
-    case 'polyline':
-    case 'rectangle':
-    case 'dimension':
-    case 'text':
-    case 'section-callout':
-      return 'IfcAnnotation';
-    default:
-      return 'Other';
-  }
-}
-
-/** Group shapes by IFC class and return sorted entries with counts */
-function groupShapesByIfcClass(shapes: Shape[]): { ifcClass: string; count: number }[] {
-  const map = new Map<string, number>();
-  for (const s of shapes) {
-    const cls = shapeToIfcClass(s);
-    if (cls === 'Other') continue;
-    map.set(cls, (map.get(cls) || 0) + 1);
-  }
-  // Sort: structural first, then annotation
-  const order = ['IfcWall', 'IfcColumn', 'IfcBeam', 'IfcSlab', 'IfcPile', 'IfcSpace', 'IfcGrid', 'IfcBuildingStorey', 'IfcAnnotation'];
-  return Array.from(map.entries())
-    .sort((a, b) => {
-      const ia = order.indexOf(a[0]);
-      const ib = order.indexOf(b[0]);
-      return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
-    })
-    .map(([ifcClass, count]) => ({ ifcClass, count }));
-}
-
-/** Collapsible tree node used in the IFC tab */
-function IfcTreeNode({ label, badge, children, defaultOpen = true, depth = 0 }: {
-  label: string;
-  badge?: string | number;
-  children?: React.ReactNode;
-  defaultOpen?: boolean;
-  depth?: number;
-}) {
-  const [open, setOpen] = useState(defaultOpen);
-  const hasChildren = !!children;
-  return (
-    <div style={{ paddingLeft: depth > 0 ? 12 : 0 }}>
-      <div
-        className="ifc-tree-node"
-        onClick={() => hasChildren && setOpen(!open)}
-        style={{ cursor: hasChildren ? 'pointer' : 'default' }}
-      >
-        {hasChildren ? (
-          open ? <ChevronDown size={10} className="ifc-tree-chevron" /> : <ChevronRight size={10} className="ifc-tree-chevron" />
-        ) : (
-          <span className="ifc-tree-dot" />
-        )}
-        <span className="ifc-tree-label">{label}</span>
-        {badge !== undefined && <span className="ifc-tree-badge">{badge}</span>}
-      </div>
-      {hasChildren && open && <div className="ifc-tree-children">{children}</div>}
-    </div>
-  );
-}
-
-/** The IFC spatial structure tree rendered inside the ribbon IFC tab */
-function IfcSpatialTree({ shapes, projectStructure }: { shapes: Shape[]; projectStructure: ProjectStructure }) {
-  const grouped = useMemo(() => groupShapesByIfcClass(shapes), [shapes]);
-  const totalElements = useMemo(() => grouped.reduce((sum, g) => sum + g.count, 0), [grouped]);
-
-  return (
-    <div className="ifc-tree-container">
-      <IfcTreeNode label="IfcProject" badge={`${totalElements} elements`} defaultOpen>
-        <IfcTreeNode label={`IfcSite: ${projectStructure.siteName}`} depth={1} defaultOpen>
-          {projectStructure.buildings.map((building) => (
-            <IfcTreeNode key={building.id} label={`IfcBuilding: ${building.name}`} depth={1} defaultOpen>
-              {building.storeys.length > 0 ? (
-                building.storeys
-                  .slice()
-                  .sort((a, b) => b.elevation - a.elevation)
-                  .map((storey) => (
-                    <IfcTreeNode
-                      key={storey.id}
-                      label={`IfcBuildingStorey: ${storey.name}`}
-                      badge={`${storey.elevation >= 0 ? '+' : ''}${storey.elevation} mm`}
-                      depth={1}
-                      defaultOpen={false}
-                    >
-                      {grouped.map((g) => (
-                        <IfcTreeNode
-                          key={g.ifcClass}
-                          label={g.ifcClass}
-                          badge={g.count}
-                          depth={1}
-                        />
-                      ))}
-                    </IfcTreeNode>
-                  ))
-              ) : (
-                <IfcTreeNode label="IfcBuildingStorey: Ground Floor" badge="+0 mm" depth={1} defaultOpen={false}>
-                  {grouped.map((g) => (
-                    <IfcTreeNode
-                      key={g.ifcClass}
-                      label={g.ifcClass}
-                      badge={g.count}
-                      depth={1}
-                    />
-                  ))}
-                </IfcTreeNode>
-              )}
-            </IfcTreeNode>
-          ))}
-        </IfcTreeNode>
-
-        {/* Summary row: element type counts */}
-        {grouped.length > 0 && (
-          <div className="ifc-tree-summary">
-            {grouped.map((g) => (
-              <span key={g.ifcClass} className="ifc-tree-summary-item">
-                {g.ifcClass.replace('Ifc', '')}: {g.count}
-              </span>
-            ))}
-          </div>
-        )}
-      </IfcTreeNode>
-    </div>
-  );
-}
-
-// ============================================================================
-// ShapeModeSelector — reusable Line / Arc / Rectangle toggle for structural tools
-// ============================================================================
-
-type ShapeMode = 'line' | 'arc' | 'rectangle' | 'circle';
-
-interface ShapeModeSelectorProps {
-  mode: ShapeMode;
-  onChange: (mode: ShapeMode) => void;
-}
-
-function ShapeModeSelector({ mode, onChange }: ShapeModeSelectorProps) {
-  return (
-    <RibbonGroup label="Shape">
-      <div className="flex gap-0.5">
-        <button
-          className={`px-2 py-1 text-xs rounded ${mode === 'line' ? 'bg-cad-accent/20 text-cad-accent border border-cad-accent/50' : 'bg-cad-bg border border-cad-border text-cad-text hover:bg-cad-hover'}`}
-          onClick={() => onChange('line')}
-        >
-          <LineIcon size={14} />
-        </button>
-        <button
-          className={`px-2 py-1 text-xs rounded ${mode === 'arc' ? 'bg-cad-accent/20 text-cad-accent border border-cad-accent/50' : 'bg-cad-bg border border-cad-border text-cad-text hover:bg-cad-hover'}`}
-          onClick={() => onChange('arc')}
-        >
-          <ArcIcon size={14} />
-        </button>
-        <button
-          className={`px-2 py-1 text-xs rounded ${mode === 'rectangle' ? 'bg-cad-accent/20 text-cad-accent border border-cad-accent/50' : 'bg-cad-bg border border-cad-border text-cad-text hover:bg-cad-hover'}`}
-          onClick={() => onChange('rectangle')}
-        >
-          <Square size={14} />
-        </button>
-        <button
-          className={`px-2 py-1 text-xs rounded ${mode === 'circle' ? 'bg-cad-accent/20 text-cad-accent border border-cad-accent/50' : 'bg-cad-bg border border-cad-border text-cad-text hover:bg-cad-hover'}`}
-          onClick={() => onChange('circle')}
-        >
-          <Circle size={14} />
-        </button>
-      </div>
-    </RibbonGroup>
-  );
-}
-
-// Pile type labels for the ribbon table
-const PILE_TYPE_LABELS: Record<PileType, string> = {
-  'prefab-concrete': 'Prefab',
-  'steel-tube': 'Steel',
-  'vibro': 'Vibro',
-  'screw': 'Screw',
-};
-
-/** Compact pile schedule table for the Pile Plan ribbon tab */
-export function PilePlanRibbonTable() {
-  const shapes = useAppStore(s => s.shapes);
-  const activeDrawingId = useAppStore(s => s.activeDrawingId);
-  const selectShapes = useAppStore(s => s.selectShapes);
-  const selectedShapeIds = useAppStore(s => s.selectedShapeIds);
-  const unitSettings = useUnitSettings();
-
-  const piles = useMemo(() =>
-    shapes.filter((s): s is PileShape => s.type === 'pile' && s.drawingId === activeDrawingId),
-  [shapes, activeDrawingId]);
-
-  const selectedSet = useMemo(() => new Set(selectedShapeIds), [selectedShapeIds]);
-
-  // Summary by type
-  const summary = useMemo(() => {
-    const counts = new Map<string, number>();
-    for (const p of piles) {
-      const key = p.pileType ? PILE_TYPE_LABELS[p.pileType] || p.pileType : '?';
-      counts.set(key, (counts.get(key) || 0) + 1);
-    }
-    return Array.from(counts.entries()).map(([t, c]) => `${c}\u00d7${t}`).join(' ');
-  }, [piles]);
-
-  if (piles.length === 0) {
-    return (
-      <div className="flex items-center justify-center h-full px-4">
-        <span className="text-[10px] text-cad-text-dim">No piles</span>
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex flex-col" style={{ height: 66, minWidth: 200, maxWidth: 420 }}>
-      <div className="text-[10px] text-cad-text-dim px-1 py-0.5 flex-shrink-0">
-        {piles.length} pile{piles.length !== 1 ? 's' : ''} {summary && `(${summary})`}
-      </div>
-      <div className="flex-1 overflow-auto" style={{ fontSize: 10 }}>
-        <table className="w-full border-collapse">
-          <thead>
-            <tr className="text-cad-text-dim sticky top-0 bg-cad-surface">
-              <th className="text-left px-1 font-medium">Label</th>
-              <th className="text-right px-1 font-medium">X</th>
-              <th className="text-right px-1 font-medium">Y</th>
-              <th className="text-right px-1 font-medium">&Oslash;</th>
-              <th className="text-right px-1 font-medium">NAP</th>
-              <th className="text-right px-1 font-medium">Bk.</th>
-              <th className="text-left px-1 font-medium">Type</th>
-            </tr>
-          </thead>
-          <tbody>
-            {piles.map((p) => (
-              <tr
-                key={p.id}
-                onClick={() => selectShapes([p.id])}
-                className={`cursor-default ${selectedSet.has(p.id) ? 'bg-cad-accent/20' : 'hover:bg-cad-border/30'}`}
-              >
-                <td className="px-1 text-cad-text">{p.label || '\u2014'}</td>
-                <td className="px-1 text-cad-text text-right tabular-nums">{formatNumber(p.position.x, 0, unitSettings.numberFormat)}</td>
-                <td className="px-1 text-cad-text text-right tabular-nums">{formatNumber(-p.position.y, 0, unitSettings.numberFormat)}</td>
-                <td className="px-1 text-cad-text text-right tabular-nums">{formatNumber(p.diameter, 0, unitSettings.numberFormat)}</td>
-                <td className="px-1 text-cad-text text-right tabular-nums">{p.puntniveauNAP != null ? formatNumber(p.puntniveauNAP, 1, unitSettings.numberFormat) : '\u2014'}</td>
-                <td className="px-1 text-cad-text text-right tabular-nums">{p.bkPaalPeil != null ? formatNumber(p.bkPaalPeil, 0, unitSettings.numberFormat) : '\u2014'}</td>
-                <td className="px-1 text-cad-text-dim">{p.pileType ? PILE_TYPE_LABELS[p.pileType] || p.pileType : '\u2014'}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
-  );
-}
-
 interface RibbonProps {
   onOpenAppMenu: () => void;
   hidden?: boolean;
@@ -734,8 +175,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     zoomToFit,
     deleteSelectedShapes,
     selectedShapeIds,
-    setPrintDialogOpen,
-    openSettings,
     // Clipboard
     copySelectedShapes,
     cutSelectedShapes,
@@ -746,22 +185,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     deselectAll,
     setFindReplaceDialogOpen,
     editorMode,
-    openBeamDialog,
-    setPendingGridline,
-    setPendingLevel,
-    setPendingPuntniveau,
-    setPendingPile,
-    openPileSymbolsDialog,
-    setPendingCPT,
-    pendingWall,
-    setPendingWall,
-    lastUsedWallTypeId,
-    wallTypes,
-    pendingBeam,
-    setPendingBeam,
-    clearDrawingPoints,
-    setDrawingPreview,
-    setPendingSectionCallout,
     setPatternManagerOpen,
     setTextStyleManagerOpen,
 
@@ -772,23 +195,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     // Extensions
     extensionRibbonTabs,
     extensionRibbonButtons,
-
-    // Wall dialog
-    openMaterialsDialog,
-    openWallTypesDialog,
-    openWallSystemDialog,
-
-    // Slab
-    pendingSlab,
-    setPendingSlab,
-
-    // Space
-    setPendingSpace,
-
-    // Plate System
-    pendingPlateSystem,
-    setPendingPlateSystem,
-    openPlateSystemDialog,
 
     // Project Structure
     openProjectStructureDialog,
@@ -803,9 +209,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     toggleIfcCategoryVisibility,
     setHiddenIfcCategories,
 
-    // Shapes & project structure (for IFC tab tree)
     shapes,
-    projectStructure,
     ifcEntityCount,
     ifcFileSize,
     regenerateIFC,
@@ -819,11 +223,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     bonsaiSyncStatus,
     bonsaiSyncError,
 
-    // 3D view
-    show3DView,
-    setShow3DView,
-    viewMode3D,
-    setViewMode3D,
   } = useAppStore();
 
   const isSheetMode = editorMode !== 'drawing';
@@ -945,18 +344,14 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
   const builtInTabs: { id: RibbonTab; label: string }[] = [
     { id: 'home', label: 'Home' },
     { id: 'modify', label: 'Modify' },
-    { id: 'structural', label: 'AEC' },
-    { id: 'pile-plan', label: 'Pile Plan' },
     { id: 'view', label: 'View' },
-    { id: 'tools', label: 'Tools' },
-    { id: '3d', label: '3D' },
     { id: 'ifc', label: 'IFC' },
   ];
 
   const extTabs = extensionRibbonTabs
     .slice()
     .sort((a, b) => a.order - b.order)
-    .map((t) => ({ id: t.id as RibbonTab, label: t.label }));
+    .map((t) => ({ id: t.id as RibbonTab, label: t.label, render: t.render }));
 
   const tabs = [...builtInTabs, ...extTabs];
 
@@ -1011,7 +406,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
             onClick={() => {
               setActiveTab(tab.id);
               setIfcDashboardVisible(tab.id === 'ifc');
-              setShow3DView(tab.id === '3d');
             }}
           >
             {tab.label}
@@ -1470,245 +864,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
           </div>
         </div>
 
-        {/* Structural Tab */}
-        <div className={`ribbon-content ${activeTab === 'structural' ? 'active' : ''}`}>
-          <div className="ribbon-groups">
-            <RibbonGroup label="Elements">
-              <RibbonButton
-                icon={<BeamIcon size={24} />}
-                label="IfcBeam"
-                onClick={() => openBeamDialog()}
-                disabled={isSheetMode}
-                tooltip="Insert IfcColumn section or draw IfcBeam"
-                shortcut="BE"
-              />
-              <RibbonButton
-                icon={<WallIcon size={24} />}
-                label="IfcWall"
-                onClick={() => {
-                  const defaultTypeId = lastUsedWallTypeId ?? 'beton-200';
-                  const wt = wallTypes.find(w => w.id === defaultTypeId);
-                  setPendingWall({
-                    thickness: wt?.thickness ?? 200,
-                    wallTypeId: defaultTypeId,
-                    justification: 'center',
-                    showCenterline: true,
-                    startCap: 'butt',
-                    endCap: 'butt',
-                    continueDrawing: true,
-                    shapeMode: 'line',
-                    spaceBounding: true,
-                  });
-                  switchToDrawingTool('wall');
-                }}
-                disabled={isSheetMode}
-                tooltip="Draw IfcWall"
-                shortcut="WA"
-              />
-              <RibbonButton
-                icon={<SlabIcon size={24} />}
-                label="IfcSlab"
-                onClick={() => {
-                  setPendingSlab({
-                    thickness: 200,
-                    level: '0',
-                    elevation: 0,
-                    material: 'concrete',
-                    shapeMode: 'line',
-                  });
-                  switchToDrawingTool('slab');
-                }}
-                active={activeTool === 'slab'}
-                disabled={isSheetMode}
-                tooltip="Draw IfcSlab (closed polygon with hatch)"
-                shortcut="SL"
-              />
-              <RibbonButton
-                icon={<PlateSystemIcon size={24} />}
-                label="IfcPlateSystem"
-                onClick={openPlateSystemDialog}
-                disabled={isSheetMode}
-                tooltip="Draw IfcElementAssembly plate system (timber floor, HSB wall, ceiling)"
-                shortcut="PS"
-              />
-              <RibbonButton
-                icon={<PileIcon size={24} />}
-                label="IfcPile"
-                onClick={() => {
-                  setPendingPile({
-                    label: '',
-                    diameter: 600,
-                    fontSize: 200,
-                    showCross: true,
-                    contourType: 'circle',
-                    fillPattern: 6,
-                  });
-                  switchToDrawingTool('pile');
-                }}
-                active={activeTool === 'pile'}
-                disabled={isSheetMode}
-                tooltip="Place IfcPile (IfcDeepFoundation)"
-                shortcut="PI"
-              />
-              <RibbonButton
-                icon={<CPTIcon size={24} />}
-                label="CPT"
-                onClick={() => {
-                  setPendingCPT({
-                    name: '01',
-                    fontSize: 150,
-                    markerSize: 300,
-                  });
-                  switchToDrawingTool('cpt');
-                }}
-                active={activeTool === 'cpt'}
-                disabled={isSheetMode}
-                tooltip="Place CPT (Cone Penetration Test) marker for pile plan"
-                shortcut="CT"
-              />
-              <RibbonButton
-                icon={<SpaceIcon size={24} />}
-                label="IfcSpace"
-                onClick={() => {
-                  setPendingSpace({
-                    name: 'Room',
-                    fillColor: '#00ff00',
-                    fillOpacity: 0.1,
-                  });
-                  switchToDrawingTool('space');
-                }}
-                active={activeTool === 'space'}
-                disabled={isSheetMode}
-                tooltip="Detect and place IfcSpace (room) from surrounding walls"
-                shortcut="RM"
-              />
-            </RibbonGroup>
-
-            {(activeTool === 'wall' || activeTool === 'beam' || activeTool === 'slab' || activeTool === 'plate-system') && (() => {
-              const mode: ShapeMode =
-                activeTool === 'wall' ? (pendingWall?.shapeMode ?? 'line') :
-                activeTool === 'beam' ? (pendingBeam?.shapeMode ?? 'line') :
-                activeTool === 'slab' ? (pendingSlab?.shapeMode ?? 'line') :
-                (pendingPlateSystem?.shapeMode ?? 'line');
-              const handleShapeModeChange = (m: ShapeMode) => {
-                // Clear any in-progress drawing points and preview when switching shape mode
-                clearDrawingPoints();
-                setDrawingPreview(null);
-                if (activeTool === 'wall' && pendingWall) {
-                  setPendingWall({ ...pendingWall, shapeMode: m });
-                } else if (activeTool === 'beam' && pendingBeam) {
-                  setPendingBeam({ ...pendingBeam, shapeMode: m });
-                } else if (activeTool === 'slab' && pendingSlab) {
-                  setPendingSlab({ ...pendingSlab, shapeMode: m });
-                } else if (activeTool === 'plate-system' && pendingPlateSystem) {
-                  setPendingPlateSystem({ ...pendingPlateSystem, shapeMode: m });
-                }
-              };
-              return (
-                <ShapeModeSelector mode={mode} onChange={handleShapeModeChange} />
-              );
-            })()}
-
-            <RibbonGroup label="Annotations">
-              <RibbonButton
-                icon={<GridLineIcon size={24} />}
-                label="IfcGrid"
-                onClick={() => {
-                  setPendingGridline({ label: '1', bubblePosition: 'both', bubbleRadius: 300, fontSize: 250 });
-                  switchToDrawingTool('gridline');
-                }}
-                disabled={isSheetMode}
-                tooltip="Draw IfcGrid axis line (stramien)"
-                shortcut="GL"
-              />
-              <RibbonButton
-                icon={<LabelIcon size={24} />}
-                label="Label"
-                onClick={() => switchToDrawingTool('label')}
-                active={activeTool === 'label'}
-                disabled={isSheetMode}
-                tooltip="Place structural label with leader line"
-                shortcut="LB"
-              />
-              <RibbonButton
-                icon={<LevelIcon size={24} />}
-                label="2DLevel"
-                onClick={() => {
-                  setPendingLevel({ label: '0', labelPosition: 'end', bubbleRadius: 400, fontSize: 250, elevation: 0, peil: 0 });
-                  switchToDrawingTool('level');
-                }}
-                disabled={isSheetMode}
-                tooltip="Draw 2D level marker (annotation level)"
-                shortcut="LV"
-              />
-              <RibbonButton
-                icon={<SpotElevationIcon size={24} />}
-                label="IfcSpotElevation"
-                onClick={() => switchToDrawingTool('spot-elevation')}
-                active={activeTool === 'spot-elevation'}
-                disabled={isSheetMode}
-                tooltip="Place spot elevation marker with elevation label"
-                shortcut="SE"
-              />
-              <RibbonButton
-                icon={<SectionDetailIcon size={24} />}
-                label="Section/Detail"
-                onClick={() => {
-                  setPendingSectionCallout({ label: getNextSectionLabel(), bubbleRadius: 400, fontSize: 250, flipDirection: false, viewDepth: 5000 });
-                  switchToDrawingTool('section-callout');
-                }}
-                active={activeTool === 'section-callout'}
-                disabled={isSheetMode}
-                tooltip="Create section or detail callout"
-                shortcut="SD"
-              />
-            </RibbonGroup>
-
-            <RibbonGroup label="Connections">
-              <RibbonButton
-                icon={<MiterJoinIcon size={24} />}
-                label="Join"
-                onClick={() => switchToolAndCancelCommand('trim-walls')}
-                active={activeTool === 'trim-walls'}
-                disabled={isSheetMode}
-                tooltip="Miter join walls, beams or ducts at intersection (verstek)"
-                shortcut="TW"
-              />
-            </RibbonGroup>
-
-            <RibbonGroup label="Properties">
-              <RibbonButton
-                icon={<Palette size={24} />}
-                label="Materials"
-                onClick={openMaterialsDialog}
-                disabled={isSheetMode}
-                tooltip="Manage materials and wall types"
-              />
-              <RibbonButton
-                icon={<Settings size={24} />}
-                label="IfcTypes"
-                onClick={openWallTypesDialog}
-                disabled={isSheetMode}
-                tooltip="Manage IFC type definitions (walls, slabs)"
-              />
-              <RibbonButton
-                icon={<Layers size={24} />}
-                label="Wall Systems"
-                onClick={openWallSystemDialog}
-                disabled={isSheetMode}
-                tooltip="Manage multi-layered wall systems (HSB, metal stud, curtain wall)"
-              />
-              <RibbonButton
-                icon={<FolderTree size={24} />}
-                label="Project"
-                onClick={openProjectStructureDialog}
-                tooltip="Manage IFC project spatial hierarchy (Site / Building / Storey)"
-              />
-            </RibbonGroup>
-            {renderExtensionButtonsForTab('structural')}
-          </div>
-        </div>
-
         {/* View Tab */}
         <div className={`ribbon-content ${activeTab === 'view' ? 'active' : ''}`}>
           <div className="ribbon-groups">
@@ -1844,114 +999,9 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
           </div>
         </div>
 
-        {/* Tools Tab */}
-        <div className={`ribbon-content ${activeTab === 'tools' ? 'active' : ''}`}>
-          <div className="ribbon-groups">
-            <RibbonGroup label="Settings">
-              <RibbonButton
-                icon={<Settings size={24} />}
-                label="Settings"
-                onClick={() => openSettings()}
-              />
-            </RibbonGroup>
-
-            <RibbonGroup label="Output">
-              <RibbonButton
-                icon={<Printer size={24} />}
-                label="Print"
-                onClick={() => setPrintDialogOpen(true)}
-              />
-            </RibbonGroup>
-            {renderExtensionButtonsForTab('tools')}
-          </div>
-        </div>
-
-        {/* 3D Tab */}
-        <div className={`ribbon-content ${activeTab === '3d' ? 'active' : ''}`}>
-          <div className="ribbon-groups">
-            {/* View Group */}
-            <RibbonGroup label="View">
-              <RibbonButton
-                icon={<Box size={24} />}
-                label="3D View"
-                onClick={() => setShow3DView(!show3DView)}
-                active={show3DView}
-                tooltip="Switch to 3D perspective view"
-              />
-              <RibbonButton
-                icon={<Orbit size={24} />}
-                label="Orbit"
-                onClick={() => {}}
-                disabled={true}
-                tooltip="Orbit (coming soon)"
-              />
-              <RibbonButton
-                icon={<Footprints size={24} />}
-                label="Walk"
-                onClick={() => {}}
-                disabled={true}
-                tooltip="Walk (coming soon)"
-              />
-            </RibbonGroup>
-
-            {/* Display Group */}
-            <RibbonGroup label="Display">
-              <RibbonButton
-                icon={<Layers size={24} />}
-                label="Wireframe"
-                onClick={() => setViewMode3D('wireframe')}
-                active={viewMode3D === 'wireframe'}
-                disabled={!show3DView}
-                tooltip={show3DView ? 'Wireframe display mode' : 'Wireframe (enable 3D View first)'}
-              />
-              <RibbonButton
-                icon={<Eye size={24} />}
-                label="Shaded"
-                onClick={() => setViewMode3D('shaded')}
-                active={viewMode3D === 'shaded'}
-                disabled={!show3DView}
-                tooltip={show3DView ? 'Shaded/solid display mode' : 'Shaded (enable 3D View first)'}
-              />
-              <RibbonButton
-                icon={<EyeOff size={24} />}
-                label="Hidden Line"
-                onClick={() => setViewMode3D('hidden-line')}
-                active={viewMode3D === 'hidden-line'}
-                disabled={!show3DView}
-                tooltip={show3DView ? 'Hidden line removal mode' : 'Hidden Line (enable 3D View first)'}
-              />
-            </RibbonGroup>
-
-            {/* Export Group */}
-            <RibbonGroup label="Export">
-              <RibbonButton
-                icon={<Download size={24} />}
-                label="Export IFC"
-                onClick={handleExportIFC}
-                tooltip="Export current model as IFC file"
-              />
-              <RibbonButton
-                icon={<FileText size={24} />}
-                label="Export 3D PDF"
-                onClick={() => {}}
-                disabled={true}
-                tooltip="Export 3D PDF (coming soon)"
-              />
-            </RibbonGroup>
-            {renderExtensionButtonsForTab('3d')}
-          </div>
-        </div>
-
         {/* IFC Tab */}
         <div className={`ribbon-content ${activeTab === 'ifc' ? 'active' : ''}`}>
           <div className="ribbon-groups" style={{ alignItems: 'stretch' }}>
-            {/* Spatial Structure Tree */}
-            <RibbonGroup label="Spatial Structure">
-              <div className="ifc-tree-ribbon-wrapper">
-                <IfcSpatialTree shapes={shapes} projectStructure={projectStructure} />
-              </div>
-            </RibbonGroup>
-
             {/* Actions */}
             <RibbonGroup label="Actions">
               <RibbonButton
@@ -2086,73 +1136,18 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
           </div>
         </div>
 
-        {/* Pile Plan Tab */}
-        <div className={`ribbon-content ${activeTab === 'pile-plan' ? 'active' : ''}`}>
-          <div className="ribbon-groups" style={{ alignItems: 'stretch' }}>
-            <RibbonGroup label="Place">
-              <RibbonButton
-                icon={<PileIcon size={24} />}
-                label="IfcPile"
-                onClick={() => {
-                  setPendingPile({
-                    label: '',
-                    diameter: 600,
-                    fontSize: 200,
-                    showCross: true,
-                    contourType: 'circle',
-                    fillPattern: 6,
-                  });
-                  switchToDrawingTool('pile');
-                }}
-                active={activeTool === 'pile'}
-                disabled={isSheetMode}
-                tooltip="Place IfcPile (IfcDeepFoundation)"
-                shortcut="PI"
-              />
-              <RibbonButton
-                icon={<CPTIcon size={24} />}
-                label="CPT"
-                onClick={() => {
-                  setPendingCPT({
-                    name: '01',
-                    fontSize: 150,
-                    markerSize: 300,
-                  });
-                  switchToDrawingTool('cpt');
-                }}
-                active={activeTool === 'cpt'}
-                disabled={isSheetMode}
-                tooltip="Place CPT (Cone Penetration Test) marker"
-                shortcut="CT"
-              />
-              <RibbonButton
-                icon={<PuntniveauIcon size={24} />}
-                label="Puntniveau"
-                onClick={() => {
-                  setPendingPuntniveau({
-                    puntniveauNAP: -12.5,
-                    fontSize: 300,
-                  });
-                  switchToDrawingTool('puntniveau');
-                }}
-                active={activeTool === 'puntniveau'}
-                disabled={isSheetMode}
-                tooltip="Place puntniveau zone (pile tip level contour)"
-                shortcut="PN"
-              />
-              <RibbonButton
-                icon={<Shapes size={24} />}
-                label="Pile Symbols"
-                onClick={() => openPileSymbolsDialog()}
-                disabled={isSheetMode}
-                tooltip="Configure pile symbols and order"
-              />
-            </RibbonGroup>
-          </div>
-        </div>
-
-        {/* Extension Tabs — render buttons grouped by group for each extension tab */}
+        {/* Extension Tabs — render custom content or auto-generate from buttons */}
         {extTabs.map((extTab) => {
+          // Custom render function takes precedence
+          if (extTab.render) {
+            return (
+              <div key={extTab.id} className={`ribbon-content ${activeTab === extTab.id ? 'active' : ''}`}>
+                {extTab.render()}
+              </div>
+            );
+          }
+
+          // Auto-generate from registered buttons
           const buttonsForTab = extensionRibbonButtons.filter((b) => b.tab === extTab.id);
           const groups = new Map<string, typeof buttonsForTab>();
           for (const btn of buttonsForTab) {

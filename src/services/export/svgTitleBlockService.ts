@@ -341,7 +341,7 @@ export async function generateThumbnail(
 /**
  * Storage key for custom SVG templates
  */
-const SVG_TEMPLATES_STORAGE_KEY = 'openndstudio_svg_titleblock_templates';
+const SVG_TEMPLATES_STORAGE_KEY = 'open2dstudio_svg_titleblock_templates';
 
 /**
  * Load custom SVG templates from localStorage

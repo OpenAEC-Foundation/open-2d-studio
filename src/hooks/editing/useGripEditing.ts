@@ -13,16 +13,16 @@ import type { Point, Shape, EllipseShape, TextShape, BeamShape, LineShape, Image
 import type { DimensionShape } from '../../types/dimension';
 import type { ParametricShape } from '../../types/parametric';
 import { updateParametricPosition } from '../../services/parametric/parametricService';
-import { getTextBounds, snapToAngle, isPointNearShape, bulgeArcMidpoint, calculateBulgeFrom3Points } from '../../engine/geometry/GeometryUtils';
+import { getTextBounds, snapToAngle, isPointNearShape } from '../../engine/geometry/GeometryUtils';
 import { calculateAlignedDimensionGeometry, angleBetweenPoints, calculateDimensionValue, formatDimensionValue } from '../../engine/geometry/DimensionUtils';
 import { findNearestSnapPoint } from '../../engine/geometry/SnapUtils';
 import { applyTracking, type TrackingSettings } from '../../engine/geometry/Tracking';
 import { setGripHover } from '../../engine/renderer/gripHoverState';
 import { setActiveRotation, setRotationGizmoHovered } from '../../engine/renderer/rotationGizmoState';
 import { formatPeilLabel, calculatePeilFromY } from '../drawing/useLevelDrawing';
-import { formatSectionPeilLabel } from '../../services/section/sectionReferenceService';
 import { regenerateGridDimensions, updateLinkedDimensions } from '../../utils/gridDimensionUtils';
 import { recalculateMiterJoins } from '../../engine/geometry/Modify';
+import { gripProviderRegistry } from '../../engine/registry/GripProviderRegistry';
 import { findLinkedLabels, computeLinkedLabelPosition } from '../../engine/geometry/LabelUtils';
 import { regeneratePlateSystemBeams } from '../drawing/usePlateSystemDrawing';
 
@@ -314,128 +314,6 @@ function getGripPoints(shape: Shape, drawingScale?: number, zoom?: number): Poin
       }
       return pts;
     }
-    case 'beam': {
-      // Arc beam handles: start, end, arc midpoint (body drag), bulge control
-      const beamBulge = (shape as BeamShape).bulge;
-      if (beamBulge && Math.abs(beamBulge) > 0.0001) {
-        const arcMid = bulgeArcMidpoint(shape.start, shape.end, beamBulge);
-        return [
-          shape.start,   // grip 0: start point
-          shape.end,     // grip 1: end point
-          arcMid,        // grip 2: arc midpoint (body drag)
-          arcMid,        // grip 3: bulge control point (same as arc midpoint)
-        ];
-      }
-      // Straight beam handles: start, end, and midpoint
-      return [
-        shape.start,
-        shape.end,
-        { x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 },
-      ];
-    }
-    case 'gridline': {
-      // Gridline handles: start, end, and midpoint
-      // Grip points stay at actual start/end (the line + bubble extend 500mm beyond visually)
-      return [
-        shape.start,
-        shape.end,
-        { x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 },
-      ];
-    }
-    case 'level':
-      // Level handles: start, end, and midpoint
-      return [
-        shape.start,
-        shape.end,
-        { x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 },
-      ];
-    case 'pile':
-      // Pile handle: center position only
-      return [shape.position];
-    case 'cpt':
-      // CPT handle: center position only
-      return [(shape as any).position];
-    case 'foundation-zone':
-      // Foundation zone handles: all contour vertices
-      return [...((shape as any).contourPoints || [])];
-    case 'wall': {
-      // Arc wall handles: start, end, arc midpoint (body drag), bulge control
-      const wallBulge = (shape as WallShape).bulge;
-      if (wallBulge && Math.abs(wallBulge) > 0.0001) {
-        const arcMid = bulgeArcMidpoint(shape.start, shape.end, wallBulge);
-        return [
-          shape.start,   // grip 0: start point
-          shape.end,     // grip 1: end point
-          arcMid,        // grip 2: arc midpoint (body drag)
-          arcMid,        // grip 3: bulge control point (same as arc midpoint)
-        ];
-      }
-      // Straight wall handles: start, end, and midpoint (like beam)
-      return [
-        shape.start,
-        shape.end,
-        { x: (shape.start.x + shape.end.x) / 2, y: (shape.start.y + shape.end.y) / 2 },
-      ];
-    }
-    case 'slab': {
-      // Slab handles: all polygon vertices + edge midpoints
-      const slabPts: Point[] = [...shape.points];
-      // Add edge midpoint grips (one per edge of the closed polygon)
-      for (let si = 0; si < shape.points.length; si++) {
-        const sj = (si + 1) % shape.points.length;
-        slabPts.push({
-          x: (shape.points[si].x + shape.points[sj].x) / 2,
-          y: (shape.points[si].y + shape.points[sj].y) / 2,
-        });
-      }
-      return slabPts;
-    }
-    case 'puntniveau': {
-      // Puntniveau handles: all polygon vertices (same as slab)
-      const pnv = shape as PuntniveauShape;
-      return pnv.points.map(p => ({ x: p.x, y: p.y }));
-    }
-    case 'plate-system': {
-      // Plate system handles: contour polygon vertices + edge midpoints (or arc midpoints)
-      const psShape = shape as PlateSystemShape;
-      const psContour = psShape.contourPoints;
-      const psBulges = psShape.contourBulges;
-      const psPts: Point[] = [...psContour];
-      // Add edge midpoint grips (one per edge of the closed polygon)
-      // For arc edges (non-zero bulge): use the arc midpoint (draggable to reshape bulge)
-      for (let i = 0; i < psContour.length; i++) {
-        const j = (i + 1) % psContour.length;
-        const b = psBulges ? (psBulges[i] ?? 0) : 0;
-        if (Math.abs(b) > 0.0001) {
-          psPts.push(bulgeArcMidpoint(psContour[i], psContour[j], b));
-        } else {
-          psPts.push({
-            x: (psContour[i].x + psContour[j].x) / 2,
-            y: (psContour[i].y + psContour[j].y) / 2,
-          });
-        }
-      }
-      return psPts;
-    }
-    case 'section-callout': {
-      // Section callout handles: start, end, midpoint, and view depth grip
-      const sc = shape as SectionCalloutShape;
-      const scAngle = Math.atan2(sc.end.y - sc.start.y, sc.end.x - sc.start.x);
-      const scDx = Math.cos(scAngle);
-      const scDy = Math.sin(scAngle);
-      const scPerpSign = sc.flipDirection ? 1 : -1;
-      const scPerpX = -scDy * scPerpSign;
-      const scPerpY = scDx * scPerpSign;
-      const scVD = sc.viewDepth ?? 5000;
-      const scMidX = (sc.start.x + sc.end.x) / 2;
-      const scMidY = (sc.start.y + sc.end.y) / 2;
-      return [
-        sc.start,
-        sc.end,
-        { x: scMidX, y: scMidY },
-        { x: scMidX + scPerpX * scVD, y: scMidY + scPerpY * scVD },
-      ];
-    }
     case 'image': {
       // Image handles: 4 corners + 4 midpoints + center (like rectangle)
       const imgTl = shape.position;
@@ -591,8 +469,10 @@ function getGripPoints(shape: Shape, drawingScale?: number, zoom?: number): Poin
       // Fallback for other dimension types
       return dim.points;
     }
-    default:
-      return [];
+    default: {
+      const extGrip = gripProviderRegistry.get(shape.type);
+      return extGrip ? extGrip.getGripPoints(shape) : [];
+    }
   }
 }
 
@@ -651,20 +531,12 @@ function getShapeReferencePoint(shape: Shape): Point {
       return shape.points[0] || { x: 0, y: 0 };
     case 'text': return shape.position;
     case 'point': return shape.position;
-    case 'beam': return shape.start;
-    case 'gridline': return (shape as GridlineShape).start;
-    case 'level': return (shape as LevelShape).start;
-    case 'pile': return (shape as PileShape).position;
-    case 'cpt': return (shape as any).position;
-    case 'foundation-zone': return ((shape as any).contourPoints || [{ x: 0, y: 0 }])[0];
-    case 'wall': return (shape as WallShape).start;
-    case 'section-callout': return (shape as SectionCalloutShape).start;
-    case 'slab': return shape.points[0] || { x: 0, y: 0 };
-    case 'puntniveau': return (shape as PuntniveauShape).points[0] || { x: 0, y: 0 };
-    case 'plate-system': return (shape as PlateSystemShape).contourPoints[0] || { x: 0, y: 0 };
     case 'image': return shape.position;
     case 'dimension': return (shape as DimensionShape).points[0] || { x: 0, y: 0 };
-    default: return { x: 0, y: 0 };
+    default: {
+      const extGrip = gripProviderRegistry.get(shape.type);
+      return extGrip ? extGrip.getReferencePoint(shape) : { x: 0, y: 0 };
+    }
   }
 }
 
@@ -714,96 +586,6 @@ function computeBodyMoveUpdates(shape: Shape, newPos: Point): Partial<Shape> | n
     case 'point':
       return { position: { x: shape.position.x + dx, y: shape.position.y + dy } } as Partial<Shape>;
 
-    case 'beam':
-      return {
-        start: { x: shape.start.x + dx, y: shape.start.y + dy },
-        end: { x: shape.end.x + dx, y: shape.end.y + dy },
-      } as Partial<Shape>;
-
-    case 'gridline': {
-      const gl = shape as GridlineShape;
-      return {
-        start: { x: gl.start.x + dx, y: gl.start.y + dy },
-        end: { x: gl.end.x + dx, y: gl.end.y + dy },
-      } as Partial<Shape>;
-    }
-
-    case 'level': {
-      const lv = shape as LevelShape;
-      const newLvStartY = lv.start.y + dy;
-      if (shape.id.startsWith('section-ref-lv-')) {
-        // Section-ref levels: elevation = -Y (section Y is inverted), label in meters
-        const newElevation = -newLvStartY;
-        return {
-          start: { x: lv.start.x + dx, y: newLvStartY },
-          end: { x: lv.end.x + dx, y: lv.end.y + dy },
-          peil: newElevation,
-          elevation: newElevation,
-          label: formatSectionPeilLabel(newElevation, useAppStore.getState().unitSettings),
-        } as Partial<Shape>;
-      }
-      const newLvPeil = calculatePeilFromY(newLvStartY);
-      return {
-        start: { x: lv.start.x + dx, y: newLvStartY },
-        end: { x: lv.end.x + dx, y: lv.end.y + dy },
-        peil: newLvPeil,
-        elevation: newLvPeil,
-        label: formatPeilLabel(newLvPeil),
-      } as Partial<Shape>;
-    }
-
-    case 'pile': {
-      const pl = shape as PileShape;
-      return {
-        position: { x: pl.position.x + dx, y: pl.position.y + dy },
-      } as Partial<Shape>;
-    }
-
-    case 'cpt': {
-      const cp = shape as any;
-      return {
-        position: { x: cp.position.x + dx, y: cp.position.y + dy },
-      } as Partial<Shape>;
-    }
-
-    case 'foundation-zone': {
-      const fz = shape as any;
-      return {
-        contourPoints: fz.contourPoints.map((p: any) => ({ x: p.x + dx, y: p.y + dy })),
-      } as Partial<Shape>;
-    }
-
-    case 'wall': {
-      const wa = shape as WallShape;
-      return {
-        start: { x: wa.start.x + dx, y: wa.start.y + dy },
-        end: { x: wa.end.x + dx, y: wa.end.y + dy },
-      } as Partial<Shape>;
-    }
-
-    case 'section-callout': {
-      const sc = shape as SectionCalloutShape;
-      return {
-        start: { x: sc.start.x + dx, y: sc.start.y + dy },
-        end: { x: sc.end.x + dx, y: sc.end.y + dy },
-      } as Partial<Shape>;
-    }
-
-    case 'slab':
-      return {
-        points: shape.points.map(p => ({ x: p.x + dx, y: p.y + dy })),
-      } as Partial<Shape>;
-
-    case 'puntniveau':
-      return {
-        points: (shape as PuntniveauShape).points.map(p => ({ x: p.x + dx, y: p.y + dy })),
-      } as Partial<Shape>;
-
-    case 'plate-system':
-      return {
-        contourPoints: (shape as PlateSystemShape).contourPoints.map(p => ({ x: p.x + dx, y: p.y + dy })),
-      } as Partial<Shape>;
-
     case 'image':
       return {
         position: { x: shape.position.x + dx, y: shape.position.y + dy },
@@ -816,8 +598,10 @@ function computeBodyMoveUpdates(shape: Shape, newPos: Point): Partial<Shape> | n
       } as Partial<Shape>;
     }
 
-    default:
-      return null;
+    default: {
+      const extGrip = gripProviderRegistry.get(shape.type);
+      return extGrip ? extGrip.computeBodyMove(shape, newPos) as Partial<Shape> | null : null;
+    }
   }
 }
 
@@ -1189,348 +973,6 @@ function computeGripUpdates(shape: Shape, gripIndex: number, newPos: Point, edge
       return { points: newPoints } as Partial<Shape>;
     }
 
-    case 'beam': {
-      const beamShape = shape as BeamShape;
-      const beamIsArc = beamShape.bulge && Math.abs(beamShape.bulge) > 0.0001;
-      if (gripIndex === 0) {
-        // Start point drag — keep bulge value the same
-        return { start: newPos } as Partial<Shape>;
-      }
-      if (gripIndex === 1) {
-        // End point drag — keep bulge value the same
-        return { end: newPos } as Partial<Shape>;
-      }
-      if (gripIndex === 2) {
-        // Midpoint / body drag — translate entire shape
-        const origMid = beamIsArc
-          ? bulgeArcMidpoint(beamShape.start, beamShape.end, beamShape.bulge!)
-          : { x: (beamShape.start.x + beamShape.end.x) / 2, y: (beamShape.start.y + beamShape.end.y) / 2 };
-        const dx = newPos.x - origMid.x;
-        const dy = newPos.y - origMid.y;
-        return {
-          start: { x: beamShape.start.x + dx, y: beamShape.start.y + dy },
-          end: { x: beamShape.end.x + dx, y: beamShape.end.y + dy },
-        } as Partial<Shape>;
-      }
-      if (gripIndex === 3 && beamIsArc) {
-        // Bulge control grip — recalculate bulge from 3 points
-        const newBulge = calculateBulgeFrom3Points(beamShape.start, newPos, beamShape.end);
-        return { bulge: newBulge } as Partial<Shape>;
-      }
-      return null;
-    }
-
-    case 'gridline': {
-      const gridlineShape = shape as GridlineShape;
-      // Gridlines must always maintain their original orientation.
-      // Endpoint grips (0, 1): project movement onto the gridline direction and
-      // move ONLY the dragged endpoint. Perpendicular movement is ignored entirely
-      // so the gridline stays on its original line.
-      // Midpoint grip (2): full 2D translation of both endpoints.
-      const glDir = {
-        x: gridlineShape.end.x - gridlineShape.start.x,
-        y: gridlineShape.end.y - gridlineShape.start.y,
-      };
-      const glLen = Math.sqrt(glDir.x * glDir.x + glDir.y * glDir.y);
-
-      if (gripIndex === 0 || gripIndex === 1) {
-        const draggedPt = gripIndex === 0 ? gridlineShape.start : gridlineShape.end;
-        const totalDx = newPos.x - draggedPt.x;
-        const totalDy = newPos.y - draggedPt.y;
-
-        if (glLen < 1e-9) {
-          // Degenerate gridline (zero length) - just translate both points
-          return {
-            start: { x: gridlineShape.start.x + totalDx, y: gridlineShape.start.y + totalDy },
-            end: { x: gridlineShape.end.x + totalDx, y: gridlineShape.end.y + totalDy },
-          } as Partial<Shape>;
-        }
-
-        const unitDir = { x: glDir.x / glLen, y: glDir.y / glLen };
-
-        // Project mouse delta onto the line direction only (extend/shorten).
-        // Perpendicular component is discarded to keep the gridline on its line.
-        const alongDist = totalDx * unitDir.x + totalDy * unitDir.y;
-        const alongShiftX = alongDist * unitDir.x;
-        const alongShiftY = alongDist * unitDir.y;
-
-        // Move only the dragged endpoint; the other endpoint stays fixed.
-        const newDraggedPt = {
-          x: draggedPt.x + alongShiftX,
-          y: draggedPt.y + alongShiftY,
-        };
-
-        return {
-          start: gripIndex === 0 ? newDraggedPt : gridlineShape.start,
-          end: gripIndex === 0 ? gridlineShape.end : newDraggedPt,
-        } as Partial<Shape>;
-      }
-
-      if (gripIndex === 2) {
-        const origMid = {
-          x: (gridlineShape.start.x + gridlineShape.end.x) / 2,
-          y: (gridlineShape.start.y + gridlineShape.end.y) / 2,
-        };
-        const dx = newPos.x - origMid.x;
-        const dy = newPos.y - origMid.y;
-        return {
-          start: { x: gridlineShape.start.x + dx, y: gridlineShape.start.y + dy },
-          end: { x: gridlineShape.end.x + dx, y: gridlineShape.end.y + dy },
-        } as Partial<Shape>;
-      }
-      return null;
-    }
-
-    case 'level': {
-      const levelShape = shape as LevelShape;
-      const isSectionRef = shape.id.startsWith('section-ref-lv-');
-      // Levels are always horizontal. Endpoint grips (0, 1) only move horizontally
-      // (stretch the line). Body/midpoint grip (2) moves vertically and updates peil.
-      if (gripIndex === 0 || gripIndex === 1) {
-        // Endpoint drag: only allow horizontal movement (change X, keep Y)
-        const draggedPt = gripIndex === 0 ? levelShape.start : levelShape.end;
-        const newDraggedPt = { x: newPos.x, y: draggedPt.y };
-        return {
-          start: gripIndex === 0 ? newDraggedPt : levelShape.start,
-          end: gripIndex === 0 ? levelShape.end : newDraggedPt,
-        } as Partial<Shape>;
-      }
-      if (gripIndex === 2) {
-        // Body/midpoint drag: move entire level vertically (and horizontally),
-        // then auto-update peil based on new Y position.
-        const origMid = {
-          x: (levelShape.start.x + levelShape.end.x) / 2,
-          y: (levelShape.start.y + levelShape.end.y) / 2,
-        };
-        const dx = newPos.x - origMid.x;
-        const dy = newPos.y - origMid.y;
-        const newStartY = levelShape.start.y + dy;
-        if (isSectionRef) {
-          // Section-ref levels: elevation = -Y (section Y is inverted), label in meters
-          const newElevation = -newStartY;
-          return {
-            start: { x: levelShape.start.x + dx, y: newStartY },
-            end: { x: levelShape.end.x + dx, y: levelShape.end.y + dy },
-            peil: newElevation,
-            elevation: newElevation,
-            label: formatSectionPeilLabel(newElevation, useAppStore.getState().unitSettings),
-          } as Partial<Shape>;
-        }
-        const newPeil = calculatePeilFromY(newStartY);
-        return {
-          start: { x: levelShape.start.x + dx, y: newStartY },
-          end: { x: levelShape.end.x + dx, y: levelShape.end.y + dy },
-          peil: newPeil,
-          elevation: newPeil,
-          label: formatPeilLabel(newPeil),
-        } as Partial<Shape>;
-      }
-      return null;
-    }
-
-    case 'pile': {
-      if (gripIndex === 0) {
-        return { position: newPos } as Partial<Shape>;
-      }
-      return null;
-    }
-
-    case 'cpt': {
-      if (gripIndex === 0) {
-        return { position: newPos } as Partial<Shape>;
-      }
-      return null;
-    }
-
-    case 'foundation-zone': {
-      const fzShape = shape as any;
-      if (gripIndex >= 0 && gripIndex < fzShape.contourPoints.length) {
-        const newPoints = [...fzShape.contourPoints];
-        newPoints[gripIndex] = newPos;
-        return { contourPoints: newPoints } as Partial<Shape>;
-      }
-      return null;
-    }
-
-    case 'wall': {
-      const wallShape = shape as WallShape;
-      const wallIsArc = wallShape.bulge && Math.abs(wallShape.bulge) > 0.0001;
-      if (gripIndex === 0) {
-        // Start point drag — keep bulge value the same
-        return { start: newPos } as Partial<Shape>;
-      }
-      if (gripIndex === 1) {
-        // End point drag — keep bulge value the same
-        return { end: newPos } as Partial<Shape>;
-      }
-      if (gripIndex === 2) {
-        // Midpoint / body drag — translate entire shape
-        const origMid = wallIsArc
-          ? bulgeArcMidpoint(wallShape.start, wallShape.end, wallShape.bulge!)
-          : { x: (wallShape.start.x + wallShape.end.x) / 2, y: (wallShape.start.y + wallShape.end.y) / 2 };
-        const dx = newPos.x - origMid.x;
-        const dy = newPos.y - origMid.y;
-        return {
-          start: { x: wallShape.start.x + dx, y: wallShape.start.y + dy },
-          end: { x: wallShape.end.x + dx, y: wallShape.end.y + dy },
-        } as Partial<Shape>;
-      }
-      if (gripIndex === 3 && wallIsArc) {
-        // Bulge control grip — recalculate bulge from 3 points
-        const newBulge = calculateBulgeFrom3Points(wallShape.start, newPos, wallShape.end);
-        return { bulge: newBulge } as Partial<Shape>;
-      }
-      return null;
-    }
-
-    case 'section-callout': {
-      const scShape = shape as SectionCalloutShape;
-      if (gripIndex === 0) return { start: newPos } as Partial<Shape>;
-      if (gripIndex === 1) return { end: newPos } as Partial<Shape>;
-      if (gripIndex === 2) {
-        const origMid = {
-          x: (scShape.start.x + scShape.end.x) / 2,
-          y: (scShape.start.y + scShape.end.y) / 2,
-        };
-        const dx = newPos.x - origMid.x;
-        const dy = newPos.y - origMid.y;
-        return {
-          start: { x: scShape.start.x + dx, y: scShape.start.y + dy },
-          end: { x: scShape.end.x + dx, y: scShape.end.y + dy },
-        } as Partial<Shape>;
-      }
-      if (gripIndex === 3) {
-        // View depth grip: project newPos onto the perpendicular direction to compute depth
-        const scA = Math.atan2(scShape.end.y - scShape.start.y, scShape.end.x - scShape.start.x);
-        const scPerpS = scShape.flipDirection ? 1 : -1;
-        const scPerpDx = -Math.sin(scA) * scPerpS;
-        const scPerpDy = Math.cos(scA) * scPerpS;
-        const scMidPt = {
-          x: (scShape.start.x + scShape.end.x) / 2,
-          y: (scShape.start.y + scShape.end.y) / 2,
-        };
-        // Project the vector from midpoint to newPos onto the perpendicular direction
-        const vecX = newPos.x - scMidPt.x;
-        const vecY = newPos.y - scMidPt.y;
-        const newDepth = Math.max(0, vecX * scPerpDx + vecY * scPerpDy);
-        return { viewDepth: Math.round(newDepth) } as Partial<Shape>;
-      }
-      return null;
-    }
-
-    case 'slab': {
-      const slabVertexCount = shape.points.length;
-      if (gripIndex < 0) return null;
-
-      if (gripIndex < slabVertexCount) {
-        // Vertex grip: move the individual vertex
-        const newPoints = shape.points.map((p, i) =>
-          i === gripIndex ? { x: newPos.x, y: newPos.y } : p
-        );
-        return { points: newPoints } as Partial<Shape>;
-      }
-
-      // Edge midpoint grip: move both adjacent vertices perpendicular to the edge
-      const slabEdgeIdx = gripIndex - slabVertexCount;
-      if (slabEdgeIdx < 0 || slabEdgeIdx >= slabVertexCount) return null;
-
-      const svi = slabEdgeIdx;
-      const svj = (slabEdgeIdx + 1) % slabVertexCount;
-      const slabMidX = (shape.points[svi].x + shape.points[svj].x) / 2;
-      const slabMidY = (shape.points[svi].y + shape.points[svj].y) / 2;
-
-      // Calculate the perpendicular offset from original midpoint to new position
-      const edgeDx = shape.points[svj].x - shape.points[svi].x;
-      const edgeDy = shape.points[svj].y - shape.points[svi].y;
-      const edgeLen = Math.sqrt(edgeDx * edgeDx + edgeDy * edgeDy);
-
-      if (edgeLen < 0.001) {
-        // Degenerate edge — just translate both vertices
-        const tdx = newPos.x - slabMidX;
-        const tdy = newPos.y - slabMidY;
-        const newPts = shape.points.map((p, i) => {
-          if (i === svi || i === svj) return { x: p.x + tdx, y: p.y + tdy };
-          return p;
-        });
-        return { points: newPts } as Partial<Shape>;
-      }
-
-      // Perpendicular direction (pointing "outward" from the edge)
-      const perpX = -edgeDy / edgeLen;
-      const perpY = edgeDx / edgeLen;
-
-      // Project the drag vector onto the perpendicular direction
-      const dragVecX = newPos.x - slabMidX;
-      const dragVecY = newPos.y - slabMidY;
-      const perpProj = dragVecX * perpX + dragVecY * perpY;
-
-      // Move both vertices by the perpendicular offset only
-      const offsetX = perpProj * perpX;
-      const offsetY = perpProj * perpY;
-      const newSlabPoints = shape.points.map((p, i) => {
-        if (i === svi || i === svj) return { x: p.x + offsetX, y: p.y + offsetY };
-        return p;
-      });
-      return { points: newSlabPoints } as Partial<Shape>;
-    }
-
-    case 'puntniveau': {
-      // Puntniveau grips are polygon vertex indices — move the individual vertex
-      const pnv = shape as PuntniveauShape;
-      if (gripIndex < 0 || gripIndex >= pnv.points.length) return null;
-      const newPnvPoints = pnv.points.map((p, i) =>
-        i === gripIndex ? { x: newPos.x, y: newPos.y } : p
-      );
-      return { points: newPnvPoints } as Partial<Shape>;
-    }
-
-    case 'plate-system': {
-      // Plate system grips: first N are contour vertices, next N are edge midpoints (or arc midpoints)
-      const psShape = shape as PlateSystemShape;
-      const psContour = psShape.contourPoints;
-      const psBulges = psShape.contourBulges;
-      const psVertexCount = psContour.length;
-      if (gripIndex < 0) return null;
-
-      if (gripIndex < psVertexCount) {
-        // Vertex grip: move the individual vertex
-        const newContour = psContour.map((p, i) =>
-          i === gripIndex ? { x: newPos.x, y: newPos.y } : p
-        );
-        return { contourPoints: newContour } as Partial<Shape>;
-      }
-
-      // Edge midpoint / arc midpoint grip
-      const edgeIdx = gripIndex - psVertexCount;
-      if (edgeIdx < 0 || edgeIdx >= psVertexCount) return null;
-
-      const vi = edgeIdx;
-      const vj = (edgeIdx + 1) % psVertexCount;
-      const b = psBulges ? (psBulges[edgeIdx] ?? 0) : 0;
-
-      if (Math.abs(b) > 0.0001) {
-        // Arc-midpoint drag: recalculate bulge from the three points (start, dragged midpoint, end)
-        const newBulge = calculateBulgeFrom3Points(psContour[vi], newPos, psContour[vj]);
-        const newBulges = psBulges ? [...psBulges] : new Array(psVertexCount).fill(0);
-        while (newBulges.length < psVertexCount) newBulges.push(0);
-        newBulges[edgeIdx] = newBulge;
-        return { contourBulges: newBulges } as Partial<Shape>;
-      }
-
-      // Straight edge midpoint: move both adjacent vertices by the same delta
-      const midX = (psContour[vi].x + psContour[vj].x) / 2;
-      const midY = (psContour[vi].y + psContour[vj].y) / 2;
-      const dx = newPos.x - midX;
-      const dy = newPos.y - midY;
-      const newContour = psContour.map((p, i) => {
-        if (i === vi || i === vj) {
-          return { x: p.x + dx, y: p.y + dy };
-        }
-        return p;
-      });
-      return { contourPoints: newContour } as Partial<Shape>;
-    }
-
     case 'image': {
       const imgShape = shape as ImageShape;
       if (gripIndex === 8) {
@@ -1867,8 +1309,10 @@ function computeGripUpdates(shape: Shape, gripIndex: number, newPos: Point, edge
       return null;
     }
 
-    default:
-      return null;
+    default: {
+      const extGrip = gripProviderRegistry.get(shape.type);
+      return extGrip ? extGrip.computeGripUpdate(shape, gripIndex, newPos) as Partial<Shape> | null : null;
+    }
   }
 }
 

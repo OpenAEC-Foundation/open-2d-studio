@@ -4,6 +4,7 @@ import { getShapeBounds } from '../../engine/geometry/GeometryUtils';
 import { findConnectedShapes } from '../../engine/geometry/ConnectedShapeDetection';
 import { getNextSectionLabel } from '../drawing/useSectionCalloutDrawing';
 import type { Point, Shape } from '../../types/geometry';
+import { keyboardShortcutRegistry } from '../../engine/registry/KeyboardShortcutRegistry';
 
 /**
  * Compute the default rotation center for a shape.
@@ -138,23 +139,10 @@ const TWO_KEY_SHORTCUTS: Record<string, string> = {
   'da': 'dimension-angular',
   'dr': 'dimension-radius',
   'dd': 'dimension-diameter',
-  'se': 'section',  // Structural section
-  'be': 'beam',     // Structural beam
-  'gl': 'gridline', // Structural grid line
-  'pi': 'pile',     // Foundation pile
-  'pn': 'puntniveau', // Puntniveau zone
-  'ct': 'cpt',      // CPT (Cone Penetration Test) marker
-  'wa': 'wall',     // Structural wall
   'al': 'align',    // Align tool
   'ay': 'array',    // Array tool
-  'tw': 'trim-walls', // Trim walls/beams miter join
-  'sl': 'slab',     // Floor slab
-  'ps': 'plate-system', // Plate system (timber floor, HSB wall, ceiling)
-  'lv': 'level',    // Floor level
   'lb': 'label',    // Structural label
   'im': 'image',    // Image import
-  'rm': 'space',    // IfcSpace (room)
-  'sv': 'spot-elevation',  // Spot elevation marker
   'cs': 'create-similar',  // Create Similar
   'tl': 'toggle-thin-lines',  // Toggle thin/thick line display
   'za': 'zoom-all',           // Zoom to fit all shapes
@@ -200,21 +188,6 @@ export function useKeyboardShortcuts() {
     switchDocument,
     activeDocumentId,
     documentOrder,
-    // Dialogs
-    openBeamDialog,
-    setPendingGridline,
-    setPendingLevel,
-    setPendingPile,
-    setPendingPuntniveau,
-    setPendingCPT,
-    setPendingWall,
-    lastUsedWallTypeId,
-    setLastUsedWallTypeId,
-    wallTypes,
-    setPendingSlab,
-    setPendingSectionCallout,
-    setPendingSpace,
-    openPlateSystemDialog,
     setFindReplaceDialogOpen,
     findReplaceDialogOpen,
     // Clipboard
@@ -346,95 +319,6 @@ export function useKeyboardShortcuts() {
               const mode = tool.replace('dimension-', '') as any;
               setDimensionMode(mode);
               setActiveTool('dimension');
-            } else if (tool === 'section' || tool === 'beam') {
-              // Column/Beam opens a combined dialog
-              if (editorMode === 'drawing') {
-                openBeamDialog();
-              }
-            } else if (tool === 'gridline') {
-              // Gridline starts drawing directly with defaults
-              if (editorMode === 'drawing') {
-                setPendingGridline({ label: '1', bubblePosition: 'both', bubbleRadius: 300, fontSize: 250 });
-                setActiveTool('gridline');
-              }
-            } else if (tool === 'level') {
-              // Level starts drawing directly with defaults
-              if (editorMode === 'drawing') {
-                setPendingLevel({ label: '0', labelPosition: 'end', bubbleRadius: 400, fontSize: 250, elevation: 0, peil: 0 });
-                setActiveTool('level');
-              }
-            } else if (tool === 'pile') {
-              // Pile starts placement with defaults (like CPT)
-              if (editorMode === 'drawing') {
-                setPendingPile({ label: '', diameter: 600, fontSize: 200, showCross: true, contourType: 'circle', fillPattern: 6 });
-                setActiveTool('pile');
-              }
-            } else if (tool === 'puntniveau') {
-              // Puntniveau starts polygon drawing with defaults
-              if (editorMode === 'drawing') {
-                setPendingPuntniveau({ puntniveauNAP: -12.5, fontSize: 300 });
-                setActiveTool('puntniveau');
-              }
-            } else if (tool === 'cpt') {
-              // CPT starts placement with defaults
-              if (editorMode === 'drawing') {
-                setPendingCPT({
-                  name: '01',
-                  fontSize: 150,
-                  markerSize: 300,
-                });
-                setActiveTool('cpt');
-              }
-            } else if (tool === 'wall') {
-              // Wall starts drawing directly — use last-used wall type or default
-              if (editorMode === 'drawing') {
-                const defaultTypeId = lastUsedWallTypeId ?? 'beton-200';
-                const wt = wallTypes.find(w => w.id === defaultTypeId);
-                setPendingWall({
-                  thickness: wt?.thickness ?? 200,
-                  wallTypeId: defaultTypeId,
-                  justification: 'center',
-                  showCenterline: true,
-                  startCap: 'butt',
-                  endCap: 'butt',
-                  continueDrawing: true,
-                  shapeMode: 'line',
-                  spaceBounding: true,
-                });
-                setActiveTool('wall');
-              }
-            } else if (tool === 'slab') {
-              // Slab starts drawing directly with defaults
-              if (editorMode === 'drawing') {
-                setPendingSlab({
-                  thickness: 200,
-                  level: '0',
-                  elevation: 0,
-                  material: 'concrete',
-                  shapeMode: 'line',
-                });
-                setActiveTool('slab');
-              }
-            } else if (tool === 'space') {
-              // Space (IfcSpace) starts detecting directly with defaults
-              if (editorMode === 'drawing') {
-                setPendingSpace({
-                  name: 'Room',
-                  fillColor: '#00ff00',
-                  fillOpacity: 0.1,
-                });
-                setActiveTool('space');
-              }
-            } else if (tool === 'plate-system') {
-              // Plate System opens a dialog
-              if (editorMode === 'drawing') {
-                openPlateSystemDialog();
-              }
-            } else if (tool === 'spot-elevation') {
-              // Spot Elevation starts drawing directly
-              if (editorMode === 'drawing') {
-                setActiveTool('spot-elevation');
-              }
             } else if (tool === 'create-similar') {
               // Create Similar: activate the tool matching the selected shape type
               if (editorMode === 'drawing') {
@@ -458,13 +342,14 @@ export function useKeyboardShortcuts() {
                     const mappedTool = isLeader ? 'leader' : typeToTool[selShape.type];
                     if (mappedTool === 'gridline') {
                       const gl = selShape as any;
-                      setPendingGridline({ label: gl.label || '1', bubblePosition: gl.bubblePosition || 'both', bubbleRadius: gl.bubbleRadius || 450, fontSize: gl.fontSize || 315 });
+                      useAppStore.getState().setPendingGridline({ label: gl.label || '1', bubblePosition: gl.bubblePosition || 'both', bubbleRadius: gl.bubbleRadius || 450, fontSize: gl.fontSize || 315 });
                     } else if (mappedTool === 'level') {
                       const lv = selShape as any;
-                      setPendingLevel({ label: lv.label || '0', labelPosition: 'end', bubbleRadius: lv.bubbleRadius || 400, fontSize: lv.fontSize || 250, elevation: lv.elevation ?? 0, peil: lv.peil ?? 0, description: lv.description });
+                      useAppStore.getState().setPendingLevel({ label: lv.label || '0', labelPosition: 'end', bubbleRadius: lv.bubbleRadius || 400, fontSize: lv.fontSize || 250, elevation: lv.elevation ?? 0, peil: lv.peil ?? 0, description: lv.description });
                     } else if (mappedTool === 'wall') {
                       const wl = selShape as any;
-                      setPendingWall({
+                      const st = useAppStore.getState();
+                      st.setPendingWall({
                         thickness: wl.thickness || 200, wallTypeId: wl.wallTypeId,
                         justification: wl.justification || 'center',
                         showCenterline: wl.showCenterline ?? true, startCap: wl.startCap || 'butt',
@@ -474,11 +359,11 @@ export function useKeyboardShortcuts() {
                         spaceBounding: wl.spaceBounding ?? true,
                       });
                       if (wl.wallTypeId) {
-                        setLastUsedWallTypeId(wl.wallTypeId);
+                        st.setLastUsedWallTypeId(wl.wallTypeId);
                       }
                     } else if (mappedTool === 'slab') {
                       const sb = selShape as any;
-                      setPendingSlab({
+                      useAppStore.getState().setPendingSlab({
                         thickness: sb.thickness || 200,
                         level: sb.level || '0',
                         elevation: sb.elevation ?? 0,
@@ -503,7 +388,7 @@ export function useKeyboardShortcuts() {
                       });
                     } else if (mappedTool === 'pile') {
                       const pl = selShape as any;
-                      setPendingPile({
+                      useAppStore.getState().setPendingPile({
                         label: pl.label || 'P1',
                         diameter: pl.diameter || 300,
                         fontSize: pl.fontSize || 150,
@@ -514,23 +399,22 @@ export function useKeyboardShortcuts() {
                       });
                     } else if (mappedTool === 'puntniveau') {
                       const pnv = selShape as any;
-                      setPendingPuntniveau({
+                      useAppStore.getState().setPendingPuntniveau({
                         puntniveauNAP: pnv.puntniveauNAP ?? -12.5,
                         fontSize: pnv.fontSize || 300,
                       });
                     } else if (mappedTool === 'cpt') {
                       const cp = selShape as any;
-                      setPendingCPT({
+                      useAppStore.getState().setPendingCPT({
                         name: cp.name || '01',
                         fontSize: cp.fontSize || 150,
                         markerSize: cp.markerSize || 300,
                       });
                     } else if (mappedTool === 'plate-system') {
-                      // Plate system: open the dialog for configuration
-                      openPlateSystemDialog();
+                      useAppStore.getState().openPlateSystemDialog();
                     } else if (mappedTool === 'section-callout') {
                       const sc = selShape as any;
-                      setPendingSectionCallout({
+                      useAppStore.getState().setPendingSectionCallout({
                         label: sc.label || getNextSectionLabel(),
                         bubbleRadius: sc.bubbleRadius || 400,
                         fontSize: sc.fontSize || 250,
@@ -603,11 +487,19 @@ export function useKeyboardShortcuts() {
             }
             return;
           }
+          // Check extension keyboard shortcuts
+          const extShortcut = keyboardShortcutRegistry.get(combo);
+          if (extShortcut) {
+            e.preventDefault();
+            extShortcut.activate();
+            return;
+          }
           // Invalid combo — fall through to single-key handling for the second key
         }
 
         // Check if this key could be the start of a two-key combo
-        const possibleCombos = Object.keys(TWO_KEY_SHORTCUTS).filter(k => k[0] === key);
+        const allShortcutKeys = [...Object.keys(TWO_KEY_SHORTCUTS), ...keyboardShortcutRegistry.getAllKeys()];
+        const possibleCombos = allShortcutKeys.filter(k => k[0] === key);
         if (possibleCombos.length > 0) {
           // Special case: 'g' with shapes selected → execute move immediately
           // (skip 750ms two-key timeout since 'gl' is rarely wanted with a selection)
@@ -1003,11 +895,6 @@ export function useKeyboardShortcuts() {
     switchDocument,
     activeDocumentId,
     documentOrder,
-    openBeamDialog,
-    setPendingPile,
-    setPendingPuntniveau,
-    setPendingSectionCallout,
-    setPendingSpace,
     setFindReplaceDialogOpen,
     findReplaceDialogOpen,
     copySelectedShapes,

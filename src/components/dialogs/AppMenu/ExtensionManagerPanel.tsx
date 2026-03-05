@@ -7,6 +7,7 @@ import { useAppStore } from '../../../state/appStore';
 import { fetchCatalog } from '../../../extensions/registryService';
 import {
   installExtension,
+  installExtensionFromFile,
   updateExtension,
   removeExtension,
   checkForUpdates,
@@ -33,6 +34,7 @@ export function ExtensionManagerPanel() {
   const [activeTab, setActiveTab] = useState<ManagerTab>('browse');
   const [search, setSearch] = useState('');
   const [categoryFilter, setCategoryFilter] = useState<ExtensionCategory | 'all'>('all');
+  const [installingFromFile, setInstallingFromFile] = useState(false);
 
   const {
     installedExtensions,
@@ -64,6 +66,18 @@ export function ExtensionManagerPanel() {
     } else {
       await setSetting(`ext:${id}:enabled`, false);
       await disableExtension(id);
+    }
+  }, []);
+
+  const handleInstallFromFile = useCallback(async () => {
+    setInstallingFromFile(true);
+    try {
+      const success = await installExtensionFromFile();
+      if (success) {
+        setActiveTab('installed');
+      }
+    } finally {
+      setInstallingFromFile(false);
     }
   }, []);
 
@@ -138,7 +152,7 @@ export function ExtensionManagerPanel() {
         ))}
       </div>
 
-      {/* Search + Category Filter */}
+      {/* Search + Install from file + Category Filter */}
       <div className="flex gap-3 mb-4 items-center">
         <input
           type="text"
@@ -147,6 +161,13 @@ export function ExtensionManagerPanel() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
         />
+        <button
+          className="px-3 py-1.5 text-xs rounded border border-cad-border text-cad-text-dim hover:bg-cad-hover cursor-default disabled:opacity-50"
+          onClick={handleInstallFromFile}
+          disabled={installingFromFile}
+        >
+          {installingFromFile ? 'Installing...' : 'Install from file...'}
+        </button>
         <div className="flex gap-1 flex-wrap">
           {CATEGORIES.map((cat) => (
             <button
@@ -176,18 +197,32 @@ export function ExtensionManagerPanel() {
               <div className="p-4 rounded bg-red-900/10 border border-red-600/30">
                 <p className="text-xs text-red-400 mb-2">Failed to load extension catalog</p>
                 <p className="text-[10px] text-red-400/70">{catalogError}</p>
-                <button
-                  className="mt-2 px-3 py-1 text-[10px] rounded border border-cad-border text-cad-text-dim hover:bg-cad-hover cursor-default"
-                  onClick={() => fetchCatalog(true)}
-                >
-                  Retry
-                </button>
+                <div className="flex gap-2 mt-2">
+                  <button
+                    className="px-3 py-1 text-[10px] rounded border border-cad-border text-cad-text-dim hover:bg-cad-hover cursor-default"
+                    onClick={() => fetchCatalog(true)}
+                  >
+                    Retry
+                  </button>
+                  <button
+                    className="px-3 py-1 text-[10px] rounded border border-cad-border text-cad-text-dim hover:bg-cad-hover cursor-default"
+                    onClick={handleInstallFromFile}
+                    disabled={installingFromFile}
+                  >
+                    Install from file...
+                  </button>
+                </div>
               </div>
             )}
             {!catalogLoading && !catalogError && catalogEntries.length === 0 && (
-              <p className="text-xs text-cad-text-muted py-8 text-center">
-                No extensions available yet. Check back later.
-              </p>
+              <div className="py-8 text-center">
+                <p className="text-xs text-cad-text-muted mb-2">
+                  No extensions available in the catalog yet.
+                </p>
+                <p className="text-[10px] text-cad-text-muted mb-3">
+                  You can install extensions from a .zip file using the button above.
+                </p>
+              </div>
             )}
             {filterEntries(catalogEntries).map((entry) => (
               <ExtensionCard

@@ -3,6 +3,7 @@
  */
 
 import type { SnapType, SnapPoint, Point, TrackingLine } from './types';
+import { setSetting } from '../../utils/settings';
 
 // ============================================================================
 // Theme Types
@@ -55,10 +56,6 @@ export interface SnapState {
   // Axes visibility
   axesVisible: boolean;
 
-  // 3D view settings
-  show3DView: boolean;
-  viewMode3D: 'wireframe' | 'shaded' | 'hidden-line';
-
   // IFC category visibility filter
   hiddenIfcCategories: string[];
 }
@@ -88,8 +85,6 @@ export interface SnapActions {
   setUITheme: (theme: UITheme) => void;
   toggleRotationGizmo: () => void;
   toggleAxesVisible: () => void;
-  setShow3DView: (show: boolean) => void;
-  setViewMode3D: (mode: 'wireframe' | 'shaded' | 'hidden-line') => void;
   toggleIfcCategoryVisibility: (category: string) => void;
   setHiddenIfcCategories: (categories: string[]) => void;
 }
@@ -120,8 +115,6 @@ export const initialSnapState: SnapState = {
   uiTheme: 'dark',
   showRotationGizmo: true,
   axesVisible: false,
-  show3DView: false,
-  viewMode3D: 'shaded',
   hiddenIfcCategories: [],
 };
 
@@ -136,21 +129,25 @@ export const createSnapSlice = (
   setGridSize: (size) =>
     set((state) => {
       state.gridSize = Math.max(1, size);
+      setSetting('gridSize', state.gridSize);
     }),
 
   toggleGrid: () =>
     set((state) => {
       state.gridVisible = !state.gridVisible;
+      setSetting('gridVisible', state.gridVisible);
     }),
 
   toggleSnap: () =>
     set((state) => {
       state.snapEnabled = !state.snapEnabled;
+      setSetting('snapEnabled', state.snapEnabled);
     }),
 
   setActiveSnaps: (snaps) =>
     set((state) => {
       state.activeSnaps = snaps;
+      setSetting('activeSnaps', [...state.activeSnaps]);
     }),
 
   toggleSnapType: (snapType) =>
@@ -161,11 +158,13 @@ export const createSnapSlice = (
       } else {
         state.activeSnaps.push(snapType);
       }
+      setSetting('activeSnaps', [...state.activeSnaps]);
     }),
 
   setSnapTolerance: (tolerance) =>
     set((state) => {
       state.snapTolerance = Math.max(1, tolerance);
+      setSetting('snapTolerance', state.snapTolerance);
     }),
 
   setCurrentSnapPoint: (snapPoint) =>
@@ -176,11 +175,13 @@ export const createSnapSlice = (
   toggleTracking: () =>
     set((state) => {
       state.trackingEnabled = !state.trackingEnabled;
+      setSetting('trackingEnabled', state.trackingEnabled);
     }),
 
   togglePolarTracking: () =>
     set((state) => {
       state.polarTrackingEnabled = !state.polarTrackingEnabled;
+      setSetting('polarTrackingEnabled', state.polarTrackingEnabled);
     }),
 
   toggleOrthoMode: () =>
@@ -189,17 +190,21 @@ export const createSnapSlice = (
       // Ortho mode overrides polar tracking
       if (state.orthoMode) {
         state.polarTrackingEnabled = false;
+        setSetting('polarTrackingEnabled', false);
       }
+      setSetting('orthoMode', state.orthoMode);
     }),
 
   toggleObjectTracking: () =>
     set((state) => {
       state.objectTrackingEnabled = !state.objectTrackingEnabled;
+      setSetting('objectTrackingEnabled', state.objectTrackingEnabled);
     }),
 
   setPolarAngleIncrement: (angle) =>
     set((state) => {
       state.polarAngleIncrement = angle;
+      setSetting('polarAngleIncrement', state.polarAngleIncrement);
     }),
 
   setCurrentTrackingLines: (lines) =>
@@ -220,11 +225,13 @@ export const createSnapSlice = (
   toggleWhiteBackground: () =>
     set((state) => {
       state.whiteBackground = !state.whiteBackground;
+      setSetting('whiteBackground', state.whiteBackground);
     }),
 
   toggleBoundaryVisible: () =>
     set((state) => {
       state.boundaryVisible = !state.boundaryVisible;
+      setSetting('boundaryVisible', state.boundaryVisible);
     }),
 
   setUITheme: (theme) =>
@@ -232,23 +239,18 @@ export const createSnapSlice = (
       state.uiTheme = theme;
       // Apply theme to document root for CSS variables
       document.documentElement.setAttribute('data-theme', theme);
+      setSetting('uiTheme', theme);
     }),
 
   toggleRotationGizmo: () =>
     set((state) => {
       state.showRotationGizmo = !state.showRotationGizmo;
+      setSetting('showRotationGizmo', state.showRotationGizmo);
     }),
   toggleAxesVisible: () =>
     set((state) => {
       state.axesVisible = !state.axesVisible;
-    }),
-  setShow3DView: (show) =>
-    set((state) => {
-      state.show3DView = show;
-    }),
-  setViewMode3D: (mode) =>
-    set((state) => {
-      state.viewMode3D = mode;
+      setSetting('axesVisible', state.axesVisible);
     }),
   toggleIfcCategoryVisibility: (category) =>
     set((state) => {

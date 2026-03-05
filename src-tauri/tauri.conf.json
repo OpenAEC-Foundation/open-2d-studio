@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Open 2D Studio",
-  "version": "0.31.0",
-  "identifier": "com.openndstudio.app",
+  "version": "0.32.0",
+  "identifier": "com.open2dstudio.app",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:3000",

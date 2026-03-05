@@ -2,8 +2,9 @@
  * Extension Service — Install, update, and remove extensions
  */
 
-import { writeFile, mkdir, remove, exists } from '@tauri-apps/plugin-fs';
+import { writeFile, readFile, mkdir, remove, exists, rename } from '@tauri-apps/plugin-fs';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
+import { open as openDialog } from '@tauri-apps/plugin-dialog';
 import { inflateSync } from 'fflate';
 import type { CatalogEntry, InstalledExtension } from './types';
 import { useAppStore } from '../state/appStore';
@@ -139,6 +140,83 @@ export async function installExtension(entry: CatalogEntry): Promise<boolean> {
     return true;
   } catch (err) {
     console.error(`[Extensions] Failed to install ${entry.id}:`, err);
+    return false;
+  }
+}
+
+export async function installExtensionFromFile(): Promise<boolean> {
+  const store = useAppStore.getState();
+
+  try {
+    const selected = await openDialog({
+      title: 'Install Extension',
+      filters: [{ name: 'Extension Package', extensions: ['zip'] }],
+      multiple: false,
+      directory: false,
+    });
+
+    if (!selected) return false;
+
+    const filePath = Array.isArray(selected) ? selected[0] : selected;
+    if (!filePath) return false;
+
+    const extensionsDir = await getExtensionsDir();
+    const dirExists = await exists(extensionsDir);
+    if (!dirExists) {
+      await mkdir(extensionsDir, { recursive: true });
+    }
+
+    const tempDir = `${extensionsDir}/_temp_install`;
+    try {
+      await remove(tempDir, { recursive: true });
+    } catch { /* may not exist */ }
+    await mkdir(tempDir, { recursive: true });
+
+    try {
+      const zipBytes = await readFile(filePath);
+      await extractZip(zipBytes.buffer, tempDir);
+
+      const result = await loadExtension(tempDir);
+      if (!result) {
+        await remove(tempDir, { recursive: true });
+        return false;
+      }
+
+      const finalDir = `${extensionsDir}/${result.manifest.id}`;
+
+      // Remove existing installation if present
+      if (await exists(finalDir)) {
+        const existing = store.installedExtensions[result.manifest.id];
+        if (existing) {
+          await disableExtension(result.manifest.id);
+          store.unregisterExtension(result.manifest.id);
+        }
+        await remove(finalDir, { recursive: true });
+      }
+
+      await rename(tempDir, finalDir);
+
+      const now = new Date().toISOString();
+      store.registerExtension({
+        manifest: result.manifest,
+        status: 'disabled',
+        installedAt: now,
+        updatedAt: now,
+        path: finalDir,
+      });
+
+      await setSetting(`ext:${result.manifest.id}:enabled`, true);
+      await enableExtension(result.manifest.id);
+
+      return true;
+    } catch (err) {
+      try {
+        await remove(tempDir, { recursive: true });
+      } catch { /* cleanup best-effort */ }
+      throw err;
+    }
+  } catch (err) {
+    console.error('[Extensions] Failed to install from file:', err);
     return false;
   }
 }

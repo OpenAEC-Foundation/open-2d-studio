@@ -13,7 +13,8 @@ const activePlugins = new Map<string, { plugin: ExtensionPlugin; cleanup: () => 
 
 export async function getExtensionsDir(): Promise<string> {
   const appData = await appDataDir();
-  return `${appData}extensions`;
+  const sep = appData.endsWith('/') || appData.endsWith('\\') ? '' : '/';
+  return `${appData}${sep}extensions`;
 }
 
 export async function loadExtension(
@@ -46,8 +47,17 @@ export async function loadExtension(
 
     const moduleExports: Record<string, unknown> = {};
     const moduleObj = { exports: moduleExports };
-    const factory = new Function('module', 'exports', mainCode);
-    factory(moduleObj, moduleExports);
+    const extensionRequire = (moduleName: string) => {
+      switch (moduleName) {
+        case 'open-2d-studio': return (window as any).__open2dStudioSdk;
+        case 'react': return (window as any).__open2dStudioReact;
+        case 'react/jsx-runtime': return (window as any).__open2dStudioReactJsxRuntime;
+        case 'lucide-react': return (window as any).__open2dStudioLucideReact;
+        default: throw new Error(`[Extensions] Unknown module: '${moduleName}'`);
+      }
+    };
+    const factory = new Function('module', 'exports', 'require', mainCode);
+    factory(moduleObj, moduleExports, extensionRequire);
 
     const plugin = moduleObj.exports as unknown as ExtensionPlugin;
     if (typeof plugin.onLoad !== 'function') {

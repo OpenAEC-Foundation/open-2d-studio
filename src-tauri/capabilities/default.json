@@ -52,6 +52,10 @@
       "identifier": "fs:allow-remove",
       "allow": [{ "path": "**" }]
     },
+    {
+      "identifier": "fs:allow-rename",
+      "allow": [{ "path": "**" }]
+    },
     "updater:default",
     "process:allow-restart",
     "process:allow-exit",

@@ -5,7 +5,8 @@
  * Used for rendering filters, selection filters, and IFC tree display.
  */
 
-import type { Shape, BeamShape } from '../types/geometry';
+import type { Shape } from '../types/geometry';
+import { ifcCategoryRegistry } from '../engine/registry/IfcCategoryRegistry';
 
 /**
  * All known IFC categories used in the application.
@@ -46,23 +47,16 @@ export const IFC_CATEGORY_LABELS: Record<string, string> = {
 
 /**
  * Map a shape to its IFC entity class name.
+ * Checks the extension registry first, then falls back to core annotation types.
  * Returns 'Other' for shape types that don't map to an IFC class.
  */
 export function getIfcCategory(shape: Shape): string {
+  // Check extension-registered categories first
+  const registered = ifcCategoryRegistry.getCategory(shape);
+  if (registered) return registered;
+
+  // Core annotation types
   switch (shape.type) {
-    case 'wall': return 'IfcWall';
-    case 'beam': {
-      const beam = shape as BeamShape;
-      return beam.viewMode === 'section' ? 'IfcColumn' : 'IfcBeam';
-    }
-    case 'slab': return 'IfcSlab';
-    case 'pile': return 'IfcPile';
-    case 'cpt': return 'IfcBuildingElementProxy';
-    case 'puntniveau': return 'IfcBuildingElementProxy';
-    case 'gridline': return 'IfcGrid';
-    case 'level': return 'IfcBuildingStorey';
-    case 'space': return 'IfcSpace';
-    case 'plate-system': return 'IfcPlateSystem';
     case 'line':
     case 'arc':
     case 'circle':

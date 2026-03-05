@@ -4,7 +4,7 @@
  * Restores on app startup if saved state exists.
  */
 
-const AUTOSAVE_KEY = 'openndstudio_autosave_v1';
+const AUTOSAVE_KEY = 'open2dstudio_autosave_v1';
 const DEBOUNCE_MS = 2000;
 
 interface AutoSaveData {

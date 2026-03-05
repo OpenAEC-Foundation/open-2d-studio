@@ -32,6 +32,9 @@ src-tauri/target/
 # TypeScript
 *.tsbuildinfo
 
+# Samples
+samples/
+
 # Misc
 .cache/
 nul

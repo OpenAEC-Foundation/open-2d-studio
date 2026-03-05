@@ -64,6 +64,7 @@ import {
 
 import type { TitleBlock, TitleBlockField } from './types';
 import { regenerateGridDimensions } from '../../utils/gridDimensionUtils';
+import { modelBehaviorRegistry } from '../../engine/registry/ModelBehaviorRegistry';
 import {
   computeSectionReferences,
   computeSectionBoundary,
@@ -521,33 +522,18 @@ export const createModelSlice = (
   addShape: (shape) =>
     set((state) => {
       withHistory(state, (draft) => {
-        // Auto-assign projectGridId and clone to other plan drawings
-        if (shape.type === 'gridline') {
-          const gl = shape as GridlineShape;
-          const drawing = state.drawings.find(d => d.id === gl.drawingId);
-          if (drawing?.drawingType === 'plan') {
-            // Assign projectGridId if missing
-            if (!gl.projectGridId) {
-              gl.projectGridId = gl.id;
-            }
-            // Clone to all other plan drawings
-            const otherPlanDrawings = state.drawings.filter(
-              d => d.drawingType === 'plan' && d.id !== gl.drawingId
-            );
-            for (const otherDrawing of otherPlanDrawings) {
-              const otherLayer = state.layers.find(l => l.drawingId === otherDrawing.id);
-              if (otherLayer) {
-                draft.push({
-                  ...gl,
-                  id: generateId(),
-                  drawingId: otherDrawing.id,
-                  layerId: otherLayer.id,
-                } as unknown as Shape);
-              }
+        draft.push(shape);
+
+        // Extension pre-add hook: allow extensions to create additional shapes
+        const preAddFn = modelBehaviorRegistry.getPreAdd(shape.type);
+        if (preAddFn) {
+          const extraShapes = preAddFn(shape, state.shapes, state.drawings, state.layers);
+          if (extraShapes) {
+            for (const extra of extraShapes) {
+              draft.push(extra);
             }
           }
         }
-        draft.push(shape);
       });
     }),
 
@@ -556,31 +542,18 @@ export const createModelSlice = (
       if (shapes.length === 0) return;
       withHistory(state, (draft) => {
         for (const shape of shapes) {
-          // Auto-assign projectGridId and clone gridlines to other plan drawings
-          if (shape.type === 'gridline') {
-            const gl = shape as GridlineShape;
-            const drawing = state.drawings.find(d => d.id === gl.drawingId);
-            if (drawing?.drawingType === 'plan') {
-              if (!gl.projectGridId) {
-                gl.projectGridId = gl.id;
-              }
-              const otherPlanDrawings = state.drawings.filter(
-                d => d.drawingType === 'plan' && d.id !== gl.drawingId
-              );
-              for (const otherDrawing of otherPlanDrawings) {
-                const otherLayer = state.layers.find(l => l.drawingId === otherDrawing.id);
-                if (otherLayer) {
-                  draft.push({
-                    ...gl,
-                    id: generateId(),
-                    drawingId: otherDrawing.id,
-                    layerId: otherLayer.id,
-                  } as unknown as Shape);
-                }
+          draft.push(shape);
+
+          // Extension pre-add hook: allow extensions to create additional shapes
+          const preAddFn = modelBehaviorRegistry.getPreAdd(shape.type);
+          if (preAddFn) {
+            const extraShapes = preAddFn(shape, state.shapes, state.drawings, state.layers);
+            if (extraShapes) {
+              for (const extra of extraShapes) {
+                draft.push(extra);
               }
             }
           }
-          draft.push(shape);
         }
       });
     }),
@@ -674,57 +647,34 @@ export const createModelSlice = (
         }
       }
 
-      // If deleting a gridline with projectGridId, also delete all siblings in other drawings
-      const projectGridSiblingIds = new Set<string>();
-      const deletedGridline = state.shapes.find(s => s.id === id);
-      if (deletedGridline && deletedGridline.type === 'gridline') {
-        const pgId = (deletedGridline as GridlineShape).projectGridId;
-        if (pgId) {
-          for (const s of state.shapes) {
-            if (s.id !== id && s.type === 'gridline' &&
-                (s as GridlineShape).projectGridId === pgId) {
-              projectGridSiblingIds.add(s.id);
-            }
-          }
-        }
-      }
-
-      // If deleting a plate system, also delete all its child beams
-      const plateSystemChildIds = new Set<string>();
+      // Extension post-delete hook: allow extensions to cascade additional deletions/updates
+      const extDeleteIds = new Set<string>();
       const deletedShape = state.shapes.find(s => s.id === id);
-      if (deletedShape && deletedShape.type === 'plate-system') {
-        const ps = deletedShape as import('../../types/geometry').PlateSystemShape;
-        if (ps.childShapeIds) {
-          for (const childId of ps.childShapeIds) {
-            plateSystemChildIds.add(childId);
+      if (deletedShape) {
+        const postDeleteFn = modelBehaviorRegistry.getPostDelete(deletedShape.type);
+        if (postDeleteFn) {
+          const result = postDeleteFn(deletedShape, state.shapes);
+          for (const delId of result.deleteIds) {
+            extDeleteIds.add(delId);
           }
-        }
-      }
-
-      // If deleting a child beam of a plate system, update parent's childShapeIds
-      if (deletedShape && deletedShape.type === 'beam') {
-        const beam = deletedShape as import('../../types/geometry').BeamShape;
-        if (beam.plateSystemId) {
-          const parentIdx = state.shapes.findIndex(s => s.id === beam.plateSystemId);
-          if (parentIdx !== -1) {
-            const parent = state.shapes[parentIdx] as import('../../types/geometry').PlateSystemShape;
-            if (parent.childShapeIds) {
-              (state.shapes[parentIdx] as import('../../types/geometry').PlateSystemShape).childShapeIds =
-                parent.childShapeIds.filter(cid => cid !== id);
+          result.updates.forEach((updates, shapeId) => {
+            const idx = state.shapes.findIndex(s => s.id === shapeId);
+            if (idx !== -1) {
+              Object.assign(state.shapes[idx], updates);
             }
-          }
+          });
         }
       }
 
       withHistory(state, (draft) => {
         for (let i = draft.length - 1; i >= 0; i--) {
           if (draft[i].id === id || linkedLabelIds.has(draft[i].id) ||
-              plateSystemChildIds.has(draft[i].id) || projectGridSiblingIds.has(draft[i].id)) {
+              extDeleteIds.has(draft[i].id)) {
             draft.splice(i, 1);
           }
         }
       });
-      const allRemoved = new Set([id, ...linkedLabelIds, ...plateSystemChildIds, ...projectGridSiblingIds]);
+      const allRemoved = new Set([id, ...linkedLabelIds, ...extDeleteIds]);
       state.selectedShapeIds = state.selectedShapeIds.filter(
         (sid) => !allRemoved.has(sid)
       );
@@ -741,46 +691,21 @@ export const createModelSlice = (
         }
       }
 
-      // If deleting gridlines with projectGridId, also delete their siblings in other drawings
+      // Extension post-delete hook: allow extensions to cascade additional deletions/updates
       for (const s of state.shapes) {
-        if (s.type === 'gridline' && idSet.has(s.id)) {
-          const pgId = (s as GridlineShape).projectGridId;
-          if (pgId) {
-            for (const other of state.shapes) {
-              if (other.type === 'gridline' && !idSet.has(other.id) &&
-                  (other as GridlineShape).projectGridId === pgId) {
-                idSet.add(other.id);
+        if (idSet.has(s.id)) {
+          const postDeleteFn = modelBehaviorRegistry.getPostDelete(s.type);
+          if (postDeleteFn) {
+            const result = postDeleteFn(s, state.shapes);
+            for (const delId of result.deleteIds) {
+              idSet.add(delId);
+            }
+            result.updates.forEach((updates, shapeId) => {
+              const idx = state.shapes.findIndex(sh => sh.id === shapeId);
+              if (idx !== -1) {
+                Object.assign(state.shapes[idx], updates);
               }
-            }
-          }
-        }
-      }
-
-      // If deleting plate systems, also delete their child beams
-      for (const s of state.shapes) {
-        if (s.type === 'plate-system' && idSet.has(s.id)) {
-          const ps = s as import('../../types/geometry').PlateSystemShape;
-          if (ps.childShapeIds) {
-            for (const childId of ps.childShapeIds) {
-              idSet.add(childId);
-            }
-          }
-        }
-      }
-
-      // If deleting child beams, update their parent plate system's childShapeIds
-      for (const s of state.shapes) {
-        if (s.type === 'beam' && idSet.has(s.id)) {
-          const beam = s as import('../../types/geometry').BeamShape;
-          if (beam.plateSystemId && !idSet.has(beam.plateSystemId)) {
-            const parentIdx = state.shapes.findIndex(ps => ps.id === beam.plateSystemId);
-            if (parentIdx !== -1) {
-              const parent = state.shapes[parentIdx] as import('../../types/geometry').PlateSystemShape;
-              if (parent.childShapeIds) {
-                (state.shapes[parentIdx] as import('../../types/geometry').PlateSystemShape).childShapeIds =
-                  parent.childShapeIds.filter(cid => !idSet.has(cid));
-              }
-            }
+            });
           }
         }
       }
@@ -803,46 +728,21 @@ export const createModelSlice = (
     set((state) => {
       const selected = new Set(selectedIds);
 
-      // If deleting gridlines with projectGridId, also delete their siblings in other drawings
+      // Extension post-delete hook: allow extensions to cascade additional deletions/updates
       for (const s of state.shapes) {
-        if (s.type === 'gridline' && selected.has(s.id)) {
-          const pgId = (s as GridlineShape).projectGridId;
-          if (pgId) {
-            for (const other of state.shapes) {
-              if (other.type === 'gridline' && !selected.has(other.id) &&
-                  (other as GridlineShape).projectGridId === pgId) {
-                selected.add(other.id);
+        if (selected.has(s.id)) {
+          const postDeleteFn = modelBehaviorRegistry.getPostDelete(s.type);
+          if (postDeleteFn) {
+            const result = postDeleteFn(s, state.shapes);
+            for (const delId of result.deleteIds) {
+              selected.add(delId);
+            }
+            result.updates.forEach((updates, shapeId) => {
+              const idx = state.shapes.findIndex(sh => sh.id === shapeId);
+              if (idx !== -1) {
+                Object.assign(state.shapes[idx], updates);
               }
-            }
-          }
-        }
-      }
-
-      // If deleting plate systems, also delete their child beams
-      for (const s of state.shapes) {
-        if (s.type === 'plate-system' && selected.has(s.id)) {
-          const ps = s as import('../../types/geometry').PlateSystemShape;
-          if (ps.childShapeIds) {
-            for (const childId of ps.childShapeIds) {
-              selected.add(childId);
-            }
-          }
-        }
-      }
-
-      // If deleting child beams, update their parent plate system's childShapeIds
-      for (const s of state.shapes) {
-        if (s.type === 'beam' && selected.has(s.id)) {
-          const beam = s as import('../../types/geometry').BeamShape;
-          if (beam.plateSystemId && !selected.has(beam.plateSystemId)) {
-            const parentIdx = state.shapes.findIndex(ps => ps.id === beam.plateSystemId);
-            if (parentIdx !== -1) {
-              const parent = state.shapes[parentIdx] as import('../../types/geometry').PlateSystemShape;
-              if (parent.childShapeIds) {
-                (state.shapes[parentIdx] as import('../../types/geometry').PlateSystemShape).childShapeIds =
-                  parent.childShapeIds.filter(cid => !selected.has(cid));
-              }
-            }
+            });
           }
         }
       }

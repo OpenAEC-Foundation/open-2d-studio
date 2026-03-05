@@ -3891,8 +3891,6 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
   const setCurrentStyle = useAppStore(s => s.setCurrentStyle);
   const updateShape = useAppStore(s => s.updateShape);
   const activeTool = useAppStore(s => s.activeTool);
-  const show3DView = useAppStore(s => s.show3DView);
-
   const selectedIdSet = useMemo(() => new Set(selectedShapeIds), [selectedShapeIds]);
   const selectedShapes = shapes.filter((s) => {
     if (!selectedIdSet.has(s.id)) return false;
@@ -3953,13 +3951,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
     return (
       <div className="flex-1 overflow-auto">
         {isToolWithProperties && <ActiveToolProperties activeTool={activeTool} />}
-        {show3DView ? (
-          <div className="p-3 text-xs text-cad-text-dim">
-            Select an element in the 3D view to see its properties.
-          </div>
-        ) : (
-          <DrawingPropertiesPanel showHeader={false} />
-        )}
+        <DrawingPropertiesPanel showHeader={false} />
       </div>
     );
   }
