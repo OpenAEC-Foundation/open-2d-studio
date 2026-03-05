@@ -7,7 +7,7 @@ import type { DimensionType } from '../../types/dimension';
 import type { LeaderConfig } from '../../types/geometry';
 import { defaultStyle } from './types';
 import { DIMENSION_STYLE_PRESETS } from '../../constants/cadDefaults';
-import { getSetting, setSetting } from '../../utils/settings';
+import { setSetting } from '../../utils/settings';
 
 // ============================================================================
 // State Interface
