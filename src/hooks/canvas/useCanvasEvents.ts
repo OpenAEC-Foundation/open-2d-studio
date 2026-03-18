@@ -82,6 +82,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     startGridlineLabelEdit,
     setCursor2D,
     modifyOrtho,
+    orthoMode,
     plateSystemEditMode,
     editingPlateSystemId,
     setPlateSystemEditMode,
@@ -96,6 +97,12 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     selectWallSubElement,
     clearWallSubElement,
     selectedWallSubElement,
+    slabEditMode,
+    editingSlabId,
+    slabInnerContourPoints,
+    addSlabInnerContourPoint,
+    finishSlabInnerContour,
+    cancelSlabInnerContour,
   } = useAppStore();
 
   // Get the active drawing's scale for text hit detection
@@ -338,7 +345,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Handle AEC drawing tools
       if (aecTools.isAecTool(activeTool) && aecTools.hasPendingState(activeTool)) {
         deselectAll();
-        if (aecTools.handleToolClick(activeTool, snappedPos, e.shiftKey, snapResult)) {
+        if (aecTools.handleToolClick(activeTool, snappedPos, orthoMode, snapResult)) {
           snapDetection.clearTracking();
           return;
         }
@@ -348,7 +355,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       const extTool = drawingToolRegistry.get(activeTool);
       if (extTool) {
         deselectAll();
-        if (extTool.handleClick(snappedPos, e.shiftKey)) {
+        if (extTool.handleClick(snappedPos, orthoMode)) {
           snapDetection.clearTracking();
           return;
         }
@@ -652,6 +659,12 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
             break;
           }
 
+          // Slab edit mode: click adds a point to the inner contour being drawn
+          if (slabEditMode && editingSlabId) {
+            addSlabInnerContourPoint(snappedPos);
+            break;
+          }
+
           // If pre-selected shapes exist, confirm them as selection on click
           {
             const s = useAppStore.getState();
@@ -724,14 +737,14 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         case 'hatch':
           // Clear selection when starting to draw
           deselectAll();
-          shapeDrawing.handleDrawingClick(snappedPos, e.shiftKey, snapResult.snapInfo);
+          shapeDrawing.handleDrawingClick(snappedPos, orthoMode, snapResult.snapInfo);
           // Clear snap/tracking indicators after click - they'll be recalculated on next mouse move
           snapDetection.clearTracking();
           break;
 
         case 'dimension':
           deselectAll();
-          shapeDrawing.handleDrawingClick(snappedPos, e.shiftKey, snapResult.snapInfo);
+          shapeDrawing.handleDrawingClick(snappedPos, orthoMode, snapResult.snapInfo);
           snapDetection.clearTracking();
           break;
 
@@ -845,6 +858,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       aecTools,
       leaderDrawing,
       modifyOrtho,
+      orthoMode,
       plateSystemEditMode,
       editingPlateSystemId,
       setPlateSystemEditMode,
@@ -861,6 +875,9 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       clearWallSubElement,
       selectedWallSubElement,
       selectedShapeIds,
+      slabEditMode,
+      editingSlabId,
+      addSlabInnerContourPoint,
     ]
   );
 
@@ -951,7 +968,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         // For beam: pass sourceSnapAngle for perpendicular/parallel tracking
         const sourceAngle = activeTool === 'beam' ? aecTools.getBeamSourceSnapAngle() : undefined;
         const snapResult = snapDetection.snapPoint(worldPos, basePoint, sourceAngle);
-        aecTools.handleToolMouseMove(activeTool, snapResult.point, e.shiftKey);
+        aecTools.handleToolMouseMove(activeTool, snapResult.point, orthoMode);
         return;
       }
 
@@ -1026,7 +1043,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
 
         // Update drawing preview if actively drawing
         if (shapeDrawing.isDrawing()) {
-          shapeDrawing.updateDrawingPreview(snapResult.point, e.shiftKey);
+          shapeDrawing.updateDrawingPreview(snapResult.point, orthoMode);
         }
 
         // Hover highlight for dimension tools that require clicking on geometry
@@ -1050,7 +1067,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         setHoveredShapeId(null);
       }
     },
-    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, gripEditing, boxSelection, shapeDrawing, snapDetection, activeTool, dimensionMode, pickLinesMode, findShapeAtPoint, setHoveredShapeId, canvasRef, modifyTools, aecTools, leaderDrawing, setCursor2D, modifyOrtho]
+    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, gripEditing, boxSelection, shapeDrawing, snapDetection, activeTool, dimensionMode, pickLinesMode, findShapeAtPoint, setHoveredShapeId, canvasRef, modifyTools, aecTools, leaderDrawing, setCursor2D, modifyOrtho, orthoMode]
   );
 
   /**

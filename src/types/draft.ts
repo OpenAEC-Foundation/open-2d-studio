@@ -94,7 +94,7 @@ export interface DraftCategoryInfo {
  * All draft categories with metadata
  */
 export const DRAFT_CATEGORIES: DraftCategoryInfo[] = [
-  { id: 'floor-plan', name: 'Floor Plan', description: 'Horizontal section through the building' },
+  { id: 'floor-plan', name: 'Architectural Plan', description: 'Horizontal section through the building' },
   { id: 'ceiling-plan', name: 'Ceiling Plan', description: 'Reflected ceiling plan' },
   { id: 'section', name: 'Section', description: 'Vertical cut through the building' },
   { id: 'elevation', name: 'Elevation', description: 'Exterior or interior elevation view' },

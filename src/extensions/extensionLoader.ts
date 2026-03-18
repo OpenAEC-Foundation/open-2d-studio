@@ -138,7 +138,9 @@ export async function loadAllExtensions(): Promise<void> {
 
     const entries = await readDir(extensionsDir);
 
+    console.log(`[Extensions] Found ${entries.length} entries in ${extensionsDir}`);
     for (const entry of entries) {
+      console.log(`[Extensions] Entry: ${entry.name}, isDirectory: ${entry.isDirectory}, isSymlink: ${(entry as any).isSymlink}`);
       if (!entry.isDirectory) continue;
 
       const extPath = `${extensionsDir}/${entry.name}`;
@@ -169,6 +171,44 @@ export async function loadAllExtensions(): Promise<void> {
   } catch (err) {
     console.error('[Extensions] Failed to load extensions:', err);
   }
+}
+
+export async function reloadExtension(id: string): Promise<void> {
+  console.log(`[Extensions] Reloading ${id}...`);
+  await disableExtension(id);
+  const store = useAppStore.getState();
+  const installed = store.installedExtensions[id];
+  if (!installed) {
+    console.warn(`[Extensions] ${id} not found in installed extensions`);
+    return;
+  }
+  // Re-load manifest in case it changed
+  const result = await loadExtension(installed.path);
+  if (result) {
+    store.registerExtension({
+      manifest: result.manifest,
+      status: 'disabled',
+      installedAt: installed.installedAt,
+      updatedAt: new Date().toISOString(),
+      path: installed.path,
+    });
+  }
+  await enableExtension(id);
+  console.log(`[Extensions] ${id} reloaded successfully`);
+}
+
+export async function reloadAllExtensions(): Promise<void> {
+  console.log('[Extensions] Reloading all extensions...');
+  const store = useAppStore.getState();
+  const ids = Object.keys(store.installedExtensions);
+  for (const id of ids) {
+    if (activePlugins.has(id)) {
+      await reloadExtension(id);
+    }
+  }
+  // Also discover any new extensions
+  await loadAllExtensions();
+  console.log('[Extensions] All extensions reloaded');
 }
 
 export function getActivePlugins(): Map<string, { plugin: ExtensionPlugin; cleanup: () => void }> {

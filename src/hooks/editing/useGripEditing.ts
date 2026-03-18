@@ -145,6 +145,51 @@ function findJoinedGridlineEndpoints(
   return result;
 }
 
+/** Info about a wall endpoint that is joined with the dragged endpoint. */
+interface JoinedWallInfo {
+  shapeId: string;
+  gripIndex: 0 | 1;  // 0 = start, 1 = end
+  originalShape: WallShape;
+}
+
+/**
+ * Find other wall endpoints that share the same position as the dragged endpoint
+ * (within tolerance). Only direct connections — no chain following.
+ */
+function findJoinedWallEndpoints(
+  draggedShape: WallShape,
+  draggedGripIndex: 0 | 1,
+  allShapes: Shape[],
+  tolerance: number
+): JoinedWallInfo[] {
+  const draggedEndpoint = draggedGripIndex === 0 ? draggedShape.start : draggedShape.end;
+  const result: JoinedWallInfo[] = [];
+
+  const walls = allShapes.filter(
+    s => s.type === 'wall' && s.id !== draggedShape.id && s.drawingId === draggedShape.drawingId && s.visible
+  ) as WallShape[];
+
+  const tolSq = tolerance * tolerance;
+
+  for (const wall of walls) {
+    // Check start endpoint
+    const sdx = wall.start.x - draggedEndpoint.x;
+    const sdy = wall.start.y - draggedEndpoint.y;
+    if (sdx * sdx + sdy * sdy <= tolSq) {
+      result.push({ shapeId: wall.id, gripIndex: 0, originalShape: JSON.parse(JSON.stringify(wall)) });
+      continue;
+    }
+    // Check end endpoint
+    const edx = wall.end.x - draggedEndpoint.x;
+    const edy = wall.end.y - draggedEndpoint.y;
+    if (edx * edx + edy * edy <= tolSq) {
+      result.push({ shapeId: wall.id, gripIndex: 1, originalShape: JSON.parse(JSON.stringify(wall)) });
+    }
+  }
+
+  return result;
+}
+
 /** Info about a section level that should move together with the dragged level. */
 interface JoinedSectionLevelInfo {
   shapeId: string;
@@ -1345,6 +1390,7 @@ export function useGripEditing() {
   const parametricDragRef = useRef<ParametricGripDragState | null>(null);
   const justFinishedDragRef = useRef(false);
   const joinedGridlinesRef = useRef<JoinedGridlineInfo[]>([]);
+  const joinedWallsRef = useRef<JoinedWallInfo[]>([]);
   const joinedSectionLevelsRef = useRef<JoinedSectionLevelInfo[]>([]);
 
   // Get the active drawing scale for text bounds calculation
@@ -1677,6 +1723,27 @@ export function useGripEditing() {
         }
       }
 
+      // Lazily detect joined wall endpoints on first move (walls sharing an endpoint)
+      if (currentShape.type === 'wall' && (drag.gripIndex === 0 || drag.gripIndex === 1 || drag.gripIndex === 2) && joinedWallsRef.current.length === 0) {
+        const allShapes = useAppStore.getState().shapes;
+        if (drag.gripIndex === 2) {
+          // Midpoint drag: find connections at both endpoints
+          const joinedStart = findJoinedWallEndpoints(currentShape as WallShape, 0, allShapes, 1);
+          const joinedEnd = findJoinedWallEndpoints(currentShape as WallShape, 1, allShapes, 1);
+          const combined = [...joinedStart, ...joinedEnd];
+          if (combined.length > 0) {
+            joinedWallsRef.current = combined;
+          }
+        } else {
+          const joined = findJoinedWallEndpoints(
+            currentShape as WallShape, drag.gripIndex as 0 | 1, allShapes, 1
+          );
+          if (joined.length > 0) {
+            joinedWallsRef.current = joined;
+          }
+        }
+      }
+
       // Lazily detect joined section levels on first move (endpoint drags move all levels horizontally)
       if (currentShape.type === 'level' && (drag.gripIndex === 0 || drag.gripIndex === 1) && joinedSectionLevelsRef.current.length === 0) {
         const allShapes = useAppStore.getState().shapes;
@@ -1726,8 +1793,8 @@ export function useGripEditing() {
         }
       }
 
-      // Shift-key: snap line/beam/gridline/wall endpoint to 45° angle increments
-      if (shiftKey && !drag.axisConstraint &&
+      // Ortho: snap line/beam/gridline/wall endpoint to 45° angle increments
+      if (orthoMode && !drag.axisConstraint &&
           (currentShape.type === 'line' || currentShape.type === 'beam' || currentShape.type === 'gridline' || currentShape.type === 'wall') &&
           (drag.gripIndex === 0 || drag.gripIndex === 1)) {
         const opposite = drag.gripIndex === 0
@@ -1736,8 +1803,8 @@ export function useGripEditing() {
         constrainedPos = snapToAngle(opposite, constrainedPos);
       }
 
-      // Shift-key: constrain section-callout grip movement to horizontal or vertical
-      if (shiftKey && !drag.axisConstraint && currentShape.type === 'section-callout' && drag.originalGripPoint) {
+      // Ortho: constrain section-callout grip movement to horizontal or vertical
+      if (orthoMode && !drag.axisConstraint && currentShape.type === 'section-callout' && drag.originalGripPoint) {
         const scShape = currentShape as SectionCalloutShape;
         if (drag.gripIndex === 0 || drag.gripIndex === 1) {
           // Endpoint drag: constrain relative to the opposite endpoint
@@ -2024,6 +2091,43 @@ export function useGripEditing() {
         });
       }
 
+      // Sync joined wall endpoints: move connected wall endpoints by the same delta
+      if (joinedWallsRef.current.length > 0 && drag.originalShape.type === 'wall' &&
+          (drag.gripIndex === 0 || drag.gripIndex === 1 || drag.gripIndex === 2)) {
+        // For midpoint drag, both endpoints move by the same delta
+        // For endpoint drag, only the dragged endpoint moves
+        const origWall = drag.originalShape as WallShape;
+        let delta: Point;
+        if (drag.gripIndex === 2) {
+          // Midpoint drag: compute delta from original midpoint
+          const origMid = {
+            x: (origWall.start.x + origWall.end.x) / 2,
+            y: (origWall.start.y + origWall.end.y) / 2,
+          };
+          delta = { x: constrainedPos.x - origMid.x, y: constrainedPos.y - origMid.y };
+        } else {
+          const origEndpoint = drag.gripIndex === 0 ? origWall.start : origWall.end;
+          delta = { x: constrainedPos.x - origEndpoint.x, y: constrainedPos.y - origEndpoint.y };
+        }
+
+        useAppStore.setState((state) => {
+          for (const joined of joinedWallsRef.current) {
+            const idx = state.shapes.findIndex(s => s.id === joined.shapeId);
+            if (idx !== -1) {
+              const origPt = joined.gripIndex === 0
+                ? joined.originalShape.start
+                : joined.originalShape.end;
+              const newPt = { x: origPt.x + delta.x, y: origPt.y + delta.y };
+              if (joined.gripIndex === 0) {
+                (state.shapes[idx] as WallShape).start = newPt;
+              } else {
+                (state.shapes[idx] as WallShape).end = newPt;
+              }
+            }
+          }
+        });
+      }
+
       // Sync joined section levels: move all other section-ref levels horizontally together
       if (joinedSectionLevelsRef.current.length > 0 && drag.originalShape.type === 'level' && (drag.gripIndex === 0 || drag.gripIndex === 1)) {
         const origEndpoint = drag.gripIndex === 0
@@ -2090,8 +2194,9 @@ export function useGripEditing() {
 
     const currentShape = useAppStore.getState().shapes.find(s => s.id === drag.shapeId);
     const joinedShapes = joinedGridlinesRef.current;
+    const joinedWalls = joinedWallsRef.current;
     const joinedLevels = joinedSectionLevelsRef.current;
-    const hasJoined = joinedShapes.length > 0 || joinedLevels.length > 0;
+    const hasJoined = joinedShapes.length > 0 || joinedWalls.length > 0 || joinedLevels.length > 0;
 
     if (currentShape) {
       // Capture final states of joined shapes before restoring originals
@@ -2099,6 +2204,10 @@ export function useGripEditing() {
       if (hasJoined) {
         const storeShapes = useAppStore.getState().shapes;
         for (const joined of joinedShapes) {
+          const s = storeShapes.find(sh => sh.id === joined.shapeId);
+          if (s) joinedFinalStates.push({ id: joined.shapeId, shape: { ...s } });
+        }
+        for (const joined of joinedWalls) {
           const s = storeShapes.find(sh => sh.id === joined.shapeId);
           if (s) joinedFinalStates.push({ id: joined.shapeId, shape: { ...s } });
         }
@@ -2116,6 +2225,12 @@ export function useGripEditing() {
         }
         // Also restore joined originals
         for (const joined of joinedShapes) {
+          const jIdx = state.shapes.findIndex(s => s.id === joined.shapeId);
+          if (jIdx !== -1) {
+            state.shapes[jIdx] = { ...joined.originalShape } as Shape;
+          }
+        }
+        for (const joined of joinedWalls) {
           const jIdx = state.shapes.findIndex(s => s.id === joined.shapeId);
           if (jIdx !== -1) {
             state.shapes[jIdx] = { ...joined.originalShape } as Shape;
@@ -2156,6 +2271,21 @@ export function useGripEditing() {
           const miterUpdates = recalculateMiterJoins(updatedShape, allShapesNow);
           if (miterUpdates.length > 0) {
             updateShapes(miterUpdates);
+          }
+        }
+        // Also recalculate miters for joined walls that moved with the drag
+        if (joinedWalls.length > 0) {
+          const allShapesAfterMiter = useAppStore.getState().shapes;
+          const joinedMiterUpdates: { id: string; updates: Partial<Shape> }[] = [];
+          for (const joined of joinedWalls) {
+            const joinedShape = allShapesAfterMiter.find(s => s.id === joined.shapeId);
+            if (joinedShape) {
+              const miters = recalculateMiterJoins(joinedShape, allShapesAfterMiter);
+              joinedMiterUpdates.push(...miters);
+            }
+          }
+          if (joinedMiterUpdates.length > 0) {
+            updateShapes(joinedMiterUpdates);
           }
         }
       }
@@ -2246,6 +2376,7 @@ export function useGripEditing() {
     }
 
     joinedGridlinesRef.current = [];
+    joinedWallsRef.current = [];
     joinedSectionLevelsRef.current = [];
     dragRef.current = null;
     justFinishedDragRef.current = true;

@@ -18,6 +18,8 @@ export { automationRegistry } from './engine/registry/AutomationRegistry';
 export { dialogRegistry } from './engine/registry/DialogRegistry';
 export { shapePreviewRegistry } from './engine/registry/ShapePreviewRegistry';
 export { ifcCategoryRegistry } from './engine/registry/IfcCategoryRegistry';
+export { drawingToolRegistry } from './engine/registry/DrawingToolRegistry';
+export type { ToolHandler } from './engine/registry/DrawingToolRegistry';
 
 // State
 export { useAppStore } from './state/appStore';
@@ -82,10 +84,13 @@ export {
   LevelIcon,
   SectionDetailIcon,
   PileIcon,
+  ColumnIcon,
   PuntniveauIcon,
   CPTIcon,
   WallIcon,
   SlabIcon,
+  SlabOpeningIcon,
+  SlabLabelIcon,
   SpaceIcon,
   LabelIcon,
   MiterJoinIcon,
@@ -104,6 +109,18 @@ export { MaterialsDialog } from './components/dialogs/MaterialsDialog';
 export { WallTypesDialog } from './components/dialogs/WallTypesDialog';
 export { WallSystemDialog } from './components/dialogs/WallSystemDialog/WallSystemDialog';
 export { ProjectStructureDialog } from './components/dialogs/ProjectStructureDialog';
+export { PdfUnderlayDialog } from './components/dialogs/PdfUnderlayDialog';
+
+// PDF Underlay Service
+export {
+  showPdfFileDialog,
+  renderPdfPageForUnderlay,
+} from './services/file/pdfUnderlayService';
+export { getPdfUnderlayData } from './state/slices/uiSlice';
+
+// CPT File Service
+export { parseGEF, parseBROXML, parseCPTFile, showCPTFileDialog } from './services/file/cptFileService';
+export type { CPTFileData } from './services/file/cptFileService';
 
 // Constants
 export { CAD_DEFAULT_FONT } from './constants/cadDefaults';
@@ -121,12 +138,20 @@ export type { ProfileType, ParameterValues } from './types/parametric';
 export type {
   Point,
   Shape,
+  ImageShape,
   BeamShape,
   WallShape,
+  WallOpeningShape,
   GridlineShape,
   LevelShape,
   PileShape,
+  ColumnShape,
+  ColumnMaterial,
   SlabShape,
+  SlabOpeningShape,
+  SlabOpeningDisplayStyle,
+  SlabLabelShape,
+  StructuralFloorType,
   PuntniveauShape,
   SpaceShape,
   PlateSystemShape,
@@ -136,4 +161,16 @@ export type {
   FoundationZoneShape,
   WallSystemType,
   MaterialCategory,
+  RebarShape,
+  RebarDiameter,
+  RebarViewMode,
+  ExposureClass,
+  SurfaceExposureClasses,
+} from './types/geometry';
+export {
+  STRUCTURAL_FLOOR_TYPES,
+  REBAR_DIAMETERS,
+  EXPOSURE_CLASSES,
+  EXPOSURE_CLASS_MIN_COVER,
+  getMinCoverFromExposureClasses,
 } from './types/geometry';

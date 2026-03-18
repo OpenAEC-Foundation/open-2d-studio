@@ -27,6 +27,23 @@ export function useSlabDrawing() {
   } = useAppStore();
 
   /**
+   * Resolve level from the current drawing's storey assignment.
+   * If the active drawing is a plan drawing linked to a storey, the slab gets
+   * that storey's ID as its level.
+   */
+  const resolveSlabLevel = useCallback((): string => {
+    // If pendingSlab already has a level set, use it
+    if (pendingSlab?.level) return pendingSlab.level;
+
+    const state = useAppStore.getState();
+    const drawing = state.drawings.find((d) => d.id === activeDrawingId);
+    if (!drawing || drawing.drawingType !== 'plan' || !drawing.storeyId) {
+      return '';
+    }
+    return drawing.storeyId;
+  }, [activeDrawingId, pendingSlab?.level]);
+
+  /**
    * Create a slab shape from polygon points
    */
   const createSlab = useCallback(
@@ -34,13 +51,17 @@ export function useSlabDrawing() {
       points: Point[],
       options?: {
         thickness?: number;
-        level?: string;
         elevation?: number;
         material?: SlabMaterial;
         label?: string;
+        level?: string;
+        spanDirection?: number;
       }
     ) => {
       if (points.length < 3) return null;
+
+      // Resolve level from the current drawing's storey
+      const level = options?.level || resolveSlabLevel();
 
       const slabShape: SlabShape = {
         id: generateId(),
@@ -52,7 +73,7 @@ export function useSlabDrawing() {
         locked: false,
         points: [...points],
         thickness: options?.thickness ?? 200,
-        level: options?.level ?? '0',
+        level,
         elevation: options?.elevation ?? 0,
         material: options?.material ?? 'concrete',
         // Legacy hatch fields - kept for shape interface compat; renderer resolves hatch from materialHatchSettings
@@ -60,11 +81,12 @@ export function useSlabDrawing() {
         hatchAngle: 45,
         hatchSpacing: 100,
         label: options?.label,
+        spanDirection: options?.spanDirection,
       };
       addShape(slabShape);
       return slabShape.id;
     },
-    [activeLayerId, activeDrawingId, currentStyle, addShape]
+    [activeLayerId, activeDrawingId, currentStyle, addShape, resolveSlabLevel]
   );
 
   /**
@@ -103,7 +125,6 @@ export function useSlabDrawing() {
             ];
             createSlab(rectPoints, {
               thickness: pendingSlab.thickness,
-              level: pendingSlab.level,
               elevation: pendingSlab.elevation,
               material: pendingSlab.material,
             });
@@ -128,7 +149,6 @@ export function useSlabDrawing() {
           // Close polygon and create slab
           createSlab(drawingPoints, {
             thickness: pendingSlab.thickness,
-            level: pendingSlab.level,
             elevation: pendingSlab.elevation,
             material: pendingSlab.material,
           });
@@ -155,7 +175,6 @@ export function useSlabDrawing() {
 
     createSlab(drawingPoints, {
       thickness: pendingSlab.thickness,
-      level: pendingSlab.level,
       elevation: pendingSlab.elevation,
       material: pendingSlab.material,
     });

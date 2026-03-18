@@ -102,6 +102,45 @@ enablePatches();
 // ============================================================================
 
 /**
+ * Map of title block field IDs to projectInfo property names.
+ * When a title block field has one of these IDs and its value is empty,
+ * it will be auto-populated from the corresponding projectInfo property.
+ */
+const FIELD_TO_PROJECT_INFO: Record<string, string> = {
+  project_number: 'projectNumber',
+  projectnr: 'projectNumber',
+  project_nr: 'projectNumber',
+  projectnumber: 'projectNumber',
+  phase: 'phase',
+  project_name: 'projectName',
+  projectname: 'projectName',
+  project: 'projectName',
+  projectnaam: 'projectName',
+  client: 'client',
+  klant: 'client',
+  author: 'author',
+  auteur: 'author',
+  address: 'address',
+  adres: 'address',
+  status: 'status',
+};
+
+/**
+ * Auto-populate empty title block fields from projectInfo
+ */
+function populateTitleBlockFromProjectInfo(
+  fields: TitleBlockField[],
+  projectInfo: Record<string, any>
+): void {
+  for (const field of fields) {
+    const projectInfoKey = FIELD_TO_PROJECT_INFO[field.id];
+    if (projectInfoKey && !field.value && projectInfo[projectInfoKey]) {
+      field.value = projectInfo[projectInfoKey];
+    }
+  }
+}
+
+/**
  * Create title block with fields from SVG template
  */
 function createTitleBlockFromSVGTemplate(svgTemplateId: string): TitleBlock | null {
@@ -1128,6 +1167,12 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
           }
         }
 
+        // Auto-populate title block fields from project info
+        const currentState = get();
+        if (currentState.projectInfo && titleBlock.fields) {
+          populateTitleBlockFromProjectInfo(titleBlock.fields, currentState.projectInfo as unknown as Record<string, any>);
+        }
+
         set((state) => {
           const newSheet: Sheet = {
             id,
@@ -1193,7 +1238,7 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
           const totalSheets = state.sheets.length;
           const viewportScales = sheet.viewports.map((vp) => vp.scale);
 
-          const sheetNoField = sheet.titleBlock.fields.find((f) => f.id === 'sheetNo');
+          const sheetNoField = sheet.titleBlock.fields.find((f) => f.id === 'sheet' || f.id === 'sheetNo');
           if (sheetNoField) sheetNoField.value = `${sheetIndex + 1} of ${totalSheets}`;
 
           const dateField = sheet.titleBlock.fields.find((f) => f.id === 'date');
@@ -1213,6 +1258,11 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
             } else {
               scaleField.value = 'As Noted';
             }
+          }
+
+          // Auto-populate empty title block fields from project info
+          if (state.projectInfo) {
+            populateTitleBlockFromProjectInfo(sheet.titleBlock.fields, state.projectInfo as unknown as Record<string, any>);
           }
         }),
 
@@ -1516,7 +1566,7 @@ export function createDocumentStoreInstance(initial?: Partial<DocumentState>): S
             const newNumber = `${scheme.prefix}${scheme.separator}${(scheme.startNumber + index).toString().padStart(scheme.digits, '0')}`;
             const numberField = sheet.titleBlock.fields.find((f) => f.id === 'number');
             if (numberField) numberField.value = newNumber;
-            const sheetNoField = sheet.titleBlock.fields.find((f) => f.id === 'sheetNo');
+            const sheetNoField = sheet.titleBlock.fields.find((f) => f.id === 'sheet' || f.id === 'sheetNo');
             if (sheetNoField) sheetNoField.value = `${index + 1} of ${state.sheets.length}`;
             sheet.modifiedAt = new Date().toISOString();
           });

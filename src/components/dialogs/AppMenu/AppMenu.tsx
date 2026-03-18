@@ -391,6 +391,7 @@ export function AppMenu({ isOpen, onClose, initialView, onOpenSheetTemplateImpor
   const { handleNew, handleOpen, handleOpenPath, handleSave, handleSaveAs, handleExportSVG, handleExportDXF, handleExportIFC, handleExportJSON, handleImportDXF, handleImportDXFAsUnderlay, handlePrint, handleExit } = useFileOperations();
   const [activeView, setActiveView] = useState<AppMenuView>('none');
   const extensionAppMenuPanels = useAppStore((s) => s.extensionAppMenuPanels);
+  const setFeedbackDialogOpen = useAppStore((s) => s.setFeedbackDialogOpen);
 
   const handleEscape = useCallback((e: KeyboardEvent) => {
     if (e.key === 'Escape') onClose();
@@ -545,6 +546,12 @@ export function AppMenu({ isOpen, onClose, initialView, onOpenSheetTemplateImpor
 
           <div className="h-px bg-cad-border my-1 mx-4" />
 
+          <AppMenuItem
+            icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>}
+            label="Send Feedback"
+            onClick={action(() => setFeedbackDialogOpen(true))}
+            onMouseEnter={clearView}
+          />
           <AppMenuItem
             icon={<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M6 8h4"/><path d="M14 8h4"/><path d="M6 12h3"/><path d="M13 12h5"/><path d="M8 16h8"/></svg>}
             label="Keyboard Shortcuts"
@@ -840,6 +847,7 @@ export function AppMenu({ isOpen, onClose, initialView, onOpenSheetTemplateImpor
                       ['F8', 'Toggle Ortho mode'],
                       ['F10', 'Toggle Polar tracking'],
                       ['F11', 'Toggle Object tracking'],
+                      ['F1', 'Send Feedback'],
                     ] as const).map(([key, desc]) => (
                       <tr key={key} className="border-b border-cad-bg">
                         <td className="py-1.5 pr-4"><kbd className="px-1.5 py-0.5 bg-cad-surface border border-cad-border text-cad-text rounded text-[10px] font-mono">{key}</kbd></td>

@@ -19,7 +19,7 @@ import { miterJoinWalls } from '../../engine/geometry/Modify';
 
 /**
  * Compute a parallel offset of a line segment (start, end) by a perpendicular distance.
- * Positive offset = to the left of the direction vector (from start to end).
+ * Positive offset = to the right of the direction vector (from start to end) in screen coords (Y-down).
  */
 function offsetLineSegment(
   start: Point,
@@ -31,7 +31,7 @@ function offsetLineSegment(
   const len = Math.hypot(dx, dy);
   if (len < 1e-9) return { start: { ...start }, end: { ...end } };
 
-  // Perpendicular unit vector (pointing left of direction)
+  // Perpendicular unit vector: (-dy, dx) = visual right in screen coords (Y-down)
   const px = -dy / len;
   const py = dx / len;
 
@@ -180,7 +180,7 @@ export function useWallDrawing() {
    * - 'interior': draw line = interior face (last layer's inner edge)
    * - 'center': draw line = center of the total assembly
    *
-   * Offset convention: positive offset = left of draw direction (exterior side).
+   * Offset convention: positive offset = right of draw direction in screen coords (Y-down).
    */
   const createGroupedWalls = useCallback(
     (
@@ -240,7 +240,7 @@ export function useWallDrawing() {
       // Create wall shapes
       const wallIds: string[] = [];
       for (const lc of layerCenters) {
-        // Offset from the draw line: positive = towards exterior (left)
+        // Offset from the draw line: positive = towards exterior (visual right in screen Y-down)
         // centerOffset is from exterior face, baseline is draw line position from exterior face
         // So: perpendicular offset = baseline - centerOffset
         // (positive when draw line is more interior than the layer = layer is exterior of draw line)

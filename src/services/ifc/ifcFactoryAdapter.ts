@@ -314,6 +314,10 @@ export class IfcBuilder {
     return this.add('IFCBUILDINGELEMENTPROXY', `(${stepString(globalId)},${stepRef(ownerHistory)},${stepString(name)},${descStr},$,${stepRef(placement)},${stepRef(representation)},$,${typeStr})`);
   }
 
+  addOpeningElement(globalId: string, ownerHistory: number, name: string, placement: number, representation: number): number {
+    return this.add('IFCOPENINGELEMENT', `(${stepString(globalId)},${stepRef(ownerHistory)},${stepString(name)},$,$,${stepRef(placement)},${stepRef(representation)},$,.OPENING.)`);
+  }
+
   addSpace(
     globalId: string, ownerHistory: number, name: string,
     description: string | null, placement: number, representation: number | null,

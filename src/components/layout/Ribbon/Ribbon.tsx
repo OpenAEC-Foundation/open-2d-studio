@@ -25,6 +25,7 @@ import {
   Palette,
   Search,
   ImageIcon,
+  FileText,
   Layers,
   Eye,
   EyeOff,
@@ -73,6 +74,7 @@ import {
   DiameterDimensionIcon,
 } from '../../shared/CadIcons';
 import { useFileOperations } from '../../../hooks/file/useFileOperations';
+import { showPdfFileDialog } from '../../../services/file/pdfUnderlayService';
 import { triggerBonsaiSync, saveBonsaiSyncSettings, generateBlenderWatcherScript } from '../../../services/bonsaiSync';
 import { ALL_IFC_CATEGORIES, IFC_CATEGORY_LABELS, getIfcCategory } from '../../../utils/ifcCategoryUtils';
 import { RibbonButton, RibbonSmallButton, RibbonMediumButton, RibbonMediumButtonStack, RibbonGroup, RibbonButtonStack } from './RibbonComponents';
@@ -217,11 +219,14 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     // Bonsai Sync
     bonsaiSyncEnabled,
     setBonsaiSyncEnabled,
-    bonsaiSyncPath,
-    setBonsaiSyncPath,
     bonsaiLastSync,
     bonsaiSyncStatus,
     bonsaiSyncError,
+    bonsaiWsClientCount,
+    bonsaiWsPort,
+
+    // PDF Underlay
+    openPdfUnderlayDialog,
 
   } = useAppStore();
 
@@ -233,42 +238,24 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
   const handleBonsaiSyncToggle = useCallback(() => {
     const newEnabled = !bonsaiSyncEnabled;
     setBonsaiSyncEnabled(newEnabled);
-    saveBonsaiSyncSettings(bonsaiSyncPath, newEnabled);
-  }, [bonsaiSyncEnabled, bonsaiSyncPath, setBonsaiSyncEnabled]);
-
-  const handleBonsaiSetPath = useCallback(async () => {
-    const isTauri = !!(window as any).__TAURI_INTERNALS__;
-    if (isTauri) {
-      try {
-        const { save } = await import('@tauri-apps/plugin-dialog');
-        const result = await save({
-          filters: [{ name: 'IFC Files', extensions: ['ifc'] }],
-          title: 'Set Bonsai Sync Path',
-          defaultPath: bonsaiSyncPath || 'model.ifc',
-        });
-        if (result) {
-          setBonsaiSyncPath(result);
-          saveBonsaiSyncSettings(result, bonsaiSyncEnabled);
-        }
-      } catch {
-        // User cancelled
-      }
-    } else {
-      // Browser fallback: use a prompt dialog
-      const result = window.prompt(
-        'Enter the file path for Bonsai Sync IFC output:',
-        bonsaiSyncPath || 'model.ifc'
-      );
-      if (result) {
-        setBonsaiSyncPath(result);
-        saveBonsaiSyncSettings(result, bonsaiSyncEnabled);
-      }
-    }
-  }, [bonsaiSyncPath, bonsaiSyncEnabled, setBonsaiSyncPath]);
+    saveBonsaiSyncSettings(newEnabled);
+  }, [bonsaiSyncEnabled, setBonsaiSyncEnabled]);
 
   const handleBonsaiSyncNow = useCallback(() => {
     triggerBonsaiSync();
   }, []);
+
+  // PDF Underlay — open file dialog then show page picker
+  const handlePdfUnderlay = useCallback(async () => {
+    try {
+      const result = await showPdfFileDialog();
+      if (!result) return;
+      const fileName = result.filePath.replace(/\\/g, '/').split('/').pop() || 'PDF';
+      openPdfUnderlayDialog(result.data, fileName);
+    } catch (err) {
+      console.error('Failed to open PDF for underlay:', err);
+    }
+  }, [openPdfUnderlayDialog]);
 
   // Bonsai watcher script — copy to clipboard
   const [scriptCopied, setScriptCopied] = useState(false);
@@ -276,8 +263,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
   const bonsaiInfoRef = useRef<HTMLDivElement>(null);
 
   const handleCopyBlenderScript = useCallback(() => {
-    const path = bonsaiSyncPath || 'C:\\model.ifc';
-    const script = generateBlenderWatcherScript(path);
+    const script = generateBlenderWatcherScript(bonsaiWsPort);
     navigator.clipboard.writeText(script).then(() => {
       setScriptCopied(true);
       setTimeout(() => setScriptCopied(false), 2000);
@@ -288,7 +274,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
         win.document.write(`<pre style="white-space:pre-wrap;font-size:12px;">${script.replace(/</g, '&lt;')}</pre>`);
       }
     });
-  }, [bonsaiSyncPath]);
+  }, [bonsaiWsPort]);
 
   // Close info popover on outside click
   useEffect(() => {
@@ -334,12 +320,10 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
   }, [bonsaiLastSync]);
 
-  // Short display of sync path (filename only)
-  const bonsaiSyncPathShort = useMemo(() => {
-    if (!bonsaiSyncPath) return 'Not set';
-    const parts = bonsaiSyncPath.replace(/\\/g, '/').split('/');
-    return parts[parts.length - 1] || bonsaiSyncPath;
-  }, [bonsaiSyncPath]);
+  // WebSocket connection URL display
+  const bonsaiWsUrl = useMemo(() => {
+    return `ws://localhost:${bonsaiWsPort}`;
+  }, [bonsaiWsPort]);
 
   const builtInTabs: { id: RibbonTab; label: string }[] = [
     { id: 'home', label: 'Home' },
@@ -545,6 +529,15 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   active={activeTool === 'image'}
                   disabled={isSheetMode}
                   shortcut="IM"
+                />
+              </RibbonMediumButtonStack>
+              <RibbonMediumButtonStack>
+                <RibbonMediumButton
+                  icon={<FileText size={18} />}
+                  label="PDF Underlay"
+                  onClick={handlePdfUnderlay}
+                  disabled={isSheetMode}
+                  tooltip="Import a PDF page as a background underlay"
                 />
               </RibbonMediumButtonStack>
             </RibbonGroup>
@@ -988,7 +981,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
             </RibbonGroup>
             <RibbonGroup label="Panels">
               <RibbonButton
-                icon={<span className="text-[11px] font-mono font-bold leading-none">IFC</span>}
+                icon={<span className="text-[11px] font-mono font-bold leading-none" style={{ color: 'inherit', opacity: 1 }}>IFC</span>}
                 label="IFC Model"
                 onClick={() => setIfcPanelOpen(!ifcPanelOpen)}
                 active={ifcPanelOpen}
@@ -1017,7 +1010,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 tooltip="Export alle formaten (SVG, DXF, IFC, JSON) naar een lokale map"
               />
               <RibbonButton
-                icon={<span className="text-[11px] font-mono font-bold leading-none">IFC</span>}
+                icon={<span className="text-[11px] font-mono font-bold leading-none" style={{ color: 'inherit', opacity: 1 }}>IFC</span>}
                 label="IFC Model"
                 onClick={() => setIfcPanelOpen(!ifcPanelOpen)}
                 active={ifcPanelOpen}
@@ -1063,19 +1056,13 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 active={bonsaiSyncEnabled}
                 tooltip={bonsaiSyncEnabled
                   ? 'Bonsai Sync is active -- click to disable'
-                  : 'Enable Bonsai Sync to auto-export IFC for Blender/Bonsai'}
+                  : 'Enable Bonsai Sync to push IFC to Blender/Bonsai via WebSocket'}
               />
               <RibbonButtonStack>
-                <RibbonSmallButton
-                  icon={<FolderOpen size={14} />}
-                  label="Set Path"
-                  onClick={handleBonsaiSetPath}
-                />
                 <RibbonSmallButton
                   icon={<RefreshCw size={14} />}
                   label="Sync Now"
                   onClick={handleBonsaiSyncNow}
-                  disabled={!bonsaiSyncPath}
                 />
                 <RibbonSmallButton
                   icon={<ClipboardCopy size={14} />}
@@ -1085,14 +1072,18 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
               </RibbonButtonStack>
               <div className="bonsai-sync-status">
                 <div className="bonsai-sync-indicator-row">
-                  <span className={`bonsai-sync-dot ${bonsaiSyncEnabled ? (bonsaiSyncStatus === 'error' ? 'error' : bonsaiSyncStatus === 'syncing' ? 'syncing' : 'active') : 'inactive'}`} />
+                  <span className={`bonsai-sync-dot ${bonsaiSyncEnabled ? (bonsaiSyncStatus === 'error' ? 'error' : bonsaiSyncStatus === 'syncing' ? 'syncing' : bonsaiWsClientCount > 0 ? 'active' : 'inactive') : 'inactive'}`} />
                   <span className="bonsai-sync-status-text">
-                    {!bonsaiSyncEnabled ? 'Disabled' : bonsaiSyncStatus === 'syncing' ? 'Writing...' : bonsaiSyncStatus === 'error' ? 'Error' : 'Ready'}
+                    {!bonsaiSyncEnabled ? 'Disabled' : bonsaiSyncStatus === 'syncing' ? 'Pushing...' : bonsaiSyncStatus === 'error' ? 'Error' : bonsaiWsClientCount > 0 ? 'Connected' : 'Waiting'}
                   </span>
                 </div>
-                <div className="bonsai-sync-info-row" title={bonsaiSyncPath || 'No path set'}>
-                  <span className="bonsai-sync-info-label">File:</span>
-                  <span className="bonsai-sync-info-value">{bonsaiSyncPathShort}</span>
+                <div className="bonsai-sync-info-row" title={bonsaiWsUrl}>
+                  <span className="bonsai-sync-info-label">WS:</span>
+                  <span className="bonsai-sync-info-value">{bonsaiWsUrl}</span>
+                </div>
+                <div className="bonsai-sync-info-row">
+                  <span className="bonsai-sync-info-label">Clients:</span>
+                  <span className="bonsai-sync-info-value">{bonsaiWsClientCount}</span>
                 </div>
                 <div className="bonsai-sync-info-row">
                   <span className="bonsai-sync-info-label">Last:</span>
@@ -1117,15 +1108,15 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   <div className="bonsai-sync-info-popover">
                     <div className="bonsai-sync-info-popover-title">Bonsai Live Sync Setup</div>
                     <ol className="bonsai-sync-info-steps">
-                      <li>Click <strong>Set Path</strong> to choose where the IFC file will be written.</li>
-                      <li>Click <strong>Copy Script</strong> to copy the Blender watcher script.</li>
+                      <li>Click <strong>Copy Script</strong> to copy the Blender WebSocket client script.</li>
                       <li>In Blender, open the <strong>Scripting</strong> workspace.</li>
                       <li>Click <strong>New</strong>, paste the script, and press <strong>Alt+P</strong> to run it.</li>
-                      <li>Toggle <strong>Syncing</strong> on. Every model change will auto-export the IFC file.</li>
-                      <li>The Blender script detects the file change and reloads the model in Bonsai.</li>
+                      <li>The script will auto-connect to <code>{bonsaiWsUrl}</code>.</li>
+                      <li>Toggle <strong>Syncing</strong> on. Model changes are pushed instantly via WebSocket.</li>
+                      <li>The <strong>Clients</strong> counter shows connected Blender instances.</li>
                     </ol>
                     <div className="bonsai-sync-info-note">
-                      The watcher script polls the file every second. It uses Bonsai's <code>bpy.ops.bim.load_project()</code> to reload.
+                      IFC data is pushed directly over WebSocket — no file polling needed. The Blender script auto-reconnects if the connection drops.
                     </div>
                   </div>
                 )}

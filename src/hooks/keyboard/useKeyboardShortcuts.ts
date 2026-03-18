@@ -212,6 +212,7 @@ export function useKeyboardShortcuts() {
     modifyConstrainAxis,
     setModifyConstrainAxis,
     toggleModifyOrtho,
+    toggleOrthoMode,
     drawingPoints,
     // Display toggle
     toggleShowLineweight,
@@ -219,6 +220,13 @@ export function useKeyboardShortcuts() {
     plateSystemEditMode,
     editingPlateSystemId,
     setPlateSystemEditMode,
+    // Slab edit mode
+    slabEditMode,
+    editingSlabId,
+    setSlabEditMode,
+    finishSlabInnerContour,
+    cancelSlabInnerContour,
+    slabInnerContourPoints,
     shapes,
   } = useAppStore();
 
@@ -287,12 +295,22 @@ export function useKeyboardShortcuts() {
         }
       }
 
-      // Shift toggles sticky ortho for move/copy/copy2/array (when base point is set)
-      if (key === 'shift' &&
-          (activeTool === 'move' || activeTool === 'copy' || activeTool === 'copy2' || activeTool === 'array') && drawingPoints.length >= 1) {
-        e.preventDefault();
-        toggleModifyOrtho();
-        return;
+      // Shift toggles sticky ortho mode for drawing and modify tools
+      // Only toggle when a drawing/modify tool is active (not during select mode, to preserve Shift+click for additive selection)
+      if (key === 'shift' && !ctrl) {
+        const drawingToolNames = ['line', 'rectangle', 'circle', 'arc', 'polyline', 'spline', 'ellipse', 'hatch',
+          'dimension', 'beam', 'gridline', 'wall', 'slab', 'level', 'puntniveau', 'plate-system', 'section-callout'];
+        const modifyToolNames = ['move', 'copy', 'copy2', 'array'];
+        const isDrawingOrModifyTool = drawingToolNames.includes(activeTool) || modifyToolNames.includes(activeTool);
+        if (isDrawingOrModifyTool) {
+          e.preventDefault();
+          toggleOrthoMode();
+          // Also sync modifyOrtho for move/copy/array tools
+          if (modifyToolNames.includes(activeTool) && drawingPoints.length >= 1) {
+            toggleModifyOrtho();
+          }
+          return;
+        }
       }
 
       // X/Y axis constraint for move/copy/array (when base point is set)
@@ -365,9 +383,9 @@ export function useKeyboardShortcuts() {
                       const sb = selShape as any;
                       useAppStore.getState().setPendingSlab({
                         thickness: sb.thickness || 200,
-                        level: sb.level || '0',
                         elevation: sb.elevation ?? 0,
                         material: sb.material || 'concrete',
+                        level: sb.level || undefined,
                         shapeMode: 'line',
                       });
                     } else if (mappedTool === 'beam') {
@@ -463,6 +481,9 @@ export function useKeyboardShortcuts() {
                       st.addDrawingPoint(endpoint);
                     }
                   }
+                } else if (st.cursor2DPlaced && st.selectedShapeIds.length > 0) {
+                  // Use 2D cursor position as the base/displacement point for move
+                  st.addDrawingPoint({ x: st.cursor2D.x, y: st.cursor2D.y });
                 }
               }
               // If activating 'rotate' with shapes selected, auto-set rotation
@@ -531,6 +552,25 @@ export function useKeyboardShortcuts() {
       if (key === 'escape') {
         if (printDialogOpen) return;
         clearPending();
+        // Slab edit mode: cascaded ESC
+        if (slabEditMode) {
+          // 1) If drawing an inner contour, cancel it
+          if (slabInnerContourPoints.length > 0) {
+            cancelSlabInnerContour();
+            return;
+          }
+          // 2) Exit slab edit mode
+          setSlabEditMode(false);
+          // Re-select the slab when exiting
+          if (editingSlabId) {
+            const s = useAppStore.getState();
+            const parentExists = s.shapes.find(sh => sh.id === editingSlabId);
+            if (parentExists) {
+              s.selectShapes([editingSlabId]);
+            }
+          }
+          return;
+        }
         // Plate system edit mode: cascaded ESC
         if (plateSystemEditMode) {
           const s = useAppStore.getState();
@@ -568,8 +608,28 @@ export function useKeyboardShortcuts() {
         return;
       }
 
-      // TAB (no modifiers): pre-select connected shapes OR toggle plate system edit mode
+      // TAB (no modifiers): pre-select connected shapes OR toggle edit modes
       if (key === 'tab' && !ctrl && !shift) {
+        // If already in slab edit mode, exit it
+        if (slabEditMode) {
+          e.preventDefault();
+          // If currently drawing a contour, finish it first (if enough points)
+          if (slabInnerContourPoints.length >= 3) {
+            finishSlabInnerContour();
+          } else if (slabInnerContourPoints.length > 0) {
+            cancelSlabInnerContour();
+          }
+          setSlabEditMode(false);
+          // Re-select the slab when exiting edit mode
+          if (editingSlabId) {
+            const s = useAppStore.getState();
+            const parentExists = s.shapes.find(sh => sh.id === editingSlabId);
+            if (parentExists) {
+              s.selectShapes([editingSlabId]);
+            }
+          }
+          return;
+        }
         // If already in plate system edit mode, exit it
         if (plateSystemEditMode) {
           e.preventDefault();
@@ -600,11 +660,16 @@ export function useKeyboardShortcuts() {
             }
           }
         }
-        // If a plate system is selected (or a child beam of one), enter edit mode
+        // If a slab is selected, enter slab edit mode for inner contours
         if (activeTool === 'select' && selectedShapeIds.length > 0) {
           const s = useAppStore.getState();
           const selectedShape = s.shapes.find(sh => sh.id === selectedShapeIds[0]);
           if (selectedShape) {
+            if (selectedShape.type === 'slab') {
+              e.preventDefault();
+              setSlabEditMode(true, selectedShape.id);
+              return;
+            }
             if (selectedShape.type === 'plate-system') {
               e.preventDefault();
               setPlateSystemEditMode(true, selectedShape.id);
@@ -671,6 +736,12 @@ export function useKeyboardShortcuts() {
             break;
           case 'enter':
           case ' ':
+            // Slab edit mode: finish inner contour drawing
+            if (slabEditMode && slabInnerContourPoints.length >= 3) {
+              e.preventDefault();
+              finishSlabInnerContour();
+              break;
+            }
             // Repeat last tool when in select mode and not drawing
             if (activeTool === 'select' && !isDrawing && lastTool) {
               e.preventDefault();
@@ -792,6 +863,49 @@ export function useKeyboardShortcuts() {
               setCursor2DToSelected();
             }
             break;
+          case 'e':
+            e.preventDefault();
+            // Extend selected wall(s) nearest endpoint to the 2D cursor position
+            if (selectedShapeIds.length > 0) {
+              const s = useAppStore.getState();
+              const cursorPos = s.cursor2D;
+              const wallUpdates: { id: string; updates: Partial<Shape> }[] = [];
+
+              for (const id of selectedShapeIds) {
+                const shape = s.shapes.find(sh => sh.id === id);
+                if (!shape || (shape.type !== 'wall' && shape.type !== 'beam')) continue;
+
+                const wall = shape as import('../../types/geometry').WallShape;
+                const sx = wall.start.x, sy = wall.start.y;
+                const ex = wall.end.x, ey = wall.end.y;
+
+                // Direction vector of the wall axis
+                const dx = ex - sx;
+                const dy = ey - sy;
+                const lenSq = dx * dx + dy * dy;
+                if (lenSq === 0) continue;
+
+                // Project cursor onto the wall's infinite axis line:
+                // projected = start + t * (end - start), where t = dot(cursor-start, dir) / |dir|^2
+                const t = ((cursorPos.x - sx) * dx + (cursorPos.y - sy) * dy) / lenSq;
+                const projectedPoint: Point = { x: sx + t * dx, y: sy + t * dy };
+
+                // Determine which endpoint is nearest to the cursor
+                const distToStart = Math.hypot(cursorPos.x - sx, cursorPos.y - sy);
+                const distToEnd = Math.hypot(cursorPos.x - ex, cursorPos.y - ey);
+
+                if (distToStart <= distToEnd) {
+                  wallUpdates.push({ id, updates: { start: projectedPoint } as Partial<Shape> });
+                } else {
+                  wallUpdates.push({ id, updates: { end: projectedPoint } as Partial<Shape> });
+                }
+              }
+
+              if (wallUpdates.length > 0) {
+                s.updateShapes(wallUpdates);
+              }
+            }
+            break;
         }
       }
     };
@@ -820,6 +934,11 @@ export function useKeyboardShortcuts() {
                   break;
                 }
               }
+            }
+            // If 2D cursor has been explicitly placed, use it as the base/displacement point
+            if (s.cursor2DPlaced) {
+              s.addDrawingPoint({ x: s.cursor2D.x, y: s.cursor2D.y });
+              break;
             }
             // Default: use center of selected shapes
             const idSet = new Set(s.selectedShapeIds);
@@ -913,11 +1032,18 @@ export function useKeyboardShortcuts() {
     modifyConstrainAxis,
     setModifyConstrainAxis,
     toggleModifyOrtho,
+    toggleOrthoMode,
     drawingPoints,
     toggleShowLineweight,
     plateSystemEditMode,
     editingPlateSystemId,
     setPlateSystemEditMode,
+    slabEditMode,
+    editingSlabId,
+    setSlabEditMode,
+    finishSlabInnerContour,
+    cancelSlabInnerContour,
+    slabInnerContourPoints,
     shapes,
   ]);
 }

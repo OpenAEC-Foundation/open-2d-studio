@@ -14,6 +14,8 @@ interface DraggableModalProps {
   headerContent?: ReactNode;
   width?: number;
   height?: number;
+  /** Maximum height constraint – the modal will not grow beyond this value (CSS maxHeight) */
+  maxHeight?: number | string;
   children: ReactNode;
   footer?: ReactNode;
   /** Custom className for the footer wrapper (default: 'px-3 py-2 border-t border-cad-border flex justify-end gap-2') */
@@ -32,6 +34,7 @@ export function DraggableModal({
   headerContent,
   width = 500,
   height,
+  maxHeight,
   children,
   footer,
   footerClassName,
@@ -117,6 +120,7 @@ export function DraggableModal({
         style={{
           width: currentWidth,
           height: currentHeight,
+          maxHeight: maxHeight,
           transform: `translate(${position.x}px, ${position.y}px)`,
         }}
         onClick={(e) => e.stopPropagation()}

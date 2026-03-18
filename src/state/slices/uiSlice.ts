@@ -72,6 +72,10 @@ export interface UIState {
   settingsDialogOpen: boolean;
   settingsDialogTab: SettingsDialogTab;
 
+  // PDF Underlay dialog
+  pdfUnderlayDialogOpen: boolean;
+  pdfUnderlayFileName: string;
+
   // Terminal
   terminalOpen: boolean;
   terminalHeight: number;
@@ -104,6 +108,8 @@ export interface UIActions {
   setSettingsDialogOpen: (open: boolean) => void;
   setSettingsDialogTab: (tab: SettingsDialogTab) => void;
   openSettings: (tab?: SettingsDialogTab) => void;
+  openPdfUnderlayDialog: (data: ArrayBuffer, fileName: string) => void;
+  closePdfUnderlayDialog: () => void;
   setTerminalOpen: (open: boolean) => void;
   toggleTerminal: () => void;
   setTerminalHeight: (height: number) => void;
@@ -144,6 +150,17 @@ export type UISlice = UIState & UIActions;
 // Initial State
 // ============================================================================
 
+/**
+ * Module-level cache for PDF underlay data (ArrayBuffer).
+ * Kept outside the immer store because immer cannot freeze/proxy ArrayBuffer.
+ */
+let _pdfUnderlayDataCache: ArrayBuffer | null = null;
+
+/** Get the cached PDF data for the currently-open underlay dialog */
+export function getPdfUnderlayData(): ArrayBuffer | null {
+  return _pdfUnderlayDataCache;
+}
+
 export const initialUIState: UIState = {
   printDialogOpen: false,
   aboutDialogOpen: false,
@@ -153,6 +170,8 @@ export const initialUIState: UIState = {
   feedbackDialogOpen: false,
   settingsDialogOpen: false,
   settingsDialogTab: 'drawing-aids' as SettingsDialogTab,
+  pdfUnderlayDialogOpen: false,
+  pdfUnderlayFileName: '',
   terminalOpen: false,
   terminalHeight: 200,
   leftSidebarCollapsed: false,
@@ -179,6 +198,8 @@ interface FullStore {
   feedbackDialogOpen: boolean;
   settingsDialogOpen: boolean;
   settingsDialogTab: SettingsDialogTab;
+  pdfUnderlayDialogOpen: boolean;
+  pdfUnderlayFileName: string;
   terminalOpen: boolean;
   terminalHeight: number;
   leftSidebarCollapsed: boolean;
@@ -269,6 +290,22 @@ export const createUISlice = (
       state.settingsDialogTab = tab || 'drawing-aids';
       state.settingsDialogOpen = true;
     }),
+
+  openPdfUnderlayDialog: (data, fileName) => {
+    _pdfUnderlayDataCache = data;
+    set((state) => {
+      state.pdfUnderlayDialogOpen = true;
+      state.pdfUnderlayFileName = fileName;
+    });
+  },
+
+  closePdfUnderlayDialog: () => {
+    _pdfUnderlayDataCache = null;
+    set((state) => {
+      state.pdfUnderlayDialogOpen = false;
+      state.pdfUnderlayFileName = '';
+    });
+  },
 
   setTerminalOpen: (open) =>
     set((state) => {

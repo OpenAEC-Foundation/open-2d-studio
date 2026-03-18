@@ -1,0 +1,24 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "Bash(cp:*)",
+      "Bash(npx tauri:*)",
+      "Bash(where:*)",
+      "Read(//c/Program Files/**)",
+      "Read(//c/Program Files \\(x86\\)/Microsoft Visual Studio/**)",
+      "Read(//c/Program Files/Microsoft Visual Studio/**)",
+      "Bash(ls \"C:/Program Files \\(x86\\)/Microsoft Visual Studio/\")",
+      "Read(//c//**)",
+      "Bash(ls \"C:/Program Files \\(x86\\)/Microsoft Visual Studio/2022/\")",
+      "Bash(ls \"C:/Program Files \\(x86\\)/Microsoft Visual Studio/2019/\")",
+      "Bash(find:*)",
+      "Bash(ls:*)"
+    ]
+  },
+  "enabledMcpjsonServers": [
+    "symitech-erpnext",
+    "freecad-mcp"
+  ]
+}

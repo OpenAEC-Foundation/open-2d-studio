@@ -248,6 +248,103 @@ function GridlinePlusButton({ gridline, viewport, drawingScale }: {
   );
 }
 
+/** Floating toolbar shown above the slab boundary when in slab edit mode */
+function SlabEditToolbar() {
+  const slabEditMode = useAppStore(s => s.slabEditMode);
+  const editingSlabId = useAppStore(s => s.editingSlabId);
+  const slabInnerContourPoints = useAppStore(s => s.slabInnerContourPoints);
+  const finishSlabInnerContour = useAppStore(s => s.finishSlabInnerContour);
+  const cancelSlabInnerContour = useAppStore(s => s.cancelSlabInnerContour);
+  const deleteSlabInnerContour = useAppStore(s => s.deleteSlabInnerContour);
+  const viewport = useAppStore(s => s.viewport);
+
+  const editingShape = useAppStore(s => {
+    if (!s.editingSlabId) return null;
+    return s.shapes.find(sh => sh.id === s.editingSlabId && sh.type === 'slab') as import('../../types/geometry').SlabShape | undefined ?? null;
+  });
+
+  if (!slabEditMode || !editingSlabId || !editingShape) return null;
+
+  const pts = editingShape.points;
+  if (!pts || pts.length < 3) return null;
+
+  // Find top-center of the slab in screen coordinates
+  let minY = Infinity;
+  let cx = 0;
+  for (const p of pts) {
+    if (p.y < minY) minY = p.y;
+    cx += p.x;
+  }
+  cx /= pts.length;
+
+  const screenX = cx * viewport.zoom + viewport.offsetX;
+  const screenY = minY * viewport.zoom + viewport.offsetY;
+
+  const contourCount = editingShape.innerContours?.length ?? 0;
+  const isDrawing = slabInnerContourPoints.length > 0;
+
+  return (
+    <div
+      className="absolute flex items-center gap-0.5 pointer-events-auto z-40"
+      style={{
+        left: screenX,
+        top: Math.max(4, screenY - 40),
+        transform: 'translateX(-50%)',
+      }}
+      onMouseDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+    >
+      {/* Edit label */}
+      <div className="px-1.5 py-1 bg-orange-900/85 text-orange-300 text-[10px] font-bold rounded-l select-none">
+        Slab Edit
+      </div>
+
+      {/* Status / action buttons */}
+      <div className="px-2 py-1 bg-gray-800/85 border-y border-r border-gray-600/60 text-gray-300 text-[10px] select-none">
+        {isDrawing
+          ? `Drawing contour (${slabInnerContourPoints.length} pts)`
+          : `${contourCount} hole${contourCount !== 1 ? 's' : ''} - Click to draw`
+        }
+      </div>
+
+      {isDrawing && slabInnerContourPoints.length >= 3 && (
+        <button
+          className="px-2 py-1 text-[10px] border-y border-r bg-green-700/90 border-green-500 text-white font-bold hover:bg-green-600/90 select-none"
+          onClick={finishSlabInnerContour}
+          title="Finish contour (Enter)"
+        >
+          Finish
+        </button>
+      )}
+
+      {isDrawing && (
+        <button
+          className="px-2 py-1 text-[10px] border-y border-r bg-red-800/90 border-red-600 text-red-200 hover:bg-red-700/90 select-none"
+          onClick={cancelSlabInnerContour}
+          title="Cancel contour (Escape)"
+        >
+          Cancel
+        </button>
+      )}
+
+      {!isDrawing && contourCount > 0 && (
+        <button
+          className="px-2 py-1 text-[10px] border-y border-r bg-red-800/90 border-red-600 text-red-200 hover:bg-red-700/90 select-none"
+          onClick={() => deleteSlabInnerContour(contourCount - 1)}
+          title="Delete last contour"
+        >
+          Del Last
+        </button>
+      )}
+
+      {/* TAB hint */}
+      <div className="px-1.5 py-1 bg-gray-800/75 text-gray-500 text-[9px] rounded-r select-none ml-0.5">
+        TAB
+      </div>
+    </div>
+  );
+}
+
 /** Floating toolbar shown above the plate system boundary when in edit mode */
 function PlateSystemEditToolbar() {
   const plateSystemEditMode = useAppStore(s => s.plateSystemEditMode);
@@ -534,6 +631,16 @@ export function Canvas() {
               wallTypes: s.wallTypes,
               wallSystemTypes: s.wallSystemTypes,
               materialHatchSettings: s.materialHatchSettings,
+              slabSurfacePatternEnabled: (() => {
+                // For sheet mode, check if ANY drawing on sheet is structural-plan
+                // For simplicity, use the global setting — structural plan slabs lose pattern everywhere
+                const activeDrawingObj = s.drawings.find(d => d.id === s.activeDrawingId);
+                if (activeDrawingObj?.planSubtype === 'structural-plan') {
+                  return s.planSubtypeSettings?.structuralPlan?.showSlabSurfacePattern ?? false;
+                }
+                return true;
+              })(),
+              openingDisplayStyle: s.planSubtypeSettings?.structuralPlan?.openingDisplayStyle ?? 'cross',
               gridlineExtension: s.gridlineExtension,
               seaLevelDatum: s.projectStructure?.seaLevelDatum ?? 0,
               hiddenIfcCategories: s.hiddenIfcCategories ?? [],
@@ -595,10 +702,17 @@ export function Canvas() {
             wallSystemTypes: s.wallSystemTypes,
             selectedWallSubElement: s.selectedWallSubElement,
             materialHatchSettings: s.materialHatchSettings,
+            slabSurfacePatternEnabled: activeDrawing?.planSubtype === 'structural-plan'
+              ? (s.planSubtypeSettings?.structuralPlan?.showSlabSurfacePattern ?? false)
+              : true,
+            openingDisplayStyle: s.planSubtypeSettings?.structuralPlan?.openingDisplayStyle ?? 'cross',
             gridlineExtension: s.gridlineExtension,
             seaLevelDatum: s.projectStructure?.seaLevelDatum ?? 0,
             hiddenIfcCategories: s.hiddenIfcCategories ?? [],
             unitSettings: s.unitSettings,
+            slabEditMode: s.slabEditMode,
+            editingSlabId: s.editingSlabId,
+            slabInnerContourPoints: s.slabInnerContourPoints,
           });
         }
         } catch (err) {
@@ -839,6 +953,9 @@ export function Canvas() {
 
       {/* Plate System Edit Mode Toolbar Overlay */}
       <PlateSystemEditToolbar />
+
+      {/* Slab Edit Mode Toolbar Overlay */}
+      <SlabEditToolbar />
 
       {/* Keyboard Shortcuts HUD */}
       <ShortcutHUD />

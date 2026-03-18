@@ -29,7 +29,7 @@ export function useSpaceAutoUpdate(): void {
         (s): s is WallShape => s.type === 'wall'
       );
       const wallSnapshot = walls
-        .map(w => `${w.id}:${w.start.x},${w.start.y},${w.end.x},${w.end.y},${w.thickness},${w.justification},${w.bulge ?? 0},${w.spaceBounding}`)
+        .map(w => `${w.id}:${w.start.x},${w.start.y},${w.end.x},${w.end.y},${w.thickness},${w.justification},${w.bulge ?? 0},${w.spaceBounding},${w.visible}`)
         .sort()
         .join('|');
 

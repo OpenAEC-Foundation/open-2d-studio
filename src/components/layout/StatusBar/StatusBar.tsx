@@ -397,6 +397,8 @@ export const StatusBar = memo(function StatusBar() {
   const drawings = useAppStore(s => s.drawings);
   const activeDrawingId = useAppStore(s => s.activeDrawingId);
   const editorMode = useAppStore(s => s.editorMode);
+  const orthoMode = useAppStore(s => s.orthoMode);
+  const toggleOrthoMode = useAppStore(s => s.toggleOrthoMode);
   const updateDrawingScale = useAppStore(s => s.updateDrawingScale);
   const sheets = useAppStore(s => s.sheets);
   const activeSheetId = useAppStore(s => s.activeSheetId);
@@ -592,6 +594,19 @@ export const StatusBar = memo(function StatusBar() {
 
       {/* Layer selector */}
       <LayerSelector />
+
+      {/* Ortho mode indicator */}
+      <button
+        onClick={toggleOrthoMode}
+        className={`px-1.5 py-0.5 rounded text-xs font-mono transition-colors cursor-default ${
+          orthoMode
+            ? 'bg-green-600/30 text-green-300'
+            : 'text-cad-text-dim hover:bg-cad-hover hover:text-cad-text'
+        }`}
+        title={`Ortho Mode [Shift / F8]: ${orthoMode ? 'ON' : 'OFF'}`}
+      >
+        ORTHO
+      </button>
 
       {/* Active tool + status message */}
       <div className="flex items-center gap-2">

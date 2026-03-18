@@ -27,6 +27,10 @@ import { TitleBlockImportDialog } from './components/dialogs/TitleBlockImportDia
 import { NewSheetDialog } from './components/dialogs/NewSheetDialog';
 import { DrawingStandardsDialog } from './components/dialogs/DrawingStandardsDialog';
 import { FindReplaceDialog } from './components/dialogs/FindReplaceDialog';
+import { PdfUnderlayDialog } from './components/dialogs/PdfUnderlayDialog';
+import { renderPdfPageForUnderlay } from './services/file/pdfUnderlayService';
+import { getPdfUnderlayData } from './state/slices/uiSlice';
+import type { ImageShape } from './types/geometry';
 
 // Editor components
 import { PatternManagerDialog } from './components/editors/PatternManager';
@@ -194,6 +198,17 @@ function App() {
       loadAllExtensions().catch((err) =>
         logger.error(`Failed to load extensions: ${err}`, 'Extensions')
       );
+
+      // DEV: Load AEC extension directly from source for live development
+      import('@aec-ext/index').then((aecExt) => {
+        const ext = aecExt.default || aecExt;
+        if (ext.onLoad) {
+          ext.onLoad();
+          console.log('[DEV] AEC extension loaded from source');
+        }
+      }).catch((err) => {
+        console.warn('[DEV] AEC extension not found (optional):', err);
+      });
     }
     return () => {
       if (cadApiRef.current) {
@@ -426,6 +441,9 @@ function App() {
     ifcPanelOpen,
     setIfcPanelOpen,
     ifcDashboardVisible,
+    pdfUnderlayDialogOpen,
+    pdfUnderlayFileName,
+    closePdfUnderlayDialog,
   } = useAppStore();
 
   return (
@@ -629,6 +647,63 @@ function App() {
       <FeedbackDialog
         isOpen={feedbackDialogOpen}
         onClose={() => setFeedbackDialogOpen(false)}
+      />
+
+      {/* PDF Underlay Dialog */}
+      <PdfUnderlayDialog
+        isOpen={pdfUnderlayDialogOpen}
+        onClose={closePdfUnderlayDialog}
+        pdfData={getPdfUnderlayData()}
+        fileName={pdfUnderlayFileName}
+        onPlace={async (pageNumber) => {
+          // Capture data before closing (close sets cache to null)
+          const data = getPdfUnderlayData();
+          const fileName = pdfUnderlayFileName;
+          if (!data) return;
+          closePdfUnderlayDialog();
+          try {
+            const state = useAppStore.getState();
+            const { activeLayerId: layerId, activeDrawingId: drawingId, viewport: vp, canvasSize } = state;
+            const result = await renderPdfPageForUnderlay(data, pageNumber, 150);
+            // Scale PDF from mm to drawing units (drawings use mm internally)
+            // A typical A3 plan printed at 1:100 represents 42000x29700mm in real world
+            // The PDF physical size is in mm, but the drawing it represents is at scale
+            // Use drawingScale to convert: if drawingScale=0.01 (1:100), multiply by 100
+            const drawingScale = state.drawingScale || 0.01;
+            const scaleFactor = 1 / drawingScale; // e.g. 100 for 1:100
+            const worldW = result.worldWidth * scaleFactor;
+            const worldH = result.worldHeight * scaleFactor;
+            // Center on current viewport
+            const viewCenterX = (-vp.offsetX + canvasSize.width / 2) / vp.zoom;
+            const viewCenterY = (-vp.offsetY + canvasSize.height / 2) / vp.zoom;
+            const underlayShape: ImageShape = {
+              id: crypto.randomUUID(),
+              type: 'image',
+              layerId,
+              drawingId,
+              style: { strokeColor: '#ffffff', strokeWidth: 1, lineStyle: 'solid' },
+              visible: true,
+              locked: false,
+              position: {
+                x: viewCenterX - worldW / 2,
+                y: viewCenterY - worldH / 2,
+              },
+              width: worldW,
+              height: worldH,
+              rotation: 0,
+              imageData: result.dataUrl,
+              originalWidth: result.pixelWidth,
+              originalHeight: result.pixelHeight,
+              opacity: 0.5,
+              maintainAspectRatio: true,
+              isUnderlay: true,
+              sourceFileName: fileName,
+            };
+            useAppStore.getState().addShapes([underlayShape]);
+          } catch (err) {
+            console.error('Failed to render PDF page for underlay:', err);
+          }
+        }}
       />
 
       {/* Extension components */}

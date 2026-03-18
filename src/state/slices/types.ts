@@ -89,6 +89,7 @@ export type DrawingPreview =
   | { type: 'wall-circle'; center: Point; radius: number; thickness: number; showCenterline: boolean; wallTypeId?: string; justification?: WallJustification }
   | { type: 'beam-circle'; center: Point; radius: number; flangeWidth: number; showCenterline: boolean }
   | { type: 'slab'; points: Point[]; currentPoint: Point; material?: string }
+  | { type: 'slab-opening'; points: Point[]; currentPoint: Point }
   | { type: 'plate-system'; points: Point[]; currentPoint: Point; systemType: string; mainProfile: { width: number; spacing: number; direction: number }; edgeWidth?: number; bulges?: number[]; currentBulge?: number; arcThroughPoint?: Point }
   | { type: 'section-callout'; start: Point; end: Point; label: string; bubbleRadius: number; flipDirection: boolean; viewDepth?: number }
   | { type: 'spot-elevation'; position: Point; elevation: number; labelPosition: Point; showLeader: boolean }
@@ -387,11 +388,13 @@ export const getShapeBounds = (shape: Shape): { minX: number; minY: number; maxX
       let wLeftThick: number;
       let wRightThick: number;
       if (shape.justification === 'left') {
-        wLeftThick = shape.thickness;
-        wRightThick = 0;
-      } else if (shape.justification === 'right') {
+        // "Left justified" = left face on draw line, wall extends to the right
         wLeftThick = 0;
         wRightThick = shape.thickness;
+      } else if (shape.justification === 'right') {
+        // "Right justified" = right face on draw line, wall extends to the left
+        wLeftThick = shape.thickness;
+        wRightThick = 0;
       } else {
         wLeftThick = shape.thickness / 2;
         wRightThick = shape.thickness / 2;

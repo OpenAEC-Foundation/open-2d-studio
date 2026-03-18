@@ -119,6 +119,11 @@ export interface ToolState {
   // Plate system opening placement sub-mode
   plateSystemOpeningMode: boolean;
   selectedOpeningId: string | null;
+
+  // Slab edit mode (TAB to enter inner contour drawing, TAB/ESC to exit)
+  slabEditMode: boolean;
+  editingSlabId: string | null;
+  slabInnerContourPoints: import('../../types/geometry').Point[];  // Points for the contour currently being drawn
 }
 
 // ============================================================================
@@ -217,6 +222,13 @@ export interface ToolActions {
   setPlateSystemSubTool: (tool: 'select' | 'add-point' | 'arc-edge' | 'add-opening' | 'delete') => void;
   setPlateSystemOpeningMode: (enabled: boolean) => void;
   setSelectedOpeningId: (id: string | null) => void;
+
+  // Slab edit mode actions (inner contour drawing)
+  setSlabEditMode: (editing: boolean, slabId?: string) => void;
+  addSlabInnerContourPoint: (point: import('../../types/geometry').Point) => void;
+  finishSlabInnerContour: () => void;
+  cancelSlabInnerContour: () => void;
+  deleteSlabInnerContour: (contourIndex: number) => void;
 }
 
 export type ToolSlice = ToolState & ToolActions;
@@ -330,6 +342,11 @@ export const initialToolState: ToolState = {
   // Plate system opening placement
   plateSystemOpeningMode: false,
   selectedOpeningId: null,
+
+  // Slab edit mode
+  slabEditMode: false,
+  editingSlabId: null,
+  slabInnerContourPoints: [],
 };
 
 // ============================================================================
@@ -372,6 +389,12 @@ export const createToolSlice = (
         state.plateSystemSubTool = 'select';
         state.plateSystemOpeningMode = false;
         state.selectedOpeningId = null;
+      }
+      // Exit slab edit mode when switching tools
+      if (tool !== 'select') {
+        state.slabEditMode = false;
+        state.editingSlabId = null;
+        state.slabInnerContourPoints = [];
       }
       // Reset copy flag for mirror (default on)
       if (tool === 'mirror') {
@@ -802,5 +825,56 @@ export const createToolSlice = (
   setSelectedOpeningId: (id) =>
     set((state) => {
       state.selectedOpeningId = id;
+    }),
+
+  // Slab edit mode actions
+  setSlabEditMode: (editing, slabId) =>
+    set((state) => {
+      state.slabEditMode = editing;
+      state.editingSlabId = editing ? (slabId ?? null) : null;
+      state.slabInnerContourPoints = [];
+      // Exit plate system edit mode if entering slab edit mode
+      if (editing) {
+        state.plateSystemEditMode = false;
+        state.editingPlateSystemId = null;
+      }
+    }),
+
+  addSlabInnerContourPoint: (point) =>
+    set((state) => {
+      state.slabInnerContourPoints.push({ x: point.x, y: point.y });
+    }),
+
+  finishSlabInnerContour: () =>
+    set((state: any) => {
+      if (!state.editingSlabId || state.slabInnerContourPoints.length < 3) {
+        state.slabInnerContourPoints = [];
+        return;
+      }
+      const slab = state.shapes?.find((s: any) => s.id === state.editingSlabId);
+      if (slab && slab.type === 'slab') {
+        if (!slab.innerContours) {
+          slab.innerContours = [];
+        }
+        slab.innerContours.push([...state.slabInnerContourPoints]);
+      }
+      state.slabInnerContourPoints = [];
+    }),
+
+  cancelSlabInnerContour: () =>
+    set((state) => {
+      state.slabInnerContourPoints = [];
+    }),
+
+  deleteSlabInnerContour: (contourIndex) =>
+    set((state: any) => {
+      if (!state.editingSlabId) return;
+      const slab = state.shapes?.find((s: any) => s.id === state.editingSlabId);
+      if (slab && slab.type === 'slab' && slab.innerContours) {
+        slab.innerContours.splice(contourIndex, 1);
+        if (slab.innerContours.length === 0) {
+          delete slab.innerContours;
+        }
+      }
     }),
 });

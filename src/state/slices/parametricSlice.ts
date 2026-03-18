@@ -198,6 +198,18 @@ export interface ParametricState {
     fillPattern?: number;
   } | null;
 
+  /** Column placement state */
+  pendingColumn: {
+    width: number;
+    depth: number;
+    rotation: number;
+    material: import('../../types/geometry').ColumnMaterial;
+    profile?: string;
+    section?: string;
+    baseLevel?: string;
+    topLevel?: string;
+  } | null;
+
   /** CPT dialog state */
   cptDialogOpen: boolean;
   pendingCPT: {
@@ -230,11 +242,28 @@ export interface ParametricState {
   /** Slab pending state */
   pendingSlab: {
     thickness: number;
-    level: string;
     elevation: number;
     material: 'concrete' | 'timber' | 'steel' | 'generic';
     slabTypeId?: string;
+    level?: string;           // Storey ID (resolved at creation time if not set)
     shapeMode: 'line' | 'arc' | 'rectangle' | 'circle';
+  } | null;
+
+  /** Slab Opening pending state */
+  pendingSlabOpening: {
+    linkedSlabId?: string;
+    displayStyle?: import('../../types/geometry').SlabOpeningDisplayStyle;
+    shapeMode: 'line' | 'arc' | 'rectangle' | 'circle';
+  } | null;
+
+  /** Slab Label pending state */
+  pendingSlabLabel: {
+    floorType: import('../../types/geometry').StructuralFloorType;
+    customTypeName?: string;
+    thickness: number;
+    spanDirection: number;     // degrees
+    fontSize: number;
+    arrowLength: number;
   } | null;
 
   /** Section callout pending state */
@@ -438,6 +467,10 @@ export interface ParametricActions {
   setPendingPile: (pending: ParametricState['pendingPile']) => void;
   clearPendingPile: () => void;
 
+  // Column
+  setPendingColumn: (pending: ParametricState['pendingColumn']) => void;
+  clearPendingColumn: () => void;
+
   // CPT dialog
   openCPTDialog: () => void;
   closeCPTDialog: () => void;
@@ -456,6 +489,14 @@ export interface ParametricActions {
   // Slab
   setPendingSlab: (pending: ParametricState['pendingSlab']) => void;
   clearPendingSlab: () => void;
+
+  // Slab Opening
+  setPendingSlabOpening: (pending: ParametricState['pendingSlabOpening']) => void;
+  clearPendingSlabOpening: () => void;
+
+  // Slab Label
+  setPendingSlabLabel: (pending: ParametricState['pendingSlabLabel']) => void;
+  clearPendingSlabLabel: () => void;
 
   // Section Callout
   setPendingSectionCallout: (pending: ParametricState['pendingSectionCallout']) => void;
@@ -608,6 +649,7 @@ export const initialParametricState: ParametricState = {
   pendingPuntniveau: null,
   pileDialogOpen: false,
   pendingPile: null,
+  pendingColumn: null,
   cptDialogOpen: false,
   pendingCPT: null,
   pilePlanSettings: {
@@ -617,6 +659,8 @@ export const initialParametricState: ParametricState = {
   wallDialogOpen: false,
   pendingWall: null,
   pendingSlab: null,
+  pendingSlabOpening: null,
+  pendingSlabLabel: null,
   pendingSectionCallout: null,
   pendingSpace: null,
   pendingPlateSystem: null,
@@ -1101,6 +1145,20 @@ export const createParametricSlice = (
     }),
 
   // ============================================================================
+  // Column
+  // ============================================================================
+
+  setPendingColumn: (pending) =>
+    set((state) => {
+      state.pendingColumn = pending;
+    }),
+
+  clearPendingColumn: () =>
+    set((state) => {
+      state.pendingColumn = null;
+    }),
+
+  // ============================================================================
   // CPT Dialog
   // ============================================================================
 
@@ -1169,6 +1227,34 @@ export const createParametricSlice = (
   clearPendingSlab: () =>
     set((state) => {
       state.pendingSlab = null;
+    }),
+
+  // ============================================================================
+  // Slab Opening
+  // ============================================================================
+
+  setPendingSlabOpening: (pending) =>
+    set((state) => {
+      state.pendingSlabOpening = pending;
+    }),
+
+  clearPendingSlabOpening: () =>
+    set((state) => {
+      state.pendingSlabOpening = null;
+    }),
+
+  // ============================================================================
+  // Slab Label
+  // ============================================================================
+
+  setPendingSlabLabel: (pending) =>
+    set((state) => {
+      state.pendingSlabLabel = pending;
+    }),
+
+  clearPendingSlabLabel: () =>
+    set((state) => {
+      state.pendingSlabLabel = null;
     }),
 
   // ============================================================================
@@ -1627,6 +1713,9 @@ export const createParametricSlice = (
       }
       if (settings.floorPlan) {
         state.planSubtypeSettings.floorPlan = { ...state.planSubtypeSettings.floorPlan, ...settings.floorPlan };
+      }
+      if (settings.areaPlan) {
+        state.planSubtypeSettings.areaPlan = { ...state.planSubtypeSettings.areaPlan, ...settings.areaPlan };
       }
       const preset = state.drawingStandardsPresets.find(p => p.id === state.activeDrawingStandardsId);
       if (preset) {

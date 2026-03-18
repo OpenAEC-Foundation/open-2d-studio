@@ -43,6 +43,10 @@ export interface IfcState {
   bonsaiSyncStatus: 'idle' | 'syncing' | 'error';
   /** Error message if last sync failed */
   bonsaiSyncError: string | null;
+  /** Number of Blender clients connected via WebSocket */
+  bonsaiWsClientCount: number;
+  /** WebSocket server port */
+  bonsaiWsPort: number;
 }
 
 // ============================================================================
@@ -70,6 +74,10 @@ export interface IfcActions {
   setBonsaiSyncStatus: (status: IfcState['bonsaiSyncStatus']) => void;
   /** Update sync error */
   setBonsaiSyncError: (error: string | null) => void;
+  /** Update WebSocket client count */
+  setBonsaiWsClientCount: (count: number) => void;
+  /** Update WebSocket port */
+  setBonsaiWsPort: (port: number) => void;
 }
 
 export type IfcSlice = IfcState & IfcActions;
@@ -92,6 +100,8 @@ export const initialIfcState: IfcState = {
   bonsaiLastSync: null,
   bonsaiSyncStatus: 'idle',
   bonsaiSyncError: null,
+  bonsaiWsClientCount: 0,
+  bonsaiWsPort: 9876,
 };
 
 // ============================================================================
@@ -116,6 +126,8 @@ interface FullStore {
   bonsaiLastSync: number | null;
   bonsaiSyncStatus: IfcState['bonsaiSyncStatus'];
   bonsaiSyncError: string | null;
+  bonsaiWsClientCount: number;
+  bonsaiWsPort: number;
 }
 
 export const createIfcSlice = (
@@ -189,6 +201,18 @@ export const createIfcSlice = (
   setBonsaiSyncError: (error: string | null) => {
     set((s) => {
       s.bonsaiSyncError = error;
+    });
+  },
+
+  setBonsaiWsClientCount: (count: number) => {
+    set((s) => {
+      s.bonsaiWsClientCount = count;
+    });
+  },
+
+  setBonsaiWsPort: (port: number) => {
+    set((s) => {
+      s.bonsaiWsPort = port;
     });
   },
 });

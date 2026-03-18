@@ -486,6 +486,39 @@ export function SlabIcon({ size = 24, className }: IconProps) {
   );
 }
 
+/** Slab Opening Icon - Opening/hole cut in a slab floor with X marker */
+export function SlabOpeningIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      {/* Opening rectangle outline (dashed) */}
+      <rect x="3" y="4" width="18" height="16" strokeDasharray="3 2" />
+      {/* Cross (X) from corner to corner */}
+      <line x1="3" y1="4" x2="21" y2="20" strokeWidth="1.5" />
+      <line x1="21" y1="4" x2="3" y2="20" strokeWidth="1.5" />
+    </svg>
+  );
+}
+
+/** Slab Label Icon - Floor type label with span arrows */
+export function SlabLabelIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      {/* Slab outline */}
+      <rect x="2" y="4" width="20" height="10" strokeWidth="1.5" />
+      {/* Span arrow left */}
+      <line x1="4" y1="9" x2="10" y2="9" strokeWidth="1.5" />
+      <polyline points="4,7 2,9 4,11" strokeWidth="1.5" fill="none" />
+      {/* Span arrow right */}
+      <line x1="14" y1="9" x2="20" y2="9" strokeWidth="1.5" />
+      <polyline points="20,7 22,9 20,11" strokeWidth="1.5" fill="none" />
+      {/* Label text indicator */}
+      <text x="12" y="10" textAnchor="middle" fontSize="5" fill="currentColor" stroke="none">Ab</text>
+      {/* Thickness text */}
+      <text x="12" y="19" textAnchor="middle" fontSize="4" fill="currentColor" stroke="none">200</text>
+    </svg>
+  );
+}
+
 /** Foundation Icon - Pad/strip foundation */
 export function FoundationIcon({ size = 24, className }: IconProps) {
   return (

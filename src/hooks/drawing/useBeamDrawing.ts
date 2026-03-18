@@ -1,18 +1,24 @@
 /**
  * useBeamDrawing - Handles beam drawing (click start, click end)
+ *
+ * When a beam is created, a linked IFC label (TextShape) is automatically
+ * placed to the side of the beam (perpendicular offset), following the same
+ * pattern used by useSpaceDrawing for space labels.
  */
 
 import { useCallback } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
-import type { Point, BeamShape, BeamMaterial, BeamJustification, BeamViewMode } from '../../types/geometry';
+import type { Point, BeamShape, TextShape, BeamMaterial, BeamJustification, BeamViewMode } from '../../types/geometry';
 import { snapToAngle, calculateBulgeFrom3Points } from '../../engine/geometry/GeometryUtils';
+import { getDefaultLabelTemplate, resolveTemplate, computeLinkedLabelPosition } from '../../engine/geometry/LabelUtils';
+import { CAD_DEFAULT_LINE_HEIGHT } from '../../constants/cadDefaults';
 
 export function useBeamDrawing() {
   const {
     activeLayerId,
     activeDrawingId,
     currentStyle,
-    addShape,
+    addShapes,
     drawingPoints,
     addDrawingPoint,
     clearDrawingPoints,
@@ -22,7 +28,12 @@ export function useBeamDrawing() {
   } = useAppStore();
 
   /**
-   * Create a beam shape
+   * Create a beam shape with an auto-placed IFC label.
+   *
+   * The label is positioned to the side of the beam (perpendicular offset)
+   * using computeLinkedLabelPosition, which offsets by flangeWidth/2 + margin.
+   * Both shapes are added atomically via addShapes so they form a single
+   * undo step.
    */
   const createBeam = useCallback(
     (
@@ -43,8 +54,9 @@ export function useBeamDrawing() {
         bulge?: number;
       }
     ) => {
+      const beamId = generateId();
       const beamShape: BeamShape = {
-        id: generateId(),
+        id: beamId,
         type: 'beam',
         layerId: activeLayerId,
         drawingId: activeDrawingId,
@@ -67,10 +79,63 @@ export function useBeamDrawing() {
         viewMode: options?.viewMode || 'plan',
         bulge: options?.bulge,
       };
-      addShape(beamShape);
+
+      // ----------------------------------------------------------------
+      // Auto-place a linked IFC label to the side of the beam
+      // ----------------------------------------------------------------
+      const template = getDefaultLabelTemplate('beam');
+      const labelText = resolveTemplate(template, beamShape);
+
+      // Compute label position: offset perpendicular to the beam direction
+      const labelPosData = computeLinkedLabelPosition(beamShape);
+
+      // Resolve active text style for consistent formatting
+      const { defaultTextStyle, activeTextStyleId, textStyles } = useAppStore.getState();
+      const activeStyle = activeTextStyleId
+        ? textStyles.find(s => s.id === activeTextStyleId)
+        : null;
+
+      // Fall back to beam midpoint if computeLinkedLabelPosition returns null
+      // (e.g. zero-length beam, which shouldn't happen in practice)
+      const labelPosition = labelPosData?.position ?? {
+        x: (start.x + end.x) / 2,
+        y: (start.y + end.y) / 2,
+      };
+      const labelRotation = labelPosData?.rotation ?? 0;
+
+      const labelShape: TextShape = {
+        id: generateId(),
+        type: 'text',
+        layerId: activeLayerId,
+        drawingId: activeDrawingId,
+        style: { ...currentStyle },
+        visible: true,
+        locked: false,
+        position: labelPosition,
+        text: labelText,
+        fontSize: activeStyle?.fontSize ?? defaultTextStyle.fontSize,
+        fontFamily: activeStyle?.fontFamily ?? defaultTextStyle.fontFamily,
+        rotation: labelRotation,
+        alignment: 'left',
+        verticalAlignment: 'middle',
+        bold: activeStyle?.bold ?? defaultTextStyle.bold,
+        italic: activeStyle?.italic ?? false,
+        underline: activeStyle?.underline ?? false,
+        color: activeStyle?.color ?? defaultTextStyle.color,
+        lineHeight: activeStyle?.lineHeight ?? CAD_DEFAULT_LINE_HEIGHT,
+        isModelText: true,
+        // Link to the beam element
+        linkedShapeId: beamId,
+        // Store the template for auto-update on property changes
+        labelTemplate: template,
+      };
+
+      // Add both beam and label atomically in a single undo step
+      addShapes([beamShape, labelShape]);
+
       return beamShape.id;
     },
-    [activeLayerId, activeDrawingId, currentStyle, addShape]
+    [activeLayerId, activeDrawingId, currentStyle, addShapes]
   );
 
   /**

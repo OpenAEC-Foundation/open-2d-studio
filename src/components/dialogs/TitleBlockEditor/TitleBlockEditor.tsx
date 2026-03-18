@@ -265,9 +265,9 @@ function FieldsTab({ fields, pendingFields, onUpdateField }: FieldsTabProps) {
   const projectFields = fields.filter(f => ['project', 'client', 'address'].includes(f.id));
   const drawingFields = fields.filter(f => ['title', 'number', 'scale'].includes(f.id));
   const personnelFields = fields.filter(f => ['drawnBy', 'checkedBy', 'approvedBy'].includes(f.id));
-  const statusFields = fields.filter(f => ['date', 'sheetNo', 'revision', 'status'].includes(f.id));
+  const statusFields = fields.filter(f => ['date', 'sheet', 'sheetNo', 'revision', 'status'].includes(f.id));
   const otherFields = fields.filter(f =>
-    !['project', 'client', 'address', 'title', 'number', 'scale', 'drawnBy', 'checkedBy', 'approvedBy', 'date', 'sheetNo', 'revision', 'status', 'logo'].includes(f.id)
+    !['project', 'client', 'address', 'title', 'number', 'scale', 'drawnBy', 'checkedBy', 'approvedBy', 'date', 'sheet', 'sheetNo', 'revision', 'status', 'logo'].includes(f.id)
   );
 
   const renderFieldGroup = (title: string, groupFields: typeof fields) => {

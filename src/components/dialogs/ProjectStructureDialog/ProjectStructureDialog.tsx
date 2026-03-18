@@ -7,7 +7,7 @@
  * Uses the shared DraggableModal component.
  */
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { Plus, Trash2, ChevronDown, ChevronRight, Building2, Layers, MapPin } from 'lucide-react';
 import { useAppStore, useUnitSettings } from '../../../state/appStore';
 import { formatElevation } from '../../../units';
@@ -16,6 +16,47 @@ import type {
   ProjectBuilding,
   ProjectStorey,
 } from '../../../state/slices/parametricSlice';
+
+/**
+ * NumericInput - Local-state numeric input that only commits on blur or Enter.
+ * Allows the user to type intermediate values (e.g. "-" for negative numbers)
+ * without the input resetting. Selects all text on focus for quick editing.
+ */
+function NumericInput({ value, onCommit, className }: {
+  value: number;
+  onCommit: (val: number) => void;
+  className?: string;
+}) {
+  const [localValue, setLocalValue] = useState(String(value));
+
+  useEffect(() => {
+    setLocalValue(String(value));
+  }, [value]);
+
+  const commit = useCallback(() => {
+    const parsed = Number(localValue);
+    if (!isNaN(parsed) && localValue.trim() !== '' && localValue.trim() !== '-') {
+      onCommit(parsed);
+      setLocalValue(String(parsed));
+    } else {
+      // Revert to original value on invalid input
+      setLocalValue(String(value));
+    }
+  }, [localValue, value, onCommit]);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      value={localValue}
+      onChange={(e) => setLocalValue(e.target.value)}
+      onFocus={(e) => e.target.select()}
+      onBlur={commit}
+      onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+      className={className}
+    />
+  );
+}
 
 interface ProjectStructureDialogProps {
   isOpen: boolean;
@@ -275,11 +316,9 @@ export function ProjectStructureDialog({ isOpen, onClose }: ProjectStructureDial
                 <label className="block text-[10px] text-cad-text-dim mb-0.5">
                   Peil = 0 (NAP) &mdash; Sea Level Datum (m)
                 </label>
-                <input
-                  type="number"
-                  step="0.01"
+                <NumericInput
                   value={projectStructure.seaLevelDatum ?? 0}
-                  onChange={(e) => setSeaLevelDatum(parseFloat(e.target.value) || 0)}
+                  onCommit={(val) => setSeaLevelDatum(val)}
                   className="w-full h-7 px-2 text-xs bg-cad-bg border border-cad-border text-cad-text rounded"
                 />
                 <p className="text-[10px] text-cad-text-dim mt-1">
@@ -357,12 +396,11 @@ export function ProjectStructureDialog({ isOpen, onClose }: ProjectStructureDial
               </div>
               <div>
                 <label className="block text-[10px] text-cad-text-dim mb-0.5">Elevation (mm)</label>
-                <input
-                  type="number"
+                <NumericInput
                   value={selectedStorey.elevation}
-                  onChange={(e) =>
+                  onCommit={(val) =>
                     updateStorey(selected.buildingId, selected.storeyId, {
-                      elevation: parseFloat(e.target.value) || 0,
+                      elevation: val,
                     })
                   }
                   className="w-full h-7 px-2 text-xs bg-cad-bg border border-cad-border text-cad-text rounded"

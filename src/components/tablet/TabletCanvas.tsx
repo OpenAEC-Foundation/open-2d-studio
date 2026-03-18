@@ -117,6 +117,10 @@ export function TabletCanvas({ onCanvasTap, onLongPress, onShapeTap, gridVisible
             wallTypes: s.wallTypes,
             wallSystemTypes: s.wallSystemTypes,
             materialHatchSettings: s.materialHatchSettings,
+            slabSurfacePatternEnabled: activeDrawing?.planSubtype === 'structural-plan'
+              ? (s.planSubtypeSettings?.structuralPlan?.showSlabSurfacePattern ?? false)
+              : true,
+            openingDisplayStyle: s.planSubtypeSettings?.structuralPlan?.openingDisplayStyle ?? 'cross',
             gridlineExtension: s.gridlineExtension,
             seaLevelDatum: s.projectStructure?.seaLevelDatum ?? 0,
             hiddenIfcCategories: s.hiddenIfcCategories ?? [],

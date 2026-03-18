@@ -34,12 +34,14 @@ export function DrawingPropertiesPanel({ showHeader = true }: { showHeader?: boo
   const activeDrawing = drawings.find(d => d.id === activeDrawingId);
 
   // Collect all storeys from project structure for storey assignment dropdown
-  const allStoreys = useMemo(() =>
-    projectStructure?.buildings?.flatMap(b =>
+  // Sort by elevation (descending) so highest storey appears first
+  const allStoreys = useMemo(() => {
+    const storeys = projectStructure?.buildings?.flatMap(b =>
       b.storeys.map(s => ({ ...s, buildingName: b.name }))
-    ) ?? [],
-    [projectStructure],
-  );
+    ) ?? [];
+    storeys.sort((a, b) => b.elevation - a.elevation);
+    return storeys;
+  }, [projectStructure]);
 
   const handleTypeChange = useCallback((newType: DrawingType) => {
     if (!activeDrawingId) return;

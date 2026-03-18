@@ -75,6 +75,10 @@ export interface SheetRenderOptions {
   selectedWallSubElement?: { wallId: string; type: 'stud' | 'panel'; key: string } | null;
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
+  /** Whether slab surface (hatch) patterns are enabled */
+  slabSurfacePatternEnabled?: boolean;
+  /** How slab openings are rendered */
+  openingDisplayStyle?: 'cross' | 'diagonal' | 'outline';
   /** Gridline extension distance in mm */
   gridlineExtension?: number;
   /** Sea level datum: peil=0 elevation relative to NAP in meters */
@@ -231,6 +235,8 @@ export class SheetRenderer extends BaseRenderer {
           wallTypes: options.wallTypes,
           wallSystemTypes: options.wallSystemTypes,
           materialHatchSettings: options.materialHatchSettings,
+          slabSurfacePatternEnabled: options.slabSurfacePatternEnabled,
+          openingDisplayStyle: options.openingDisplayStyle,
           gridlineExtension: options.gridlineExtension,
           seaLevelDatum: options.seaLevelDatum,
           hiddenIfcCategories: options.hiddenIfcCategories,

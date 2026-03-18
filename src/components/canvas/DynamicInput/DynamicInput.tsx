@@ -82,6 +82,11 @@ export function DynamicInput() {
   const field1Ref = useRef<HTMLInputElement>(null);
   const field2Ref = useRef<HTMLInputElement>(null);
 
+  // Capture the tracking/ortho angle at the moment the user starts typing.
+  // Mouse movements after typing begins should NOT change the direction used
+  // when the typed dimension is applied (e.g., ortho-locked angle must persist).
+  const capturedAngleRef = useRef<number | null>(null);
+
   const supportedDrawingTools = ['line', 'rectangle', 'circle', 'arc', 'ellipse', 'polyline'];
   const supportedModifyTools = ['move', 'copy', 'copy2'];
 
@@ -119,6 +124,34 @@ export function DynamicInput() {
       field2Ref.current?.focus();
       field2Ref.current?.select();
     }
+  }, [focusedField]);
+
+  // Capture the current tracking angle when the user starts typing (field gets focus).
+  // This freezes the ortho/polar direction so that subsequent mouse movements don't
+  // change the angle used when the typed dimension is applied.
+  // IMPORTANT: Only depend on focusedField so this runs once when typing starts,
+  // not on every mouse move.
+  useEffect(() => {
+    if (focusedField === 0) {
+      const state = useAppStore.getState();
+      if (state.directDistanceAngle !== null) {
+        capturedAngleRef.current = state.directDistanceAngle;
+      } else if (state.orthoMode && state.drawingPoints.length > 0) {
+        // Ortho is on but no tracking angle yet: compute from current mouse position
+        // and snap to 90-degree increments
+        const basePoint = state.drawingPoints[state.drawingPoints.length - 1];
+        const worldMX = (state.mousePosition.x - state.viewport.offsetX) / state.viewport.zoom;
+        const worldMY = (state.mousePosition.y - state.viewport.offsetY) / state.viewport.zoom;
+        const rawAngle = Math.atan2(worldMY - basePoint.y, worldMX - basePoint.x);
+        const snappedDeg = Math.round(rawAngle * (180 / Math.PI) / 90) * 90;
+        capturedAngleRef.current = snappedDeg * (Math.PI / 180);
+      } else {
+        capturedAngleRef.current = null;
+      }
+    } else if (focusedField === -1) {
+      capturedAngleRef.current = null;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [focusedField]);
 
   // Real-time preview: update lockedDistance and ghost preview as user types during modify mode
@@ -194,7 +227,7 @@ export function DynamicInput() {
       let dirAngle = Math.atan2(worldMY - basePoint.y, worldMX - basePoint.x);
 
       // Snap direction to 45-degree increments when ortho is active
-      if (shiftKey || state.modifyOrtho) {
+      if (state.orthoMode || state.modifyOrtho) {
         dirAngle = snapAngleTo45(dirAngle);
       }
 
@@ -268,7 +301,8 @@ export function DynamicInput() {
   // Execute direct distance entry for line/polyline drawing
   // Places a point at the typed distance in the current tracking direction (or mouse direction)
   // angleDeg: explicit angle in degrees typed by user (0 is valid); null means no angle was typed
-  const executeDirectDistanceEntry = useCallback((dist: number, shiftKey: boolean = false, angleDeg: number | null = null) => {
+  // capturedAngle: angle in radians captured when typing started (preserves ortho direction)
+  const executeDirectDistanceEntry = useCallback((dist: number, _shiftKey: boolean = false, angleDeg: number | null = null, capturedAngle: number | null = null) => {
     if (drawingPoints.length < 1) return;
     if (!['line', 'polyline'].includes(activeTool)) return;
 
@@ -281,9 +315,9 @@ export function DynamicInput() {
       // Explicit angle typed by user (in degrees, CAD convention: 0=right, CCW positive)
       // Convert to radians for math
       directionAngle = angleDeg * (Math.PI / 180);
-    } else if (shiftKey) {
-      // Shift held without explicit angle: force 0 degrees (horizontal right)
-      directionAngle = 0;
+    } else if (capturedAngle !== null) {
+      // Use the angle captured when typing started (preserves ortho/tracking lock)
+      directionAngle = capturedAngle;
     } else if (state.directDistanceAngle !== null) {
       // Use tracking angle (already in radians, math coords)
       directionAngle = state.directDistanceAngle;
@@ -447,7 +481,8 @@ export function DynamicInput() {
   // Execute structural tool (wall/gridline/beam) distance entry
   // Computes the endpoint from typed distance + mouse direction, then creates the shape
   // angleDeg: explicit angle in degrees typed by user (0 is valid); null means no angle was typed
-  const executeStructuralDistanceEntry = useCallback((dist: number, shiftKey: boolean = false, angleDeg: number | null = null) => {
+  // capturedAngle: angle in radians captured when typing started (preserves ortho direction)
+  const executeStructuralDistanceEntry = useCallback((dist: number, _shiftKey: boolean = false, angleDeg: number | null = null, capturedAngle: number | null = null) => {
     if (drawingPoints.length < 1) return;
     if (!['wall', 'gridline', 'beam'].includes(activeTool)) return;
 
@@ -459,9 +494,9 @@ export function DynamicInput() {
     if (angleDeg !== null) {
       // Explicit angle typed by user (in degrees, CAD convention: 0=right, CCW positive)
       directionAngle = angleDeg * (Math.PI / 180);
-    } else if (shiftKey) {
-      // Shift held without explicit angle: force 0 degrees (horizontal right)
-      directionAngle = 0;
+    } else if (capturedAngle !== null) {
+      // Use the angle captured when typing started (preserves ortho/tracking lock)
+      directionAngle = capturedAngle;
     } else if (state.directDistanceAngle !== null) {
       directionAngle = state.directDistanceAngle;
     } else {
@@ -643,7 +678,7 @@ export function DynamicInput() {
         const typedAngle = field2Text !== '' ? evaluateExpression(field2Text) : null;
         // Also use lockedAngle from state if it was set via Tab (and no new angle typed)
         const effectiveAngle = typedAngle !== null ? typedAngle : useAppStore.getState().lockedAngle;
-        executeDirectDistanceEntry(v1, shiftKey, effectiveAngle);
+        executeDirectDistanceEntry(v1, shiftKey, effectiveAngle, capturedAngleRef.current);
         setFocusedField(-1);
         setField1Text('');
         setField2Text('');
@@ -658,7 +693,7 @@ export function DynamicInput() {
         // Parse angle from field2 if entered (0 is a valid angle, so check for non-empty string)
         const typedAngle = field2Text !== '' ? evaluateExpression(field2Text) : null;
         const effectiveAngle = typedAngle !== null ? typedAngle : useAppStore.getState().lockedAngle;
-        executeStructuralDistanceEntry(v1, shiftKey, effectiveAngle);
+        executeStructuralDistanceEntry(v1, shiftKey, effectiveAngle, capturedAngleRef.current);
         setFocusedField(-1);
         setField1Text('');
         setField2Text('');
@@ -851,7 +886,22 @@ export function DynamicInput() {
   // The tracking system uses math coords (Y up), but getAngle uses screen coords (Y down/inverted)
   // So we negate the tracking angle to match the display convention, then normalize to 0-360
   let angle: number;
-  if (directDistanceAngle !== null) {
+  // When ortho mode is active and typing, use the captured angle (frozen at typing start)
+  // so the angle field shows the ortho-locked direction, not the live mouse position
+  const orthoMode = useAppStore.getState().orthoMode;
+  if (capturedAngleRef.current !== null && focusedField >= 0) {
+    // User is typing — show the captured/frozen angle
+    let capturedDeg = -capturedAngleRef.current * (180 / Math.PI);
+    if (capturedDeg < 0) capturedDeg += 360;
+    angle = capturedDeg;
+  } else if (orthoMode && directDistanceAngle !== null) {
+    // Ortho active — show the constrained tracking angle
+    let trackingDeg = -directDistanceAngle * (180 / Math.PI);
+    // Snap to nearest 90° for display in ortho mode
+    trackingDeg = Math.round(trackingDeg / 90) * 90;
+    if (trackingDeg < 0) trackingDeg += 360;
+    angle = trackingDeg;
+  } else if (directDistanceAngle !== null) {
     // Negate to match getAngle's Y-inversion, then normalize to 0-360°
     let trackingDeg = -directDistanceAngle * (180 / Math.PI);
     if (trackingDeg < 0) trackingDeg += 360;

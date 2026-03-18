@@ -2,7 +2,8 @@ import { memo, useState, useRef, useEffect, useMemo } from 'react';
 import { useAppStore, useUnitSettings } from '../../state/appStore';
 import { formatLength, parseLength, formatNumber, formatElevation, formatAngle } from '../../units';
 import type { UnitSettings } from '../../units/types';
-import type { LineStyle, Shape, TextAlignment, TextVerticalAlignment, BeamShape, BeamMaterial, BeamJustification, BeamViewMode, LeaderArrowType, LeaderAttachment, LeaderConfig, TextCase, GridlineShape, GridlineBubblePosition, LevelShape, PuntniveauShape, WallShape, WallJustification, WallEndCap, SlabShape, SlabMaterial, SectionCalloutShape, SpaceShape, PlateSystemShape, CPTShape, PileShape, PileTypeDefinition } from '../../types/geometry';
+import type { LineStyle, Shape, TextAlignment, TextVerticalAlignment, BeamShape, BeamMaterial, BeamJustification, BeamViewMode, ColumnShape, ColumnMaterial, LeaderArrowType, LeaderAttachment, LeaderConfig, TextCase, GridlineShape, GridlineBubblePosition, LevelShape, PuntniveauShape, WallShape, WallOpeningShape, WallJustification, WallEndCap, SlabShape, SlabMaterial, SlabLabelShape, StructuralFloorType, SectionCalloutShape, SpaceShape, PlateSystemShape, CPTShape, PileShape, PileTypeDefinition, SurfaceExposureClasses, RebarShape } from '../../types/geometry';
+import { STRUCTURAL_FLOOR_TYPES, EXPOSURE_CLASSES, EXPOSURE_CLASS_MIN_COVER, getMinCoverFromExposureClasses, REBAR_DIAMETERS } from '../../types/geometry';
 import type { ParametricShape, ProfileParametricShape, ProfileType, ParameterValues } from '../../types/parametric';
 import type { DimensionShape, DimensionArrowType, DimensionTextPlacement } from '../../types/dimension';
 import { PROFILE_TEMPLATES } from '../../services/parametric/profileTemplates';
@@ -15,6 +16,7 @@ import { DrawingPropertiesPanel } from './DrawingPropertiesPanel';
 import { PatternPickerPanel } from '../editors/PatternManager/PatternPickerPanel';
 import { parseSpacingPattern, createGridlinesFromPattern } from '../../utils/gridlineUtils';
 import { regenerateGridDimensions } from '../../utils/gridDimensionUtils';
+import { showCPTFileDialog, parseCPTFile } from '../../services/file/cptFileService';
 import { ALL_PILE_SYMBOLS, renderPileSymbol } from '../dialogs/PileSymbolsDialog/PileSymbolsDialog';
 import type { PileContourType } from '../../types/geometry';
 
@@ -49,6 +51,61 @@ function PropertyGroup({ label, defaultOpen = true, children }: {
         </div>
       )}
     </div>
+  );
+}
+
+// Exposure Class (Milieuklasse) Section for concrete elements
+function ExposureClassSection({ exposureClasses, onChange }: {
+  exposureClasses?: SurfaceExposureClasses;
+  onChange: (ec: SurfaceExposureClasses) => void;
+}) {
+  const ec = exposureClasses || {};
+  const minCover = getMinCoverFromExposureClasses(ec);
+  const surfaces = ['top', 'bottom', 'left', 'right'] as const;
+  const surfaceLabels: Record<string, string> = {
+    top: 'Bovenzijde (Top)',
+    bottom: 'Onderzijde (Bottom)',
+    left: 'Links (Left)',
+    right: 'Rechts (Right)',
+  };
+
+  return (
+    <PropertyGroup label="Exposure Class (Milieuklasse)" defaultOpen={false}>
+      {surfaces.map(surface => (
+        <div key={surface} className="mb-2">
+          <label className={labelClass}>{surfaceLabels[surface]}</label>
+          <select
+            className={inputClass}
+            value={ec[surface] || ''}
+            onChange={(e) => {
+              const newEc = { ...ec, [surface]: e.target.value || undefined };
+              onChange(newEc);
+            }}
+          >
+            <option value="">(Geen / None)</option>
+            {EXPOSURE_CLASSES.map(cls => (
+              <option key={cls.value} value={cls.value}>
+                {cls.label} - {cls.description} (min. dekking: {EXPOSURE_CLASS_MIN_COVER[cls.value]}mm)
+              </option>
+            ))}
+          </select>
+          {ec[surface] && (
+            <div className="text-[10px] text-cad-text-dim mt-0.5">
+              Min. dekking: {EXPOSURE_CLASS_MIN_COVER[ec[surface]!]}mm
+            </div>
+          )}
+        </div>
+      ))}
+      {minCover > 0 && (
+        <div className="mt-2 p-2 bg-cad-accent/10 rounded border border-cad-accent/30">
+          <div className="text-xs font-semibold text-cad-accent">Maatgevende minimale dekking</div>
+          <div className="text-sm text-cad-text font-bold">{minCover} mm</div>
+          <div className="text-[10px] text-cad-text-dim mt-0.5">
+            Conform NEN-EN 1992-1-1 (Eurocode 2)
+          </div>
+        </div>
+      )}
+    </PropertyGroup>
   );
 }
 
@@ -549,7 +606,7 @@ function MultiSelectShapeProperties({
                 placeholder="{Name}\n{Area} m\u00B2"
               />
               <div className="text-xs text-cad-text-dim mb-1">
-                Use placeholders: {'{Name}'}, {'{Number}'}, {'{Area}'}, {'{Level}'}, {'{Type}'}, {'{Thickness}'}, {'{Section}'}
+                Use placeholders: {'{Name}'}, {'{Number}'}, {'{Area}'}, {'{Storey}'}, {'{Type}'}, {'{Thickness}'}, {'{Section}'}
               </div>
             </PropertyGroup>
           )}
@@ -840,6 +897,41 @@ function MultiSelectShapeProperties({
             />
           </PropertyGroup>
         </>
+      );
+    }
+
+    case 'column': {
+      const commonColMaterial = getCommonValue(s => (s as ColumnShape).material);
+      const commonColWidth = getCommonValue(s => (s as ColumnShape).width);
+      const commonColDepth = getCommonValue(s => (s as ColumnShape).depth);
+
+      return (
+        <PropertyGroup label="Properties">
+          <SelectField<ColumnMaterial>
+            label="Material"
+            value={commonColMaterial ?? 'concrete'}
+            options={[
+              { value: 'concrete', label: 'Concrete' },
+              { value: 'steel', label: 'Steel' },
+              { value: 'timber', label: 'Timber' },
+            ]}
+            onChange={(v) => updateAll({ material: v })}
+          />
+          <NumberField
+            label="Width (mm)"
+            value={commonColWidth ?? (shapes[0] as ColumnShape).width}
+            onChange={(v) => updateAll({ width: v })}
+            step={10}
+            min={50}
+          />
+          <NumberField
+            label="Depth (mm)"
+            value={commonColDepth ?? (shapes[0] as ColumnShape).depth}
+            onChange={(v) => updateAll({ depth: v })}
+            step={10}
+            min={50}
+          />
+        </PropertyGroup>
       );
     }
 
@@ -1530,6 +1622,13 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               />
             )}
           </PropertyGroup>
+
+          {beam.material === 'concrete' && (
+            <ExposureClassSection
+              exposureClasses={beam.exposureClasses}
+              onChange={(ec) => update({ exposureClasses: ec })}
+            />
+          )}
         </>
       );
     }
@@ -1954,7 +2053,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
 
           <PropertyGroup label="Constraints">
             <div className="mb-2">
-              <label className={labelClass}>Base Level</label>
+              <label className={labelClass}>Base Storey</label>
               <select
                 className={inputClass}
                 value={w.baseLevel || ''}
@@ -1969,7 +2068,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               </select>
             </div>
             <div className="mb-2">
-              <label className={labelClass}>Top Level</label>
+              <label className={labelClass}>Top Storey</label>
               <select
                 className={inputClass}
                 value={w.topLevel || ''}
@@ -2043,6 +2142,84 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               onChange={(v) => update({ endCap: v })}
             />
           </PropertyGroup>
+
+          <ExposureClassSection
+            exposureClasses={w.exposureClasses}
+            onChange={(ec) => update({ exposureClasses: ec })}
+          />
+        </>
+      );
+    }
+
+    case 'wall-opening': {
+      const wo = shape as WallOpeningShape;
+      return (
+        <>
+          <PropertyGroup label="Identity">
+            <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
+              <div className="text-xs font-semibold text-cad-accent mb-1">IfcOpeningElement</div>
+              <div className="text-xs text-cad-text-dim">IFC Type: IfcOpeningElement</div>
+            </div>
+            <div className="mb-3">
+              <label className={labelClass}>Label</label>
+              <input
+                type="text"
+                className={inputClass}
+                value={wo.label || ''}
+                onChange={(e) => update({ label: e.target.value || undefined })}
+              />
+            </div>
+          </PropertyGroup>
+          <PropertyGroup label="Geometry">
+            <div className="mb-3">
+              <label className={labelClass}>Width</label>
+              <input
+                type="text"
+                className={inputClass}
+                value={formatLength(wo.width, unitSettings)}
+                onChange={(e) => {
+                  const v = parseLength(e.target.value, unitSettings);
+                  if (v !== null && v > 0) update({ width: v });
+                }}
+              />
+            </div>
+            <div className="mb-3">
+              <label className={labelClass}>Height</label>
+              <input
+                type="text"
+                className={inputClass}
+                value={formatLength(wo.height, unitSettings)}
+                onChange={(e) => {
+                  const v = parseLength(e.target.value, unitSettings);
+                  if (v !== null && v > 0) update({ height: v });
+                }}
+              />
+            </div>
+            <div className="mb-3">
+              <label className={labelClass}>Sill Height</label>
+              <input
+                type="text"
+                className={inputClass}
+                value={formatLength(wo.sillHeight, unitSettings)}
+                onChange={(e) => {
+                  const v = parseLength(e.target.value, unitSettings);
+                  if (v !== null && v >= 0) update({ sillHeight: v });
+                }}
+              />
+            </div>
+            <div className="mb-3">
+              <label className={labelClass}>Position Along Wall</label>
+              <input
+                type="text"
+                className={inputClass}
+                value={formatLength(wo.positionAlongWall, unitSettings)}
+                onChange={(e) => {
+                  const v = parseLength(e.target.value, unitSettings);
+                  if (v !== null && v >= 0) update({ positionAlongWall: v });
+                }}
+              />
+            </div>
+          </PropertyGroup>
         </>
       );
     }
@@ -2066,6 +2243,16 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
         perimeter += Math.sqrt(pdx * pdx + pdy * pdy);
       }
 
+      // Collect all storeys from all buildings for level selector
+      const slabProjectStructure = useAppStore.getState().projectStructure;
+      const slabAllStoreys: { id: string; name: string; elevation: number }[] = [];
+      for (const building of slabProjectStructure.buildings) {
+        for (const storey of building.storeys) {
+          slabAllStoreys.push(storey);
+        }
+      }
+      slabAllStoreys.sort((a, b) => a.elevation - b.elevation);
+
       return (
         <>
           <PropertyGroup label="Identity">
@@ -2087,10 +2274,28 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
             />
           </PropertyGroup>
 
+          <PropertyGroup label="Constraints">
+            <div className="mb-2">
+              <label className={labelClass}>Storey</label>
+              <select
+                className={inputClass}
+                value={sl.level || ''}
+                onChange={(e) => update({ level: e.target.value || '' })}
+              >
+                <option value="">(Unassigned)</option>
+                {slabAllStoreys.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name} ({s.elevation >= 0 ? '+' : ''}{s.elevation} mm)
+                  </option>
+                ))}
+              </select>
+            </div>
+          </PropertyGroup>
+
           <PropertyGroup label="Geometry">
             <NumberField label="Thickness (mm)" value={sl.thickness} onChange={(v) => update({ thickness: v })} step={1} min={1} />
-            <TextField label="Level" value={sl.level} onChange={(v) => update({ level: v })} />
             <NumberField label="Elevation (mm)" value={sl.elevation} onChange={(v) => update({ elevation: v })} step={1} />
+            <NumberField label="Span Direction (deg)" value={sl.spanDirection ?? 0} onChange={(v) => update({ spanDirection: v })} step={15} min={0} max={360} />
             <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
                 <div className="text-cad-text-dim">Points:</div>
@@ -2108,6 +2313,43 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
               Hatch pattern is defined per material in Drawing Standards.
             </p>
           </PropertyGroup>
+
+          {sl.material === 'concrete' && (
+            <ExposureClassSection
+              exposureClasses={sl.exposureClasses}
+              onChange={(ec) => update({ exposureClasses: ec })}
+            />
+          )}
+        </>
+      );
+    }
+
+    case 'slab-label': {
+      const slbl = shape as SlabLabelShape;
+      return (
+        <>
+          <PropertyGroup label="Identity">
+            <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
+              <div className="text-xs font-semibold text-cad-accent mb-1">Slab Label</div>
+              <div className="text-xs text-cad-text-dim">Structural floor type annotation</div>
+            </div>
+            <SelectField<StructuralFloorType>
+              label="Floor Type"
+              value={slbl.floorType}
+              options={STRUCTURAL_FLOOR_TYPES.map(ft => ({ value: ft.value, label: `${ft.label} (${ft.labelEn})` }))}
+              onChange={(v) => update({ floorType: v })}
+            />
+            {slbl.floorType === 'custom' && (
+              <TextField label="Custom Name" value={slbl.customTypeName || ''} onChange={(v) => update({ customTypeName: v || undefined })} />
+            )}
+          </PropertyGroup>
+
+          <PropertyGroup label="Properties">
+            <NumberField label="Thickness (mm)" value={slbl.thickness} onChange={(v) => update({ thickness: v })} step={10} min={10} />
+            <NumberField label="Span Direction (deg)" value={slbl.spanDirection} onChange={(v) => update({ spanDirection: v })} step={15} min={0} max={360} />
+            <NumberField label="Font Size" value={slbl.fontSize} onChange={(v) => update({ fontSize: v })} step={10} min={20} />
+            <NumberField label="Arrow Length" value={slbl.arrowLength} onChange={(v) => update({ arrowLength: v })} step={50} min={100} />
+          </PropertyGroup>
         </>
       );
     }
@@ -2124,7 +2366,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
             </div>
             <TextField label="Name" value={sp.name} onChange={(v) => update({ name: v })} />
             <TextField label="Number" value={sp.number || ''} onChange={(v) => update({ number: v || undefined })} />
-            <TextField label="Level" value={sp.level || ''} onChange={(v) => update({ level: v || undefined })} />
+            <TextField label="Storey" value={sp.level || ''} onChange={(v) => update({ level: v || undefined })} />
           </PropertyGroup>
 
           <PropertyGroup label="Geometry">
@@ -2215,6 +2457,44 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
       );
     }
 
+    case 'column': {
+      const col = shape as ColumnShape;
+      return (
+        <>
+          <PropertyGroup label="Properties">
+            <SelectField<ColumnMaterial>
+              label="Material"
+              value={col.material}
+              options={[
+                { value: 'concrete', label: 'Concrete' },
+                { value: 'steel', label: 'Steel' },
+                { value: 'timber', label: 'Timber' },
+              ]}
+              onChange={(v) => update({ material: v })}
+            />
+            <NumberField label="Width (mm)" value={col.width} onChange={(v) => update({ width: v })} step={10} min={50} />
+            <NumberField label="Depth (mm)" value={col.depth} onChange={(v) => update({ depth: v })} step={10} min={50} />
+            <NumberField label="Rotation (\u00B0)" value={col.rotation * RAD2DEG} onChange={(v) => update({ rotation: v * DEG2RAD })} step={5} />
+          </PropertyGroup>
+          <PropertyGroup label="Identity">
+            <TextField label="Profile" value={col.profile || ''} onChange={(v) => update({ profile: v || undefined })} placeholder="e.g. 300x300" />
+            <TextField label="Section" value={col.section || ''} onChange={(v) => update({ section: v || undefined })} />
+          </PropertyGroup>
+          <PropertyGroup label="Position">
+            <NumberField label="Position X" value={col.position.x} onChange={(v) => update({ position: { ...col.position, x: v } })} step={1} />
+            <NumberField label="Position Y" value={-col.position.y} onChange={(v) => update({ position: { ...col.position, y: -v } })} step={1} />
+          </PropertyGroup>
+
+          {col.material === 'concrete' && (
+            <ExposureClassSection
+              exposureClasses={col.exposureClasses}
+              onChange={(ec) => update({ exposureClasses: ec })}
+            />
+          )}
+        </>
+      );
+    }
+
     case 'cpt': {
       const cpt = shape as CPTShape;
       return (
@@ -2232,6 +2512,123 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
             <NumberField label="Font Size (mm)" value={cpt.fontSize} onChange={(v) => update({ fontSize: v })} step={25} min={50} />
             <NumberField label="Position X" value={cpt.position.x} onChange={(v) => update({ position: { ...cpt.position, x: v } })} step={1} />
             <NumberField label="Position Y" value={-cpt.position.y} onChange={(v) => update({ position: { ...cpt.position, y: -v } })} step={1} />
+          </PropertyGroup>
+          <PropertyGroup label="CPT Data">
+            {cpt.cptData ? (
+              <div className="text-xs text-cad-text space-y-1">
+                <div className="flex justify-between">
+                  <span className="text-cad-text-dim">Source</span>
+                  <span>{cpt.cptData.sourceFile || 'unknown'}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-cad-text-dim">Data points</span>
+                  <span>{cpt.cptData.depth.length}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-cad-text-dim">Depth range</span>
+                  <span>{cpt.cptData.depth[0].toFixed(1)}–{cpt.cptData.depth[cpt.cptData.depth.length - 1].toFixed(1)} m</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-cad-text-dim">Max qc</span>
+                  <span>{Math.max(...cpt.cptData.qc).toFixed(1)} MPa</span>
+                </div>
+                {cpt.cptData.rf && cpt.cptData.rf.length > 0 && (
+                  <div className="flex justify-between">
+                    <span className="text-cad-text-dim">Max Rf</span>
+                    <span>{Math.max(...cpt.cptData.rf).toFixed(1)} %</span>
+                  </div>
+                )}
+                <button
+                  className="w-full mt-1 px-2 py-1 text-xs bg-red-900/30 hover:bg-red-900/50 text-red-300 border border-red-800/50 rounded"
+                  onClick={() => update({ cptData: undefined })}
+                >
+                  Remove CPT Data
+                </button>
+              </div>
+            ) : (
+              <div className="text-xs text-cad-text-dim space-y-2">
+                <div>No CPT data loaded.</div>
+                <button
+                  className="w-full px-2 py-1.5 text-xs bg-cad-accent/20 hover:bg-cad-accent/30 text-cad-accent border border-cad-accent/50 rounded"
+                  onClick={async () => {
+                    const result = await showCPTFileDialog();
+                    if (!result) return;
+                    try {
+                      const data = parseCPTFile(result.text, result.fileName);
+                      update({
+                        cptData: {
+                          depth: data.depth,
+                          qc: data.qc,
+                          fs: data.fs,
+                          rf: data.rf,
+                          sourceFile: data.sourceFile,
+                        },
+                      });
+                    } catch (err: unknown) {
+                      const msg = err instanceof Error ? err.message : String(err);
+                      alert(`Failed to parse CPT file: ${msg}`);
+                    }
+                  }}
+                >
+                  Parse CPT File (GEF / BRO-XML)
+                </button>
+              </div>
+            )}
+          </PropertyGroup>
+        </>
+      );
+    }
+
+    case 'rebar': {
+      const rebar = shape as RebarShape;
+      return (
+        <>
+          <PropertyGroup label="Identity">
+            <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
+              <div className="text-xs font-semibold text-cad-accent mb-1">IfcReinforcingBar</div>
+              <div className="text-xs text-cad-text-dim">IFC Type: IfcReinforcingBar</div>
+            </div>
+            <TextField label="Bar Mark" value={rebar.barMark} onChange={(v) => update({ barMark: v })} placeholder="e.g. A1, B2" />
+          </PropertyGroup>
+
+          <PropertyGroup label="Properties">
+            <div className="mb-2">
+              <label className={labelClass}>Diameter (mm)</label>
+              <select
+                className={inputClass}
+                value={rebar.diameter}
+                onChange={(e) => update({ diameter: Number(e.target.value) })}
+              >
+                {REBAR_DIAMETERS.map(d => (
+                  <option key={d} value={d}>{'\u00d8'}{d}</option>
+                ))}
+              </select>
+            </div>
+            <NumberField label="Count" value={rebar.count ?? 1} onChange={(v) => update({ count: v })} step={1} min={1} />
+            <NumberField label="Spacing (mm)" value={rebar.spacing ?? 0} onChange={(v) => update({ spacing: v || undefined })} step={25} min={0} />
+            <NumberField label="Length (mm)" value={rebar.length ?? 0} onChange={(v) => update({ length: v || undefined })} step={50} min={0} />
+            <TextField label="Bend Shape" value={rebar.bendShape || ''} onChange={(v) => update({ bendShape: v || undefined })} placeholder="e.g. 00, 11, 21" />
+            <SelectField
+              label="View Mode"
+              value={rebar.viewMode || 'cross-section'}
+              options={[
+                { value: 'cross-section', label: 'Cross-section (circle)' },
+                { value: 'longitudinal', label: 'Longitudinal (line)' },
+              ]}
+              onChange={(v) => update({ viewMode: v })}
+            />
+            {rebar.count && rebar.spacing ? (
+              <div className="mb-2 p-2 bg-cad-bg rounded border border-cad-border">
+                <div className="text-[10px] text-cad-text-dim">
+                  Notation: {rebar.count}-{'\u00d8'}{rebar.diameter} c.t.c. {rebar.spacing}
+                </div>
+              </div>
+            ) : null}
+          </PropertyGroup>
+
+          <PropertyGroup label="Position">
+            <NumberField label="Position X" value={rebar.position.x} onChange={(v) => update({ position: { ...rebar.position, x: v } })} step={1} />
+            <NumberField label="Position Y" value={-rebar.position.y} onChange={(v) => update({ position: { ...rebar.position, y: -v } })} step={1} />
           </PropertyGroup>
         </>
       );
@@ -2528,6 +2925,16 @@ function SlabToolProperties() {
   const pendingSlab = useAppStore(s => s.pendingSlab);
   const setPendingSlab = useAppStore(s => s.setPendingSlab);
   const slabTypes = useAppStore(s => s.slabTypes);
+  const slabToolProjectStructure = useAppStore(s => s.projectStructure);
+
+  // Collect all storeys from all buildings for level selector
+  const slabToolAllStoreys: { id: string; name: string; elevation: number }[] = [];
+  for (const building of slabToolProjectStructure.buildings) {
+    for (const storey of building.storeys) {
+      slabToolAllStoreys.push(storey);
+    }
+  }
+  slabToolAllStoreys.sort((a, b) => a.elevation - b.elevation);
 
   if (!pendingSlab) return null;
 
@@ -2584,18 +2991,30 @@ function SlabToolProperties() {
           ]}
           onChange={(v) => setPendingSlab({ ...pendingSlab, material: v, slabTypeId: undefined })}
         />
-        <TextField
-          label="Level"
-          value={pendingSlab.level}
-          onChange={(v) => setPendingSlab({ ...pendingSlab, level: v })}
-          placeholder="e.g. 0, 1, 2"
-        />
         <NumberField
           label="Elevation (mm)"
           value={pendingSlab.elevation}
           onChange={(v) => setPendingSlab({ ...pendingSlab, elevation: v })}
           step={100}
         />
+      </PropertyGroup>
+
+      <PropertyGroup label="Constraints">
+        <div className="mb-2">
+          <label className={labelClass}>Storey</label>
+          <select
+            className={inputClass}
+            value={pendingSlab.level || ''}
+            onChange={(e) => setPendingSlab({ ...pendingSlab, level: e.target.value || undefined })}
+          >
+            <option value="">(Auto from drawing)</option>
+            {slabToolAllStoreys.map((s) => (
+              <option key={s.id} value={s.id}>
+                {s.name} ({s.elevation >= 0 ? '+' : ''}{s.elevation} mm)
+              </option>
+            ))}
+          </select>
+        </div>
       </PropertyGroup>
 
       {selectedType && (
@@ -2605,6 +3024,72 @@ function SlabToolProperties() {
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+/** Slab Label tool properties - edits pendingSlabLabel state */
+function SlabLabelToolProperties() {
+  const pendingSlabLabel = useAppStore(s => s.pendingSlabLabel);
+  const setPendingSlabLabel = useAppStore(s => s.setPendingSlabLabel);
+
+  if (!pendingSlabLabel) return null;
+
+  return (
+    <div className="p-3 border-b border-cad-border">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-semibold text-cad-accent uppercase tracking-wide">Slab Label Tool</span>
+      </div>
+      <p className="text-[10px] text-cad-text-dim mb-3">
+        Click to place a slab label with floor type and span direction arrows.
+      </p>
+
+      <PropertyGroup label="Floor Type">
+        <SelectField<StructuralFloorType>
+          label="Type"
+          value={pendingSlabLabel.floorType}
+          options={STRUCTURAL_FLOOR_TYPES.map(ft => ({ value: ft.value, label: `${ft.label} (${ft.labelEn})` }))}
+          onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, floorType: v })}
+        />
+        {pendingSlabLabel.floorType === 'custom' && (
+          <TextField label="Custom Name" value={pendingSlabLabel.customTypeName || ''} onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, customTypeName: v || undefined })} />
+        )}
+      </PropertyGroup>
+
+      <PropertyGroup label="Properties">
+        <NumberField
+          label="Thickness (mm)"
+          value={pendingSlabLabel.thickness}
+          onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, thickness: v })}
+          step={10}
+          min={10}
+        />
+        <NumberField
+          label="Span Direction (deg)"
+          value={pendingSlabLabel.spanDirection}
+          onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, spanDirection: v })}
+          step={15}
+          min={0}
+          max={360}
+        />
+      </PropertyGroup>
+
+      <PropertyGroup label="Display">
+        <NumberField
+          label="Font Size"
+          value={pendingSlabLabel.fontSize}
+          onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, fontSize: v })}
+          step={10}
+          min={20}
+        />
+        <NumberField
+          label="Arrow Length"
+          value={pendingSlabLabel.arrowLength}
+          onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, arrowLength: v })}
+          step={50}
+          min={100}
+        />
+      </PropertyGroup>
     </div>
   );
 }
@@ -2639,7 +3124,7 @@ function SpaceToolProperties() {
           placeholder="e.g. 101"
         />
         <TextField
-          label="Level"
+          label="Storey"
           value={pendingSpace.level || ''}
           onChange={(v) => setPendingSpace({ ...pendingSpace, level: v || undefined })}
           placeholder="e.g. Ground Floor"
@@ -3004,6 +3489,55 @@ function PileToolProperties() {
   );
 }
 
+/** Column tool properties - edits pendingColumn state */
+function ColumnToolProperties() {
+  const pendingColumn = useAppStore(s => s.pendingColumn);
+  const setPendingColumn = useAppStore(s => s.setPendingColumn);
+
+  if (!pendingColumn) return null;
+
+  return (
+    <div className="p-3 border-b border-cad-border">
+      <div className="flex items-center gap-2 mb-3">
+        <span className="text-xs font-semibold text-cad-accent uppercase tracking-wide">Column Tool</span>
+      </div>
+
+      <PropertyGroup label="Properties">
+        <SelectField<ColumnMaterial>
+          label="Material"
+          value={pendingColumn.material}
+          options={[
+            { value: 'concrete', label: 'Concrete' },
+            { value: 'steel', label: 'Steel' },
+            { value: 'timber', label: 'Timber' },
+          ]}
+          onChange={(v) => setPendingColumn({ ...pendingColumn, material: v })}
+        />
+        <NumberField
+          label="Width (mm)"
+          value={pendingColumn.width}
+          onChange={(v) => setPendingColumn({ ...pendingColumn, width: v })}
+          step={10}
+          min={50}
+        />
+        <NumberField
+          label="Depth (mm)"
+          value={pendingColumn.depth}
+          onChange={(v) => setPendingColumn({ ...pendingColumn, depth: v })}
+          step={10}
+          min={50}
+        />
+        <NumberField
+          label="Rotation (\u00B0)"
+          value={pendingColumn.rotation * RAD2DEG}
+          onChange={(v) => setPendingColumn({ ...pendingColumn, rotation: v * DEG2RAD })}
+          step={5}
+        />
+      </PropertyGroup>
+    </div>
+  );
+}
+
 /** CPT tool properties - edits pendingCPT state */
 function CPTToolProperties() {
   const pendingCPT = useAppStore(s => s.pendingCPT);
@@ -3179,6 +3713,8 @@ function ActiveToolProperties({ activeTool }: { activeTool: string }) {
       return <BeamToolProperties />;
     case 'slab':
       return <SlabToolProperties />;
+    case 'slab-label':
+      return <SlabLabelToolProperties />;
     case 'gridline':
       return <GridlineToolProperties />;
     case 'level':
@@ -3187,6 +3723,8 @@ function ActiveToolProperties({ activeTool }: { activeTool: string }) {
       return <PuntniveauToolProperties />;
     case 'pile':
       return <PileToolProperties />;
+    case 'column':
+      return <ColumnToolProperties />;
     case 'cpt':
       return <CPTToolProperties />;
     case 'section-callout':
@@ -3944,7 +4482,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
 
   // Determine if a structural/drawing tool with pending state is active
   const isToolWithProperties = [
-    'line', 'wall', 'beam', 'slab', 'plate-system', 'gridline', 'level', 'pile', 'cpt', 'section-callout', 'hatch', 'array',
+    'line', 'wall', 'beam', 'slab', 'slab-label', 'plate-system', 'gridline', 'level', 'pile', 'cpt', 'section-callout', 'hatch', 'array',
   ].includes(activeTool);
 
   if (!hasSelection) {
@@ -3986,7 +4524,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
       {isToolWithProperties && <ActiveToolProperties activeTool={activeTool} />}
       <div>
         {/* Hide Style section for walls, gridlines, piles, and slabs */}
-        {!(selectedShapes.length > 0 && selectedShapes.every(s => s.type === 'wall' || s.type === 'gridline' || s.type === 'pile' || s.type === 'slab')) && <PropertyGroup label="Style">
+        {!(selectedShapes.length > 0 && selectedShapes.every(s => s.type === 'wall' || s.type === 'wall-opening' || s.type === 'gridline' || s.type === 'pile' || s.type === 'slab')) && <PropertyGroup label="Style">
           <ColorPalette label="Color" value={displayStyle.strokeColor} onChange={handleColorChange} />
 
           <LineweightInput value={displayStyle.strokeWidth} onChange={handleWidthChange} />

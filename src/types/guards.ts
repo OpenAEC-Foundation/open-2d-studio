@@ -23,6 +23,8 @@ import type {
   LevelShape,
   PuntniveauShape,
   SlabShape,
+  SlabOpeningShape,
+  SlabLabelShape,
   SectionCalloutShape,
   SpaceShape,
   PlateSystemShape,
@@ -155,6 +157,20 @@ export function isPuntniveauShape(shape: Shape): shape is PuntniveauShape {
  */
 export function isSlabShape(shape: Shape): shape is SlabShape {
   return shape.type === 'slab';
+}
+
+/**
+ * Check if a shape is a slab opening
+ */
+export function isSlabOpeningShape(shape: Shape): shape is SlabOpeningShape {
+  return shape.type === 'slab-opening';
+}
+
+/**
+ * Check if a shape is a slab label
+ */
+export function isSlabLabelShape(shape: Shape): shape is SlabLabelShape {
+  return shape.type === 'slab-label';
 }
 
 /**
@@ -486,7 +502,7 @@ export function isSnapType(value: unknown): value is SnapType {
 const TOOL_TYPES: ToolType[] = [
   'select', 'pan', 'line', 'rectangle', 'circle', 'arc',
   'polyline', 'ellipse', 'spline', 'text', 'leader', 'dimension',
-  'hatch', 'filled-region', 'insulation', 'beam', 'gridline', 'level', 'pile', 'cpt', 'wall', 'slab', 'section-callout', 'space', 'plate-system', 'spot-elevation', 'image',
+  'hatch', 'filled-region', 'insulation', 'beam', 'gridline', 'level', 'pile', 'cpt', 'wall', 'slab', 'slab-label', 'section-callout', 'space', 'plate-system', 'spot-elevation', 'image',
   'move', 'copy', 'rotate', 'scale', 'mirror', 'trim', 'extend',
   'fillet', 'chamfer', 'offset', 'array', 'detail-component',
   'sheet-text', 'sheet-leader', 'sheet-dimension', 'sheet-callout', 'sheet-revision-cloud'
@@ -503,7 +519,7 @@ export function isToolType(value: unknown): value is ToolType {
  * Check if a tool is a drawing tool
  */
 export function isDrawingTool(tool: ToolType): boolean {
-  return ['line', 'rectangle', 'circle', 'arc', 'polyline', 'ellipse', 'spline', 'text', 'leader', 'dimension', 'hatch', 'beam', 'image', 'gridline', 'level', 'pile', 'cpt', 'wall', 'slab', 'section-callout', 'space', 'plate-system', 'spot-elevation'].includes(tool);
+  return ['line', 'rectangle', 'circle', 'arc', 'polyline', 'ellipse', 'spline', 'text', 'leader', 'dimension', 'hatch', 'beam', 'image', 'gridline', 'level', 'pile', 'cpt', 'wall', 'slab', 'slab-label', 'section-callout', 'space', 'plate-system', 'spot-elevation'].includes(tool);
 }
 
 /**

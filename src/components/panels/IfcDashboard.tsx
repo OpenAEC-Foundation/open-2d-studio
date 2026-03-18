@@ -9,7 +9,7 @@
 import { memo, useState, useCallback, useRef, useMemo } from 'react';
 import { ChevronDown, ChevronRight, Copy, Download, RefreshCw, X } from 'lucide-react';
 import { useAppStore } from '../../state/appStore';
-import type { Shape, BeamShape } from '../../types/geometry';
+import type { Shape, BeamShape, Drawing } from '../../types/geometry';
 import type { ProjectStructure, ProjectBuilding, ProjectStorey } from '../../state/slices/parametricSlice';
 
 // ============================================================================
@@ -172,19 +172,106 @@ function TreeNode({ label, entityType, badge, children, defaultOpen = true, dept
 }
 
 // ============================================================================
+// Storey resolution for dashboard display
+// Mirrors the logic in ifcGenerator.resolveStoreyForShape so the tree
+// accurately reflects which storey each shape will be assigned to in IFC.
+// ============================================================================
+
+/** Resolve which projectStructure storey ID a shape belongs to, or null for default. */
+function resolveShapeStoreyId(shape: Shape, drawings: Drawing[], projectStructure: ProjectStructure): string | null {
+  // Collect all storey IDs for quick lookup
+  const allStoreyIds = new Set<string>();
+  for (const building of projectStructure.buildings) {
+    for (const storey of building.storeys) {
+      allStoreyIds.add(storey.id);
+    }
+  }
+
+  // 1. Shape's own baseLevel or level
+  const shapeStoreyId = (shape as any).baseLevel || (shape as any).level;
+  if (shapeStoreyId && shapeStoreyId !== 'unconnected' && allStoreyIds.has(shapeStoreyId)) {
+    return shapeStoreyId;
+  }
+
+  // 2. Drawing's storeyId (for plan drawings)
+  const drawing = drawings.find(d => d.id === shape.drawingId);
+  if (drawing?.drawingType === 'plan' && drawing.storeyId && allStoreyIds.has(drawing.storeyId)) {
+    return drawing.storeyId;
+  }
+
+  return null; // default storey
+}
+
+/** Group shapes by storey ID. Key null = default/unassigned storey. */
+function groupShapesByStorey(
+  shapes: Shape[],
+  drawings: Drawing[],
+  projectStructure: ProjectStructure
+): Map<string | null, Shape[]> {
+  const map = new Map<string | null, Shape[]>();
+  for (const shape of shapes) {
+    const cls = shapeToIfcClass(shape);
+    if (cls === 'Other') continue;
+    // Skip section-reference shapes (same filter as ifcGenerator)
+    if (shape.id.startsWith('section-ref-')) continue;
+    const storeyId = resolveShapeStoreyId(shape, drawings, projectStructure);
+    const list = map.get(storeyId) || [];
+    list.push(shape);
+    map.set(storeyId, list);
+  }
+  return map;
+}
+
+// ============================================================================
 // IFC Graph (Spatial Structure Tree)
 // ============================================================================
 
 interface IfcGraphProps {
   shapes: Shape[];
+  drawings: Drawing[];
   projectStructure: ProjectStructure;
   onSelectShapes: (ids: string[]) => void;
   selectedClass: string | null;
 }
 
-function IfcGraph({ shapes, projectStructure, onSelectShapes, selectedClass }: IfcGraphProps) {
+function IfcGraph({ shapes, drawings, projectStructure, onSelectShapes, selectedClass }: IfcGraphProps) {
   const grouped = useMemo(() => groupShapesByClass(shapes), [shapes]);
   const totalElements = useMemo(() => grouped.reduce((sum, g) => sum + g.shapeIds.length, 0), [grouped]);
+
+  // Group shapes by their resolved storey
+  const shapesByStorey = useMemo(
+    () => groupShapesByStorey(shapes, drawings, projectStructure),
+    [shapes, drawings, projectStructure]
+  );
+
+  // Find the default storey (closest to elevation 0), matching ifcGenerator logic
+  const defaultStoreyId = useMemo(() => {
+    let closestId: string | null = null;
+    let closestDist = Infinity;
+    for (const building of projectStructure.buildings) {
+      for (const storey of building.storeys) {
+        const dist = Math.abs(storey.elevation);
+        if (dist < closestDist) {
+          closestDist = dist;
+          closestId = storey.id;
+        }
+      }
+    }
+    return closestId;
+  }, [projectStructure]);
+
+  /** Get IFC class groups for shapes assigned to a specific storey (null = default). */
+  const groupedForStorey = useCallback((storeyId: string | null): IfcClassGroup[] => {
+    let storeyShapes = shapesByStorey.get(storeyId) || [];
+    // When querying a real storey that is the default, also include unassigned (null) shapes
+    if (storeyId !== null && storeyId === defaultStoreyId) {
+      const defaultShapes = shapesByStorey.get(null) || [];
+      if (defaultShapes.length > 0) {
+        storeyShapes = [...storeyShapes, ...defaultShapes];
+      }
+    }
+    return groupShapesByClass(storeyShapes);
+  }, [shapesByStorey, defaultStoreyId]);
 
   return (
     <div className="ifc-dashboard-graph">
@@ -213,16 +300,44 @@ function IfcGraph({ shapes, projectStructure, onSelectShapes, selectedClass }: I
                 building.storeys
                   .slice()
                   .sort((a: ProjectStorey, b: ProjectStorey) => b.elevation - a.elevation)
-                  .map((storey: ProjectStorey) => (
+                  .map((storey: ProjectStorey) => {
+                    const storeyGroups = groupedForStorey(storey.id);
+                    const storeyCount = storeyGroups.reduce((sum, g) => sum + g.shapeIds.length, 0);
+                    return (
+                      <TreeNode
+                        key={storey.id}
+                        entityType="IfcBuildingStorey"
+                        label={storey.name}
+                        badge={`${storey.elevation >= 0 ? '+' : ''}${storey.elevation} mm${storeyCount > 0 ? ` | ${storeyCount}` : ''}`}
+                        depth={1}
+                        defaultOpen
+                      >
+                        {storeyGroups.map((g) => (
+                          <TreeNode
+                            key={g.ifcClass}
+                            entityType={g.ifcClass}
+                            label={`(${g.shapeIds.length})`}
+                            badge={g.shapeIds.length}
+                            depth={1}
+                            selected={selectedClass === g.ifcClass}
+                            onSelect={() => onSelectShapes(g.shapeIds)}
+                          />
+                        ))}
+                      </TreeNode>
+                    );
+                  })
+              ) : (
+                (() => {
+                  const defaultGroups = groupedForStorey(null);
+                  return (
                     <TreeNode
-                      key={storey.id}
                       entityType="IfcBuildingStorey"
-                      label={storey.name}
-                      badge={`${storey.elevation >= 0 ? '+' : ''}${storey.elevation} mm`}
+                      label="Ground Floor"
+                      badge="+0 mm"
                       depth={1}
                       defaultOpen
                     >
-                      {grouped.map((g) => (
+                      {defaultGroups.map((g) => (
                         <TreeNode
                           key={g.ifcClass}
                           entityType={g.ifcClass}
@@ -234,27 +349,8 @@ function IfcGraph({ shapes, projectStructure, onSelectShapes, selectedClass }: I
                         />
                       ))}
                     </TreeNode>
-                  ))
-              ) : (
-                <TreeNode
-                  entityType="IfcBuildingStorey"
-                  label="Ground Floor"
-                  badge="+0 mm"
-                  depth={1}
-                  defaultOpen
-                >
-                  {grouped.map((g) => (
-                    <TreeNode
-                      key={g.ifcClass}
-                      entityType={g.ifcClass}
-                      label={`(${g.shapeIds.length})`}
-                      badge={g.shapeIds.length}
-                      depth={1}
-                      selected={selectedClass === g.ifcClass}
-                      onSelect={() => onSelectShapes(g.shapeIds)}
-                    />
-                  ))}
-                </TreeNode>
+                  );
+                })()
               )}
             </TreeNode>
           ))}
@@ -529,6 +625,7 @@ function StepViewer({ content }: StepViewerProps) {
 
 export const IfcDashboard = memo(function IfcDashboard() {
   const shapes = useAppStore((s) => s.shapes);
+  const drawings = useAppStore((s) => s.drawings);
   const projectStructure = useAppStore((s) => s.projectStructure);
   const ifcContent = useAppStore((s) => s.ifcContent);
   const ifcEntityCount = useAppStore((s) => s.ifcEntityCount);
@@ -604,6 +701,7 @@ export const IfcDashboard = memo(function IfcDashboard() {
           <div className="ifc-dashboard-pane-content">
             <IfcGraph
               shapes={shapes}
+              drawings={drawings}
               projectStructure={projectStructure}
               onSelectShapes={handleSelectShapes}
               selectedClass={selectedClass}

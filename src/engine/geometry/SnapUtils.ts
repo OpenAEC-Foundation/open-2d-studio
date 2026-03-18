@@ -589,21 +589,20 @@ export function getWallCorners(shape: WallShape): Point[] {
   // Determine offsets based on justification:
   // perp = (-sin(a), cos(a)) = math-CCW-left = visual-right in screen coords (Y-down).
   // So +perp = visual right, -perp = visual left when looking from start to end.
-  // For center: wall extends halfThick on each side of the centerline
-  // For left: ALL thickness to the visual left (-perp side)
-  // For right: ALL thickness to the visual right (+perp side)
+  // "Left justified" = left face on draw line, wall extends to the visual right (+perp)
+  // "Right justified" = right face on draw line, wall extends to the visual left (-perp)
   let offsetLeft: number; // distance along +perp direction (visual right side)
   let offsetRight: number; // distance along -perp direction (visual left side)
   const halfThick = thickness / 2;
 
   if (justification === 'left') {
-    // Wall extends entirely to the visual left (-perp direction)
-    offsetLeft = 0;
-    offsetRight = thickness;
-  } else if (justification === 'right') {
-    // Wall extends entirely to the visual right (+perp direction)
+    // "Left justified" = left face on draw line, wall extends to visual right (+perp)
     offsetLeft = thickness;
     offsetRight = 0;
+  } else if (justification === 'right') {
+    // "Right justified" = right face on draw line, wall extends to visual left (-perp)
+    offsetLeft = 0;
+    offsetRight = thickness;
   } else {
     // Center justified
     offsetLeft = halfThick;

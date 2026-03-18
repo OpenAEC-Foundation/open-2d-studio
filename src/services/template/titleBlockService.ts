@@ -229,8 +229,9 @@ export function calculateAutoFields(
         }
         return field;
 
+      case 'sheet':
       case 'sheetNo':
-        // Auto-fill sheet number
+        // Auto-fill sheet pagination ("X of Y")
         return {
           ...field,
           value: `${context.currentSheetIndex + 1} of ${context.totalSheets}`,

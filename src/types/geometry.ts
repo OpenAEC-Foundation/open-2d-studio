@@ -43,7 +43,7 @@ export interface ShapeGroup {
 /** @deprecated Use drawingId instead */
 export type BaseShapeWithDraftId = BaseShape & { draftId?: string };
 
-export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'puntniveau' | 'pile' | 'wall' | 'slab' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation' | 'block-instance';
+export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'puntniveau' | 'pile' | 'column' | 'wall' | 'wall-opening' | 'slab' | 'slab-opening' | 'slab-label' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation' | 'block-instance' | 'rebar';
 
 export type HatchPatternType = 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots' | 'custom';
 
@@ -115,6 +115,25 @@ export interface BeamShape extends BaseShape {
   bulge?: number;                  // Arc bulge factor (DXF standard): 0=straight, >0=left, <0=right, 1=semicircle
   plateSystemId?: string;          // Parent plate system ID (when beam is a child of a plate system)
   plateSystemRole?: 'joist' | 'edge';  // Role within the plate system (joist or edge beam/rim joist)
+  exposureClasses?: SurfaceExposureClasses; // Milieuklasse per surface (NEN-EN 206, concrete beams only)
+}
+
+// Column material type for visual representation
+export type ColumnMaterial = 'concrete' | 'steel' | 'timber';
+
+// Column shape - structural column in plan view (IfcColumn)
+export interface ColumnShape extends BaseShape {
+  type: 'column';
+  position: Point;               // Center of column in plan
+  width: number;                 // Width in drawing units (mm)
+  depth: number;                 // Depth in drawing units (mm)
+  rotation: number;              // Rotation in radians
+  material: ColumnMaterial;      // Material type for rendering style
+  profile?: string;              // Profile description (e.g. '300x300')
+  section?: string;              // Section description
+  baseLevel?: string;            // IFC base constraint: storey ID
+  topLevel?: string;             // IFC top constraint: storey ID
+  exposureClasses?: SurfaceExposureClasses; // Milieuklasse per surface (NEN-EN 206, concrete columns only)
 }
 
 // Gridline bubble position
@@ -270,6 +289,19 @@ export interface CPTShape extends BaseShape {
   uitgevoerd?: boolean;
   /** Probe depth in mm (default: 30000 = 30m). Used for 3D IFC representation. */
   depth?: number;
+  /** Parsed CPT measurement data (from GEF or BRO-XML file) */
+  cptData?: {
+    /** Depth values in metres below surface */
+    depth: number[];
+    /** Cone resistance qc in MPa */
+    qc: number[];
+    /** Sleeve friction fs in MPa */
+    fs: number[];
+    /** Friction ratio Rf in % (optional, derived from qc/fs or parsed directly) */
+    rf?: number[];
+    /** Source filename */
+    sourceFile?: string;
+  };
 }
 
 // Foundation zone shape - auto-generated region linked to a CPT
@@ -423,6 +455,18 @@ export interface WallShape extends BaseShape {
   wallSystemPanelOverrides?: Record<string, string>; // Per-instance panel overrides (cellKey -> panelId)
   groupedWallTypeId?: string;    // Reference to GroupedWallType if part of a grouped wall assembly
   groupedWallLayerIndex?: number; // Which layer in the grouped wall this wall represents
+  exposureClasses?: SurfaceExposureClasses; // Milieuklasse per surface (NEN-EN 206)
+}
+
+// Wall opening shape - a hosted opening (door/window cut) within a wall
+export interface WallOpeningShape extends BaseShape {
+  type: 'wall-opening';
+  hostWallId: string;             // ID of the host wall shape
+  positionAlongWall: number;      // Distance from wall start along centerline (mm)
+  width: number;                  // Opening width (mm)
+  height: number;                 // Opening height (mm, used for IFC export / 3D)
+  sillHeight: number;             // Sill height above floor (mm, used for IFC export / 3D)
+  label?: string;                 // Optional opening label
 }
 
 // ============================================================================
@@ -525,8 +569,9 @@ export type SlabMaterial = 'concrete' | 'timber' | 'steel' | 'generic';
 export interface SlabShape extends BaseShape {
   type: 'slab';
   points: Point[];          // Boundary polygon vertices (always closed)
+  innerContours?: Point[][]; // Inner contour polygons (holes/openings cut from the slab)
   thickness: number;        // Slab thickness in mm (default 200)
-  level: string;            // Which level/floor the slab belongs to
+  level: string;            // Storey ID this slab belongs to
   elevation: number;        // Elevation offset in mm
   material: SlabMaterial;
   hatchType: HatchPatternType;
@@ -534,6 +579,55 @@ export interface SlabShape extends BaseShape {
   hatchSpacing: number;     // Hatch line spacing
   hatchColor?: string;      // Hatch line color (default: shape stroke color)
   label?: string;           // Optional slab label
+  spanDirection?: number;   // Span direction angle in degrees (0 = horizontal, 90 = vertical)
+  exposureClasses?: SurfaceExposureClasses; // Milieuklasse per surface (NEN-EN 206)
+}
+
+// Display style for slab openings
+export type SlabOpeningDisplayStyle = 'cross' | 'diagonal-lines' | 'outline-only';
+
+// Slab opening shape - a hole/opening cut through a slab floor (closed polygon)
+export interface SlabOpeningShape extends BaseShape {
+  type: 'slab-opening';
+  points: Point[];          // Boundary polygon vertices (always closed)
+  linkedSlabId?: string;    // Optional link to the parent slab shape
+  label?: string;           // Optional opening label
+  displayStyle?: SlabOpeningDisplayStyle; // How the opening is displayed (default: 'cross')
+}
+
+// Structural floor type for slab labels (Dutch: systeemvloer)
+export type StructuralFloorType =
+  | 'kanaalplaatvloer'       // Hollow core slab
+  | 'breedplaatvloer'        // Wide slab / lattice girder floor
+  | 'ribcassettevloer'       // Ribbed cassette floor
+  | 'staalplaatbetonvloer'   // Steel deck composite floor
+  | 'massieve-vloer'         // Solid slab
+  | 'houten-vloer'           // Timber floor
+  | 'predallen'              // Precast planks
+  | 'custom';                // Custom / other
+
+export const STRUCTURAL_FLOOR_TYPES: { value: StructuralFloorType; label: string; labelEn: string }[] = [
+  { value: 'kanaalplaatvloer',      label: 'Kanaalplaatvloer',      labelEn: 'Hollow Core Slab' },
+  { value: 'breedplaatvloer',       label: 'Breedplaatvloer',       labelEn: 'Wide Slab (Lattice Girder)' },
+  { value: 'ribcassettevloer',      label: 'Ribcassettevloer',      labelEn: 'Ribbed Cassette Floor' },
+  { value: 'staalplaatbetonvloer',  label: 'Staalplaatbetonvloer',  labelEn: 'Steel Deck Composite Floor' },
+  { value: 'massieve-vloer',        label: 'Massieve vloer',        labelEn: 'Solid Slab' },
+  { value: 'houten-vloer',          label: 'Houten vloer',          labelEn: 'Timber Floor' },
+  { value: 'predallen',             label: 'Predallen',             labelEn: 'Precast Planks' },
+  { value: 'custom',                label: 'Overig',                labelEn: 'Custom' },
+];
+
+// Slab label shape - annotation label for structural floor type information
+export interface SlabLabelShape extends BaseShape {
+  type: 'slab-label';
+  position: Point;              // Position of the label
+  floorType: StructuralFloorType;  // Structural floor type
+  customTypeName?: string;      // Custom type name (when floorType is 'custom')
+  thickness: number;            // Slab thickness in mm
+  spanDirection: number;        // Span direction angle in degrees (0 = horizontal, 90 = vertical)
+  linkedSlabId?: string;        // Optional link to a slab shape
+  fontSize: number;             // Font size for the label text (drawing units)
+  arrowLength: number;          // Length of span direction arrows (drawing units)
 }
 
 // Section callout type: section cut line or detail circle
@@ -848,6 +942,110 @@ export interface BlockDefinition {
   shapes: BaseShape[];
 }
 
+// ============================================================================
+// Exposure Class (Milieuklasse) - Dutch/EU concrete standard NEN-EN 206
+// ============================================================================
+
+/** Standard exposure/environmental classes per NEN-EN 206 */
+export type ExposureClass = 'X0' | 'XC1' | 'XC2' | 'XC3' | 'XC4' | 'XS1' | 'XS2' | 'XS3' | 'XD1' | 'XD2' | 'XD3' | 'XF1' | 'XF2' | 'XF3' | 'XF4' | 'XA1' | 'XA2' | 'XA3';
+
+/** Surface exposure class assignment for a concrete element */
+export interface ExposureClassAssignment {
+  elementId: string;
+  surface: 'top' | 'bottom' | 'left' | 'right' | 'front' | 'back';
+  exposureClass: string;
+}
+
+/** Per-surface exposure class map for concrete elements */
+export interface SurfaceExposureClasses {
+  top?: string;
+  bottom?: string;
+  left?: string;
+  right?: string;
+}
+
+/** Minimum cover (dekking) per exposure class in mm, per NEN-EN 1992-1-1 (Eurocode 2) */
+export const EXPOSURE_CLASS_MIN_COVER: Record<string, number> = {
+  'X0': 15,
+  'XC1': 20,
+  'XC2': 25,
+  'XC3': 30,
+  'XC4': 35,
+  'XS1': 40,
+  'XS2': 45,
+  'XS3': 50,
+  'XD1': 40,
+  'XD2': 45,
+  'XD3': 50,
+  'XF1': 30,
+  'XF2': 30,
+  'XF3': 35,
+  'XF4': 35,
+  'XA1': 30,
+  'XA2': 35,
+  'XA3': 40,
+};
+
+/** All standard exposure classes with descriptions */
+export const EXPOSURE_CLASSES: { value: ExposureClass; label: string; description: string }[] = [
+  { value: 'X0',  label: 'X0',  description: 'Geen risico op corrosie of aantasting' },
+  { value: 'XC1', label: 'XC1', description: 'Droog of permanent nat' },
+  { value: 'XC2', label: 'XC2', description: 'Nat, zelden droog' },
+  { value: 'XC3', label: 'XC3', description: 'Matig vochtig' },
+  { value: 'XC4', label: 'XC4', description: 'Afwisselend nat en droog' },
+  { value: 'XS1', label: 'XS1', description: 'Zout in de lucht, niet direct contact' },
+  { value: 'XS2', label: 'XS2', description: 'Ondergedompeld in zeewater' },
+  { value: 'XS3', label: 'XS3', description: 'Getijdenzone, spatwater' },
+  { value: 'XD1', label: 'XD1', description: 'Matig vochtig met chloriden' },
+  { value: 'XD2', label: 'XD2', description: 'Nat, zelden droog met chloriden' },
+  { value: 'XD3', label: 'XD3', description: 'Afwisselend nat/droog met chloriden' },
+  { value: 'XF1', label: 'XF1', description: 'Matige waterverzadiging, zonder dooizout' },
+  { value: 'XF2', label: 'XF2', description: 'Matige waterverzadiging, met dooizout' },
+  { value: 'XF3', label: 'XF3', description: 'Hoge waterverzadiging, zonder dooizout' },
+  { value: 'XF4', label: 'XF4', description: 'Hoge waterverzadiging, met dooizout' },
+  { value: 'XA1', label: 'XA1', description: 'Licht chemisch agressief' },
+  { value: 'XA2', label: 'XA2', description: 'Matig chemisch agressief' },
+  { value: 'XA3', label: 'XA3', description: 'Sterk chemisch agressief' },
+];
+
+/** Calculate the governing minimum cover from exposure classes on all surfaces */
+export function getMinCoverFromExposureClasses(exposureClasses?: SurfaceExposureClasses): number {
+  if (!exposureClasses) return 0;
+  let maxCover = 0;
+  for (const surface of ['top', 'bottom', 'left', 'right'] as const) {
+    const ec = exposureClasses[surface];
+    if (ec && EXPOSURE_CLASS_MIN_COVER[ec] !== undefined) {
+      maxCover = Math.max(maxCover, EXPOSURE_CLASS_MIN_COVER[ec]);
+    }
+  }
+  return maxCover;
+}
+
+// ============================================================================
+// Rebar Shape - Reinforcement bar (IfcReinforcingBar)
+// ============================================================================
+
+/** Standard rebar diameters in mm (Dutch/EU standard) */
+export const REBAR_DIAMETERS = [6, 8, 10, 12, 16, 20, 25, 32, 40] as const;
+export type RebarDiameter = typeof REBAR_DIAMETERS[number];
+
+/** Rebar view mode: cross-section (circle) or longitudinal (line with hooks) */
+export type RebarViewMode = 'cross-section' | 'longitudinal';
+
+/** Rebar shape - reinforcement bar for structural concrete detailing */
+export interface RebarShape extends BaseShape {
+  type: 'rebar';
+  position: Point;               // Position (center of cross-section or start of longitudinal)
+  diameter: RebarDiameter;       // Bar diameter in mm
+  barMark: string;               // Bar mark identifier (e.g. "A1", "B2")
+  count?: number;                // Number of bars (for annotation, e.g. "5-\u00d812")
+  spacing?: number;              // Bar spacing in mm (for distributed bars, e.g. "c.t.c. 150")
+  length?: number;               // Bar length in mm (longitudinal view)
+  bendShape?: string;            // Bend shape code (e.g. "00" = straight, "11" = L-hook, "21" = U-hook)
+  viewMode?: RebarViewMode;      // Display mode (default: 'cross-section')
+  endPoint?: Point;              // End point for longitudinal view
+}
+
 export interface BlockInstanceShape extends BaseShape {
   type: 'block-instance';
   blockDefinitionId: string;
@@ -879,15 +1077,20 @@ export type Shape =
   | LevelShape
   | PuntniveauShape
   | PileShape
+  | ColumnShape
   | WallShape
+  | WallOpeningShape
   | SlabShape
+  | SlabOpeningShape
+  | SlabLabelShape
   | SectionCalloutShape
   | SpaceShape
   | PlateSystemShape
   | SpotElevationShape
   | CPTShape
   | FoundationZoneShape
-  | BlockInstanceShape;
+  | BlockInstanceShape
+  | RebarShape;
 
 // Layer type
 export interface Layer {
@@ -957,15 +1160,19 @@ export type ToolType =
   | 'gridline'
   | 'level'
   | 'pile'
+  | 'column'
   | 'cpt'
   | 'wall'
   | 'slab'
+  | 'slab-opening'
+  | 'slab-label'
   | 'section-callout'
   | 'space'
   | 'plate-system'
   | 'spot-elevation'
   | 'puntniveau'
   | 'label'
+  | 'rebar'
   // Image tools
   | 'image'
   // Modify tools (legacy - now commands)
@@ -1019,12 +1226,13 @@ export interface DrawingBoundary {
 // Drawing type: standalone (default), plan (IfcBuildingStorey), section (cross-section)
 export type DrawingType = 'standalone' | 'plan' | 'section';
 
-export type PlanSubtype = 'pile-plan' | 'structural-plan' | 'floor-plan';
+export type PlanSubtype = 'pile-plan' | 'structural-plan' | 'floor-plan' | 'area-plan';
 
 export const PLAN_SUBTYPE_CONFIG: Record<PlanSubtype, { label: string; abbr: string; color: string; title: string }> = {
   'pile-plan':       { label: 'Pile Plan',       abbr: 'PP', color: 'bg-violet-500/30 text-violet-300', title: 'Pile plan (foundation layout)' },
   'structural-plan': { label: 'Structural Plan', abbr: 'SP', color: 'bg-cyan-500/30 text-cyan-300',    title: 'Structural plan (beams, columns, slabs)' },
-  'floor-plan':      { label: 'Floor Plan',      abbr: 'FP', color: 'bg-blue-500/30 text-blue-300',    title: 'Floor plan (architectural layout)' },
+  'floor-plan':      { label: 'Architectural Plan', abbr: 'AP', color: 'bg-blue-500/30 text-blue-300',    title: 'Architectural plan (architectural layout)' },
+  'area-plan':       { label: 'Area Plan',           abbr: 'AR', color: 'bg-emerald-500/30 text-emerald-300', title: 'Area plan (area and space layout)' },
 };
 
 // Section reference - bidirectional link between section drawing and plan elements
@@ -1041,7 +1249,7 @@ export interface Drawing {
   boundary: DrawingBoundary;  // Defines the region/extent visible on sheets
   scale: number;              // View scale (e.g., 0.02 for 1:50, 0.01 for 1:100)
   drawingType: DrawingType;   // Drawing type: standalone, plan, or section
-  planSubtype?: PlanSubtype;  // For plan drawings: pile-plan, structural-plan, or floor-plan
+  planSubtype?: PlanSubtype;  // For plan drawings: pile-plan, structural-plan, floor-plan, or area-plan
   storeyId?: string;          // For plan drawings: linked IfcBuildingStorey ID from ProjectStructure
   linkedSectionCalloutId?: string; // For section drawings: ID of the section-callout shape that created this
   sectionReferences?: SectionReference[]; // Linked references to gridlines/levels from plan drawings

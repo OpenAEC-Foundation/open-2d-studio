@@ -15,6 +15,7 @@ export interface ViewState {
   mousePosition: Point;
   cursor2D: Point;
   cursor2DVisible: boolean;
+  cursor2DPlaced: boolean;
 }
 
 // ============================================================================
@@ -56,6 +57,7 @@ export const initialViewState: ViewState = {
   mousePosition: { x: 0, y: 0 },
   cursor2D: { x: 0, y: 0 },
   cursor2DVisible: true,
+  cursor2DPlaced: false,
 };
 
 // ============================================================================
@@ -244,12 +246,14 @@ export const createViewSlice = (
     set((state) => {
       state.cursor2D = point;
       state.cursor2DVisible = true;
+      state.cursor2DPlaced = true;
     }),
 
   resetCursor2D: () =>
     set((state) => {
       state.cursor2D = { x: 0, y: 0 };
       state.cursor2DVisible = true;
+      state.cursor2DPlaced = false;
     }),
 
   setCursor2DToSelected: () => {
@@ -275,6 +279,7 @@ export const createViewSlice = (
     set((state) => {
       state.cursor2D = { x: (minX + maxX) / 2, y: (minY + maxY) / 2 };
       state.cursor2DVisible = true;
+      state.cursor2DPlaced = true;
     });
   },
 

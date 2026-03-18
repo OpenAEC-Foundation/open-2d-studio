@@ -233,21 +233,55 @@ export function generateIFC(
     }
   }
 
-  function resolveStoreyForShape(shape: Shape): number {
-    const drawing = drawingMap.get(shape.drawingId);
-    if (drawing?.drawingType === 'plan' && drawing.storeyId) {
-      for (const psBuilding of psBuildings) {
-        const psStorey = psBuilding.storeys.find(s => s.id === drawing.storeyId);
-        if (psStorey) {
-          const buildingInfo = buildingInfoMap.get(psBuilding.id);
-          if (buildingInfo) {
-            const storeyIndex = psBuilding.storeys.indexOf(psStorey);
-            if (storeyIndex >= 0 && storeyIndex < buildingInfo.storeyIds.length) {
-              return buildingInfo.storeyIds[storeyIndex];
-            }
-          }
+  // Build a fast lookup: projectStructure storey ID -> IFC entity ID
+  const psStoreyEntityMap = new Map<string, number>();
+  for (const psBuilding of psBuildings) {
+    const buildingInfo = buildingInfoMap.get(psBuilding.id);
+    if (buildingInfo) {
+      for (let i = 0; i < psBuilding.storeys.length; i++) {
+        if (i < buildingInfo.storeyIds.length) {
+          psStoreyEntityMap.set(psBuilding.storeys[i].id, buildingInfo.storeyIds[i]);
         }
       }
+    }
+  }
+
+  function resolveStoreyForShape(shape: Shape): number {
+    // 1. Use shape's own baseLevel/level storey reference if available (walls, beams, slabs)
+    const shapeStoreyId = (shape as any).baseLevel || (shape as any).level;
+    if (shapeStoreyId && shapeStoreyId !== 'unconnected') {
+      // Check projectStructure storeys
+      const entityId = psStoreyEntityMap.get(shapeStoreyId);
+      if (entityId !== undefined) {
+        console.debug(`[IFC] resolveStorey shape=${shape.id} type=${shape.type} -> baseLevel/level="${shapeStoreyId}" -> entity #${entityId}`);
+        return entityId;
+      }
+      // Check LevelShape-derived storeys
+      const levelEntityId = storeyMap.get(shapeStoreyId);
+      if (levelEntityId !== undefined) {
+        console.debug(`[IFC] resolveStorey shape=${shape.id} type=${shape.type} -> baseLevel/level="${shapeStoreyId}" -> levelStorey #${levelEntityId}`);
+        return levelEntityId;
+      }
+      console.debug(`[IFC] resolveStorey shape=${shape.id} type=${shape.type} -> baseLevel/level="${shapeStoreyId}" NOT FOUND in storeys, falling through`);
+    }
+
+    // 2. Fall back to drawing's storey
+    const drawing = drawingMap.get(shape.drawingId);
+    if (drawing?.drawingType === 'plan' && drawing.storeyId) {
+      const entityId = psStoreyEntityMap.get(drawing.storeyId);
+      if (entityId !== undefined) {
+        console.debug(`[IFC] resolveStorey shape=${shape.id} type=${shape.type} -> drawing "${drawing.name}" storeyId="${drawing.storeyId}" -> entity #${entityId}`);
+        return entityId;
+      }
+      // Check LevelShape-derived storeys for drawing fallback too
+      const levelEntityId = storeyMap.get(drawing.storeyId);
+      if (levelEntityId !== undefined) {
+        console.debug(`[IFC] resolveStorey shape=${shape.id} type=${shape.type} -> drawing "${drawing.name}" storeyId="${drawing.storeyId}" -> levelStorey #${levelEntityId}`);
+        return levelEntityId;
+      }
+      console.debug(`[IFC] resolveStorey shape=${shape.id} type=${shape.type} -> drawing "${drawing.name}" storeyId="${drawing.storeyId}" NOT FOUND`);
+    } else {
+      console.debug(`[IFC] resolveStorey shape=${shape.id} type=${shape.type} -> drawing="${drawing?.name || 'NONE'}" type=${drawing?.drawingType} storeyId=${drawing?.storeyId} -> using default`);
     }
     return defaultStoreyId;
   }

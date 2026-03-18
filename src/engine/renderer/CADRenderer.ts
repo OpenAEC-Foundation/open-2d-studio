@@ -79,6 +79,10 @@ interface RenderOptions {
   selectedWallSubElement?: { wallId: string; type: 'stud' | 'panel'; key: string } | null;
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
+  /** Whether slab surface (hatch) patterns are enabled */
+  slabSurfacePatternEnabled?: boolean;
+  /** How slab openings are rendered */
+  openingDisplayStyle?: 'cross' | 'diagonal' | 'outline';
   /** Gridline extension distance in mm */
   gridlineExtension?: number;
   /** Sea level datum: peil=0 elevation relative to NAP in meters */
@@ -87,6 +91,12 @@ interface RenderOptions {
   hiddenIfcCategories?: string[];
   /** Unit settings for number formatting in overlays and labels */
   unitSettings?: UnitSettings;
+  /** Slab edit mode: inner contour points being drawn */
+  slabInnerContourPoints?: import('../geometry/Point').IPoint[];
+  /** Slab edit mode: the slab being edited */
+  editingSlabId?: string | null;
+  /** Whether slab edit mode is active */
+  slabEditMode?: boolean;
 }
 
 // Interface for sheet mode rendering (supports both new and legacy property names)
@@ -123,6 +133,10 @@ interface SheetModeRenderOptions {
   selectedWallSubElement?: { wallId: string; type: 'stud' | 'panel'; key: string } | null;
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
+  /** Whether slab surface (hatch) patterns are enabled */
+  slabSurfacePatternEnabled?: boolean;
+  /** How slab openings are rendered */
+  openingDisplayStyle?: 'cross' | 'diagonal' | 'outline';
   /** Gridline extension distance in mm */
   gridlineExtension?: number;
   /** Sea level datum: peil=0 elevation relative to NAP in meters */
@@ -205,10 +219,15 @@ export class CADRenderer {
       wallSystemTypes: options.wallSystemTypes,
       selectedWallSubElement: options.selectedWallSubElement,
       materialHatchSettings: options.materialHatchSettings,
+      slabSurfacePatternEnabled: options.slabSurfacePatternEnabled,
+      openingDisplayStyle: options.openingDisplayStyle,
       gridlineExtension: options.gridlineExtension,
       seaLevelDatum: options.seaLevelDatum,
       hiddenIfcCategories: options.hiddenIfcCategories,
       unitSettings: options.unitSettings,
+      slabEditMode: options.slabEditMode,
+      editingSlabId: options.editingSlabId,
+      slabInnerContourPoints: options.slabInnerContourPoints,
     };
 
     this.drawingRenderer.render(drawingOptions);
@@ -238,6 +257,8 @@ export class CADRenderer {
       wallSystemTypes: options.wallSystemTypes,
       selectedWallSubElement: options.selectedWallSubElement,
       materialHatchSettings: options.materialHatchSettings,
+      slabSurfacePatternEnabled: options.slabSurfacePatternEnabled,
+      openingDisplayStyle: options.openingDisplayStyle,
       gridlineExtension: options.gridlineExtension,
       seaLevelDatum: options.seaLevelDatum,
       hiddenIfcCategories: options.hiddenIfcCategories,

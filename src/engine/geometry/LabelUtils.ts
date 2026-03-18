@@ -36,7 +36,8 @@ import { formatNumber, formatElevation, applyNumberFormat } from '../../units/fo
 export function getElementLabelText(
   shape: Shape,
   wallTypes?: WallType[],
-  unitSettings?: UnitSettings
+  unitSettings?: UnitSettings,
+  storeys?: { id: string; name: string; elevation: number }[]
 ): string {
   switch (shape.type) {
     case 'beam': {
@@ -74,10 +75,14 @@ export function getElementLabelText(
 
     case 'slab': {
       const slab = shape as SlabShape;
-      if (slab.label) {
-        return `${slab.label} ${slab.thickness}mm`;
+      const slabName = slab.label ? `${slab.label} ${slab.thickness}mm` : `Slab ${slab.thickness}mm`;
+      if (slab.level && storeys) {
+        const storey = storeys.find(s => s.id === slab.level);
+        if (storey) {
+          return `${slabName}\n${storey.name}`;
+        }
       }
-      return `Slab ${slab.thickness}mm`;
+      return slabName;
     }
 
     case 'level': {
@@ -152,7 +157,8 @@ export function getDefaultLabelTemplate(shapeType: string): string {
 export function getShapePropertyValues(
   shape: Shape,
   wallTypes?: WallType[],
-  unitSettings?: UnitSettings
+  unitSettings?: UnitSettings,
+  storeys?: { id: string; name: string; elevation: number }[]
 ): Record<string, string> {
   const props: Record<string, string> = {};
 
@@ -161,7 +167,8 @@ export function getShapePropertyValues(
       const space = shape as SpaceShape;
       props['Name'] = space.name || '';
       props['Number'] = space.number || '';
-      props['Level'] = space.level || '';
+      props['Storey'] = space.level || '';
+      props['Level'] = space.level || ''; // backward compat
       props['Area'] = space.area !== undefined ? formatNumber(space.area, 2, unitSettings?.numberFormat ?? 'period') : '';
       break;
     }
@@ -191,7 +198,14 @@ export function getShapePropertyValues(
       const slab = shape as SlabShape;
       props['Name'] = slab.label || 'Slab';
       props['Thickness'] = String(slab.thickness);
-      props['Level'] = slab.level || '';
+      if (slab.level && storeys) {
+        const storey = storeys.find(s => s.id === slab.level);
+        props['Storey'] = storey ? storey.name : slab.level;
+        props['Level'] = props['Storey']; // backward compat
+      } else {
+        props['Storey'] = '';
+        props['Level'] = ''; // backward compat
+      }
       break;
     }
     case 'pile': {
@@ -241,9 +255,10 @@ export function resolveTemplate(
   template: string,
   shape: Shape,
   wallTypes?: WallType[],
-  unitSettings?: UnitSettings
+  unitSettings?: UnitSettings,
+  storeys?: { id: string; name: string; elevation: number }[]
 ): string {
-  const props = getShapePropertyValues(shape, wallTypes, unitSettings);
+  const props = getShapePropertyValues(shape, wallTypes, unitSettings, storeys);
   return template.replace(/\{(\w+)\}/g, (_match, key: string) => {
     return props[key] ?? '';
   });

@@ -80,6 +80,45 @@ import type { SectionCalloutShape, GridlineShape, LevelShape } from '../../types
 const MM_TO_PIXELS = 3.78;
 
 /**
+ * Map of title block field IDs to projectInfo property names.
+ * When a title block field has one of these IDs and its value is empty,
+ * it will be auto-populated from the corresponding projectInfo property.
+ */
+const FIELD_TO_PROJECT_INFO: Record<string, string> = {
+  project_number: 'projectNumber',
+  projectnr: 'projectNumber',
+  project_nr: 'projectNumber',
+  projectnumber: 'projectNumber',
+  phase: 'phase',
+  project_name: 'projectName',
+  projectname: 'projectName',
+  project: 'projectName',
+  projectnaam: 'projectName',
+  client: 'client',
+  klant: 'client',
+  author: 'author',
+  auteur: 'author',
+  address: 'address',
+  adres: 'address',
+  status: 'status',
+};
+
+/**
+ * Auto-populate empty title block fields from projectInfo
+ */
+function populateTitleBlockFromProjectInfo(
+  fields: TitleBlockField[],
+  projectInfo: Record<string, any>
+): void {
+  for (const field of fields) {
+    const projectInfoKey = FIELD_TO_PROJECT_INFO[field.id];
+    if (projectInfoKey && !field.value && projectInfo[projectInfoKey]) {
+      field.value = projectInfo[projectInfoKey];
+    }
+  }
+}
+
+/**
  * Create title block with fields from SVG template
  */
 function createTitleBlockFromSVGTemplate(svgTemplateId: string): TitleBlock | null {
@@ -1709,6 +1748,12 @@ export const createModelSlice = (
       }
     }
 
+    // Auto-populate title block fields from project info
+    const currentProjectInfo = (get() as any).projectInfo;
+    if (currentProjectInfo && titleBlock.fields) {
+      populateTitleBlockFromProjectInfo(titleBlock.fields, currentProjectInfo);
+    }
+
     set((state) => {
       const newSheet: Sheet = {
         id,
@@ -1796,7 +1841,7 @@ export const createModelSlice = (
       const viewportScales = sheet.viewports.map((vp) => vp.scale);
 
       // Update sheet number field
-      const sheetNoField = sheet.titleBlock.fields.find((f) => f.id === 'sheetNo');
+      const sheetNoField = sheet.titleBlock.fields.find((f) => f.id === 'sheet' || f.id === 'sheetNo');
       if (sheetNoField) {
         sheetNoField.value = `${sheetIndex + 1} of ${totalSheets}`;
       }
@@ -1822,6 +1867,12 @@ export const createModelSlice = (
         } else {
           scaleField.value = 'As Noted';
         }
+      }
+
+      // Auto-populate empty title block fields from project info
+      const projectInfo = (state as any).projectInfo;
+      if (projectInfo) {
+        populateTitleBlockFromProjectInfo(sheet.titleBlock.fields, projectInfo);
       }
     }),
 
@@ -2311,8 +2362,8 @@ export const createModelSlice = (
           numberField.value = newNumber;
         }
 
-        // Also update sheetNo field if different from number
-        const sheetNoField = sheet.titleBlock.fields.find((f) => f.id === 'sheetNo');
+        // Also update sheet pagination field ("X of Y")
+        const sheetNoField = sheet.titleBlock.fields.find((f) => f.id === 'sheet' || f.id === 'sheetNo');
         if (sheetNoField) {
           sheetNoField.value = `${index + 1} of ${state.sheets.length}`;
         }

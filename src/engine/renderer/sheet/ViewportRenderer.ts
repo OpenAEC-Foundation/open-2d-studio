@@ -43,6 +43,10 @@ export interface ViewportRenderOptions {
   wallSystemTypes?: WallSystemType[];
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
+  /** Whether slab surface (hatch) patterns are enabled */
+  slabSurfacePatternEnabled?: boolean;
+  /** How slab openings are rendered */
+  openingDisplayStyle?: 'cross' | 'diagonal' | 'outline';
   /** Gridline extension distance in mm */
   gridlineExtension?: number;
   /** Sea level datum: peil=0 elevation relative to NAP in meters */
@@ -248,6 +252,12 @@ export class ViewportRenderer extends BaseRenderer {
       this.shapeRenderer.setMaterialHatchSettings(options.materialHatchSettings);
     }
 
+    // Set slab surface pattern enabled flag
+    this.shapeRenderer.setSlabSurfacePatternEnabled(options?.slabSurfacePatternEnabled !== false);
+
+    // Set slab opening display style
+    this.shapeRenderer.setOpeningDisplayStyle(options?.openingDisplayStyle || 'cross');
+
     // Set gridline extension distance
     if (options?.gridlineExtension !== undefined) {
       this.shapeRenderer.setGridlineExtension(options.gridlineExtension);
@@ -326,7 +336,13 @@ export class ViewportRenderer extends BaseRenderer {
     }
 
     // Draw shapes (invertColors=true to convert white strokes to black on white paper)
+    // Slabs first (background), then everything else, so walls render on top
     for (const shape of drawingShapes) {
+      if (shape.type !== 'slab') continue;
+      this.shapeRenderer.drawShapeSimple(shape, true);
+    }
+    for (const shape of drawingShapes) {
+      if (shape.type === 'slab') continue;
       this.shapeRenderer.drawShapeSimple(shape, true);
     }
 
@@ -464,7 +480,7 @@ export class ViewportRenderer extends BaseRenderer {
     title: string,
     scale: number,
     referenceNumber: string | undefined,
-    zoom: number,
+    _zoom: number,
     options?: {
       showExtensionLine?: boolean;
       extensionLineLength?: number;
@@ -480,16 +496,23 @@ export class ViewportRenderer extends BaseRenderer {
       ? options.extensionLineLength * MM_TO_PIXELS
       : vpWidth;
 
-    const lineY = vpBottomY + 8 / zoom;
-    const titleY = showExtensionLine ? lineY + 14 / zoom : vpBottomY + 14 / zoom;
-    const scaleY = titleY + 12 / zoom;
+    // Use fixed paper-space sizes (in mm converted to pixels) so the title
+    // does not change apparent size when zooming the sheet view.
+    const lineY = vpBottomY + 2 * MM_TO_PIXELS;
+    const titleY = showExtensionLine ? lineY + 4 * MM_TO_PIXELS : vpBottomY + 4 * MM_TO_PIXELS;
+    const scaleY = titleY + 3 * MM_TO_PIXELS;
     const lineStartX = vpX;
     const lineEndX = vpX + extensionLineLengthPx;
+
+    // Font sizes in paper-space pixels (pt converted via MM_TO_PIXELS)
+    const titleFontSize = 3.2 * MM_TO_PIXELS;   // ~9pt
+    const scaleFontSize = 2.5 * MM_TO_PIXELS;   // ~7pt
+    const refFontSize = 2.8 * MM_TO_PIXELS;     // ~8pt
 
     // Draw extension line (if enabled)
     if (showExtensionLine) {
       ctx.strokeStyle = '#333333';
-      ctx.lineWidth = 1 / zoom;
+      ctx.lineWidth = 0.2 * MM_TO_PIXELS;
       ctx.beginPath();
       ctx.moveTo(lineStartX, lineY);
       ctx.lineTo(lineEndX, lineY);
@@ -501,31 +524,31 @@ export class ViewportRenderer extends BaseRenderer {
 
     // Draw reference number in circle if present
     if (referenceNumber) {
-      const circleX = vpX + 10 / zoom;
-      const circleY = titleY - 4 / zoom;
-      const circleRadius = 8 / zoom;
+      const circleX = vpX + 3 * MM_TO_PIXELS;
+      const circleY = titleY - 1 * MM_TO_PIXELS;
+      const circleRadius = 2.5 * MM_TO_PIXELS;
 
       // Draw circle
       ctx.strokeStyle = '#333333';
-      ctx.lineWidth = 1.5 / zoom;
+      ctx.lineWidth = 0.3 * MM_TO_PIXELS;
       ctx.beginPath();
       ctx.arc(circleX, circleY, circleRadius, 0, Math.PI * 2);
       ctx.stroke();
 
       // Draw reference number text centered in circle
       ctx.fillStyle = '#333333';
-      ctx.font = `bold ${10 / zoom}px ${CAD_DEFAULT_FONT}`;
+      ctx.font = `bold ${refFontSize}px ${CAD_DEFAULT_FONT}`;
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
       ctx.fillText(referenceNumber, circleX, circleY);
 
       // Move text start position to after the circle
-      textStartX = circleX + circleRadius + 8 / zoom;
+      textStartX = circleX + circleRadius + 2 * MM_TO_PIXELS;
     }
 
     // Draw title
     ctx.fillStyle = '#333333';
-    ctx.font = `${11 / zoom}px ${CAD_DEFAULT_FONT}`;
+    ctx.font = `${titleFontSize}px ${CAD_DEFAULT_FONT}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'alphabetic';
     ctx.fillText(title, textStartX, titleY);
@@ -534,7 +557,7 @@ export class ViewportRenderer extends BaseRenderer {
     if (showScale) {
       const scaleText = `Scale: ${this.formatScale(scale)}`;
       ctx.fillStyle = '#666666';
-      ctx.font = `${9 / zoom}px ${CAD_DEFAULT_FONT}`;
+      ctx.font = `${scaleFontSize}px ${CAD_DEFAULT_FONT}`;
       ctx.fillText(scaleText, textStartX, scaleY);
     }
 

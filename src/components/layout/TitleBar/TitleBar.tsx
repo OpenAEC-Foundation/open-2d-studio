@@ -505,6 +505,7 @@ export const TitleBar = memo(function TitleBar({ onSendFeedback }: TitleBarProps
         <button
           onClick={onSendFeedback}
           className="text-xs text-cad-text-dim hover:text-cad-accent transition-colors cursor-default mr-4"
+          title="Send Feedback (F1)"
         >
           Send Feedback
         </button>

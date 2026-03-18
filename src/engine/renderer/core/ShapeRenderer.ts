@@ -51,6 +51,10 @@ export class ShapeRenderer extends BaseRenderer {
   private selectedWallSubElement: { wallId: string; type: 'stud' | 'panel'; key: string } | null = null;
   // Material hatch settings from Drawing Standards
   private materialHatchSettings: MaterialHatchSettings = { ...DEFAULT_MATERIAL_HATCH_SETTINGS };
+  // Whether slab surface (hatch) patterns are enabled for the current drawing context
+  private slabSurfacePatternEnabled: boolean = true;
+  // How slab openings are rendered
+  private openingDisplayStyle: 'cross' | 'diagonal' | 'outline' = 'cross';
   // Gridline extension distance in mm (distance beyond start/end before the bubble)
   private gridlineExtension: number = 1000;
   // Sea level datum: peil=0 elevation relative to NAP in meters (default 0)
@@ -169,6 +173,21 @@ export class ShapeRenderer extends BaseRenderer {
   }
 
   /**
+   * Set whether slab surface (hatch) patterns are enabled.
+   * When false, slabs render outline only (no fill/hatch).
+   */
+  setSlabSurfacePatternEnabled(enabled: boolean): void {
+    this.slabSurfacePatternEnabled = enabled;
+  }
+
+  /**
+   * Set the slab opening display style.
+   */
+  setOpeningDisplayStyle(style: 'cross' | 'diagonal' | 'outline'): void {
+    this.openingDisplayStyle = style;
+  }
+
+  /**
    * Set the gridline extension distance (mm).
    * This is how far the gridline extends beyond its start/end points before the bubble circle.
    */
@@ -224,6 +243,8 @@ export class ShapeRenderer extends BaseRenderer {
         gridlineExtension: this.gridlineExtension,
         seaLevelDatum: this.seaLevelDatum,
         materialHatchSettings: this.materialHatchSettings,
+        slabSurfacePatternEnabled: this.slabSurfacePatternEnabled,
+        openingDisplayStyle: this.openingDisplayStyle,
         wallTypes: this.wallTypes,
         wallSystemTypes: this.wallSystemTypes,
         selectedWallSubElement: this.selectedWallSubElement,
@@ -249,6 +270,8 @@ export class ShapeRenderer extends BaseRenderer {
     this._renderCtx.gridlineExtension = this.gridlineExtension;
     this._renderCtx.seaLevelDatum = this.seaLevelDatum;
     this._renderCtx.materialHatchSettings = this.materialHatchSettings;
+    this._renderCtx.slabSurfacePatternEnabled = this.slabSurfacePatternEnabled;
+    this._renderCtx.openingDisplayStyle = this.openingDisplayStyle;
     this._renderCtx.wallTypes = this.wallTypes;
     this._renderCtx.wallSystemTypes = this.wallSystemTypes;
     this._renderCtx.selectedWallSubElement = this.selectedWallSubElement;

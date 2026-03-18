@@ -64,10 +64,16 @@ export type {
 
   // Slab
   SlabShape,
+  SlabOpeningShape,
+  SlabOpeningDisplayStyle,
   SlabMaterial,
   SlabType,
+  SlabLabelShape,
+  StructuralFloorType,
 
   // Column
+  ColumnShape,
+  ColumnMaterial,
   ColumnType,
   ColumnShapeType,
 
@@ -91,6 +97,16 @@ export type {
 
   // Spot Elevation
   SpotElevationShape,
+
+  // Rebar (Reinforcement)
+  RebarShape,
+  RebarDiameter,
+  RebarViewMode,
+
+  // Exposure Class (Milieuklasse)
+  ExposureClass,
+  ExposureClassAssignment,
+  SurfaceExposureClasses,
 
   // Section Reference
   SectionReference,
@@ -137,6 +153,11 @@ export type {
 export {
   MATERIAL_CATEGORIES,
   getMaterialCategoryInfo,
+  STRUCTURAL_FLOOR_TYPES,
+  REBAR_DIAMETERS,
+  EXPOSURE_CLASSES,
+  EXPOSURE_CLASS_MIN_COVER,
+  getMinCoverFromExposureClasses,
 } from './geometry';
 
 // ============================================================================
@@ -381,6 +402,12 @@ export {
 
   // Slab guard
   isSlabShape,
+
+  // Slab Opening guard
+  isSlabOpeningShape,
+
+  // Slab Label guard
+  isSlabLabelShape,
 
   // Section Callout guard
   isSectionCalloutShape,

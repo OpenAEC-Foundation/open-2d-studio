@@ -19,6 +19,10 @@ export interface ShapeRenderContext {
   gridlineExtension: number;
   seaLevelDatum: number;
   materialHatchSettings: MaterialHatchSettings;
+  /** Whether slab surface (hatch) patterns are enabled for the current drawing context */
+  slabSurfacePatternEnabled: boolean;
+  /** How slab openings are rendered: 'cross' (default), 'diagonal', or 'outline' */
+  openingDisplayStyle: 'cross' | 'diagonal' | 'outline';
   wallTypes: WallType[];
   wallSystemTypes: WallSystemType[];
   selectedWallSubElement: { wallId: string; type: 'stud' | 'panel'; key: string } | null;

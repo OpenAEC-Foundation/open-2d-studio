@@ -21,7 +21,7 @@ export function useSpaceDrawing() {
     activeLayerId,
     activeDrawingId,
     currentStyle,
-    addShape,
+    addShapes,
     shapes,
     pendingSpace,
   } = useAppStore();
@@ -95,8 +95,6 @@ export function useSpaceDrawing() {
         fillOpacity: pendingSpace.fillOpacity ?? 0.1,
       };
 
-      addShape(spaceShape);
-
       // ----------------------------------------------------------------
       // Auto-place a linked label (TextShape) at the space centroid
       // ----------------------------------------------------------------
@@ -136,11 +134,12 @@ export function useSpaceDrawing() {
         labelTemplate: template,
       };
 
-      addShape(labelShape);
+      // Add both space and label atomically in a single undo step
+      addShapes([spaceShape, labelShape]);
 
       return true;
     },
-    [shapes, activeDrawingId, activeLayerId, currentStyle, addShape, pendingSpace]
+    [shapes, activeDrawingId, activeLayerId, currentStyle, addShapes, pendingSpace]
   );
 
   /**

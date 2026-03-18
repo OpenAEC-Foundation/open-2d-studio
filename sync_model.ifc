@@ -1,0 +1,190 @@
+ISO-10303-21;
+HEADER;
+FILE_DESCRIPTION(('ViewDefinition [CoordinationView]'),'2;1');
+FILE_NAME('sync_model.ifc','2026-03-17T20:00:00',('Open 2D Studio'),('OpenAEC Foundation'),'','Open 2D Studio 0.32.0','');
+FILE_SCHEMA(('IFC4'));
+ENDSEC;
+DATA;
+/* === Units === */
+#1=IFCSIUNIT(*,.LENGTHUNIT.,.MILLI.,.METRE.);
+#2=IFCSIUNIT(*,.AREAUNIT.,$,.SQUARE_METRE.);
+#3=IFCSIUNIT(*,.VOLUMEUNIT.,$,.CUBIC_METRE.);
+#4=IFCSIUNIT(*,.PLANEANGLEUNIT.,$,.RADIAN.);
+#5=IFCUNITASSIGNMENT((#1,#2,#3,#4));
+
+/* === Geometry contexts === */
+#10=IFCCARTESIANPOINT((0.,0.,0.));
+#11=IFCDIRECTION((0.,0.,1.));
+#12=IFCDIRECTION((1.,0.,0.));
+#13=IFCDIRECTION((0.,1.,0.));
+#14=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#15=IFCGEOMETRICREPRESENTATIONCONTEXT($,'Model',3,1.0E-05,#14,$);
+#16=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Body','Model',*,*,*,*,#15,$,.MODEL_VIEW.,$);
+#17=IFCGEOMETRICREPRESENTATIONSUBCONTEXT('Axis','Model',*,*,*,*,#15,$,.GRAPH_VIEW.,$);
+
+/* === Owner history === */
+#20=IFCPERSON($,$,'User',$,$,$,$,$);
+#21=IFCORGANIZATION($,'OpenAEC Foundation',$,$,$);
+#22=IFCPERSONANDORGANIZATION(#20,#21,$);
+#23=IFCAPPLICATION(#21,'0.32.0','Open 2D Studio','Open2DStudio');
+#24=IFCOWNERHISTORY(#22,#23,$,.ADDED.,$,$,$,1710700800);
+
+/* === Project === */
+#30=IFCPROJECT('2M1HPqLSn0HQV00000000001',#24,'Test Project',$,$,$,$,(#15),#5);
+
+/* === Site === */
+#40=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#41=IFCLOCALPLACEMENT($,#40);
+#42=IFCSITE('2M1HPqLSn0HQV00000000002',#24,'Site',$,$,#41,$,$,.ELEMENT.,$,$,$,$,$);
+#43=IFCRELAGGREGATES('2M1HPqLSn0HQV00000000003',#24,'ProjectContainer',$,#30,(#42));
+
+/* === Building === */
+#50=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#51=IFCLOCALPLACEMENT(#41,#50);
+#52=IFCBUILDING('2M1HPqLSn0HQV00000000004',#24,'Building',$,$,#51,$,$,.ELEMENT.,$,$,$);
+#53=IFCRELAGGREGATES('2M1HPqLSn0HQV00000000005',#24,'SiteContainer',$,#42,(#52));
+
+/* === Storey Ground Floor (elevation 0) === */
+#60=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#61=IFCLOCALPLACEMENT(#51,#60);
+#62=IFCBUILDINGSTOREY('2M1HPqLSn0HQV00000000006',#24,'Ground Floor',$,$,#61,$,$,.ELEMENT.,0.);
+#63=IFCRELAGGREGATES('2M1HPqLSn0HQV00000000007',#24,'BuildingContainer',$,#52,(#62));
+
+/* === Material === */
+#70=IFCMATERIAL('Concrete',$,$);
+#71=IFCMATERIALLAYER(#70,200.,$,$,$,$,$);
+#72=IFCMATERIALLAYERSET((#71),'Wall LayerSet',$);
+#73=IFCMATERIALLAYERSETUSAGE(#72,.AXIS2.,.POSITIVE.,-100.);
+
+/* ================================================================ */
+/* === Wall 1: 6000mm long, 200mm thick, 3000mm high at origin === */
+/* ================================================================ */
+
+/* Placement: at (0,0,0), direction along X-axis */
+#100=IFCCARTESIANPOINT((0.,0.,0.));
+#101=IFCAXIS2PLACEMENT3D(#100,#11,#12);
+#102=IFCLOCALPLACEMENT(#61,#101);
+
+/* Axis representation (centerline) */
+#110=IFCCARTESIANPOINT((0.,0.,0.));
+#111=IFCCARTESIANPOINT((6000.,0.,0.));
+#112=IFCPOLYLINE((#110,#111));
+#113=IFCSHAPEREPRESENTATION(#17,'Axis','Curve2D',(#112));
+
+/* Body: extruded rectangle profile */
+#120=IFCCARTESIANPOINT((3000.,0.));
+#121=IFCAXIS2PLACEMENT2D(#120,$);
+#122=IFCRECTANGLEPROFILEDEF(.AREA.,$,#121,6000.,200.);
+#123=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#124=IFCEXTRUDEDAREASOLID(#122,#123,#11,3000.);
+#125=IFCSHAPEREPRESENTATION(#16,'Body','SweptSolid',(#124));
+
+/* Product shape */
+#130=IFCPRODUCTDEFINITIONSHAPE($,$,(#113,#125));
+
+/* Wall entity */
+#140=IFCWALL('2M1HPqLSn0HQV00000000010',#24,'Wall 1','External wall',$.STANDARD.,#102,#130,$,.STANDARD.);
+
+/* Material association */
+#141=IFCRELASSOCIATESMATERIAL('2M1HPqLSn0HQV00000000011',#24,$,$,(#140),#73);
+
+/* Wall common properties */
+#142=IFCPROPERTYSINGLEVALUE('IsExternal',$,IFCBOOLEAN(.T.),$);
+#143=IFCPROPERTYSINGLEVALUE('LoadBearing',$,IFCBOOLEAN(.T.),$);
+#144=IFCPROPERTYSET('2M1HPqLSn0HQV00000000012',#24,'Pset_WallCommon',$,(#142,#143));
+#145=IFCRELDEFINESBYPROPERTIES('2M1HPqLSn0HQV00000000013',#24,$,$,(#140),#144);
+
+/* ================================================================ */
+/* === Wall 2: perpendicular, 4000mm, at end of Wall 1 === */
+/* ================================================================ */
+
+#200=IFCCARTESIANPOINT((6000.,0.,0.));
+#201=IFCAXIS2PLACEMENT3D(#200,#11,#13);
+#202=IFCLOCALPLACEMENT(#61,#201);
+
+#210=IFCCARTESIANPOINT((0.,0.,0.));
+#211=IFCCARTESIANPOINT((4000.,0.,0.));
+#212=IFCPOLYLINE((#210,#211));
+#213=IFCSHAPEREPRESENTATION(#17,'Axis','Curve2D',(#212));
+
+#220=IFCCARTESIANPOINT((2000.,0.));
+#221=IFCAXIS2PLACEMENT2D(#220,$);
+#222=IFCRECTANGLEPROFILEDEF(.AREA.,$,#221,4000.,200.);
+#223=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#224=IFCEXTRUDEDAREASOLID(#222,#223,#11,3000.);
+#225=IFCSHAPEREPRESENTATION(#16,'Body','SweptSolid',(#224));
+
+#230=IFCPRODUCTDEFINITIONSHAPE($,$,(#213,#225));
+#240=IFCWALL('2M1HPqLSn0HQV00000000020',#24,'Wall 2','Internal wall',$,#202,#230,$,.STANDARD.);
+#241=IFCRELASSOCIATESMATERIAL('2M1HPqLSn0HQV00000000021',#24,$,$,(#240),#73);
+
+/* ================================================================ */
+/* === Wall 3: parallel to Wall 1, closing the rectangle === */
+/* ================================================================ */
+
+#300=IFCCARTESIANPOINT((0.,4000.,0.));
+#301=IFCAXIS2PLACEMENT3D(#300,#11,#12);
+#302=IFCLOCALPLACEMENT(#61,#301);
+
+#310=IFCCARTESIANPOINT((0.,0.,0.));
+#311=IFCCARTESIANPOINT((6000.,0.,0.));
+#312=IFCPOLYLINE((#310,#311));
+#313=IFCSHAPEREPRESENTATION(#17,'Axis','Curve2D',(#312));
+
+#320=IFCCARTESIANPOINT((3000.,0.));
+#321=IFCAXIS2PLACEMENT2D(#320,$);
+#322=IFCRECTANGLEPROFILEDEF(.AREA.,$,#321,6000.,200.);
+#323=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#324=IFCEXTRUDEDAREASOLID(#322,#323,#11,3000.);
+#325=IFCSHAPEREPRESENTATION(#16,'Body','SweptSolid',(#324));
+
+#330=IFCPRODUCTDEFINITIONSHAPE($,$,(#313,#325));
+#340=IFCWALL('2M1HPqLSn0HQV00000000030',#24,'Wall 3','External wall',$,#302,#330,$,.STANDARD.);
+#341=IFCRELASSOCIATESMATERIAL('2M1HPqLSn0HQV00000000031',#24,$,$,(#340),#73);
+
+/* ================================================================ */
+/* === Wall 4: closing wall, along Y at X=0 === */
+/* ================================================================ */
+
+#400=IFCCARTESIANPOINT((0.,0.,0.));
+#401=IFCAXIS2PLACEMENT3D(#400,#11,#13);
+#402=IFCLOCALPLACEMENT(#61,#401);
+
+#410=IFCCARTESIANPOINT((0.,0.,0.));
+#411=IFCCARTESIANPOINT((4000.,0.,0.));
+#412=IFCPOLYLINE((#410,#411));
+#413=IFCSHAPEREPRESENTATION(#17,'Axis','Curve2D',(#412));
+
+#420=IFCCARTESIANPOINT((2000.,0.));
+#421=IFCAXIS2PLACEMENT2D(#420,$);
+#422=IFCRECTANGLEPROFILEDEF(.AREA.,$,#421,4000.,200.);
+#423=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#424=IFCEXTRUDEDAREASOLID(#422,#423,#11,3000.);
+#425=IFCSHAPEREPRESENTATION(#16,'Body','SweptSolid',(#424));
+
+#430=IFCPRODUCTDEFINITIONSHAPE($,$,(#413,#425));
+#440=IFCWALL('2M1HPqLSn0HQV00000000040',#24,'Wall 4','External wall',$,#402,#430,$,.STANDARD.);
+#441=IFCRELASSOCIATESMATERIAL('2M1HPqLSn0HQV00000000041',#24,$,$,(#440),#73);
+
+/* ================================================================ */
+/* === Slab: 6000x4000, 200mm thick at 3000mm height === */
+/* ================================================================ */
+
+#500=IFCCARTESIANPOINT((0.,0.,3000.));
+#501=IFCAXIS2PLACEMENT3D(#500,#11,#12);
+#502=IFCLOCALPLACEMENT(#61,#501);
+
+#520=IFCCARTESIANPOINT((3000.,2000.));
+#521=IFCAXIS2PLACEMENT2D(#520,$);
+#522=IFCRECTANGLEPROFILEDEF(.AREA.,$,#521,6000.,4000.);
+#523=IFCAXIS2PLACEMENT3D(#10,#11,#12);
+#524=IFCEXTRUDEDAREASOLID(#522,#523,#11,200.);
+#525=IFCSHAPEREPRESENTATION(#16,'Body','SweptSolid',(#524));
+#530=IFCPRODUCTDEFINITIONSHAPE($,$,(#525));
+#540=IFCSLAB('2M1HPqLSn0HQV00000000050',#24,'Floor Slab','Ground floor slab',$,#502,#530,$,.FLOOR.);
+
+/* === Spatial containment: all elements in Ground Floor === */
+#600=IFCRELCONTAINEDINSPATIALSTRUCTURE('2M1HPqLSn0HQV00000000060',#24,'Ground Floor Elements',$,(#140,#240,#340,#440,#540),#62);
+
+ENDSEC;
+END-ISO-10303-21;

@@ -208,6 +208,7 @@ function extractPerDocState(s: any) {
     // 2D Cursor
     cursor2D: s.cursor2D,
     cursor2DVisible: s.cursor2DVisible,
+    cursor2DPlaced: s.cursor2DPlaced,
     // Unit settings
     unitSettings: s.unitSettings,
     // Block definitions

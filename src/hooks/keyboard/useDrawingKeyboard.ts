@@ -1,6 +1,6 @@
 import { useEffect } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
-import type { LineShape, PolylineShape, SplineShape, HatchShape } from '../../types/geometry';
+import type { LineShape, PolylineShape, SplineShape, HatchShape, SlabShape } from '../../types/geometry';
 
 /**
  * Hook to handle keyboard shortcuts for drawing operations
@@ -135,6 +135,35 @@ export function useDrawingKeyboard() {
               closed: false,
             };
             addShape(splineShape);
+          } else if (activeTool === 'slab' && drawingPoints.length >= 3) {
+            const ps = useAppStore.getState().pendingSlab;
+            // Resolve level from pendingSlab or current drawing's storey
+            let slabLevel = ps?.level || '';
+            if (!slabLevel) {
+              const state = useAppStore.getState();
+              const drawing = state.drawings.find((d) => d.id === activeDrawingId);
+              if (drawing && drawing.drawingType === 'plan' && drawing.storeyId) {
+                slabLevel = drawing.storeyId;
+              }
+            }
+            const slabShape: SlabShape = {
+              id: generateId(),
+              type: 'slab',
+              layerId: activeLayerId,
+              drawingId: activeDrawingId,
+              style: { ...currentStyle },
+              visible: true,
+              locked: false,
+              points: [...drawingPoints],
+              thickness: ps?.thickness ?? 200,
+              level: slabLevel,
+              elevation: ps?.elevation ?? 0,
+              material: ps?.material ?? 'concrete',
+              hatchType: 'diagonal',
+              hatchAngle: 45,
+              hatchSpacing: 100,
+            };
+            addShape(slabShape);
           }
           clearDrawingPoints();
           setDrawingPreview(null);
@@ -171,6 +200,35 @@ export function useDrawingKeyboard() {
               closed: false,
             };
             addShape(splineShape);
+          } else if (activeTool === 'slab' && drawingPoints.length >= 3) {
+            const ps = useAppStore.getState().pendingSlab;
+            // Resolve level from pendingSlab or current drawing's storey
+            let slabLevel2 = ps?.level || '';
+            if (!slabLevel2) {
+              const state = useAppStore.getState();
+              const drawing = state.drawings.find((d) => d.id === activeDrawingId);
+              if (drawing && drawing.drawingType === 'plan' && drawing.storeyId) {
+                slabLevel2 = drawing.storeyId;
+              }
+            }
+            const slabShape: SlabShape = {
+              id: generateId(),
+              type: 'slab',
+              layerId: activeLayerId,
+              drawingId: activeDrawingId,
+              style: { ...currentStyle },
+              visible: true,
+              locked: false,
+              points: [...drawingPoints],
+              thickness: ps?.thickness ?? 200,
+              level: slabLevel2,
+              elevation: ps?.elevation ?? 0,
+              material: ps?.material ?? 'concrete',
+              hatchType: 'diagonal',
+              hatchAngle: 45,
+              hatchSpacing: 100,
+            };
+            addShape(slabShape);
           }
           clearDrawingPoints();
           setDrawingPreview(null);
@@ -284,6 +342,36 @@ export function useDrawingKeyboard() {
                 closed: true,
               };
               addShape(splineShape);
+            } else if (activeTool === 'slab' && drawingPoints.length >= 3) {
+              // Close and create slab polygon
+              const ps = useAppStore.getState().pendingSlab;
+              // Resolve level from pendingSlab or current drawing's storey
+              let slabLevel3 = ps?.level || '';
+              if (!slabLevel3) {
+                const state = useAppStore.getState();
+                const drawing = state.drawings.find((d) => d.id === activeDrawingId);
+                if (drawing && drawing.drawingType === 'plan' && drawing.storeyId) {
+                  slabLevel3 = drawing.storeyId;
+                }
+              }
+              const slabShape: SlabShape = {
+                id: generateId(),
+                type: 'slab',
+                layerId: activeLayerId,
+                drawingId: activeDrawingId,
+                style: { ...currentStyle },
+                visible: true,
+                locked: false,
+                points: [...drawingPoints],
+                thickness: ps?.thickness ?? 200,
+                level: slabLevel3,
+                elevation: ps?.elevation ?? 0,
+                material: ps?.material ?? 'concrete',
+                hatchType: 'diagonal',
+                hatchAngle: 45,
+                hatchSpacing: 100,
+              };
+              addShape(slabShape);
             }
 
             clearDrawingPoints();

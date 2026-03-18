@@ -43,11 +43,13 @@ function getWallCorners(wall: WallShape): Point[] {
   let rightThick: number;
 
   if (justification === 'left') {
-    leftThick = 0;
-    rightThick = thickness;
-  } else if (justification === 'right') {
+    // "Left justified" = left face on draw line, wall extends to the right
     leftThick = thickness;
     rightThick = 0;
+  } else if (justification === 'right') {
+    // "Right justified" = right face on draw line, wall extends to the left
+    leftThick = 0;
+    rightThick = thickness;
   } else {
     leftThick = thickness / 2;
     rightThick = thickness / 2;

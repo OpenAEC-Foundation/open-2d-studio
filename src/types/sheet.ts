@@ -355,7 +355,7 @@ export interface ViewportPlaceholder {
   height: number;
   /** Default scale for this viewport */
   defaultScale: number;
-  /** Suggested drawing type (e.g., "Floor Plan", "Section") */
+  /** Suggested drawing type (e.g., "Architectural Plan", "Section") */
   suggestedDrawingType?: string;
 }
 

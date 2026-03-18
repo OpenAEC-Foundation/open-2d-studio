@@ -445,12 +445,13 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
       onClose={onClose}
       title="Drawing Standards"
       width={640}
+      maxHeight="80vh"
       footer={
         <ModalButton onClick={onClose}>Close</ModalButton>
       }
     >
       {/* Content */}
-      <div className="p-4 space-y-4 overflow-y-auto">
+      <div className="p-3 space-y-3 overflow-y-auto">
 
         {/* ============================================================ */}
         {/* Drawing Standards Type Selector */}
@@ -1052,7 +1053,7 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
 
           {/* Subtype selector tabs */}
           <div className="flex gap-1">
-            {(['pile-plan', 'structural-plan', 'floor-plan'] as PlanSubtype[]).map((subtype) => {
+            {(['pile-plan', 'structural-plan', 'floor-plan', 'area-plan'] as PlanSubtype[]).map((subtype) => {
               const config = PLAN_SUBTYPE_CONFIG[subtype];
               const isActive = activeSubtype === subtype;
               return (
@@ -1197,6 +1198,16 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
                 />
                 Show load arrows
               </label>
+              <label className="flex items-center gap-2 text-xs text-cad-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={planSubtypeSettings.structuralPlan.showSlabSurfacePattern ?? false}
+                  onChange={(e) => updatePlanSubtypeSettings({
+                    structuralPlan: { ...planSubtypeSettings.structuralPlan, showSlabSurfacePattern: e.target.checked },
+                  })}
+                />
+                Show slab surface pattern
+              </label>
               <div className="flex items-center gap-3">
                 <label className="text-xs text-cad-text-secondary w-32">Beam label style</label>
                 <select
@@ -1214,7 +1225,7 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
             </div>
           )}
 
-          {/* Floor Plan */}
+          {/* Architectural Plan */}
           {activeSubtype === 'floor-plan' && (
             <div className="border border-cad-border rounded p-2 space-y-1.5">
               <label className="flex items-center gap-2 text-xs text-cad-text-secondary">
@@ -1266,6 +1277,52 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
                   })}
                 />
                 Show area labels
+              </label>
+            </div>
+          )}
+
+          {/* Area Plan */}
+          {activeSubtype === 'area-plan' && (
+            <div className="border border-cad-border rounded p-2 space-y-1.5">
+              <label className="flex items-center gap-2 text-xs text-cad-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={planSubtypeSettings.areaPlan.showAreaBoundaries}
+                  onChange={(e) => updatePlanSubtypeSettings({
+                    areaPlan: { ...planSubtypeSettings.areaPlan, showAreaBoundaries: e.target.checked },
+                  })}
+                />
+                Show area boundaries
+              </label>
+              <label className="flex items-center gap-2 text-xs text-cad-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={planSubtypeSettings.areaPlan.showAreaLabels}
+                  onChange={(e) => updatePlanSubtypeSettings({
+                    areaPlan: { ...planSubtypeSettings.areaPlan, showAreaLabels: e.target.checked },
+                  })}
+                />
+                Show area labels
+              </label>
+              <label className="flex items-center gap-2 text-xs text-cad-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={planSubtypeSettings.areaPlan.showAreaValues}
+                  onChange={(e) => updatePlanSubtypeSettings({
+                    areaPlan: { ...planSubtypeSettings.areaPlan, showAreaValues: e.target.checked },
+                  })}
+                />
+                Show area values
+              </label>
+              <label className="flex items-center gap-2 text-xs text-cad-text-secondary">
+                <input
+                  type="checkbox"
+                  checked={planSubtypeSettings.areaPlan.showColorCoding}
+                  onChange={(e) => updatePlanSubtypeSettings({
+                    areaPlan: { ...planSubtypeSettings.areaPlan, showColorCoding: e.target.checked },
+                  })}
+                />
+                Show color coding
               </label>
             </div>
           )}

@@ -8,6 +8,8 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, './src'),
+      'open-2d-studio': path.resolve(__dirname, './src/extensionSdk'),
+      '@aec-ext': path.resolve(__dirname, '../open-2D-studio-AEC-extension/src'),
     },
   },
   // Prevent vite from obscuring rust errors
@@ -19,6 +21,10 @@ export default defineConfig({
     watch: {
       // Tell vite to ignore watching `src-tauri`
       ignored: ['**/src-tauri/**'],
+    },
+    fs: {
+      // Allow serving files from the AEC extension project
+      allow: ['..'],
     },
   },
   // To make use of `TAURI_DEBUG` and other env variables

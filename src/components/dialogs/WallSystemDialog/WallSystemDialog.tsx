@@ -397,7 +397,7 @@ function LayersTab({
   onUpdate: (id: string, updates: Partial<WallSystemLayer>) => void;
   onMove: (index: number, direction: 'up' | 'down') => void;
 }) {
-  const inputClass = 'w-full bg-cad-bg border border-cad-border rounded px-1.5 py-0.5 text-[10px] text-cad-text focus:outline-none focus:border-cad-accent';
+  const inputClass = 'w-full bg-cad-bg border border-cad-border rounded px-1.5 py-1 text-[10px] text-cad-text focus:outline-none focus:border-cad-accent';
   const labelClass = 'text-[9px] text-cad-text-dim';
 
   return (
@@ -415,9 +415,9 @@ function LayersTab({
 
       <div className="space-y-1">
         {layers.map((layer, index) => (
-          <div key={layer.id} className="flex items-start gap-1 p-1.5 bg-cad-bg/50 rounded border border-cad-border/50">
+          <div key={layer.id} className="flex items-end gap-1 p-1.5 bg-cad-bg/50 rounded border border-cad-border/50">
             {/* Reorder buttons */}
-            <div className="flex flex-col gap-0.5 pt-1">
+            <div className="flex flex-col gap-0.5 pb-0.5">
               <button onClick={() => onMove(index, 'up')} disabled={index === 0}
                 className="p-0.5 rounded hover:bg-cad-hover disabled:opacity-30">
                 <ChevronUp size={10} />
@@ -433,11 +433,12 @@ function LayersTab({
               type="color"
               value={layer.color}
               onChange={(e) => onUpdate(layer.id, { color: e.target.value })}
-              className="w-5 h-5 mt-1 rounded cursor-pointer border border-cad-border"
+              className="w-5 h-6 rounded cursor-pointer border border-cad-border"
             />
 
             {/* Name */}
             <div className="flex-1 min-w-0">
+              <span className={labelClass}>Name</span>
               <input
                 className={inputClass}
                 value={layer.name}
@@ -485,7 +486,7 @@ function LayersTab({
             </div>
 
             {/* Delete */}
-            <button onClick={() => onRemove(layer.id)} className="p-1 hover:bg-red-500/20 rounded mt-1">
+            <button onClick={() => onRemove(layer.id)} className="p-1 hover:bg-red-500/20 rounded mb-0.5">
               <Trash2 size={10} className="text-red-400" />
             </button>
           </div>
@@ -506,7 +507,7 @@ function StudsTab({
   system: WallSystemType;
   onUpdate: (updates: Partial<WallSystemType>) => void;
 }) {
-  const inputClass = 'w-full bg-cad-bg border border-cad-border rounded px-1.5 py-0.5 text-[10px] text-cad-text focus:outline-none focus:border-cad-accent';
+  const inputClass = 'w-full bg-cad-bg border border-cad-border rounded px-1.5 py-1 text-[10px] text-cad-text focus:outline-none focus:border-cad-accent';
 
   const updateDefaultStud = (updates: Partial<WallSystemStud>) => {
     onUpdate({ defaultStud: { ...system.defaultStud, ...updates } });
@@ -537,12 +538,12 @@ function StudsTab({
   };
 
   const renderStudEditor = (stud: WallSystemStud, onChange: (u: Partial<WallSystemStud>) => void, onRemove?: () => void) => (
-    <div className="flex items-start gap-2 p-2 bg-cad-bg/50 rounded border border-cad-border/50 mb-1">
+    <div className="flex items-center gap-2 p-2 bg-cad-bg/50 rounded border border-cad-border/50 mb-1">
       <input
         type="color"
         value={stud.color}
         onChange={(e) => onChange({ color: e.target.value })}
-        className="w-5 h-5 mt-0.5 rounded cursor-pointer border border-cad-border"
+        className="w-5 h-6 rounded cursor-pointer border border-cad-border"
       />
       <div className="flex-1 grid grid-cols-5 gap-1">
         <input className={inputClass} value={stud.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="Name" />
@@ -597,7 +598,7 @@ function PanelsTab({
   system: WallSystemType;
   onUpdate: (updates: Partial<WallSystemType>) => void;
 }) {
-  const inputClass = 'w-full bg-cad-bg border border-cad-border rounded px-1.5 py-0.5 text-[10px] text-cad-text focus:outline-none focus:border-cad-accent';
+  const inputClass = 'w-full bg-cad-bg border border-cad-border rounded px-1.5 py-1 text-[10px] text-cad-text focus:outline-none focus:border-cad-accent';
 
   const updateDefaultPanel = (updates: Partial<WallSystemPanel>) => {
     onUpdate({ defaultPanel: { ...system.defaultPanel, ...updates } });
@@ -626,12 +627,12 @@ function PanelsTab({
   };
 
   const renderPanelEditor = (panel: WallSystemPanel, onChange: (u: Partial<WallSystemPanel>) => void, onRemove?: () => void) => (
-    <div className="flex items-start gap-2 p-2 bg-cad-bg/50 rounded border border-cad-border/50 mb-1">
+    <div className="flex items-center gap-2 p-2 bg-cad-bg/50 rounded border border-cad-border/50 mb-1">
       <input
         type="color"
         value={panel.color}
         onChange={(e) => onChange({ color: e.target.value })}
-        className="w-5 h-5 mt-0.5 rounded cursor-pointer border border-cad-border"
+        className="w-5 h-6 rounded cursor-pointer border border-cad-border"
       />
       <div className="flex-1 grid grid-cols-4 gap-1">
         <input className={inputClass} value={panel.name} onChange={(e) => onChange({ name: e.target.value })} placeholder="Name" />
@@ -683,7 +684,7 @@ function GridTab({
   system: WallSystemType;
   onUpdate: (updates: Partial<WallSystemType>) => void;
 }) {
-  const inputClass = 'w-full bg-cad-bg border border-cad-border rounded px-1.5 py-0.5 text-xs text-cad-text focus:outline-none focus:border-cad-accent';
+  const inputClass = 'w-full bg-cad-bg border border-cad-border rounded px-1.5 py-1 text-[10px] text-cad-text focus:outline-none focus:border-cad-accent';
   const labelClass = 'block text-[10px] font-medium text-cad-text-dim mb-0.5';
 
   const updateGrid = (updates: Partial<WallSystemType['grid']>) => {

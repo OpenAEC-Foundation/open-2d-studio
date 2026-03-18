@@ -956,6 +956,10 @@ export interface StructuralPlanDisplaySettings {
   showSlabEdges: boolean;
   beamLabelStyle: 'profile-only' | 'profile+material' | 'full';
   showLoadArrows: boolean;
+  /** Whether slabs show their surface (hatch) pattern. Default false for structural plans. */
+  showSlabSurfacePattern: boolean;
+  /** How slab openings are rendered: 'cross' (default), 'diagonal', or 'outline'. */
+  openingDisplayStyle: 'cross' | 'diagonal' | 'outline';
 }
 
 export interface FloorPlanDisplaySettings {
@@ -966,10 +970,18 @@ export interface FloorPlanDisplaySettings {
   showAreaLabels: boolean;
 }
 
+export interface AreaPlanDisplaySettings {
+  showAreaBoundaries: boolean;
+  showAreaLabels: boolean;
+  showAreaValues: boolean;
+  showColorCoding: boolean;
+}
+
 export interface PlanSubtypeSettings {
   pilePlan: PilePlanDisplaySettings;
   structuralPlan: StructuralPlanDisplaySettings;
   floorPlan: FloorPlanDisplaySettings;
+  areaPlan: AreaPlanDisplaySettings;
 }
 
 export const DEFAULT_PLAN_SUBTYPE_SETTINGS: PlanSubtypeSettings = {
@@ -984,6 +996,8 @@ export const DEFAULT_PLAN_SUBTYPE_SETTINGS: PlanSubtypeSettings = {
     showSlabEdges: true,
     beamLabelStyle: 'profile-only',
     showLoadArrows: false,
+    showSlabSurfacePattern: false,
+    openingDisplayStyle: 'cross',
   },
   floorPlan: {
     showRoomLabels: true,
@@ -991,6 +1005,12 @@ export const DEFAULT_PLAN_SUBTYPE_SETTINGS: PlanSubtypeSettings = {
     showWallDimensions: false,
     showFurniture: true,
     showAreaLabels: false,
+  },
+  areaPlan: {
+    showAreaBoundaries: true,
+    showAreaLabels: true,
+    showAreaValues: true,
+    showColorCoding: true,
   },
 };
 

@@ -10,7 +10,7 @@ rust-version = "1.70"
 
 [lib]
 name = "open_2d_studio"
-crate-type = ["staticlib", "cdylib", "lib"]
+crate-type = ["staticlib", "lib"]
 
 [build-dependencies]
 tauri-build = { version = "2", features = [] }

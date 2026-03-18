@@ -71,6 +71,10 @@ export interface DrawingRenderOptions {
   selectedWallSubElement?: { wallId: string; type: 'stud' | 'panel'; key: string } | null;
   /** Material hatch settings from Drawing Standards */
   materialHatchSettings?: MaterialHatchSettings;
+  /** Whether slab surface (hatch) patterns are enabled */
+  slabSurfacePatternEnabled?: boolean;
+  /** How slab openings are rendered */
+  openingDisplayStyle?: 'cross' | 'diagonal' | 'outline';
   /** Gridline extension distance in mm */
   gridlineExtension?: number;
   /** Sea level datum: peil=0 elevation relative to NAP in meters */
@@ -79,6 +83,12 @@ export interface DrawingRenderOptions {
   hiddenIfcCategories?: string[];
   /** Unit settings for number formatting in overlays and labels */
   unitSettings?: UnitSettings;
+  /** Slab edit mode: inner contour points being drawn */
+  slabInnerContourPoints?: Point[];
+  /** Slab edit mode: the slab being edited (for rendering existing inner contours) */
+  editingSlabId?: string | null;
+  /** Whether slab edit mode is active */
+  slabEditMode?: boolean;
 }
 
 // Legacy alias
@@ -182,6 +192,12 @@ export class DrawingRenderer extends BaseRenderer {
       this.shapeRenderer.setMaterialHatchSettings(options.materialHatchSettings);
     }
 
+    // Set slab surface pattern enabled flag
+    this.shapeRenderer.setSlabSurfacePatternEnabled(options.slabSurfacePatternEnabled !== false);
+
+    // Set slab opening display style
+    this.shapeRenderer.setOpeningDisplayStyle(options.openingDisplayStyle || 'cross');
+
     // Set gridline extension distance
     if (options.gridlineExtension !== undefined) {
       this.shapeRenderer.setGridlineExtension(options.gridlineExtension);
@@ -246,10 +262,11 @@ export class DrawingRenderer extends BaseRenderer {
     // IFC category filter
     const hiddenCats = options.hiddenIfcCategories || [];
 
-    // Draw shapes in three passes:
+    // Draw shapes in four passes:
     // 1. Underlay images (background reference images)
-    // 2. Non-text shapes (skip underlays)
-    // 3. Text shapes (labels on top)
+    // 2. Slabs (rendered behind walls so they don't overlap)
+    // 3. Non-text, non-slab shapes (walls, beams, lines, etc.)
+    // 4. Text shapes (labels on top)
     for (const shape of shapes) {
       if (!shape.visible) continue;
       if (shape.type !== 'image' || !(shape as ImageShape).isUnderlay) continue;
@@ -259,7 +276,14 @@ export class DrawingRenderer extends BaseRenderer {
       this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
     }
     for (const shape of shapes) {
-      if (!shape.visible || shape.type === 'text') continue;
+      if (!shape.visible || shape.type !== 'slab') continue;
+      if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
+      const isSelected = selectedSet.has(shape.id);
+      const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
+      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
+    }
+    for (const shape of shapes) {
+      if (!shape.visible || shape.type === 'text' || shape.type === 'slab') continue;
       if (shape.type === 'image' && (shape as ImageShape).isUnderlay) continue;
       if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
       const isSelected = selectedSet.has(shape.id);
@@ -313,6 +337,62 @@ export class DrawingRenderer extends BaseRenderer {
         pendingSection,
         whiteBackground
       );
+    }
+
+    // Draw slab edit mode overlay: existing inner contours + in-progress contour
+    if (options.slabEditMode && options.editingSlabId) {
+      const editingSlab = shapes.find(s => s.id === options.editingSlabId) as any;
+
+      // Draw existing inner contours with orange dashed outlines
+      if (editingSlab?.innerContours) {
+        ctx.save();
+        for (const contour of editingSlab.innerContours) {
+          if (contour.length < 3) continue;
+          ctx.beginPath();
+          ctx.moveTo(contour[0].x, contour[0].y);
+          for (let ci = 1; ci < contour.length; ci++) {
+            ctx.lineTo(contour[ci].x, contour[ci].y);
+          }
+          ctx.closePath();
+          ctx.strokeStyle = '#ff6600';
+          ctx.lineWidth = 2 / viewport.zoom;
+          ctx.setLineDash([8 / viewport.zoom, 4 / viewport.zoom]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          // Vertex dots
+          for (const cp of contour) {
+            ctx.beginPath();
+            ctx.arc(cp.x, cp.y, 4 / viewport.zoom, 0, Math.PI * 2);
+            ctx.fillStyle = '#ff6600';
+            ctx.fill();
+          }
+        }
+        ctx.restore();
+      }
+
+      // Draw the in-progress contour points
+      const contourPts = options.slabInnerContourPoints;
+      if (contourPts && contourPts.length > 0) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.moveTo(contourPts[0].x, contourPts[0].y);
+        for (let ci = 1; ci < contourPts.length; ci++) {
+          ctx.lineTo(contourPts[ci].x, contourPts[ci].y);
+        }
+        ctx.strokeStyle = '#00ccff';
+        ctx.lineWidth = 2 / viewport.zoom;
+        ctx.setLineDash([6 / viewport.zoom, 4 / viewport.zoom]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        // Vertex dots
+        for (const cp of contourPts) {
+          ctx.beginPath();
+          ctx.arc(cp.x, cp.y, 4 / viewport.zoom, 0, Math.PI * 2);
+          ctx.fillStyle = '#00ccff';
+          ctx.fill();
+        }
+        ctx.restore();
+      }
     }
 
     ctx.restore();

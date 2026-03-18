@@ -257,6 +257,7 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
       onClose={onClose}
       title="Send Feedback"
       width={550}
+      zIndex={100}
     >
       {content}
     </DraggableModal>

@@ -17,15 +17,18 @@ import { usePileDrawing } from '../drawing/usePileDrawing';
 import { useCPTDrawing } from '../drawing/useCPTDrawing';
 import { useWallDrawing } from '../drawing/useWallDrawing';
 import { useSlabDrawing } from '../drawing/useSlabDrawing';
+import { useSlabLabelDrawing } from '../drawing/useSlabLabelDrawing';
 import { useLevelDrawing } from '../drawing/useLevelDrawing';
 import { usePuntniveauDrawing } from '../drawing/usePuntniveauDrawing';
 import { useSectionCalloutDrawing } from '../drawing/useSectionCalloutDrawing';
 import { useSpaceDrawing } from '../drawing/useSpaceDrawing';
 import { usePlateSystemDrawing } from '../drawing/usePlateSystemDrawing';
+import { useSlabOpeningDrawing } from '../drawing/useSlabOpeningDrawing';
+import { useColumnDrawing } from '../drawing/useColumnDrawing';
 
 const AEC_TOOL_NAMES = [
-  'beam', 'gridline', 'level', 'pile', 'cpt',
-  'wall', 'slab', 'puntniveau', 'section-callout', 'space', 'plate-system',
+  'beam', 'gridline', 'level', 'pile', 'column', 'cpt',
+  'wall', 'slab', 'slab-opening', 'slab-label', 'puntniveau', 'section-callout', 'space', 'plate-system',
 ] as const;
 
 export function useAecCanvasTools() {
@@ -36,16 +39,19 @@ export function useAecCanvasTools() {
   const cptDrawing = useCPTDrawing();
   const wallDrawing = useWallDrawing();
   const slabDrawing = useSlabDrawing();
+  const slabLabelDrawing = useSlabLabelDrawing();
   const levelDrawing = useLevelDrawing();
   const puntniveauDrawing = usePuntniveauDrawing();
   const sectionCalloutDrawing = useSectionCalloutDrawing();
   const spaceDrawing = useSpaceDrawing();
   const plateSystemDrawing = usePlateSystemDrawing();
+  const slabOpeningDrawing = useSlabOpeningDrawing();
+  const columnDrawing = useColumnDrawing();
 
   // Read pending states from store
   const {
-    pendingBeam, pendingGridline, pendingPile, pendingCPT,
-    pendingWall, pendingSlab, pendingLevel, pendingPuntniveau,
+    pendingBeam, pendingGridline, pendingPile, pendingColumn, pendingCPT,
+    pendingWall, pendingSlab, pendingSlabOpening, pendingSlabLabel, pendingLevel, pendingPuntniveau,
     pendingSectionCallout, pendingSpace, pendingPlateSystem,
     viewport,
   } = useAppStore();
@@ -69,8 +75,8 @@ export function useAecCanvasTools() {
    */
   function hasAnyPendingState(): boolean {
     return !!(
-      pendingBeam || pendingGridline || pendingPile || pendingCPT ||
-      pendingWall || pendingSlab || pendingLevel || pendingPuntniveau ||
+      pendingBeam || pendingGridline || pendingPile || pendingColumn || pendingCPT ||
+      pendingWall || pendingSlab || pendingSlabOpening || pendingSlabLabel || pendingLevel || pendingPuntniveau ||
       pendingSectionCallout || pendingSpace || pendingPlateSystem
     );
   }
@@ -83,9 +89,12 @@ export function useAecCanvasTools() {
       case 'beam': return !!pendingBeam;
       case 'gridline': return !!pendingGridline;
       case 'pile': return !!pendingPile;
+      case 'column': return !!pendingColumn;
       case 'cpt': return !!pendingCPT;
       case 'wall': return !!pendingWall;
       case 'slab': return !!pendingSlab;
+      case 'slab-opening': return !!pendingSlabOpening;
+      case 'slab-label': return !!pendingSlabLabel;
       case 'level': return !!pendingLevel;
       case 'puntniveau': return !!pendingPuntniveau;
       case 'section-callout': return !!pendingSectionCallout;
@@ -185,6 +194,9 @@ export function useAecCanvasTools() {
       case 'pile':
         if (!pendingPile) return false;
         return pileDrawing.handlePileClick(snappedPos);
+      case 'column':
+        if (!pendingColumn) return false;
+        return columnDrawing.handleColumnClick(snappedPos);
       case 'cpt':
         if (!pendingCPT) return false;
         return cptDrawing.handleCPTClick(snappedPos);
@@ -194,6 +206,12 @@ export function useAecCanvasTools() {
       case 'slab':
         if (!pendingSlab) return false;
         return slabDrawing.handleSlabClick(snappedPos, shiftKey);
+      case 'slab-opening':
+        if (!pendingSlabOpening) return false;
+        return slabOpeningDrawing.handleSlabOpeningClick(snappedPos, shiftKey);
+      case 'slab-label':
+        if (!pendingSlabLabel) return false;
+        return slabLabelDrawing.handleSlabLabelClick(snappedPos);
       case 'puntniveau':
         if (!pendingPuntniveau) return false;
         return puntniveauDrawing.handlePuntniveauClick(snappedPos, shiftKey);
@@ -222,6 +240,7 @@ export function useAecCanvasTools() {
       case 'level': return levelDrawing.getLevelBasePoint() ?? undefined;
       case 'wall': return wallDrawing.getWallBasePoint() ?? undefined;
       case 'slab': return slabDrawing.getSlabBasePoint() ?? undefined;
+      case 'slab-opening': return slabOpeningDrawing.getSlabOpeningBasePoint() ?? undefined;
       case 'puntniveau': return puntniveauDrawing.getPuntniveauBasePoint() ?? undefined;
       case 'plate-system': return plateSystemDrawing.getPlateSystemBasePoint() ?? undefined;
       case 'section-callout': return sectionCalloutDrawing.getSectionCalloutBasePoint() ?? undefined;
@@ -257,6 +276,10 @@ export function useAecCanvasTools() {
         if (!pendingPile) return false;
         pileDrawing.updatePilePreview(snappedPos);
         return true;
+      case 'column':
+        if (!pendingColumn) return false;
+        columnDrawing.updateColumnPreview(snappedPos);
+        return true;
       case 'cpt':
         if (!pendingCPT) return false;
         cptDrawing.updateCPTPreview(snappedPos);
@@ -268,6 +291,14 @@ export function useAecCanvasTools() {
       case 'slab':
         if (!pendingSlab) return false;
         slabDrawing.updateSlabPreview(snappedPos, shiftKey);
+        return true;
+      case 'slab-opening':
+        if (!pendingSlabOpening) return false;
+        slabOpeningDrawing.updateSlabOpeningPreview(snappedPos, shiftKey);
+        return true;
+      case 'slab-label':
+        if (!pendingSlabLabel) return false;
+        slabLabelDrawing.updateSlabLabelPreview(snappedPos);
         return true;
       case 'puntniveau':
         if (!pendingPuntniveau) return false;
@@ -312,6 +343,11 @@ export function useAecCanvasTools() {
         pileDrawing.cancelPileDrawing();
         setActiveTool('select');
         return true;
+      case 'column':
+        if (!pendingColumn) return false;
+        columnDrawing.cancelColumnDrawing();
+        setActiveTool('select');
+        return true;
       case 'cpt':
         if (!pendingCPT) return false;
         cptDrawing.cancelCPTDrawing();
@@ -325,6 +361,14 @@ export function useAecCanvasTools() {
       case 'slab':
         if (!pendingSlab) return handleSlabFinishOrCancel(setActiveTool, clearTracking);
         return handleSlabFinishOrCancel(setActiveTool, clearTracking);
+      case 'slab-opening':
+        if (!pendingSlabOpening) return handleSlabOpeningFinishOrCancel(setActiveTool, clearTracking);
+        return handleSlabOpeningFinishOrCancel(setActiveTool, clearTracking);
+      case 'slab-label':
+        if (!pendingSlabLabel) return false;
+        slabLabelDrawing.cancelSlabLabelDrawing();
+        setActiveTool('select');
+        return true;
       case 'puntniveau':
         if (!pendingPuntniveau) return handlePuntniveauFinishOrCancel(setActiveTool, clearTracking);
         return handlePuntniveauFinishOrCancel(setActiveTool, clearTracking);
@@ -354,6 +398,18 @@ export function useAecCanvasTools() {
       clearTracking();
     } else {
       slabDrawing.cancelSlabDrawing();
+      setActiveTool('select');
+    }
+    return true;
+  }
+
+  function handleSlabOpeningFinishOrCancel(setActiveTool: (tool: ToolType) => void, clearTracking: () => void): boolean {
+    if (!pendingSlabOpening) return false;
+    if (slabOpeningDrawing.pointCount >= 3) {
+      slabOpeningDrawing.finishSlabOpeningDrawing();
+      clearTracking();
+    } else {
+      slabOpeningDrawing.cancelSlabOpeningDrawing();
       setActiveTool('select');
     }
     return true;

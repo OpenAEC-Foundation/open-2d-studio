@@ -68,6 +68,8 @@ export function useGlobalKeyboard() {
     clearWallSubElement,
     // Terminal
     toggleTerminal,
+    // Feedback
+    setFeedbackDialogOpen,
   } = useAppStore();
 
   /** Quick-save current document. Returns true if saved, false if cancelled/failed. */
@@ -227,6 +229,20 @@ export function useGlobalKeyboard() {
       await showError(`Failed to save file: ${err}`);
     }
   }, [projectName, shapes, layers, activeLayerId, drawings, sheets, activeDrawingId, activeSheetId, drawingViewports, sheetViewports, gridSize, gridVisible, snapEnabled, setFilePath, setModified, setProjectName]);
+
+  // Global feedback shortcut (F1) - registered in capture phase so it works
+  // even when dialogs or subscreens are open and have their own key handlers.
+  useEffect(() => {
+    const handleFeedbackShortcut = (e: KeyboardEvent) => {
+      if (e.key === 'F1') {
+        e.preventDefault();
+        e.stopPropagation();
+        setFeedbackDialogOpen(true);
+      }
+    };
+    window.addEventListener('keydown', handleFeedbackShortcut, true);
+    return () => window.removeEventListener('keydown', handleFeedbackShortcut, true);
+  }, [setFeedbackDialogOpen]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {

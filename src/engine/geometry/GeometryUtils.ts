@@ -332,13 +332,25 @@ export function isPointNearWall(point: Point, shape: WallShape, tolerance: numbe
     let innerR: number;
     let outerR: number;
     if (justification === 'left') {
-      // Wall extends to visual left (-perp direction from chord)
-      innerR = radius;
-      outerR = radius + thickness;
+      // "Left justified" = left face on draw line, wall extends to the right.
+      // For arcs: right side is inward when center is to the right (!clockwise),
+      // outward when center is to the left (clockwise).
+      if (clockwise) {
+        innerR = radius;
+        outerR = radius + thickness;
+      } else {
+        innerR = radius - thickness;
+        outerR = radius;
+      }
     } else if (justification === 'right') {
-      // Wall extends to visual right (+perp direction from chord)
-      innerR = radius - thickness;
-      outerR = radius;
+      // "Right justified" = right face on draw line, wall extends to the left.
+      if (clockwise) {
+        innerR = radius - thickness;
+        outerR = radius;
+      } else {
+        innerR = radius;
+        outerR = radius + thickness;
+      }
     } else {
       // Center justified
       innerR = radius - thickness / 2;
@@ -386,13 +398,13 @@ export function isPointNearWall(point: Point, shape: WallShape, tolerance: numbe
   let leftThick: number;
   let rightThick: number;
   if (justification === 'left') {
-    // Wall extends to visual left (-perp direction)
-    leftThick = 0;
-    rightThick = thickness;
-  } else if (justification === 'right') {
-    // Wall extends to visual right (+perp direction)
+    // "Left justified" = left face on draw line, wall extends to the right (+perp direction)
     leftThick = thickness;
     rightThick = 0;
+  } else if (justification === 'right') {
+    // "Right justified" = right face on draw line, wall extends to the left (-perp direction)
+    leftThick = 0;
+    rightThick = thickness;
   } else {
     leftThick = thickness / 2;
     rightThick = thickness / 2;
