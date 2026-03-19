@@ -195,7 +195,16 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         }
       }
 
-      // Second pass: check all other shapes in reverse z-order
+      // Second pass: check hosted/child shapes first (wall-opening, slab-opening)
+      // so they get selected instead of their parent wall/slab
+      for (let i = candidates.length - 1; i >= 0; i--) {
+        const shape = shapes.find(s => s.id === candidates[i].id);
+        if (shape && (shape.type === 'wall-opening' || shape.type === 'slab-opening') && !isShapeInHiddenCategory(shape, hiddenIfcCategories) && isPointNearShape(worldPoint, shape, tolerance, activeDrawingScale)) {
+          return shape.id;
+        }
+      }
+
+      // Third pass: check all other shapes in reverse z-order
       for (let i = candidates.length - 1; i >= 0; i--) {
         const shape = shapes.find(s => s.id === candidates[i].id);
         if (shape && shape.type !== 'text' && !isShapeInHiddenCategory(shape, hiddenIfcCategories) && isPointNearShape(worldPoint, shape, tolerance, activeDrawingScale)) {

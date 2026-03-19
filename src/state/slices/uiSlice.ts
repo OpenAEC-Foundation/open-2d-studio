@@ -84,6 +84,9 @@ export interface UIState {
   leftSidebarCollapsed: boolean;
   rightSidebarCollapsed: boolean;
 
+  // Active ribbon tab (shared so panels can react)
+  activeRibbonTab: string;
+
   // File state
   currentFilePath: string | null;
   projectName: string;
@@ -117,6 +120,7 @@ export interface UIActions {
   toggleRightSidebar: () => void;
   setLeftSidebarCollapsed: (collapsed: boolean) => void;
   setRightSidebarCollapsed: (collapsed: boolean) => void;
+  setActiveRibbonTab: (tab: string) => void;
   setFilePath: (path: string | null) => void;
   setProjectName: (name: string) => void;
   setModified: (modified: boolean) => void;
@@ -176,6 +180,7 @@ export const initialUIState: UIState = {
   terminalHeight: 200,
   leftSidebarCollapsed: false,
   rightSidebarCollapsed: false,
+  activeRibbonTab: 'home',
   currentFilePath: null,
   projectName: 'Untitled',
   isModified: false,
@@ -204,6 +209,7 @@ interface FullStore {
   terminalHeight: number;
   leftSidebarCollapsed: boolean;
   rightSidebarCollapsed: boolean;
+  activeRibbonTab: string;
   currentFilePath: string | null;
   projectName: string;
   isModified: boolean;
@@ -340,6 +346,11 @@ export const createUISlice = (
   setRightSidebarCollapsed: (collapsed) =>
     set((state) => {
       state.rightSidebarCollapsed = collapsed;
+    }),
+
+  setActiveRibbonTab: (tab) =>
+    set((state) => {
+      state.activeRibbonTab = tab;
     }),
 
   setFilePath: (path) =>

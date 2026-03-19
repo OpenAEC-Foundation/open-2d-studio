@@ -619,17 +619,21 @@ export const STRUCTURAL_FLOOR_TYPES: { value: StructuralFloorType; label: string
   { value: 'custom',                label: 'Overig',                labelEn: 'Custom' },
 ];
 
-// Slab label shape - annotation label for structural floor type information
+// Slab label shape - tag consisting of two circles (thickness + peil) linked to a slab
 export interface SlabLabelShape extends BaseShape {
   type: 'slab-label';
-  position: Point;              // Position of the label
-  floorType: StructuralFloorType;  // Structural floor type
-  customTypeName?: string;      // Custom type name (when floorType is 'custom')
-  thickness: number;            // Slab thickness in mm
-  spanDirection: number;        // Span direction angle in degrees (0 = horizontal, 90 = vertical)
-  linkedSlabId?: string;        // Optional link to a slab shape
+  position: Point;              // Position of the label (center between the two circles)
+  linkedSlabId?: string;        // Link to parent slab shape — thickness & peil derived from this
+  thickness: number;            // Slab thickness in mm (fallback when no linkedSlabId)
   fontSize: number;             // Font size for the label text (drawing units)
-  arrowLength: number;          // Length of span direction arrows (drawing units)
+  /** @deprecated kept for backward compat — new renderer ignores these */
+  floorType?: StructuralFloorType;
+  /** @deprecated */
+  customTypeName?: string;
+  /** @deprecated */
+  spanDirection?: number;
+  /** @deprecated */
+  arrowLength?: number;
 }
 
 // Section callout type: section cut line or detail circle

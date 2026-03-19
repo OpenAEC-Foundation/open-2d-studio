@@ -33,12 +33,9 @@ export function useSlabLabelDrawing() {
         visible: true,
         locked: false,
         position,
-        floorType: pendingSlabLabel.floorType,
-        customTypeName: pendingSlabLabel.customTypeName,
         thickness: pendingSlabLabel.thickness,
-        spanDirection: pendingSlabLabel.spanDirection,
         fontSize: pendingSlabLabel.fontSize,
-        arrowLength: pendingSlabLabel.arrowLength,
+        linkedSlabId: pendingSlabLabel.linkedSlabId,
       };
       addShape(slabLabelShape);
       return slabLabelShape.id;
@@ -71,12 +68,9 @@ export function useSlabLabelDrawing() {
       setDrawingPreview({
         type: 'slab-label',
         position: snappedPos,
-        floorType: pendingSlabLabel.floorType,
-        customTypeName: pendingSlabLabel.customTypeName,
         thickness: pendingSlabLabel.thickness,
-        spanDirection: pendingSlabLabel.spanDirection,
         fontSize: pendingSlabLabel.fontSize,
-        arrowLength: pendingSlabLabel.arrowLength,
+        linkedSlabId: pendingSlabLabel.linkedSlabId,
       });
     },
     [pendingSlabLabel, setDrawingPreview]

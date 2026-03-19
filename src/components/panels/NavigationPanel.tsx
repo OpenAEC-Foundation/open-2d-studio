@@ -1,10 +1,11 @@
-import { useState, useRef, useEffect, memo } from 'react';
+import { useState, useRef, useEffect, memo, useMemo } from 'react';
 import { ChevronDown, ChevronRight, PanelLeftClose } from 'lucide-react';
 import { DrawingsTab } from './DrawingsTab';
 import { SheetsTab } from './SheetsTab';
 import { QueriesTab } from './QueriesTab';
 import { CalculationsTab } from './CalculationsTab';
 import { getSetting, setSetting } from '../../utils/settings';
+import { useAppStore } from '../../state/appStore';
 
 interface NavigationPanelProps {
   onCollapse?: () => void;
@@ -25,6 +26,16 @@ const SECTIONS: SectionConfig[] = [
 ];
 
 export const NavigationPanel = memo(function NavigationPanel({ onCollapse }: NavigationPanelProps) {
+  const activeRibbonTab = useAppStore((s) => s.activeRibbonTab);
+
+  // When the IFC tab is active, hide Drawings/Sheets/Queries/Calculations
+  const visibleSections = useMemo(() => {
+    if (activeRibbonTab === 'ifc') {
+      return [] as SectionConfig[];
+    }
+    return SECTIONS;
+  }, [activeRibbonTab]);
+
   const [collapsedSections, setCollapsedSections] = useState<Record<string, boolean>>({
     drawings: false,
     sheets: false,
@@ -67,7 +78,7 @@ export const NavigationPanel = memo(function NavigationPanel({ onCollapse }: Nav
   };
 
   // Calculate how many sections are expanded
-  const expandedCount = SECTIONS.filter(s => !collapsedSections[s.id]).length;
+  const expandedCount = visibleSections.filter(s => !collapsedSections[s.id]).length;
 
   const getSectionStyle = (id: string): React.CSSProperties => {
     if (collapsedSections[id]) return { flex: '0 0 auto' };
@@ -81,7 +92,14 @@ export const NavigationPanel = memo(function NavigationPanel({ onCollapse }: Nav
       className="flex flex-col bg-cad-bg border-r border-cad-border relative cursor-default [&_*]:cursor-default"
       style={{ width: panelWidth, minWidth: 140, maxWidth: 500 }}
     >
-      {SECTIONS.map((section, index) => {
+      {visibleSections.length === 0 && (
+        <div className="flex items-center justify-center flex-1 px-3 py-4">
+          <span className="text-xs text-cad-text-dim text-center">
+            IFC mode active.{'\n'}Navigation sections hidden.
+          </span>
+        </div>
+      )}
+      {visibleSections.map((section, index) => {
         const isCollapsed = collapsedSections[section.id];
         const SectionComponent = section.component;
         const isFirst = index === 0;

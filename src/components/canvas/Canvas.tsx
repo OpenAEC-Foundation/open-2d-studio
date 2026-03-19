@@ -15,6 +15,7 @@ import { setRotationGizmoVisible } from '../../engine/renderer/rotationGizmoStat
 import { TitleBlockFieldEditor } from '../editors/TitleBlockFieldEditor/TitleBlockFieldEditor';
 import { parseSpacingPattern, createGridlinesFromPattern } from '../../utils/gridlineUtils';
 import { regenerateGridDimensions } from '../../utils/gridDimensionUtils';
+import { resolveGridlineExtension } from '../../types/hatch';
 import { ShortcutHUD } from './ShortcutHUD';
 
 function GridlineLabelInput({ shape, bubbleEnd, viewport, onSave, onCancel, drawingScale }: {
@@ -137,7 +138,8 @@ function GridlinePlusButton({ gridline, viewport, drawingScale }: {
   // We position the button just past the end of the visible line (past the extension + bubble)
   const sf = drawingScale && drawingScale > 0 ? 0.01 / drawingScale : 1;
   // gridlineExtension is in paper-mm; multiply by 0.01 to get scale-independent world size
-  const gridlineExtension = useAppStore(s => s.gridlineExtension) * 0.01;
+  const gridlineExtensionPerScale = useAppStore(s => s.gridlineExtensionPerScale);
+  const gridlineExtension = resolveGridlineExtension(gridlineExtensionPerScale, drawingScale) * 0.01;
   const bubbleR = gridline.bubbleRadius * sf;
 
   const angle = Math.atan2(gridline.end.y - gridline.start.y, gridline.end.x - gridline.start.x);
@@ -642,7 +644,7 @@ export function Canvas() {
                 return true;
               })(),
               openingDisplayStyle: s.planSubtypeSettings?.structuralPlan?.openingDisplayStyle ?? 'cross',
-              gridlineExtension: s.gridlineExtension,
+              gridlineExtension: resolveGridlineExtension(s.gridlineExtensionPerScale, s.drawings.find(d => d.id === s.activeDrawingId)?.scale),
               seaLevelDatum: s.projectStructure?.seaLevelDatum ?? 0,
               hiddenIfcCategories: s.hiddenIfcCategories ?? [],
               unitSettings: s.unitSettings,
@@ -708,7 +710,7 @@ export function Canvas() {
               ? (s.planSubtypeSettings?.structuralPlan?.showSlabSurfacePattern ?? false)
               : true,
             openingDisplayStyle: s.planSubtypeSettings?.structuralPlan?.openingDisplayStyle ?? 'cross',
-            gridlineExtension: s.gridlineExtension,
+            gridlineExtension: resolveGridlineExtension(s.gridlineExtensionPerScale, activeDrawing?.scale),
             seaLevelDatum: s.projectStructure?.seaLevelDatum ?? 0,
             hiddenIfcCategories: s.hiddenIfcCategories ?? [],
             unitSettings: s.unitSettings,

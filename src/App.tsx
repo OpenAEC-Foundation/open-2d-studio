@@ -484,7 +484,7 @@ function App() {
           </div>
         </div>
 
-        {/* Right Panel - Properties & Layers (or Sheet Properties in sheet mode) */}
+        {/* Right Panel - Properties & Layers (hidden when IFC tab is active) */}
         {rightSidebarCollapsed ? (
           <div className="flex flex-col bg-cad-surface border-l border-cad-border" style={{ width: 28 }}>
             <button

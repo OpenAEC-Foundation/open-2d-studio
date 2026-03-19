@@ -6,8 +6,8 @@
  * - Right pane: Raw IFC4 STEP file content with syntax highlighting
  */
 
-import { memo, useState, useCallback, useRef, useMemo } from 'react';
-import { ChevronDown, ChevronRight, Copy, Download, RefreshCw, X } from 'lucide-react';
+import { memo, useState, useCallback, useRef, useMemo, useEffect } from 'react';
+import { ChevronDown, ChevronRight, Copy, Download, RefreshCw, X, FileCode, FileJson } from 'lucide-react';
 import { useAppStore } from '../../state/appStore';
 import type { Shape, BeamShape, Drawing } from '../../types/geometry';
 import type { ProjectStructure, ProjectBuilding, ProjectStorey } from '../../state/slices/parametricSlice';
@@ -620,8 +620,145 @@ function StepViewer({ content }: StepViewerProps) {
 }
 
 // ============================================================================
+// IFCX JSON Viewer
+// ============================================================================
+
+interface IfcxViewerProps {
+  content: string;
+}
+
+function IfcxViewer({ content }: IfcxViewerProps) {
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = useCallback(async () => {
+    if (!content) return;
+    try {
+      await navigator.clipboard.writeText(content);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      const ta = document.createElement('textarea');
+      ta.value = content;
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      document.body.removeChild(ta);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  }, [content]);
+
+  const handleExport = useCallback(() => {
+    if (!content) return;
+    const blob = new Blob([content], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'model.ifcx';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }, [content]);
+
+  if (!content) {
+    return (
+      <div className="ifc-dashboard-step-empty">
+        <p>No IFCX content generated yet.</p>
+        <p className="ifc-dashboard-step-empty-hint">
+          Add structural elements to the canvas and the IFCX model will be generated automatically.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="ifc-dashboard-step-container">
+      {/* Toolbar */}
+      <div className="ifc-dashboard-step-toolbar">
+        <span className="ifc-dashboard-step-stats">
+          {content.length < 1024 ? `${content.length} B` : content.length < 1048576 ? `${(content.length / 1024).toFixed(1)} KB` : `${(content.length / 1048576).toFixed(2)} MB`}
+          {' | IFCX JSON'}
+        </span>
+        <div className="ifc-dashboard-step-actions">
+          <button
+            className="ifc-dashboard-btn"
+            onClick={handleCopy}
+            title="Copy to clipboard"
+          >
+            <Copy size={12} />
+            {copied ? 'Copied!' : 'Copy'}
+          </button>
+          <button
+            className="ifc-dashboard-btn"
+            onClick={handleExport}
+            title="Export as .ifcx file"
+          >
+            <Download size={12} />
+            Export .ifcx
+          </button>
+        </div>
+      </div>
+
+      {/* JSON viewer with syntax highlighting */}
+      <div className="ifc-dashboard-step-code" ref={containerRef}>
+        <pre className="ifc-dashboard-ifcx-json">{highlightJson(content)}</pre>
+      </div>
+    </div>
+  );
+}
+
+/** Simple JSON syntax highlighter */
+function highlightJson(json: string): React.ReactNode {
+  const parts: React.ReactNode[] = [];
+  let key = 0;
+  // Regex-based token highlighting
+  const tokenRegex = /("(?:\\.|[^"\\])*"\s*:)|("(?:\\.|[^"\\])*")|(true|false|null)|(-?\d+(?:\.\d+)?(?:[eE][+-]?\d+)?)|([{}[\],])/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenRegex.exec(json)) !== null) {
+    // Text before match
+    if (match.index > lastIndex) {
+      parts.push(<span key={key++}>{json.slice(lastIndex, match.index)}</span>);
+    }
+
+    if (match[1]) {
+      // Object key (with colon)
+      const colonIdx = match[1].lastIndexOf(':');
+      const keyPart = match[1].slice(0, colonIdx);
+      parts.push(<span key={key++} className="step-entity-type">{keyPart}</span>);
+      parts.push(<span key={key++}>{match[1].slice(colonIdx)}</span>);
+    } else if (match[2]) {
+      // String value
+      parts.push(<span key={key++} className="step-string">{match[2]}</span>);
+    } else if (match[3]) {
+      // Boolean / null
+      parts.push(<span key={key++} className="step-enum">{match[3]}</span>);
+    } else if (match[4]) {
+      // Number
+      parts.push(<span key={key++} className="step-entity-ref">{match[4]}</span>);
+    } else if (match[5]) {
+      // Punctuation
+      parts.push(<span key={key++} className="step-keyword">{match[5]}</span>);
+    }
+
+    lastIndex = match.index + match[0].length;
+  }
+
+  if (lastIndex < json.length) {
+    parts.push(<span key={key++}>{json.slice(lastIndex)}</span>);
+  }
+
+  return <>{parts}</>;
+}
+
+// ============================================================================
 // Main IFC Dashboard Component
 // ============================================================================
+
+type RawViewerTab = 'step' | 'ifcx';
 
 export const IfcDashboard = memo(function IfcDashboard() {
   const shapes = useAppStore((s) => s.shapes);
@@ -635,6 +772,80 @@ export const IfcDashboard = memo(function IfcDashboard() {
   const selectShapes = useAppStore((s) => s.selectShapes);
 
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
+  const [activeViewerTab, setActiveViewerTab] = useState<RawViewerTab>('step');
+  const [ifcxContent, setIfcxContent] = useState<string>('');
+
+  // Generate IFCX content dynamically
+  const generateIfcxContent = useCallback(() => {
+    try {
+      // Try to use the AEC extension's generateIFCX if available
+      const aecExt = (window as any).__aecExtension;
+      if (aecExt?.generateIFCX) {
+        const result = aecExt.generateIFCX();
+        setIfcxContent(result.content || '');
+        return;
+      }
+
+      // Fallback: generate a basic IFCX structure in-app
+      const state = useAppStore.getState();
+      const timestamp = new Date().toISOString();
+      const entities: any[] = [];
+
+      for (const shape of state.shapes) {
+        if (shape.id.startsWith('section-ref-')) continue;
+        const ifcClass = shapeToIfcClass(shape);
+        if (ifcClass === 'Other') continue;
+        entities.push({
+          type: ifcClass,
+          globalId: shape.id,
+          name: (shape as any).label || (shape as any).name || shape.type,
+          attributes: { shapeType: shape.type },
+        });
+      }
+
+      const doc = {
+        schema: 'IFCX',
+        version: '0.1',
+        header: {
+          description: 'IFCX export from Open 2D Studio',
+          name: state.projectName || 'Untitled Project',
+          timestamp,
+          application: 'Open 2D Studio',
+        },
+        units: { length: 'MILLIMETRE', area: 'SQUARE_METRE', volume: 'CUBIC_METRE' },
+        project: {
+          globalId: crypto.randomUUID(),
+          name: state.projectName || 'Default Project',
+          spatialStructure: {
+            type: 'IfcSite',
+            name: state.projectStructure?.siteName || 'Default Site',
+            children: state.projectStructure?.buildings?.map((b: any) => ({
+              type: 'IfcBuilding',
+              name: b.name,
+              children: b.storeys?.map((s: any) => ({
+                type: 'IfcBuildingStorey',
+                name: s.name,
+                elevation: s.elevation,
+              })) || [],
+            })) || [],
+          },
+        },
+        data: entities,
+      };
+
+      setIfcxContent(JSON.stringify(doc, null, 2));
+    } catch (err) {
+      console.error('Failed to generate IFCX:', err);
+      setIfcxContent('');
+    }
+  }, []);
+
+  // Regenerate IFCX when switching to the IFCX tab or when shapes change
+  useEffect(() => {
+    if (activeViewerTab === 'ifcx') {
+      generateIfcxContent();
+    }
+  }, [activeViewerTab, shapes, generateIfcxContent]);
 
   // Handle clicking on a class node in the graph - select those shapes
   const handleSelectShapes = useCallback((ids: string[]) => {
@@ -712,13 +923,58 @@ export const IfcDashboard = memo(function IfcDashboard() {
         {/* Divider */}
         <div className="ifc-dashboard-divider" />
 
-        {/* Right: Raw STEP viewer */}
+        {/* Right: Raw IFC viewer with STEP / IFCX tabs */}
         <div className="ifc-dashboard-right">
-          <div className="ifc-dashboard-pane-header">
-            Raw IFC4 STEP File
+          <div className="ifc-dashboard-pane-header" style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
+            <button
+              className={`ifc-dashboard-viewer-tab ${activeViewerTab === 'step' ? 'active' : ''}`}
+              onClick={() => setActiveViewerTab('step')}
+              title="View IFC4 STEP format"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 10px',
+                border: 'none',
+                borderBottom: activeViewerTab === 'step' ? '2px solid var(--cad-accent, #3b82f6)' : '2px solid transparent',
+                background: 'transparent',
+                color: activeViewerTab === 'step' ? 'var(--cad-text)' : 'var(--cad-text-dim)',
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: activeViewerTab === 'step' ? 600 : 400,
+              }}
+            >
+              <FileCode size={12} />
+              IFC4 STEP
+            </button>
+            <button
+              className={`ifc-dashboard-viewer-tab ${activeViewerTab === 'ifcx' ? 'active' : ''}`}
+              onClick={() => setActiveViewerTab('ifcx')}
+              title="View IFCX JSON format"
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: 4,
+                padding: '2px 10px',
+                border: 'none',
+                borderBottom: activeViewerTab === 'ifcx' ? '2px solid var(--cad-accent, #3b82f6)' : '2px solid transparent',
+                background: 'transparent',
+                color: activeViewerTab === 'ifcx' ? 'var(--cad-text)' : 'var(--cad-text-dim)',
+                cursor: 'pointer',
+                fontSize: 11,
+                fontWeight: activeViewerTab === 'ifcx' ? 600 : 400,
+              }}
+            >
+              <FileJson size={12} />
+              IFCX JSON
+            </button>
           </div>
           <div className="ifc-dashboard-pane-content">
-            <StepViewer content={ifcContent} />
+            {activeViewerTab === 'step' ? (
+              <StepViewer content={ifcContent} />
+            ) : (
+              <IfcxViewer content={ifcxContent} />
+            )}
           </div>
         </div>
       </div>

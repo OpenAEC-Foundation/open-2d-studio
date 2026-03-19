@@ -96,6 +96,8 @@ interface DrawingStandardsDialogProps {
 export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDialogProps) {
   const gridlineExtension = useAppStore(s => s.gridlineExtension);
   const setGridlineExtension = useAppStore(s => s.setGridlineExtension);
+  const gridlineExtensionPerScale = useAppStore(s => s.gridlineExtensionPerScale);
+  const setGridlineExtensionForScale = useAppStore(s => s.setGridlineExtensionForScale);
   const gridDimensionLineOffset = useAppStore(s => s.gridDimensionLineOffset);
   const setGridDimensionLineOffset = useAppStore(s => s.setGridDimensionLineOffset);
   const sectionGridlineDimensioning = useAppStore(s => s.sectionGridlineDimensioning);
@@ -657,18 +659,40 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
         {/* Gridline Settings */}
         <div className="space-y-2">
           <h3 className="text-xs font-semibold text-cad-text uppercase tracking-wide">Gridline Settings</h3>
-          <div className="flex items-center gap-3">
-            <label className="text-xs text-cad-text-secondary w-28">Extension (mm)</label>
-            <NumericInput
-              value={gridlineExtension}
-              onCommit={(v) => setGridlineExtension(v)}
-              min={0}
-              className="flex-1 h-7 px-2 text-xs bg-cad-bg border border-cad-border text-cad-text rounded"
-            />
-          </div>
           <p className="text-[10px] text-cad-text-dim">
-            Distance the gridline extends beyond its start/end points before the bubble circle appears.
+            Distance the gridline extends beyond its start/end points before the bubble circle appears (per drawing scale).
           </p>
+          <div className="border border-cad-border rounded overflow-hidden">
+            <table className="w-full text-xs">
+              <thead>
+                <tr className="bg-cad-bg text-cad-text-dim text-[10px] uppercase tracking-wide">
+                  <th className="text-left px-2 py-1.5 font-semibold border-b border-cad-border">Scale</th>
+                  <th className="text-left px-2 py-1.5 font-semibold border-b border-cad-border">Extension (mm)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {[
+                  { key: '0.01', label: '1:100' },
+                  { key: '0.02', label: '1:50' },
+                  { key: '0.05', label: '1:20' },
+                  { key: '0.1', label: '1:10' },
+                  { key: '0.2', label: '1:5' },
+                ].map((row) => (
+                  <tr key={row.key} className="border-b border-cad-border last:border-b-0">
+                    <td className="px-2 py-1 text-cad-text-secondary">{row.label}</td>
+                    <td className="px-2 py-1">
+                      <NumericInput
+                        value={gridlineExtensionPerScale?.[row.key] ?? 0}
+                        onCommit={(v) => setGridlineExtensionForScale(row.key, v)}
+                        min={0}
+                        className="w-full h-6 px-1 text-xs bg-cad-bg border border-cad-border text-cad-text rounded"
+                      />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           {/* Section Gridline Dimensioning */}
           <label className="flex items-center gap-2 text-xs text-cad-text-secondary">

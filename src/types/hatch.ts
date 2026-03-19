@@ -909,6 +909,50 @@ export type MaterialHatchSettings = Record<string, MaterialHatchSetting>;
 // ============================================================================
 
 /**
+ * Default gridline extension values per drawing scale.
+ * Keys are scale values as strings (e.g. '0.01' for 1:100).
+ * Values are extension distances in mm on paper.
+ */
+export const DEFAULT_GRIDLINE_EXTENSION_PER_SCALE: Record<string, number> = {
+  '0.01': 1000,   // 1:100
+  '0.02': 1500,   // 1:50
+  '0.05': 2000,   // 1:20
+  '0.1': 2500,    // 1:10
+  '0.2': 3000,    // 1:5
+};
+
+/**
+ * Resolve the gridline extension for a given drawing scale from the per-scale table.
+ * Falls back to the nearest scale if no exact match is found.
+ * If the table is empty, returns 2.5 (legacy default).
+ */
+export function resolveGridlineExtension(
+  perScale: Record<string, number> | undefined,
+  drawingScale: number | undefined,
+): number {
+  if (!perScale || Object.keys(perScale).length === 0) return 2.5;
+  if (!drawingScale || drawingScale <= 0) return 2.5;
+
+  const scaleKey = String(drawingScale);
+  if (scaleKey in perScale) return perScale[scaleKey];
+
+  // Find the nearest scale
+  const scaleKeys = Object.keys(perScale).map(Number).filter(n => !isNaN(n));
+  if (scaleKeys.length === 0) return 2.5;
+
+  let nearest = scaleKeys[0];
+  let nearestDist = Math.abs(Math.log(drawingScale) - Math.log(nearest));
+  for (let i = 1; i < scaleKeys.length; i++) {
+    const dist = Math.abs(Math.log(drawingScale) - Math.log(scaleKeys[i]));
+    if (dist < nearestDist) {
+      nearest = scaleKeys[i];
+      nearestDist = dist;
+    }
+  }
+  return perScale[String(nearest)];
+}
+
+/**
  * A named preset that stores all Drawing Standards settings.
  * Users can save, load, rename, and delete presets to quickly switch
  * between different standards configurations.
@@ -920,8 +964,10 @@ export interface DrawingStandardsPreset {
   name: string;
   /** Whether this is a built-in preset that cannot be deleted */
   isDefault?: boolean;
-  /** Gridline extension distance in mm */
+  /** @deprecated Use gridlineExtensionPerScale instead. Kept for backward compatibility. */
   gridlineExtension: number;
+  /** Gridline extension distance per drawing scale (mm). Keys are scale values as strings. */
+  gridlineExtensionPerScale?: Record<string, number>;
   /** Offset between dimension line rows for grid dimensioning (mm). Default 200. */
   gridDimensionLineOffset: number;
   /** Material hatch settings for all categories */

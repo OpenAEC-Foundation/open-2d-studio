@@ -2436,29 +2436,67 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
 
     case 'slab-label': {
       const slbl = shape as SlabLabelShape;
+      // Resolve linked slab info
+      const slblShapes = useAppStore.getState().shapes;
+      const linkedSlab = slbl.linkedSlabId ? slblShapes.find(s => s.id === slbl.linkedSlabId && s.type === 'slab') as SlabShape | undefined : undefined;
+      // Resolve peil from linked slab
+      let slblPeilText = '—';
+      if (linkedSlab) {
+        const slblPS = useAppStore.getState().projectStructure;
+        let storeyElev = 0;
+        for (const bldg of slblPS.buildings) {
+          const st = bldg.storeys.find(s => s.id === linkedSlab.level);
+          if (st) { storeyElev = st.elevation; break; }
+        }
+        const bottomElev = storeyElev + (linkedSlab.elevation || 0) - linkedSlab.thickness;
+        slblPeilText = (bottomElev >= 0 ? '+' : '') + String(Math.round(bottomElev));
+      }
+
+      // Collect all slabs in same drawing for linking
+      const slblAllSlabs = slblShapes.filter(s => s.type === 'slab' && s.drawingId === slbl.drawingId) as SlabShape[];
+
       return (
         <>
           <PropertyGroup label="Identity">
             <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
-              <div className="text-xs font-semibold text-cad-accent mb-1">Slab Label</div>
-              <div className="text-xs text-cad-text-dim">Structural floor type annotation</div>
+              <div className="text-xs font-semibold text-cad-accent mb-1">Slab Tag</div>
+              <div className="text-xs text-cad-text-dim">Thickness + Peil tag linked to a slab</div>
             </div>
-            <SelectField<StructuralFloorType>
-              label="Floor Type"
-              value={slbl.floorType}
-              options={STRUCTURAL_FLOOR_TYPES.map(ft => ({ value: ft.value, label: `${ft.label} (${ft.labelEn})` }))}
-              onChange={(v) => update({ floorType: v })}
-            />
-            {slbl.floorType === 'custom' && (
-              <TextField label="Custom Name" value={slbl.customTypeName || ''} onChange={(v) => update({ customTypeName: v || undefined })} />
+          </PropertyGroup>
+
+          <PropertyGroup label="Link">
+            <div className="mb-2">
+              <label className="block text-xs text-cad-text-dim mb-1">Linked Slab</label>
+              <select
+                className="w-full text-xs bg-cad-bg border border-cad-border rounded px-2 py-1 text-cad-text"
+                value={slbl.linkedSlabId || ''}
+                onChange={(e) => update({ linkedSlabId: e.target.value || undefined })}
+              >
+                <option value="">(Unlinked)</option>
+                {slblAllSlabs.map((sl) => (
+                  <option key={sl.id} value={sl.id}>
+                    {sl.label || sl.id.slice(0, 8)} — {sl.thickness}mm
+                  </option>
+                ))}
+              </select>
+            </div>
+            {linkedSlab && (
+              <div className="mb-2 p-2 bg-cad-bg rounded border border-cad-border">
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                  <div className="text-cad-text-dim">Slab Thickness:</div>
+                  <div className="text-cad-text">{linkedSlab.thickness} mm</div>
+                  <div className="text-cad-text-dim">Peil (bottom):</div>
+                  <div className="text-cad-text">{slblPeilText}</div>
+                </div>
+              </div>
             )}
           </PropertyGroup>
 
           <PropertyGroup label="Properties">
-            <NumberField label="Thickness (mm)" value={slbl.thickness} onChange={(v) => update({ thickness: v })} step={10} min={10} />
-            <NumberField label="Span Direction (deg)" value={slbl.spanDirection} onChange={(v) => update({ spanDirection: v })} step={15} min={0} max={360} />
+            {!linkedSlab && (
+              <NumberField label="Thickness (mm)" value={slbl.thickness} onChange={(v) => update({ thickness: v })} step={10} min={10} />
+            )}
             <NumberField label="Font Size" value={slbl.fontSize} onChange={(v) => update({ fontSize: v })} step={10} min={20} />
-            <NumberField label="Arrow Length" value={slbl.arrowLength} onChange={(v) => update({ arrowLength: v })} step={50} min={100} />
           </PropertyGroup>
         </>
       );
@@ -3218,23 +3256,12 @@ function SlabLabelToolProperties() {
   return (
     <div className="p-3 border-b border-cad-border">
       <div className="flex items-center gap-2 mb-3">
-        <span className="text-xs font-semibold text-cad-accent uppercase tracking-wide">Slab Label Tool</span>
+        <span className="text-xs font-semibold text-cad-accent uppercase tracking-wide">Slab Tag Tool</span>
       </div>
       <p className="text-[10px] text-cad-text-dim mb-3">
-        Click to place a slab label with floor type and span direction arrows.
+        Click to place a slab tag (two circles showing thickness and peil).
+        Link to a slab after placement via properties panel.
       </p>
-
-      <PropertyGroup label="Floor Type">
-        <SelectField<StructuralFloorType>
-          label="Type"
-          value={pendingSlabLabel.floorType}
-          options={STRUCTURAL_FLOOR_TYPES.map(ft => ({ value: ft.value, label: `${ft.label} (${ft.labelEn})` }))}
-          onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, floorType: v })}
-        />
-        {pendingSlabLabel.floorType === 'custom' && (
-          <TextField label="Custom Name" value={pendingSlabLabel.customTypeName || ''} onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, customTypeName: v || undefined })} />
-        )}
-      </PropertyGroup>
 
       <PropertyGroup label="Properties">
         <NumberField
@@ -3245,29 +3272,11 @@ function SlabLabelToolProperties() {
           min={10}
         />
         <NumberField
-          label="Span Direction (deg)"
-          value={pendingSlabLabel.spanDirection}
-          onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, spanDirection: v })}
-          step={15}
-          min={0}
-          max={360}
-        />
-      </PropertyGroup>
-
-      <PropertyGroup label="Display">
-        <NumberField
           label="Font Size"
           value={pendingSlabLabel.fontSize}
           onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, fontSize: v })}
           step={10}
           min={20}
-        />
-        <NumberField
-          label="Arrow Length"
-          value={pendingSlabLabel.arrowLength}
-          onChange={(v) => setPendingSlabLabel({ ...pendingSlabLabel, arrowLength: v })}
-          step={50}
-          min={100}
         />
       </PropertyGroup>
     </div>

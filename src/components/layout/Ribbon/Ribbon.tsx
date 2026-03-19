@@ -156,7 +156,8 @@ interface RibbonProps {
 }
 
 export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProps) {
-  const [activeTab, setActiveTab] = useState<RibbonTab>('home');
+  const activeTab = useAppStore(s => s.activeRibbonTab) as RibbonTab;
+  const setActiveTab = useAppStore(s => s.setActiveRibbonTab);
   const [ifcFilterOpen, setIfcFilterOpen] = useState(false);
   const ifcFilterRef = useRef<HTMLDivElement>(null);
 

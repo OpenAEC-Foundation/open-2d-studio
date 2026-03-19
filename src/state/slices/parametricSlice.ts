@@ -15,7 +15,7 @@ import type {
 } from '../../types/parametric';
 import type { BeamMaterial, BeamJustification, GridlineBubblePosition, WallJustification, WallEndCap, WallType, SlabType, ColumnType, BeamType, PileTypeDefinition, GroupedWallType, WallSystemType } from '../../types/geometry';
 import type { MaterialHatchSettings, MaterialHatchSetting, DrawingStandardsPreset, PlanSubtypeSettings } from '../../types/hatch';
-import { DEFAULT_MATERIAL_HATCH_SETTINGS, DEFAULT_PLAN_SUBTYPE_SETTINGS } from '../../types/hatch';
+import { DEFAULT_MATERIAL_HATCH_SETTINGS, DEFAULT_PLAN_SUBTYPE_SETTINGS, DEFAULT_GRIDLINE_EXTENSION_PER_SCALE, resolveGridlineExtension } from '../../types/hatch';
 import { DEFAULT_GROUPED_WALL_TYPES, GROUPED_WALL_EXTRA_TYPES } from '../../services/wallSystem/groupedWallDefaults';
 import { getDefaultWallSystemTypes } from '../../services/wallSystem/wallSystemDefaults';
 import {
@@ -260,12 +260,9 @@ export interface ParametricState {
 
   /** Slab Label pending state */
   pendingSlabLabel: {
-    floorType: import('../../types/geometry').StructuralFloorType;
-    customTypeName?: string;
     thickness: number;
-    spanDirection: number;     // degrees
     fontSize: number;
-    arrowLength: number;
+    linkedSlabId?: string;
   } | null;
 
   /** Section callout pending state */
@@ -312,8 +309,11 @@ export interface ParametricState {
   /** Drawing Standards dialog state */
   drawingStandardsDialogOpen: boolean;
 
-  /** Gridline extension distance in mm on paper (scale-relative; how far the line extends beyond start/end before the bubble) */
+  /** Gridline extension distance in mm on paper (resolved for current drawing scale) */
   gridlineExtension: number;
+
+  /** Gridline extension per drawing scale. Keys are scale values as strings (e.g. '0.01' for 1:100). */
+  gridlineExtensionPerScale: Record<string, number>;
 
   /** Offset between dimension line rows for grid dimensioning (mm). Default 200. */
   gridDimensionLineOffset: number;
@@ -561,6 +561,8 @@ export interface ParametricActions {
   openDrawingStandardsDialog: () => void;
   closeDrawingStandardsDialog: () => void;
   setGridlineExtension: (value: number) => void;
+  setGridlineExtensionPerScale: (perScale: Record<string, number>) => void;
+  setGridlineExtensionForScale: (scaleKey: string, value: number) => void;
   setGridDimensionLineOffset: (value: number) => void;
   setAutoGridDimension: (value: boolean) => void;
   setSectionGridlineDimensioning: (value: boolean) => void;
@@ -668,7 +670,8 @@ export const initialParametricState: ParametricState = {
   pendingPlateSystem: null,
   plateSystemDialogOpen: false,
   drawingStandardsDialogOpen: false,
-  gridlineExtension: 2.5,
+  gridlineExtension: 1000,
+  gridlineExtensionPerScale: { ...DEFAULT_GRIDLINE_EXTENSION_PER_SCALE },
   gridDimensionLineOffset: 300,
   autoGridDimension: true,
   sectionGridlineDimensioning: true,
@@ -755,7 +758,8 @@ export const initialParametricState: ParametricState = {
       id: 'default-nen-en',
       name: 'NEN-EN (Default)',
       isDefault: true,
-      gridlineExtension: 2.5,
+      gridlineExtension: 1000,
+      gridlineExtensionPerScale: { ...DEFAULT_GRIDLINE_EXTENSION_PER_SCALE },
       gridDimensionLineOffset: 300,
       materialHatchSettings: { ...DEFAULT_MATERIAL_HATCH_SETTINGS },
       sectionGridlineDimensioning: true,
@@ -766,7 +770,8 @@ export const initialParametricState: ParametricState = {
     {
       id: 'inb-template',
       name: 'INB-template',
-      gridlineExtension: 2.5,
+      gridlineExtension: 1000,
+      gridlineExtensionPerScale: { ...DEFAULT_GRIDLINE_EXTENSION_PER_SCALE },
       gridDimensionLineOffset: 300,
       sectionGridlineDimensioning: true,
       pilePlanAutoNumbering: true,
@@ -1578,6 +1583,36 @@ export const createParametricSlice = (
       }
     }),
 
+  setGridlineExtensionPerScale: (perScale) =>
+    set((state) => {
+      state.gridlineExtensionPerScale = { ...perScale };
+      // Resolve the current extension based on the active drawing's scale
+      const activeDrawing = state.drawings?.find((d: any) => d.id === state.activeDrawingId);
+      const drawingScale = activeDrawing?.scale;
+      state.gridlineExtension = resolveGridlineExtension(perScale, drawingScale);
+      // Auto-save to active preset
+      const preset = state.drawingStandardsPresets.find(p => p.id === state.activeDrawingStandardsId);
+      if (preset) {
+        preset.gridlineExtensionPerScale = { ...perScale };
+        preset.gridlineExtension = state.gridlineExtension;
+      }
+    }),
+
+  setGridlineExtensionForScale: (scaleKey, value) =>
+    set((state) => {
+      state.gridlineExtensionPerScale[scaleKey] = value;
+      // Resolve the current extension based on the active drawing's scale
+      const activeDrawing = state.drawings?.find((d: any) => d.id === state.activeDrawingId);
+      const drawingScale = activeDrawing?.scale;
+      state.gridlineExtension = resolveGridlineExtension(state.gridlineExtensionPerScale, drawingScale);
+      // Auto-save to active preset
+      const preset = state.drawingStandardsPresets.find(p => p.id === state.activeDrawingStandardsId);
+      if (preset) {
+        preset.gridlineExtensionPerScale = { ...state.gridlineExtensionPerScale };
+        preset.gridlineExtension = state.gridlineExtension;
+      }
+    }),
+
   setGridDimensionLineOffset: (value) =>
     set((state) => {
       state.gridDimensionLineOffset = value;
@@ -1737,6 +1772,7 @@ export const createParametricSlice = (
         name,
         isDefault: false,
         gridlineExtension: state.gridlineExtension,
+        gridlineExtensionPerScale: { ...state.gridlineExtensionPerScale },
         gridDimensionLineOffset: state.gridDimensionLineOffset,
         materialHatchSettings: { ...state.materialHatchSettings },
         sectionGridlineDimensioning: state.sectionGridlineDimensioning,
@@ -1756,7 +1792,12 @@ export const createParametricSlice = (
       const preset = state.drawingStandardsPresets.find(p => p.id === id);
       if (!preset) return;
       state.activeDrawingStandardsId = id;
-      state.gridlineExtension = preset.gridlineExtension;
+      state.gridlineExtensionPerScale = preset.gridlineExtensionPerScale
+        ? { ...preset.gridlineExtensionPerScale }
+        : { ...DEFAULT_GRIDLINE_EXTENSION_PER_SCALE };
+      // Resolve the extension for the current drawing scale
+      const activeDrawing = state.drawings?.find((d: any) => d.id === state.activeDrawingId);
+      state.gridlineExtension = resolveGridlineExtension(state.gridlineExtensionPerScale, activeDrawing?.scale);
       state.gridDimensionLineOffset = preset.gridDimensionLineOffset ?? 300;
       state.materialHatchSettings = { ...preset.materialHatchSettings };
       state.sectionGridlineDimensioning = preset.sectionGridlineDimensioning ?? true;
@@ -1779,7 +1820,11 @@ export const createParametricSlice = (
         const defaultPreset = state.drawingStandardsPresets.find(p => p.isDefault);
         if (defaultPreset) {
           state.activeDrawingStandardsId = defaultPreset.id;
-          state.gridlineExtension = defaultPreset.gridlineExtension;
+          state.gridlineExtensionPerScale = defaultPreset.gridlineExtensionPerScale
+            ? { ...defaultPreset.gridlineExtensionPerScale }
+            : { ...DEFAULT_GRIDLINE_EXTENSION_PER_SCALE };
+          const activeDrawing2 = state.drawings?.find((d: any) => d.id === state.activeDrawingId);
+          state.gridlineExtension = resolveGridlineExtension(state.gridlineExtensionPerScale, activeDrawing2?.scale);
           state.gridDimensionLineOffset = defaultPreset.gridDimensionLineOffset ?? 300;
           state.materialHatchSettings = { ...defaultPreset.materialHatchSettings };
           state.sectionGridlineDimensioning = defaultPreset.sectionGridlineDimensioning ?? true;
