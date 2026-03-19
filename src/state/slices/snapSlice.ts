@@ -47,6 +47,7 @@ export interface SnapState {
 
   // Display settings
   whiteBackground: boolean;
+  transparentBackground: boolean;
   boundaryVisible: boolean;
   uiTheme: UITheme;
 
@@ -111,6 +112,7 @@ export const initialSnapState: SnapState = {
   trackingPoint: null,
   directDistanceAngle: null,
   whiteBackground: true,
+  transparentBackground: false,
   boundaryVisible: false,
   uiTheme: 'dark',
   showRotationGizmo: true,
@@ -226,6 +228,12 @@ export const createSnapSlice = (
     set((state) => {
       state.whiteBackground = !state.whiteBackground;
       setSetting('whiteBackground', state.whiteBackground);
+    }),
+
+  setTransparentBackground: (enabled: boolean) =>
+    set((state) => {
+      state.transparentBackground = enabled;
+      setSetting('transparentBackground', enabled);
     }),
 
   toggleBoundaryVisible: () =>

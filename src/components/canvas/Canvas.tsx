@@ -136,7 +136,8 @@ function GridlinePlusButton({ gridline, viewport, drawingScale }: {
   // For vertical gridlines, "bottom" = smaller Y (lower end on screen)
   // We position the button just past the end of the visible line (past the extension + bubble)
   const sf = drawingScale && drawingScale > 0 ? 0.01 / drawingScale : 1;
-  const gridlineExtension = useAppStore(s => s.gridlineExtension) * sf;
+  // gridlineExtension is in paper-mm; multiply by 0.01 to get scale-independent world size
+  const gridlineExtension = useAppStore(s => s.gridlineExtension) * 0.01;
   const bubbleR = gridline.bubbleRadius * sf;
 
   const angle = Math.atan2(gridline.end.y - gridline.start.y, gridline.end.x - gridline.start.x);
@@ -687,6 +688,7 @@ export function Canvas() {
             boundarySelected: s.boundaryEditState.isSelected,
             boundaryDragging: s.boundaryEditState.activeHandle !== null,
             whiteBackground: s.whiteBackground,
+            transparentBackground: s.transparentBackground,
             hideSelectionHandles: ['move','copy','rotate','scale','mirror','array','trim','extend','fillet','offset'].includes(s.activeTool),
             sectionPlacementPreview: s.sectionPlacementPreview,
             pendingSection: s.pendingSection,

@@ -78,7 +78,7 @@ export class DimensionRenderer extends BaseRenderer {
     };
 
     // Determine if linked element is selected (for green text highlight)
-    const linkedSelected = !isSelected && this.isLinkedElementSelected(dimension);
+    const linkedSelected = !isSelected && !isHovered && this.isLinkedElementSelected(dimension);
 
     // Set drawing style
     const highlightColor = isSelected ? COLORS.selection : isHovered ? COLORS.hover : null;
@@ -89,8 +89,9 @@ export class DimensionRenderer extends BaseRenderer {
     ctx.lineWidth = isSelected ? Math.max(2.5, baseLineWidth) : baseLineWidth;
     ctx.setLineDash([]);
 
-    // If a linked element is selected, override the text color to green
-    const textColorOverride = linkedSelected ? ASSOCIATION_HIGHLIGHT_COLOR : undefined;
+    // If the dimension itself is selected/hovered, override text color to match;
+    // otherwise if a linked element is selected, use association highlight (green).
+    const textColorOverride = highlightColor || (linkedSelected ? ASSOCIATION_HIGHLIGHT_COLOR : undefined);
 
     switch (dimension.dimensionType) {
       case 'aligned':

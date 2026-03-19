@@ -79,7 +79,7 @@ export interface SheetRenderOptions {
   slabSurfacePatternEnabled?: boolean;
   /** How slab openings are rendered */
   openingDisplayStyle?: 'cross' | 'diagonal' | 'outline';
-  /** Gridline extension distance in mm */
+  /** Gridline extension distance in mm on paper (scale-relative) */
   gridlineExtension?: number;
   /** Sea level datum: peil=0 elevation relative to NAP in meters */
   seaLevelDatum?: number;

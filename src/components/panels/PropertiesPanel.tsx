@@ -2813,13 +2813,75 @@ function WallToolProperties() {
 function BeamToolProperties() {
   const pendingBeam = useAppStore(s => s.pendingBeam);
   const setPendingBeam = useAppStore(s => s.setPendingBeam);
+  const setActiveTool = useAppStore(s => s.setActiveTool);
+  const [profileQuery, setProfileQuery] = useState('');
+  const [profileResults, setProfileResults] = useState<any[]>([]);
 
   if (!pendingBeam) return null;
+
+  const handleProfileSearch = (query: string) => {
+    setProfileQuery(query);
+    if (query.length >= 2) {
+      const { searchPresets } = require('../../services/parametric/profileLibrary');
+      const results = searchPresets(query).slice(0, 8);
+      setProfileResults(results);
+      // Auto-select exact match
+      const exact = results.find((r: any) => r.name.toLowerCase() === query.toLowerCase() || r.id.toLowerCase() === query.toLowerCase());
+      if (exact) {
+        applyPreset(exact);
+      }
+    } else {
+      setProfileResults([]);
+    }
+  };
+
+  const applyPreset = (preset: any) => {
+    setPendingBeam({
+      ...pendingBeam,
+      profileType: preset.profileType,
+      parameters: preset.parameters,
+      presetId: preset.id,
+      presetName: preset.name,
+      flangeWidth: preset.parameters.flangeWidth || preset.parameters.width || pendingBeam.flangeWidth,
+    });
+    setProfileQuery(preset.name);
+    setProfileResults([]);
+  };
 
   return (
     <div className="p-3 border-b border-cad-border">
       <div className="flex items-center gap-2 mb-3">
         <span className="text-xs font-semibold text-cad-accent uppercase tracking-wide">Beam Tool</span>
+      </div>
+
+      {/* Profile search */}
+      <div className="mb-3 relative">
+        <input
+          type="text"
+          className="w-full px-2 py-1 text-xs bg-cad-bg border border-cad-border rounded text-cad-text placeholder-cad-text-dim focus:border-cad-accent outline-none"
+          placeholder="Search profile (e.g. HEA300)"
+          value={profileQuery}
+          onChange={(e) => handleProfileSearch(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter' && profileResults.length > 0) {
+              applyPreset(profileResults[0]);
+              setActiveTool('beam');
+            }
+          }}
+        />
+        {profileResults.length > 0 && profileQuery.length >= 2 && (
+          <div className="absolute z-50 left-0 right-0 mt-1 bg-cad-surface border border-cad-border rounded shadow-lg max-h-40 overflow-y-auto">
+            {profileResults.map((preset: any) => (
+              <button
+                key={preset.id}
+                className="w-full px-2 py-1 text-xs text-left text-cad-text hover:bg-cad-hover"
+                onClick={() => { applyPreset(preset); setActiveTool('beam'); }}
+              >
+                {preset.name}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Shape Mode toggle */}

@@ -369,21 +369,54 @@ export function formatDutchNumber(value: number, unitSettings?: UnitSettings): s
 }
 
 /**
- * Get the half-thickness of a shape (wall thickness / 2, beam flange width / 2).
- * Returns 0 for shapes without a thickness/width concept.
+ * Get the perpendicular half-extent of a shape from its centerline.
+ *
+ * For beams this accounts for the active view mode:
+ *   - plan / side: flangeWidth / 2
+ *   - elevation: max of flangeWidth and profile depth / 2
+ *   - section: max of flangeWidth and profile height / 2
+ *
+ * For beams and walls with left/right justification the full thickness is
+ * returned instead of half, because the element extends entirely to one
+ * side of the centerline.
  */
 function getShapeHalfThickness(shape: Shape): number {
   if (shape.type === 'wall') {
-    return (shape as WallShape).thickness / 2;
+    const wall = shape as WallShape;
+    if (wall.justification === 'left' || wall.justification === 'right') {
+      return wall.thickness;
+    }
+    return wall.thickness / 2;
   }
   if (shape.type === 'beam') {
-    return (shape as BeamShape).flangeWidth / 2;
+    const beam = shape as BeamShape;
+    const viewMode = beam.viewMode || 'plan';
+
+    // In elevation and section views the rendered extent can be larger than
+    // the plan-view flangeWidth because the full profile depth is shown.
+    let extent = beam.flangeWidth;
+    if (viewMode === 'elevation' || viewMode === 'section') {
+      const params = beam.profileParameters as Record<string, number | string | boolean>;
+      const depth = (params.webHeight as number)
+        || (params.height as number)
+        || (params.outerDiameter as number)
+        || beam.flangeWidth;
+      extent = Math.max(extent, depth);
+    }
+
+    const halfExtent = extent / 2;
+
+    // Left / right justified beams extend fully to one side of the draw line.
+    if (beam.justification === 'left' || beam.justification === 'right') {
+      return extent;
+    }
+    return halfExtent;
   }
   return 0;
 }
 
 /** Default margin between the element edge and the label, in drawing units (mm). */
-const LABEL_MARGIN = 50;
+const LABEL_MARGIN = 150;
 
 /**
  * Compute the correct position and rotation for a linked label based on
@@ -392,8 +425,8 @@ const LABEL_MARGIN = 50;
  * Position: 1000mm from the start along the element direction
  *           (or midpoint if element is shorter than 2000mm),
  *           offset perpendicular to the element direction so the label
- *           appears ABOVE (to the left when looking from start to end)
- *           rather than overlapping the element.
+ *           appears clearly to the SIDE of the element (to the left when
+ *           looking from start to end) rather than overlapping the element.
  * Rotation: angle of the element direction (Math.atan2(dy, dx)).
  *
  * Returns null if the shape does not have start/end geometry.
@@ -423,7 +456,8 @@ export function computeLinkedLabelPosition(
   const perpX = dirY;
   const perpY = -dirX;
 
-  // Offset = half the element thickness + margin so label clears the element
+  // Offset = element half-extent + generous margin so the label sits clearly
+  // to the side of the element with no overlap.
   const halfThickness = getShapeHalfThickness(parentShape);
   const perpOffset = halfThickness + LABEL_MARGIN;
 

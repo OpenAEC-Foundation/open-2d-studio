@@ -202,7 +202,7 @@ export function regenerateGridDimensions(options: GridDimensionOptions = DEFAULT
   // Calculate scale-adjusted offsets (matches renderer scaleFactor = LINE_DASH_REFERENCE_SCALE / drawingScale)
   const drawingScale = state.drawings.find(d => d.id === activeDrawingId)?.scale || 0.02;
   const scaleFactor = 0.01 / drawingScale;
-  const scaledExt = storeGridlineExtension * scaleFactor;
+  const scaledExt = storeGridlineExtension * 0.01;
 
   // Row offset between total and span dimension lines (300mm default)
   const rowOffset = storeDimLineOffset * scaleFactor;

@@ -42,6 +42,7 @@ export interface DrawingRenderOptions {
   boundarySelected?: boolean;
   boundaryDragging?: boolean;
   whiteBackground?: boolean;
+  transparentBackground?: boolean;
   hideSelectionHandles?: boolean;
   sectionPlacementPreview?: Point | null;
   pendingSection?: {
@@ -75,7 +76,7 @@ export interface DrawingRenderOptions {
   slabSurfacePatternEnabled?: boolean;
   /** How slab openings are rendered */
   openingDisplayStyle?: 'cross' | 'diagonal' | 'outline';
-  /** Gridline extension distance in mm */
+  /** Gridline extension distance in mm on paper (scale-relative) */
   gridlineExtension?: number;
   /** Sea level datum: peil=0 elevation relative to NAP in meters */
   seaLevelDatum?: number;
@@ -227,8 +228,12 @@ export class DrawingRenderer extends BaseRenderer {
     // Clear canvas
     ctx.save();
     ctx.setTransform(this.dpr, 0, 0, this.dpr, 0, 0);
-    ctx.fillStyle = whiteBackground ? '#ffffff' : COLORS.canvasBackground;
-    ctx.fillRect(0, 0, this.width, this.height);
+    if (options.transparentBackground) {
+      ctx.clearRect(0, 0, this.width, this.height);
+    } else {
+      ctx.fillStyle = whiteBackground ? '#ffffff' : COLORS.canvasBackground;
+      ctx.fillRect(0, 0, this.width, this.height);
+    }
 
     // Apply viewport transform
     this.applyViewportTransform(viewport);

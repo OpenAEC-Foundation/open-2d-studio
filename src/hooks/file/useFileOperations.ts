@@ -176,6 +176,18 @@ export function useFileOperations() {
       if ((project as any).wallSystemTypes && (project as any).wallSystemTypes.length > 0) {
         useAppStore.getState().setWallSystemTypes((project as any).wallSystemTypes);
       }
+      // Restore project structure (storeys)
+      if ((project as any).projectStructure) {
+        useAppStore.getState().setProjectStructure((project as any).projectStructure);
+      }
+      // Restore slab types
+      if ((project as any).slabTypes && (project as any).slabTypes.length > 0) {
+        useAppStore.getState().setSlabTypes((project as any).slabTypes);
+      }
+      // Restore pile types
+      if ((project as any).pileTypes && (project as any).pileTypes.length > 0) {
+        useAppStore.getState().setPileTypes((project as any).pileTypes);
+      }
       // Restore saved queries (backward compatible)
       if (project.queries && project.queries.length > 0) {
         useAppStore.getState().setQueries(project.queries);
@@ -237,6 +249,9 @@ export function useFileOperations() {
         projectPatterns: s.projectPatterns.length > 0 ? s.projectPatterns : undefined,
         wallTypes: s.wallTypes.length > 0 ? s.wallTypes : undefined,
         wallSystemTypes: s.wallSystemTypes.length > 0 ? s.wallSystemTypes : undefined,
+        projectStructure: s.projectStructure,
+        slabTypes: s.slabTypes?.length > 0 ? s.slabTypes : undefined,
+        pileTypes: s.pileTypes?.length > 0 ? s.pileTypes : undefined,
         queries: s.queries.length > 0 ? s.queries : undefined,
       };
 
@@ -293,6 +308,9 @@ export function useFileOperations() {
         projectPatterns: s.projectPatterns.length > 0 ? s.projectPatterns : undefined,
         wallTypes: s.wallTypes.length > 0 ? s.wallTypes : undefined,
         wallSystemTypes: s.wallSystemTypes.length > 0 ? s.wallSystemTypes : undefined,
+        projectStructure: s.projectStructure,
+        slabTypes: s.slabTypes?.length > 0 ? s.slabTypes : undefined,
+        pileTypes: s.pileTypes?.length > 0 ? s.pileTypes : undefined,
       };
 
       await writeProjectFile(filePath, project);
@@ -561,6 +579,18 @@ export function useFileOperations() {
       // Restore wall system types (backward compatible)
       if ((project as any).wallSystemTypes && (project as any).wallSystemTypes.length > 0) {
         useAppStore.getState().setWallSystemTypes((project as any).wallSystemTypes);
+      }
+      // Restore project structure (storeys)
+      if ((project as any).projectStructure) {
+        useAppStore.getState().setProjectStructure((project as any).projectStructure);
+      }
+      // Restore slab types
+      if ((project as any).slabTypes && (project as any).slabTypes.length > 0) {
+        useAppStore.getState().setSlabTypes((project as any).slabTypes);
+      }
+      // Restore pile types
+      if ((project as any).pileTypes && (project as any).pileTypes.length > 0) {
+        useAppStore.getState().setPileTypes((project as any).pileTypes);
       }
 
       if (isEmptyUntitled) {

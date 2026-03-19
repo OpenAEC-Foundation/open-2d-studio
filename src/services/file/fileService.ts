@@ -224,6 +224,12 @@ export interface ProjectFileV2 {
   wallTypes?: import('../../types/geometry').WallType[];
   // Wall system types (optional, backward compatible)
   wallSystemTypes?: import('../../types/geometry').WallSystemType[];
+  // Project structure with storeys (optional, backward compatible)
+  projectStructure?: import('../../state/slices/parametricSlice').ProjectStructure;
+  // Slab types (optional, backward compatible)
+  slabTypes?: import('../../types/geometry').SlabType[];
+  // Pile types (optional, backward compatible)
+  pileTypes?: import('../../types/geometry').PileTypeDefinition[];
 }
 
 /**

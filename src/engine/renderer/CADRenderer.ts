@@ -50,6 +50,7 @@ interface RenderOptions {
   boundarySelected?: boolean;
   boundaryDragging?: boolean;
   whiteBackground?: boolean;
+  transparentBackground?: boolean;
   hideSelectionHandles?: boolean;
   sectionPlacementPreview?: IPoint | null;
   pendingSection?: {
@@ -83,7 +84,7 @@ interface RenderOptions {
   slabSurfacePatternEnabled?: boolean;
   /** How slab openings are rendered */
   openingDisplayStyle?: 'cross' | 'diagonal' | 'outline';
-  /** Gridline extension distance in mm */
+  /** Gridline extension distance in mm on paper (scale-relative) */
   gridlineExtension?: number;
   /** Sea level datum: peil=0 elevation relative to NAP in meters */
   seaLevelDatum?: number;
@@ -137,7 +138,7 @@ interface SheetModeRenderOptions {
   slabSurfacePatternEnabled?: boolean;
   /** How slab openings are rendered */
   openingDisplayStyle?: 'cross' | 'diagonal' | 'outline';
-  /** Gridline extension distance in mm */
+  /** Gridline extension distance in mm on paper (scale-relative) */
   gridlineExtension?: number;
   /** Sea level datum: peil=0 elevation relative to NAP in meters */
   seaLevelDatum?: number;
@@ -207,6 +208,7 @@ export class CADRenderer {
       boundarySelected: options.boundarySelected,
       boundaryDragging: options.boundaryDragging,
       whiteBackground: options.whiteBackground,
+      transparentBackground: options.transparentBackground,
       hideSelectionHandles: options.hideSelectionHandles,
       sectionPlacementPreview: options.sectionPlacementPreview,
       pendingSection: options.pendingSection,

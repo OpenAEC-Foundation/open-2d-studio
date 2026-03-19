@@ -648,8 +648,22 @@ export function isPointNearShape(point: Point, shape: Shape, tolerance: number =
       return isPointNearSpotElevation(point, shape as SpotElevationShape, tolerance, drawingScale);
     case 'image':
       return isPointNearImage(point, shape, tolerance);
-    default:
+    default: {
+      // Extension-registered shape types: use bounds-based hit testing
+      const extBounds = boundsRegistry.get(shape.type);
+      if (extBounds) {
+        const bounds = extBounds(shape, drawingScale);
+        if (bounds) {
+          return (
+            point.x >= bounds.minX - tolerance &&
+            point.x <= bounds.maxX + tolerance &&
+            point.y >= bounds.minY - tolerance &&
+            point.y <= bounds.maxY + tolerance
+          );
+        }
+      }
       return false;
+    }
   }
 }
 

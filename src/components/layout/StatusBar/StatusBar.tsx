@@ -608,6 +608,30 @@ export const StatusBar = memo(function StatusBar() {
         ORTHO
       </button>
 
+      {/* View mode selector */}
+      <select
+        className="px-1 py-0.5 rounded text-xs font-mono bg-cad-surface border border-cad-border text-cad-text cursor-default"
+        value={useAppStore.getState().transparentBackground ? 'transparent' : (useAppStore.getState().whiteBackground ? 'white' : 'dark')}
+        onChange={(e) => {
+          const s = useAppStore.getState();
+          if (e.target.value === 'transparent') {
+            s.setTransparentBackground(true);
+          } else {
+            s.setTransparentBackground(false);
+            if (e.target.value === 'white') {
+              if (!s.whiteBackground) s.toggleWhiteBackground();
+            } else {
+              if (s.whiteBackground) s.toggleWhiteBackground();
+            }
+          }
+        }}
+        title="View background mode"
+      >
+        <option value="dark">Hidden Line</option>
+        <option value="white">White Background</option>
+        <option value="transparent">Transparent</option>
+      </select>
+
       {/* Active tool + status message */}
       <div className="flex items-center gap-2">
         <span>Tool:</span>

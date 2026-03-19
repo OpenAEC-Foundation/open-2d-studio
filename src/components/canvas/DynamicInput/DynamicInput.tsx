@@ -9,6 +9,7 @@ import {
   getShapeTransformUpdates,
 } from '../../../engine/geometry/Modify';
 import { evaluateExpression } from '../../../utils/expressionParser';
+import { getDefaultLabelTemplate, resolveTemplate, computeLinkedLabelPosition } from '../../../engine/geometry/LabelUtils';
 import {
   classifyGridlineOrientation,
   getNextGridlineLabel,
@@ -618,7 +619,38 @@ export function DynamicInput() {
         rotation: 0,
         viewMode: pb.viewMode || 'plan',
       };
-      state.addShape(beamShape);
+      // Create label alongside beam (same as useBeamDrawing)
+      const labelPosData = computeLinkedLabelPosition(beamShape as any);
+      const template = getDefaultLabelTemplate('beam');
+      const labelText = resolveTemplate(template, beamShape as any);
+      const { defaultTextStyle, activeTextStyleId, textStyles } = state;
+      const activeStyle = activeTextStyleId ? textStyles.find((s: any) => s.id === activeTextStyleId) : null;
+      const labelPos = labelPosData?.position ?? { x: (basePoint.x + endPoint.x) / 2, y: (basePoint.y + endPoint.y) / 2 };
+      const labelShape = {
+        id: crypto.randomUUID(),
+        type: 'text' as const,
+        layerId: state.activeLayerId,
+        drawingId: state.activeDrawingId,
+        style: { ...state.currentStyle },
+        visible: true,
+        locked: false,
+        position: labelPos,
+        text: labelText,
+        fontSize: (activeStyle as any)?.fontSize ?? defaultTextStyle.fontSize,
+        fontFamily: (activeStyle as any)?.fontFamily ?? defaultTextStyle.fontFamily,
+        rotation: labelPosData?.rotation ?? 0,
+        alignment: 'left' as const,
+        verticalAlignment: 'middle' as const,
+        bold: (activeStyle as any)?.bold ?? defaultTextStyle.bold,
+        italic: false,
+        underline: false,
+        color: (activeStyle as any)?.color ?? defaultTextStyle.color,
+        lineHeight: 1.4,
+        isModelText: true,
+        linkedShapeId: beamShape.id,
+        labelTemplate: template,
+      };
+      state.addShapes([beamShape as any, labelShape as any]);
 
       // Chain drawing: clear and start next segment from endpoint
       state.clearDrawingPoints();

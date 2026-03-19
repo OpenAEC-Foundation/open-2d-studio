@@ -310,7 +310,7 @@ export interface ParametricState {
   /** Drawing Standards dialog state */
   drawingStandardsDialogOpen: boolean;
 
-  /** Gridline extension distance in mm (how far the line extends beyond start/end before the bubble) */
+  /** Gridline extension distance in mm on paper (scale-relative; how far the line extends beyond start/end before the bubble) */
   gridlineExtension: number;
 
   /** Offset between dimension line rows for grid dimensioning (mm). Default 200. */
@@ -666,7 +666,7 @@ export const initialParametricState: ParametricState = {
   pendingPlateSystem: null,
   plateSystemDialogOpen: false,
   drawingStandardsDialogOpen: false,
-  gridlineExtension: 1000,
+  gridlineExtension: 2.5,
   gridDimensionLineOffset: 300,
   autoGridDimension: true,
   sectionGridlineDimensioning: true,
@@ -753,7 +753,7 @@ export const initialParametricState: ParametricState = {
       id: 'default-nen-en',
       name: 'NEN-EN (Default)',
       isDefault: true,
-      gridlineExtension: 1000,
+      gridlineExtension: 2.5,
       gridDimensionLineOffset: 300,
       materialHatchSettings: { ...DEFAULT_MATERIAL_HATCH_SETTINGS },
       sectionGridlineDimensioning: true,
@@ -764,7 +764,7 @@ export const initialParametricState: ParametricState = {
     {
       id: 'inb-template',
       name: 'INB-template',
-      gridlineExtension: 1000,
+      gridlineExtension: 2.5,
       gridDimensionLineOffset: 300,
       sectionGridlineDimensioning: true,
       pilePlanAutoNumbering: true,
