@@ -594,6 +594,30 @@ export const createModelSlice = (
               }
             }
           }
+
+          // When a level is added in a section drawing, create a storey if needed
+          if (shape.type === 'level') {
+            const drawing = state.drawings.find((d: any) => d.id === shape.drawingId);
+            if (drawing?.drawingType === 'section') {
+              const lv = shape as LevelShape;
+              const elevation = Math.round(-lv.start.y);
+              // Check if storey already exists at this elevation
+              const exists = state.projectStructure.buildings.some((b: any) =>
+                b.storeys.some((s: any) => Math.abs(s.elevation - elevation) < 1)
+              );
+              if (!exists && state.projectStructure.buildings.length > 0) {
+                const building = state.projectStructure.buildings[0];
+                const newStoreyId = shape.id.startsWith('section-ref-lv-')
+                  ? shape.id.replace('section-ref-lv-', '')
+                  : `storey-${Date.now()}`;
+                building.storeys.push({
+                  id: newStoreyId,
+                  name: lv.description || `Level ${elevation >= 0 ? '+' : ''}${elevation}`,
+                  elevation,
+                });
+              }
+            }
+          }
         }
       });
     }),
