@@ -73,6 +73,7 @@ import {
   buildSectionCoordinateSystem,
   syncGridlineFromSection,
   syncLevelFromSection,
+  formatSectionPeilLabel,
 } from '../../services/section/sectionReferenceService';
 import type { SectionCalloutShape, GridlineShape, LevelShape } from '../../types/geometry';
 
@@ -1422,15 +1423,23 @@ export const createModelSlice = (
         );
 
         if (result) {
-          // Remove old section reference shapes for this drawing
-          const oldRefIds = new Set(
-            (state.shapes as Shape[])
-              .filter(s => s.drawingId === id && isSectionReferenceShape(s))
-              .map(s => s.id)
-          );
+          // Split old section reference shapes into level refs and non-level refs
+          const existingShapes = state.shapes as Shape[];
+          const oldLevelRefs = new Map<string, Shape>();
+          const oldNonLevelRefIds = new Set<string>();
+          for (const s of existingShapes) {
+            if (s.drawingId === id && isSectionReferenceShape(s)) {
+              if (s.id.startsWith('section-ref-lv-')) {
+                oldLevelRefs.set(s.id, s);
+              } else {
+                oldNonLevelRefIds.add(s.id);
+              }
+            }
+          }
 
-          if (oldRefIds.size > 0) {
-            state.shapes = (state.shapes as Shape[]).filter(s => !oldRefIds.has(s.id)) as typeof state.shapes;
+          // Only delete non-level refs; keep level shapes persistent
+          if (oldNonLevelRefIds.size > 0) {
+            state.shapes = (state.shapes as Shape[]).filter(s => !oldNonLevelRefIds.has(s.id)) as typeof state.shapes;
           }
 
           // Fix layer IDs to use the actual layer from the section drawing
@@ -1439,18 +1448,42 @@ export const createModelSlice = (
           const fixedDimensions = result.dimensions.map(dim => ({ ...dim, layerId: sectionLayerId }));
           const fixedSlabs = result.slabs.map(sl => ({ ...sl, layerId: sectionLayerId }));
 
-          // Add new section reference shapes
+          // Add non-level section reference shapes (gridlines, dimensions, slabs)
           for (const gl of fixedGridlines) {
             (state.shapes as Shape[]).push(gl as unknown as Shape);
-          }
-          for (const lv of fixedLevels) {
-            (state.shapes as Shape[]).push(lv as unknown as Shape);
           }
           for (const dim of fixedDimensions) {
             (state.shapes as Shape[]).push(dim as unknown as Shape);
           }
           for (const sl of fixedSlabs) {
             (state.shapes as Shape[]).push(sl as unknown as Shape);
+          }
+
+          // Reconcile level shapes: update existing, add new, remove orphaned
+          const newLevelIds = new Set(fixedLevels.map(lv => lv.id));
+          for (const lv of fixedLevels) {
+            const existing = oldLevelRefs.get(lv.id);
+            if (existing) {
+              // Level exists: update horizontal extent but KEEP Y from existing (preserves storey drag)
+              const idx = (state.shapes as Shape[]).findIndex(s => s.id === lv.id);
+              if (idx !== -1) {
+                const lvShape = (state.shapes as Shape[])[idx] as any;
+                lvShape.start = { x: lv.start.x, y: lvShape.start.y };
+                lvShape.end = { x: lv.end.x, y: lvShape.end.y };
+                lvShape.label = lv.label;
+                lvShape.description = lv.description;
+                lvShape.layerId = sectionLayerId;
+              }
+            } else {
+              // New level: insert
+              (state.shapes as Shape[]).push(lv as unknown as Shape);
+            }
+          }
+          // Remove orphaned level shapes (storey was deleted)
+          for (const [lvId] of oldLevelRefs) {
+            if (!newLevelIds.has(lvId)) {
+              state.shapes = (state.shapes as Shape[]).filter(s => s.id !== lvId) as typeof state.shapes;
+            }
           }
 
           // Update the drawing's sectionReferences
@@ -1478,15 +1511,23 @@ export const createModelSlice = (
       );
 
       if (result) {
-        // Remove old section reference shapes for this drawing
-        const oldRefIds = new Set(
-          (state.shapes as Shape[])
-            .filter(s => s.drawingId === sectionDrawingId && isSectionReferenceShape(s))
-            .map(s => s.id)
-        );
+        // Split old section reference shapes into level refs and non-level refs
+        const existingShapes = state.shapes as Shape[];
+        const oldLevelRefs = new Map<string, Shape>();
+        const oldNonLevelRefIds = new Set<string>();
+        for (const s of existingShapes) {
+          if (s.drawingId === sectionDrawingId && isSectionReferenceShape(s)) {
+            if (s.id.startsWith('section-ref-lv-')) {
+              oldLevelRefs.set(s.id, s);
+            } else {
+              oldNonLevelRefIds.add(s.id);
+            }
+          }
+        }
 
-        if (oldRefIds.size > 0) {
-          state.shapes = (state.shapes as Shape[]).filter(s => !oldRefIds.has(s.id)) as typeof state.shapes;
+        // Only delete non-level refs; keep level shapes persistent
+        if (oldNonLevelRefIds.size > 0) {
+          state.shapes = (state.shapes as Shape[]).filter(s => !oldNonLevelRefIds.has(s.id)) as typeof state.shapes;
         }
 
         // Fix layer IDs to use the actual layer from the section drawing
@@ -1495,18 +1536,42 @@ export const createModelSlice = (
         const fixedDimensions = result.dimensions.map(dim => ({ ...dim, layerId: sectionLayerId }));
         const fixedSlabs = result.slabs.map(sl => ({ ...sl, layerId: sectionLayerId }));
 
-        // Add new section reference shapes
+        // Add non-level section reference shapes
         for (const gl of fixedGridlines) {
           (state.shapes as Shape[]).push(gl as unknown as Shape);
-        }
-        for (const lv of fixedLevels) {
-          (state.shapes as Shape[]).push(lv as unknown as Shape);
         }
         for (const dim of fixedDimensions) {
           (state.shapes as Shape[]).push(dim as unknown as Shape);
         }
         for (const sl of fixedSlabs) {
           (state.shapes as Shape[]).push(sl as unknown as Shape);
+        }
+
+        // Reconcile level shapes: update existing, add new, remove orphaned
+        const newLevelIds = new Set(fixedLevels.map(lv => lv.id));
+        for (const lv of fixedLevels) {
+          const existing = oldLevelRefs.get(lv.id);
+          if (existing) {
+            // Level exists: update horizontal extent but KEEP Y from existing (preserves storey drag)
+            const idx = (state.shapes as Shape[]).findIndex(s => s.id === lv.id);
+            if (idx !== -1) {
+              const lvShape = (state.shapes as Shape[])[idx] as any;
+              lvShape.start = { x: lv.start.x, y: lvShape.start.y };
+              lvShape.end = { x: lv.end.x, y: lvShape.end.y };
+              lvShape.label = lv.label;
+              lvShape.description = lv.description;
+              lvShape.layerId = sectionLayerId;
+            }
+          } else {
+            // New level: insert
+            (state.shapes as Shape[]).push(lv as unknown as Shape);
+          }
+        }
+        // Remove orphaned level shapes (storey was deleted)
+        for (const [lvId] of oldLevelRefs) {
+          if (!newLevelIds.has(lvId)) {
+            state.shapes = (state.shapes as Shape[]).filter(s => s.id !== lvId) as typeof state.shapes;
+          }
         }
 
         // Update the drawing's sectionReferences
@@ -1533,23 +1598,58 @@ export const createModelSlice = (
         );
 
         if (result) {
-          // Remove old section reference shapes for this drawing
-          state.shapes = (state.shapes as Shape[]).filter(
-            s => !(s.drawingId === sectionDrawing.id && isSectionReferenceShape(s))
-          ) as typeof state.shapes;
+          // Split old section reference shapes into level refs and non-level refs
+          const oldLevelRefs = new Map<string, Shape>();
+          const oldNonLevelRefIds = new Set<string>();
+          for (const s of (state.shapes as Shape[])) {
+            if (s.drawingId === sectionDrawing.id && isSectionReferenceShape(s)) {
+              if (s.id.startsWith('section-ref-lv-')) {
+                oldLevelRefs.set(s.id, s);
+              } else {
+                oldNonLevelRefIds.add(s.id);
+              }
+            }
+          }
 
-          // Add new section reference shapes with correct layer ID
+          // Only delete non-level refs; keep level shapes persistent
+          if (oldNonLevelRefIds.size > 0) {
+            state.shapes = (state.shapes as Shape[]).filter(s => !oldNonLevelRefIds.has(s.id)) as typeof state.shapes;
+          }
+
+          // Add non-level section reference shapes with correct layer ID
           for (const gl of result.gridlines) {
             (state.shapes as Shape[]).push({ ...gl, layerId: sectionLayerId } as unknown as Shape);
-          }
-          for (const lv of result.levels) {
-            (state.shapes as Shape[]).push({ ...lv, layerId: sectionLayerId } as unknown as Shape);
           }
           for (const dim of result.dimensions) {
             (state.shapes as Shape[]).push({ ...dim, layerId: sectionLayerId } as unknown as Shape);
           }
           for (const sl of result.slabs) {
             (state.shapes as Shape[]).push({ ...sl, layerId: sectionLayerId } as unknown as Shape);
+          }
+
+          // Reconcile level shapes: update existing, add new, remove orphaned
+          const fixedLevels = result.levels.map(lv => ({ ...lv, layerId: sectionLayerId }));
+          const newLevelIds = new Set(fixedLevels.map(lv => lv.id));
+          for (const lv of fixedLevels) {
+            const existing = oldLevelRefs.get(lv.id);
+            if (existing) {
+              const idx = (state.shapes as Shape[]).findIndex(s => s.id === lv.id);
+              if (idx !== -1) {
+                const lvShape = (state.shapes as Shape[])[idx] as any;
+                lvShape.start = { x: lv.start.x, y: lvShape.start.y };
+                lvShape.end = { x: lv.end.x, y: lvShape.end.y };
+                lvShape.label = lv.label;
+                lvShape.description = lv.description;
+                lvShape.layerId = sectionLayerId;
+              }
+            } else {
+              (state.shapes as Shape[]).push(lv as unknown as Shape);
+            }
+          }
+          for (const [lvId] of oldLevelRefs) {
+            if (!newLevelIds.has(lvId)) {
+              state.shapes = (state.shapes as Shape[]).filter(s => s.id !== lvId) as typeof state.shapes;
+            }
           }
 
           // Update the drawing's sectionReferences

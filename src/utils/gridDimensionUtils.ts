@@ -5,8 +5,9 @@
  * whenever gridlines are added or changed.
  *
  * Dimension measurement points are placed at the bubble center positions
- * (ext + bubbleRadius from the gridline endpoint) so the dimension line
- * sits right at the gridline bubbles with no gap.
+ * (ext + bubbleRadius from the gridline endpoint).
+ * Row 1 (intermediate/span): at the bubble center — closest to gridlines.
+ * Row 2 (main/total): one rowOffset further out from the bubble.
  */
 
 import type { GridlineShape, Point, Shape } from '../types/geometry';
@@ -146,8 +147,8 @@ function getHorizontalEndpointSides(g: GridlineShape): { minXSide: 'start' | 'en
  * Regenerate all grid dimension lines for the active drawing.
  * Removes existing auto-generated grid dimensions and creates new ones.
  *
- * Dimension measurement points are placed at the bubble center positions
- * so the dimension line sits right at the gridline bubbles.
+ * Dimension measurement points are placed at the bubble center positions.
+ * Span dimensions sit at the bubble; total dimensions are one row further out.
  *
  * Options control which sides to place dimensions on.
  */
@@ -246,28 +247,28 @@ export function regenerateGridDimensions(options: GridDimensionOptions = DEFAULT
         ? Math.min(...bubbleEdges.map(bc => bc.y))
         : Math.max(...bubbleEdges.map(bc => bc.y));
 
-      // Total dimension: measurement points at bubble center Y, offset = 0
-      if (includeTotal && sorted.length >= 2) {
-        const x1 = (sorted[0].start.x + sorted[0].end.x) / 2;
-        const x2 = (sorted[sorted.length - 1].start.x + sorted[sorted.length - 1].end.x) / 2;
-        newDims.push(makeDim(
-          { x: x1, y: refY }, { x: x2, y: refY },
-          0, 'horizontal',
-          activeDrawingId, activeLayerId,
-          [sorted[0].id, sorted[sorted.length - 1].id]
-        ));
-      }
-
-      // Span dimensions: offset one row INWARD (between gridlines and total dim)
-      const spanOffset = includeTotal ? -side.sign * rowOffset : 0;
+      // Span dimensions: at bubble center position (offset = 0), closest row to gridlines
       for (let i = 0; i < sorted.length - 1; i++) {
         const x1 = (sorted[i].start.x + sorted[i].end.x) / 2;
         const x2 = (sorted[i + 1].start.x + sorted[i + 1].end.x) / 2;
         newDims.push(makeDim(
           { x: x1, y: refY }, { x: x2, y: refY },
-          spanOffset, 'horizontal',
+          0, 'horizontal',
           activeDrawingId, activeLayerId,
           [sorted[i].id, sorted[i + 1].id]
+        ));
+      }
+
+      // Total dimension: offset one row OUTWARD (further from gridlines than span)
+      if (includeTotal && sorted.length >= 2) {
+        const totalOffset = side.sign * rowOffset;
+        const x1 = (sorted[0].start.x + sorted[0].end.x) / 2;
+        const x2 = (sorted[sorted.length - 1].start.x + sorted[sorted.length - 1].end.x) / 2;
+        newDims.push(makeDim(
+          { x: x1, y: refY }, { x: x2, y: refY },
+          totalOffset, 'horizontal',
+          activeDrawingId, activeLayerId,
+          [sorted[0].id, sorted[sorted.length - 1].id]
         ));
       }
     }
@@ -295,28 +296,28 @@ export function regenerateGridDimensions(options: GridDimensionOptions = DEFAULT
         ? Math.min(...bubbleEdges.map(bc => bc.x))
         : Math.max(...bubbleEdges.map(bc => bc.x));
 
-      // Total dimension: measurement points at bubble center X, offset = 0
-      if (includeTotal && sorted.length >= 2) {
-        const y1 = (sorted[0].start.y + sorted[0].end.y) / 2;
-        const y2 = (sorted[sorted.length - 1].start.y + sorted[sorted.length - 1].end.y) / 2;
-        newDims.push(makeDim(
-          { x: refX, y: y1 }, { x: refX, y: y2 },
-          0, 'vertical',
-          activeDrawingId, activeLayerId,
-          [sorted[0].id, sorted[sorted.length - 1].id]
-        ));
-      }
-
-      // Span dimensions: offset one row INWARD (between gridlines and total dim)
-      const spanOffset = includeTotal ? -side.sign * rowOffset : 0;
+      // Span dimensions: at bubble center position (offset = 0), closest row to gridlines
       for (let i = 0; i < sorted.length - 1; i++) {
         const y1 = (sorted[i].start.y + sorted[i].end.y) / 2;
         const y2 = (sorted[i + 1].start.y + sorted[i + 1].end.y) / 2;
         newDims.push(makeDim(
           { x: refX, y: y1 }, { x: refX, y: y2 },
-          spanOffset, 'vertical',
+          0, 'vertical',
           activeDrawingId, activeLayerId,
           [sorted[i].id, sorted[i + 1].id]
+        ));
+      }
+
+      // Total dimension: offset one row OUTWARD (further from gridlines than span)
+      if (includeTotal && sorted.length >= 2) {
+        const totalOffset = side.sign * rowOffset;
+        const y1 = (sorted[0].start.y + sorted[0].end.y) / 2;
+        const y2 = (sorted[sorted.length - 1].start.y + sorted[sorted.length - 1].end.y) / 2;
+        newDims.push(makeDim(
+          { x: refX, y: y1 }, { x: refX, y: y2 },
+          totalOffset, 'vertical',
+          activeDrawingId, activeLayerId,
+          [sorted[0].id, sorted[sorted.length - 1].id]
         ));
       }
     }
@@ -364,33 +365,32 @@ export function regenerateGridDimensions(options: GridDimensionOptions = DEFAULT
       const minProj = Math.min(...projections);
 
       // Compute dimension measurement points: project each midpoint onto the perpendicular axis,
-      // placed at the reference distance along the gridline direction
+      // placed at the bubble center position along the gridline direction (no extra offset)
       const dimPoints: Point[] = midpoints.map(mp => {
         const perpDist = mp.x * perpX + mp.y * perpY;
         return {
-          x: lineDir.x * minProj + perpX * perpDist - lineDir.x * rowOffset,
-          y: lineDir.y * minProj + perpY * perpDist - lineDir.y * rowOffset,
+          x: lineDir.x * minProj + perpX * perpDist,
+          y: lineDir.y * minProj + perpY * perpDist,
         };
       });
 
-      // Total dimension
-      if (includeTotal && sorted.length >= 2) {
-        newDims.push(makeAlignedDim(
-          dimPoints[0], dimPoints[dimPoints.length - 1],
-          0,
-          activeDrawingId, activeLayerId,
-          [sorted[0].id, sorted[sorted.length - 1].id]
-        ));
-      }
-
-      // Span dimensions
-      const spanOffset = includeTotal ? -rowOffset : 0;
+      // Span dimensions: at bubble center position (offset = 0), closest row to gridlines
       for (let i = 0; i < sorted.length - 1; i++) {
         newDims.push(makeAlignedDim(
           dimPoints[i], dimPoints[i + 1],
-          spanOffset,
+          0,
           activeDrawingId, activeLayerId,
           [sorted[i].id, sorted[i + 1].id]
+        ));
+      }
+
+      // Total dimension: offset one row OUTWARD (further from gridlines than span)
+      if (includeTotal && sorted.length >= 2) {
+        newDims.push(makeAlignedDim(
+          dimPoints[0], dimPoints[dimPoints.length - 1],
+          -rowOffset,
+          activeDrawingId, activeLayerId,
+          [sorted[0].id, sorted[sorted.length - 1].id]
         ));
       }
     }

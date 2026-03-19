@@ -25,6 +25,7 @@ import { recalculateMiterJoins } from '../../engine/geometry/Modify';
 import { gripProviderRegistry } from '../../engine/registry/GripProviderRegistry';
 import { findLinkedLabels, computeLinkedLabelPosition } from '../../engine/geometry/LabelUtils';
 import { regeneratePlateSystemBeams } from '../drawing/usePlateSystemDrawing';
+import { formatSectionPeilLabel } from '../../services/section/sectionReferenceService';
 
 interface GripDragState {
   shapeId: string;
@@ -2410,11 +2411,41 @@ export function useGripEditing() {
       }
     }
 
-    // Bidirectional sync: if a section reference level was dragged, propagate back to storey
-    if (drag.originalShape.type === 'level' && drag.shapeId.startsWith('section-ref-')) {
-      setTimeout(() => {
-        useAppStore.getState().syncSectionReferenceToSource?.(drag.shapeId);
-      }, 60);
+    // Bidirectional sync: if a section reference level was dragged, update storey directly
+    if (drag.originalShape.type === 'level' && drag.shapeId.startsWith('section-ref-lv-')) {
+      const storeyId = drag.shapeId.replace('section-ref-lv-', '');
+      const latestShape = useAppStore.getState().shapes.find(s => s.id === drag.shapeId) as LevelShape | undefined;
+      if (latestShape) {
+        const newElevation = Math.round(-latestShape.start.y);
+        const peilLabel = formatSectionPeilLabel(newElevation);
+
+        // Synchronously update storey elevation + shape label/elevation/peil in one setState
+        useAppStore.setState((state) => {
+          // Update storey elevation in projectStructure
+          for (const building of state.projectStructure.buildings) {
+            const storey = building.storeys.find(s => s.id === storeyId);
+            if (storey) {
+              storey.elevation = newElevation;
+              break;
+            }
+          }
+
+          // Update the level shape's label, elevation, and peil fields
+          const shapeIdx = state.shapes.findIndex(s => s.id === drag.shapeId);
+          if (shapeIdx !== -1) {
+            const lvShape = state.shapes[shapeIdx] as any;
+            lvShape.label = peilLabel;
+            lvShape.elevation = newElevation;
+            lvShape.peil = newElevation;
+          }
+        });
+
+        // Collapse the storey+shape update into the same undo group
+        const storeAfterLevel = useAppStore.getState();
+        if (storeAfterLevel.historyIndex >= historyStartIndex) {
+          storeAfterLevel.collapseEntries(historyStartIndex);
+        }
+      }
     }
 
     // Update linked section drawing boundary when a section callout is grip-edited

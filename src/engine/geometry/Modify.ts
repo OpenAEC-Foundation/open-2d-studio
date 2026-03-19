@@ -6,6 +6,7 @@ import type { Point, Shape, LineShape, ArcShape, GridlineShape, LevelShape, Punt
 import { generateId } from '../../state/slices/types';
 import { formatPeilLabel, calculatePeilFromY } from '../../hooks/drawing/useLevelDrawing';
 import { bulgeToArc } from './GeometryUtils';
+import { useAppStore } from '../../state/appStore';
 
 // ============================================================================
 // Point Transforms
@@ -273,8 +274,27 @@ export function transformShape(shape: Shape, transform: PointTransform, newId?: 
       break;
     }
     case 'wall-opening': {
-      // Wall openings are positioned relative to their host wall (positionAlongWall),
-      // so they move implicitly when the host wall moves. No geometry to transform.
+      // Move opening along its host wall by projecting the move delta onto the wall direction
+      const wo = cloned as any;
+      const allShapes = useAppStore.getState().shapes;
+      const hostWall = allShapes.find((s: any) => s.id === wo.hostWallId);
+      if (hostWall && hostWall.start && hostWall.end) {
+        const wdx = hostWall.end.x - hostWall.start.x;
+        const wdy = hostWall.end.y - hostWall.start.y;
+        const wLen = Math.sqrt(wdx * wdx + wdy * wdy);
+        if (wLen > 0.001) {
+          // Get the move delta from transform (apply to origin, get displacement)
+          const origin = { x: 0, y: 0 };
+          const moved = transform(origin);
+          const moveDx = moved.x - origin.x;
+          const moveDy = moved.y - origin.y;
+          // Project delta onto wall direction
+          const dirX = wdx / wLen;
+          const dirY = wdy / wLen;
+          const projectedDist = moveDx * dirX + moveDy * dirY;
+          wo.positionAlongWall = Math.max(wo.width / 2, Math.min(wLen - wo.width / 2, wo.positionAlongWall + projectedDist));
+        }
+      }
       break;
     }
     case 'slab-opening': {
