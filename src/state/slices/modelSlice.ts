@@ -632,6 +632,20 @@ export const createModelSlice = (
               }
             }
           }
+
+          // Section-ref level: update storey elevation when level is moved
+          if (shape.type === 'level' && id.startsWith('section-ref-lv-')) {
+            const storeyId = id.replace('section-ref-lv-', '');
+            const lv = shape as LevelShape;
+            const newElev = Math.round(-lv.start.y);
+            for (const building of state.projectStructure.buildings) {
+              const storey = building.storeys.find((s: any) => s.id === storeyId);
+              if (storey) {
+                storey.elevation = newElev;
+                break;
+              }
+            }
+          }
         }
       });
     }),
