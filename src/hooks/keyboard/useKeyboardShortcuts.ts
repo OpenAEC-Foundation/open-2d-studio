@@ -93,8 +93,30 @@ function getShapeRotationCenter(shape: Shape): Point | null {
       return { x: shape.points[0].x, y: shape.points[0].y };
     }
 
-    default:
+    // Extension shape types
+    case 'column':
+    case 'rebar':
+    case 'slab-label':
+    case 'puntniveau':
+      return { x: (shape as any).position.x, y: (shape as any).position.y };
+    case 'slab-opening': {
+      const pts = (shape as any).points;
+      if (!pts || pts.length === 0) return null;
+      const sx = pts.reduce((s: number, p: any) => s + p.x, 0);
+      const sy = pts.reduce((s: number, p: any) => s + p.y, 0);
+      return { x: sx / pts.length, y: sy / pts.length };
+    }
+    case 'wall-opening':
+      return null; // Moves with host wall
+
+    default: {
+      // Generic fallback: try common property names
+      const s = shape as any;
+      if (s.position) return { x: s.position.x, y: s.position.y };
+      if (s.center) return { x: s.center.x, y: s.center.y };
+      if (s.start && s.end) return { x: (s.start.x + s.end.x) / 2, y: (s.start.y + s.end.y) / 2 };
       return null;
+    }
   }
 }
 
