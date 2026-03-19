@@ -1793,14 +1793,24 @@ export function useGripEditing() {
         }
       }
 
-      // Ortho: snap line/beam/gridline/wall endpoint to 45° angle increments
+      // Ortho: snap endpoint to angle increments (90° for wall/beam, 45° for line/gridline)
       if (orthoMode && !drag.axisConstraint &&
           (currentShape.type === 'line' || currentShape.type === 'beam' || currentShape.type === 'gridline' || currentShape.type === 'wall') &&
           (drag.gripIndex === 0 || drag.gripIndex === 1)) {
         const opposite = drag.gripIndex === 0
           ? (currentShape as LineShape | BeamShape | GridlineShape | WallShape).end
           : (currentShape as LineShape | BeamShape | GridlineShape | WallShape).start;
-        constrainedPos = snapToAngle(opposite, constrainedPos);
+        if (currentShape.type === 'wall' || currentShape.type === 'beam') {
+          const sdx = constrainedPos.x - opposite.x;
+          const sdy = constrainedPos.y - opposite.y;
+          if (Math.abs(sdx) >= Math.abs(sdy)) {
+            constrainedPos = { x: constrainedPos.x, y: opposite.y };
+          } else {
+            constrainedPos = { x: opposite.x, y: constrainedPos.y };
+          }
+        } else {
+          constrainedPos = snapToAngle(opposite, constrainedPos);
+        }
       }
 
       // Ortho: constrain section-callout grip movement to horizontal or vertical

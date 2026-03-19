@@ -1222,6 +1222,46 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
                   <option value="full">Full</option>
                 </select>
               </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-cad-text-secondary w-32">Label size 1:100 (mm)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.5"
+                  max="5"
+                  value={planSubtypeSettings.structuralPlan.beamLabelFontSize?.scale100 ?? 1.8}
+                  onChange={(e) => updatePlanSubtypeSettings({
+                    structuralPlan: {
+                      ...planSubtypeSettings.structuralPlan,
+                      beamLabelFontSize: {
+                        ...(planSubtypeSettings.structuralPlan.beamLabelFontSize || { scale100: 1.8, scale50: 2.5 }),
+                        scale100: parseFloat(e.target.value) || 1.8,
+                      },
+                    },
+                  })}
+                  className="flex-1 h-6 px-1 text-xs bg-cad-bg border border-cad-border text-cad-text rounded w-16"
+                />
+              </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-cad-text-secondary w-32">Label size 1:50+ (mm)</label>
+                <input
+                  type="number"
+                  step="0.1"
+                  min="0.5"
+                  max="5"
+                  value={planSubtypeSettings.structuralPlan.beamLabelFontSize?.scale50 ?? 2.5}
+                  onChange={(e) => updatePlanSubtypeSettings({
+                    structuralPlan: {
+                      ...planSubtypeSettings.structuralPlan,
+                      beamLabelFontSize: {
+                        ...(planSubtypeSettings.structuralPlan.beamLabelFontSize || { scale100: 1.8, scale50: 2.5 }),
+                        scale50: parseFloat(e.target.value) || 2.5,
+                      },
+                    },
+                  })}
+                  className="flex-1 h-6 px-1 text-xs bg-cad-bg border border-cad-border text-cad-text rounded w-16"
+                />
+              </div>
             </div>
           )}
 

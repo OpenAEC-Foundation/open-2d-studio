@@ -90,10 +90,22 @@ export function useBeamDrawing() {
       const labelPosData = computeLinkedLabelPosition(beamShape);
 
       // Resolve active text style for consistent formatting
-      const { defaultTextStyle, activeTextStyleId, textStyles } = useAppStore.getState();
+      const state = useAppStore.getState();
+      const { defaultTextStyle, activeTextStyleId, textStyles } = state;
       const activeStyle = activeTextStyleId
         ? textStyles.find(s => s.id === activeTextStyleId)
         : null;
+
+      // Get beam label font size from drawing standards based on scale
+      const activeDrawing = state.drawings.find((d: any) => d.id === activeDrawingId);
+      const drawingScale = activeDrawing?.scale || 0.01;
+      const beamLabelSettings = state.planSubtypeSettings?.structuralPlan?.beamLabelFontSize;
+      // 1:100 = 0.01, 1:50 = 0.02, etc. At 1:100 use scale100 (1.8mm), otherwise scale50 (2.5mm)
+      const beamLabelMm = drawingScale <= 0.01
+        ? (beamLabelSettings?.scale100 ?? 1.8)
+        : (beamLabelSettings?.scale50 ?? 2.5);
+      // Convert paper mm to model units: paperMm / drawingScale
+      const beamLabelFontSize = beamLabelMm / drawingScale;
 
       // Fall back to beam midpoint if computeLinkedLabelPosition returns null
       // (e.g. zero-length beam, which shouldn't happen in practice)
@@ -113,7 +125,7 @@ export function useBeamDrawing() {
         locked: false,
         position: labelPosition,
         text: labelText,
-        fontSize: activeStyle?.fontSize ?? defaultTextStyle.fontSize,
+        fontSize: beamLabelFontSize,
         fontFamily: activeStyle?.fontFamily ?? defaultTextStyle.fontFamily,
         rotation: labelRotation,
         alignment: 'left',

@@ -220,9 +220,10 @@ export class DrawingRenderer extends BaseRenderer {
     // Set live preview pattern
     this.shapeRenderer.setPreviewPattern(options.previewPatternId || null, selectedShapeIds);
 
-    // Set lineweight display mode and current zoom
+    // Set lineweight display mode, current zoom, and transparent-background flag
     this.shapeRenderer.setShowLineweight(options.showLineweight !== false);
     this.shapeRenderer.setZoom(viewport.zoom);
+    this.shapeRenderer.setTransparentBackground(!!options.transparentBackground);
     this.parametricRenderer.setShowLineweight(options.showLineweight !== false);
 
     // Clear canvas
@@ -267,11 +268,12 @@ export class DrawingRenderer extends BaseRenderer {
     // IFC category filter
     const hiddenCats = options.hiddenIfcCategories || [];
 
-    // Draw shapes in four passes:
+    // Draw shapes in five passes:
     // 1. Underlay images (background reference images)
     // 2. Slabs (rendered behind walls so they don't overlap)
-    // 3. Non-text, non-slab shapes (walls, beams, lines, etc.)
+    // 3. Non-text, non-slab, non-gridline shapes (walls, beams, lines, etc.)
     // 4. Text shapes (labels on top)
+    // 5. Gridlines (stramien) — always on top of everything
     for (const shape of shapes) {
       if (!shape.visible) continue;
       if (shape.type !== 'image' || !(shape as ImageShape).isUnderlay) continue;
@@ -288,7 +290,7 @@ export class DrawingRenderer extends BaseRenderer {
       this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
     }
     for (const shape of shapes) {
-      if (!shape.visible || shape.type === 'text' || shape.type === 'slab') continue;
+      if (!shape.visible || shape.type === 'text' || shape.type === 'slab' || shape.type === 'gridline') continue;
       if (shape.type === 'image' && (shape as ImageShape).isUnderlay) continue;
       if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
       const isSelected = selectedSet.has(shape.id);
@@ -297,6 +299,14 @@ export class DrawingRenderer extends BaseRenderer {
     }
     for (const shape of shapes) {
       if (!shape.visible || shape.type !== 'text') continue;
+      if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
+      const isSelected = selectedSet.has(shape.id);
+      const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
+      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
+    }
+    // Pass 5: Gridlines (stramien) — rendered last so they always appear on top
+    for (const shape of shapes) {
+      if (!shape.visible || shape.type !== 'gridline') continue;
       if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
       const isSelected = selectedSet.has(shape.id);
       const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));

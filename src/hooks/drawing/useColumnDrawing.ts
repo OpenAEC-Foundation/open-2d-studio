@@ -21,7 +21,7 @@ export function useColumnDrawing() {
    * Create a column shape at a given position
    */
   const createColumn = useCallback(
-    (position: Point, width: number, depth: number, rotation: number, material: ColumnShape['material'], extra?: { profile?: string; section?: string; baseLevel?: string; topLevel?: string }) => {
+    (position: Point, width: number, depth: number, rotation: number, material: ColumnShape['material'], extra?: { profile?: string; section?: string; baseLevel?: string; topLevel?: string; baseOffset?: number; topOffset?: number }) => {
       const columnShape: ColumnShape = {
         id: generateId(),
         type: 'column',
@@ -39,6 +39,8 @@ export function useColumnDrawing() {
         ...(extra?.section != null && { section: extra.section }),
         ...(extra?.baseLevel != null && { baseLevel: extra.baseLevel }),
         ...(extra?.topLevel != null && { topLevel: extra.topLevel }),
+        ...(extra?.baseOffset != null && { baseOffset: extra.baseOffset }),
+        ...(extra?.topOffset != null && { topOffset: extra.topOffset }),
       };
       addShape(columnShape);
       return columnShape.id;
@@ -64,6 +66,8 @@ export function useColumnDrawing() {
           section: pendingColumn.section,
           baseLevel: pendingColumn.baseLevel,
           topLevel: pendingColumn.topLevel,
+          baseOffset: pendingColumn.baseOffset,
+          topOffset: pendingColumn.topOffset,
         },
       );
 

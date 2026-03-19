@@ -30,6 +30,8 @@ export interface ShapeRenderContext {
   unitSettings: UnitSettings;
   shapesLookup: Map<string, Shape>;
   customPatterns: CustomHatchPattern[];
+  /** Whether the canvas background is transparent — hatch fills should render at reduced opacity */
+  transparentBackground: boolean;
 
   // Core rendering helpers (bound to ShapeRenderer instance)
   getLineDash: (lineStyle: string) => number[];

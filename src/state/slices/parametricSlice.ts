@@ -208,6 +208,8 @@ export interface ParametricState {
     section?: string;
     baseLevel?: string;
     topLevel?: string;
+    baseOffset?: number;
+    topOffset?: number;
   } | null;
 
   /** CPT dialog state */

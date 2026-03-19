@@ -46,7 +46,11 @@ export function DrawingPropertiesPanel({ showHeader = true }: { showHeader?: boo
   const handleTypeChange = useCallback((newType: DrawingType) => {
     if (!activeDrawingId) return;
     updateDrawingType(activeDrawingId, newType);
-  }, [activeDrawingId, updateDrawingType]);
+    // Auto-set structural plan as default subtype when switching to plan
+    if (newType === 'plan' && !activeDrawing?.planSubtype) {
+      updateDrawingPlanSubtype(activeDrawingId, 'structural-plan');
+    }
+  }, [activeDrawingId, activeDrawing, updateDrawingType]);
 
   const handleStoreyChange = useCallback((storeyId: string) => {
     if (!activeDrawingId) return;

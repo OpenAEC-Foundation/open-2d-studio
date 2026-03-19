@@ -2825,10 +2825,17 @@ function BeamToolProperties() {
       const { searchPresets } = require('../../services/parametric/profileLibrary');
       const results = searchPresets(query).slice(0, 8);
       setProfileResults(results);
-      // Auto-select exact match
-      const exact = results.find((r: any) => r.name.toLowerCase() === query.toLowerCase() || r.id.toLowerCase() === query.toLowerCase());
-      if (exact) {
-        applyPreset(exact);
+      // Auto-apply top match on the fly (preview updates immediately)
+      if (results.length > 0) {
+        const top = results[0];
+        setPendingBeam({
+          ...pendingBeam,
+          profileType: top.profileType,
+          parameters: top.parameters,
+          presetId: top.id,
+          presetName: top.name,
+          flangeWidth: top.parameters.flangeWidth || top.parameters.width || pendingBeam.flangeWidth,
+        });
       }
     } else {
       setProfileResults([]);
@@ -3595,6 +3602,65 @@ function ColumnToolProperties() {
           onChange={(v) => setPendingColumn({ ...pendingColumn, rotation: v * DEG2RAD })}
           step={5}
         />
+      </PropertyGroup>
+
+      <PropertyGroup label="Constraints">
+        {(() => {
+          const ps = useAppStore.getState().projectStructure;
+          const allStoreys: { id: string; name: string; elevation: number }[] = [];
+          for (const building of ps.buildings) {
+            for (const storey of building.storeys) {
+              allStoreys.push(storey);
+            }
+          }
+          allStoreys.sort((a, b) => a.elevation - b.elevation);
+          return (
+            <>
+              <div className="mb-2">
+                <label className={labelClass}>Base Storey</label>
+                <select
+                  className={inputClass}
+                  value={pendingColumn.baseLevel || ''}
+                  onChange={(e) => setPendingColumn({ ...pendingColumn, baseLevel: e.target.value || undefined })}
+                >
+                  <option value="">(Unconnected)</option>
+                  {allStoreys.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.elevation >= 0 ? '+' : ''}{s.elevation} mm)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <NumberField
+                label="Base Offset (mm)"
+                value={pendingColumn.baseOffset ?? 0}
+                onChange={(v) => setPendingColumn({ ...pendingColumn, baseOffset: v })}
+                step={10}
+              />
+              <div className="mb-2">
+                <label className={labelClass}>Top Storey</label>
+                <select
+                  className={inputClass}
+                  value={pendingColumn.topLevel || ''}
+                  onChange={(e) => setPendingColumn({ ...pendingColumn, topLevel: e.target.value || undefined })}
+                >
+                  <option value="">(Unconnected)</option>
+                  {allStoreys.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name} ({s.elevation >= 0 ? '+' : ''}{s.elevation} mm)
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <NumberField
+                label="Top Offset (mm)"
+                value={pendingColumn.topOffset ?? 0}
+                onChange={(v) => setPendingColumn({ ...pendingColumn, topOffset: v })}
+                step={10}
+              />
+            </>
+          );
+        })()}
       </PropertyGroup>
     </div>
   );
@@ -4585,8 +4651,8 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
     <div className="flex-1 overflow-auto">
       {isToolWithProperties && <ActiveToolProperties activeTool={activeTool} />}
       <div>
-        {/* Hide Style section for walls, gridlines, piles, and slabs */}
-        {!(selectedShapes.length > 0 && selectedShapes.every(s => s.type === 'wall' || s.type === 'wall-opening' || s.type === 'gridline' || s.type === 'pile' || s.type === 'slab')) && <PropertyGroup label="Style">
+        {/* Hide Style section for IFC/AEC object types (only show for basic 2D shapes) */}
+        {!(selectedShapes.length > 0 && selectedShapes.every(s => ['wall', 'beam', 'column', 'slab', 'pile', 'gridline', 'level', 'section-callout', 'space', 'puntniveau', 'cpt', 'wall-opening', 'slab-opening', 'rebar', 'slab-label', 'spot-elevation', 'plate-system'].includes(s.type))) && <PropertyGroup label="Style">
           <ColorPalette label="Color" value={displayStyle.strokeColor} onChange={handleColorChange} />
 
           <LineweightInput value={displayStyle.strokeWidth} onChange={handleWidthChange} />

@@ -133,6 +133,8 @@ export interface ColumnShape extends BaseShape {
   section?: string;              // Section description
   baseLevel?: string;            // IFC base constraint: storey ID
   topLevel?: string;             // IFC top constraint: storey ID
+  baseOffset?: number;           // Offset from base storey elevation (mm)
+  topOffset?: number;            // Offset from top storey elevation (mm)
   exposureClasses?: SurfaceExposureClasses; // Milieuklasse per surface (NEN-EN 206, concrete columns only)
 }
 

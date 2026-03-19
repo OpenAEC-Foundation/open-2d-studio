@@ -950,6 +950,14 @@ export interface PilePlanDisplaySettings {
   showPileGridReferences: boolean;
 }
 
+/** Beam label font size per drawing scale (mm on paper) */
+export interface BeamLabelScaleSettings {
+  /** Font size at 1:100 (default 1.8mm) */
+  scale100: number;
+  /** Font size at 1:50 and smaller (default 2.5mm) */
+  scale50: number;
+}
+
 export interface StructuralPlanDisplaySettings {
   showBeamCenterlines: boolean;
   showColumnGridMarks: boolean;
@@ -960,6 +968,8 @@ export interface StructuralPlanDisplaySettings {
   showSlabSurfacePattern: boolean;
   /** How slab openings are rendered: 'cross' (default), 'diagonal', or 'outline'. */
   openingDisplayStyle: 'cross' | 'diagonal' | 'outline';
+  /** Beam label font size settings per drawing scale */
+  beamLabelFontSize?: BeamLabelScaleSettings;
 }
 
 export interface FloorPlanDisplaySettings {
@@ -998,6 +1008,7 @@ export const DEFAULT_PLAN_SUBTYPE_SETTINGS: PlanSubtypeSettings = {
     showLoadArrows: false,
     showSlabSurfacePattern: false,
     openingDisplayStyle: 'cross',
+    beamLabelFontSize: { scale100: 1.8, scale50: 2.5 },
   },
   floorPlan: {
     showRoomLabels: true,

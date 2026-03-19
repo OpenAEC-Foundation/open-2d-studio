@@ -63,6 +63,8 @@ export class ShapeRenderer extends BaseRenderer {
   private shapesLookup: Map<string, Shape> = new Map();
   // Unit settings for number formatting
   private unitSettings: UnitSettings = DEFAULT_UNIT_SETTINGS;
+  // Whether the canvas is in transparent-background mode
+  private transparentBackground: boolean = false;
   // Cached render context for extension renderers
   private _renderCtx: ShapeRenderContext | null = null;
 
@@ -211,6 +213,14 @@ export class ShapeRenderer extends BaseRenderer {
   }
 
   /**
+   * Set whether the canvas is in transparent-background mode.
+   * When true, extension renderers should reduce hatch fill opacity.
+   */
+  setTransparentBackground(value: boolean): void {
+    this.transparentBackground = value;
+  }
+
+  /**
    * Set the currently selected shape IDs for associative dimension highlighting.
    * When a dimension's linked element is selected, its text is rendered in green.
    */
@@ -251,6 +261,7 @@ export class ShapeRenderer extends BaseRenderer {
         unitSettings: this.unitSettings,
         shapesLookup: this.shapesLookup,
         customPatterns: this.customPatterns,
+        transparentBackground: this.transparentBackground,
         getLineDash: this.getLineDash.bind(this),
         getLineWidth: this.getLineWidth.bind(this),
         getPatternById: this.getPatternById.bind(this),
@@ -278,6 +289,7 @@ export class ShapeRenderer extends BaseRenderer {
     this._renderCtx.unitSettings = this.unitSettings;
     this._renderCtx.shapesLookup = this.shapesLookup;
     this._renderCtx.customPatterns = this.customPatterns;
+    this._renderCtx.transparentBackground = this.transparentBackground;
     return this._renderCtx;
   }
 
