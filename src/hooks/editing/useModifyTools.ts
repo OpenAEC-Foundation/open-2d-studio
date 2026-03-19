@@ -272,10 +272,8 @@ export function useModifyTools() {
       for (const gl of movedGridlines) {
         updateLinkedDimensions(gl.id);
       }
-      // Regenerate auto-generated grid dimensions if enabled
-      if (useAppStore.getState().autoGridDimension) {
-        setTimeout(() => regenerateGridDimensions(), 50);
-      }
+      // Regenerate auto-generated grid dimensions (always-on)
+      setTimeout(() => regenerateGridDimensions(), 50);
     }
   }, []);
 

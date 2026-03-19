@@ -24,6 +24,31 @@ export function useSlabLabelDrawing() {
     (position: Point) => {
       if (!pendingSlabLabel) return;
 
+      // Auto-detect slab at click position if not explicitly linked
+      let linkedSlabId = pendingSlabLabel.linkedSlabId;
+      if (!linkedSlabId) {
+        const { shapes } = useAppStore.getState();
+        const slabsInDrawing = shapes.filter((s: any) => s.type === 'slab' && s.drawingId === activeDrawingId);
+        for (const slab of slabsInDrawing) {
+          const pts = (slab as any).points;
+          if (pts && pts.length >= 3) {
+            // Point-in-polygon test
+            let inside = false;
+            for (let i = 0, j = pts.length - 1; i < pts.length; j = i++) {
+              const xi = pts[i].x, yi = pts[i].y;
+              const xj = pts[j].x, yj = pts[j].y;
+              if (((yi > position.y) !== (yj > position.y)) && (position.x < (xj - xi) * (position.y - yi) / (yj - yi) + xi)) {
+                inside = !inside;
+              }
+            }
+            if (inside) {
+              linkedSlabId = slab.id;
+              break;
+            }
+          }
+        }
+      }
+
       const slabLabelShape: SlabLabelShape = {
         id: generateId(),
         type: 'slab-label',
@@ -35,7 +60,7 @@ export function useSlabLabelDrawing() {
         position,
         thickness: pendingSlabLabel.thickness,
         fontSize: pendingSlabLabel.fontSize,
-        linkedSlabId: pendingSlabLabel.linkedSlabId,
+        linkedSlabId,
       };
       addShape(slabLabelShape);
       return slabLabelShape.id;

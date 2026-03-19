@@ -6,7 +6,7 @@
  * - Material Hatching: assign hatch patterns to material categories
  */
 
-import { Fragment, useState, useRef, useCallback, useEffect, useMemo } from 'react';
+import { Fragment, useState, useCallback, useEffect, useMemo } from 'react';
 import { X, Save, Upload, Trash2, Pencil, ChevronDown, ChevronRight, Plus, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
 import type { GridlineShape, Point, PlanSubtype } from '../../../types/geometry';
@@ -162,9 +162,6 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
   const [placeLeft, setPlaceLeft] = useState(true);
   const [placeRight, setPlaceRight] = useState(false);
   const [includeTotal, setIncludeTotal] = useState(true);
-  const autoGridDimension = useAppStore(s => s.autoGridDimension);
-  const setAutoGridDimension = useAppStore(s => s.setAutoGridDimension);
-  const prevGridlineCountRef = useRef(0);
   const [templates, setTemplates] = useState<MaterialHatchTemplate[]>(() => loadTemplates());
   const [templateName, setTemplateName] = useState('');
 
@@ -419,27 +416,8 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
     }
   }, [placeBottom, placeTop, placeLeft, placeRight, includeTotal, makeDim]);
 
-  // Auto-trigger: the auto-dimension is now handled at the store level
-  // via useGridlineDrawing and the GridlinePlusButton, but we keep
-  // a subscription here for the dialog-level auto-regenerate toggle
-  useEffect(() => {
-    if (!autoGridDimension || !isOpen) return;
-    const s = useAppStore.getState();
-    prevGridlineCountRef.current = s.shapes.filter(
-      sh => sh.type === 'gridline' && sh.drawingId === s.activeDrawingId
-    ).length;
-
-    const unsubscribe = useAppStore.subscribe((state) => {
-      const count = state.shapes.filter(
-        sh => sh.type === 'gridline' && sh.drawingId === state.activeDrawingId
-      ).length;
-      if (count > prevGridlineCountRef.current && count >= 2) {
-        setTimeout(() => handleGridDimension(), 50);
-      }
-      prevGridlineCountRef.current = count;
-    });
-    return () => unsubscribe();
-  }, [autoGridDimension, isOpen, handleGridDimension]);
+  // Auto-trigger is now always-on at the store/hook level (useGridlineDrawing,
+  // useGripEditing, useModifyTools, deleteSelectedShapes). No dialog subscription needed.
 
   return (
     <DraggableModal
@@ -641,17 +619,9 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
             <input type="checkbox" checked={includeTotal} onChange={(e) => setIncludeTotal(e.target.checked)} /> Include total dimension
           </label>
 
-          <button
-            onClick={handleGridDimension}
-            className="w-full h-8 text-xs bg-cad-accent/20 border border-cad-accent/50 text-cad-accent hover:bg-cad-accent/30 rounded"
-          >
-            Generate Grid Dimensions
-          </button>
-
-          {/* Auto-trigger */}
-          <label className="flex items-center gap-2 text-xs text-cad-text-secondary">
-            <input type="checkbox" checked={autoGridDimension} onChange={(e) => setAutoGridDimension(e.target.checked)} /> Auto-regenerate when gridlines change
-          </label>
+          <p className="text-[10px] text-cad-text-dim italic">
+            Grid dimensions are automatically generated and updated when gridlines are added, moved, or deleted.
+          </p>
         </div>
 
         <hr className="border-cad-border" />

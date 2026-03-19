@@ -2392,10 +2392,8 @@ export function useGripEditing() {
       for (const joined of joinedGridlinesRef.current) {
         updateLinkedDimensions(joined.shapeId);
       }
-      // Regenerate auto-generated grid dimensions if enabled (synchronous)
-      if (useAppStore.getState().autoGridDimension) {
-        regenerateGridDimensions();
-      }
+      // Regenerate auto-generated grid dimensions (always-on)
+      regenerateGridDimensions();
 
       // Collapse the gridline move + all dimension updates into one undo step
       const storeAfterDims = useAppStore.getState();

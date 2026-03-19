@@ -721,6 +721,12 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
               }
             }
 
+            // If clicking on an already-selected level, start inline elevation edit
+            if (clickedShape?.type === 'level' && selectedShapeIds.includes(shapeId)) {
+              startLevelLabelEdit(shapeId);
+              break;
+            }
+
             // Ctrl or Shift for additive/toggle selection
             selectShape(shapeId, e.ctrlKey || e.shiftKey);
           } else {

@@ -64,6 +64,7 @@ import {
 
 import type { TitleBlock, TitleBlockField } from './types';
 import { regenerateGridDimensions } from '../../utils/gridDimensionUtils';
+import { resolveGridlineExtension } from '../../types/hatch';
 import { modelBehaviorRegistry } from '../../engine/registry/ModelBehaviorRegistry';
 import {
   computeSectionReferences,
@@ -841,11 +842,11 @@ export const createModelSlice = (
       store.deleteParametricShapes(parametricIds);
     }
 
-    // Auto-regenerate grid dimensions if any gridline was deleted
+    // Auto-regenerate grid dimensions if any gridline was deleted (always-on)
     const hadGridline = store.shapes.some(
       s => selectedIds.includes(s.id) && s.type === 'gridline'
     );
-    if (hadGridline && store.autoGridDimension) {
+    if (hadGridline) {
       setTimeout(() => regenerateGridDimensions(), 50);
     }
   },
@@ -1347,6 +1348,11 @@ export const createModelSlice = (
           }
         }
         sheet.modifiedAt = new Date().toISOString();
+      }
+
+      // Re-resolve gridline extension for the new scale from the per-scale table
+      if (state.gridlineExtensionPerScale) {
+        state.gridlineExtension = resolveGridlineExtension(state.gridlineExtensionPerScale, clampedScale);
       }
 
       state.isModified = true;

@@ -952,10 +952,8 @@ function GridlineSpacingInput({ gridline }: { gridline: GridlineShape }) {
       addShapes(newGridlines);
       setPattern('');
 
-      // Auto-dimension: regenerate grid dimensions if enabled
-      if (useAppStore.getState().autoGridDimension) {
-        setTimeout(() => regenerateGridDimensions(), 50);
-      }
+      // Auto-dimension: always regenerate grid dimensions when gridlines change
+      setTimeout(() => regenerateGridDimensions(), 50);
     }
   };
 

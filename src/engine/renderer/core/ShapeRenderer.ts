@@ -2740,6 +2740,10 @@ export class ShapeRenderer extends BaseRenderer {
           toWorld(w / 2, h / 2),
         ];
       }
+      case 'dimension': {
+        const dim = shape as import('../../../types/dimension').DimensionShape;
+        return dim.points ? [...dim.points] : [];
+      }
       default: {
         const extHandleFn = shapeHandleRegistry.get(shape.type);
         return extHandleFn ? extHandleFn(shape) : [];
