@@ -2404,7 +2404,21 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
 
           <PropertyGroup label="Geometry">
             <NumberField label="Thickness (mm)" value={sl.thickness} onChange={(v) => update({ thickness: v })} step={1} min={1} />
-            <NumberField label="Elevation (mm)" value={sl.elevation} onChange={(v) => update({ elevation: v })} step={1} />
+            <NumberField label="Offset (mm)" value={sl.elevation || 0} onChange={(v) => update({ elevation: v })} step={10} />
+            {(() => {
+              let storeyElev = 0;
+              if (sl.level) {
+                for (const s of slabAllStoreys) {
+                  if (s.id === sl.level) { storeyElev = s.elevation; break; }
+                }
+              }
+              const absElev = storeyElev + (sl.elevation || 0);
+              return (
+                <div className="text-[10px] text-cad-text-dim px-1">
+                  Absolute elevation: {absElev >= 0 ? '+' : ''}{absElev} mm
+                </div>
+              );
+            })()}
             <NumberField label="Span Direction (deg)" value={sl.spanDirection ?? 0} onChange={(v) => update({ spanDirection: v })} step={15} min={0} max={360} />
             <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
               <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">

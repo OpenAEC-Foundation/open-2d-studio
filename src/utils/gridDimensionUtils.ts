@@ -4,15 +4,16 @@
  * Extracted from DrawingStandardsDialog so it can be called automatically
  * whenever gridlines are added or changed.
  *
- * Dimension measurement points are placed at the bubble inner edge
- * (where the bubble circle meets the gridline extension) so the total
- * dimension line sits at the intersection of bubble and gridline.
+ * Dimension measurement points are placed at the bubble center positions
+ * (ext + bubbleRadius from the gridline endpoint) so the dimension line
+ * sits right at the gridline bubbles with no gap.
  */
 
 import type { GridlineShape, Point, Shape } from '../types/geometry';
 import type { DimensionShape } from '../types/dimension';
 import { DIM_ASSOCIATE_STYLE } from '../constants/cadDefaults';
 import { calculateDimensionValue, formatDimAssociateValue } from '../engine/geometry/DimensionUtils';
+import { LINE_DASH_REFERENCE_SCALE } from '../engine/renderer/types';
 import { useAppStore } from '../state/appStore';
 import { classifyGridlineOrientation, groupGridlinesByAngle, getGridlineAngleDeg } from './gridlineUtils';
 
@@ -88,30 +89,31 @@ function makeAlignedDim(
 }
 
 /**
- * Compute the bubble inner edge position for a gridline on a specific side.
- * This is the point where the bubble circle intersects the gridline extension,
- * i.e. at distance `scaledExt` from the endpoint (NOT the bubble center).
+ * Compute the bubble center position for a gridline on a specific side.
+ * The bubble center is at distance `ext + scaledBubbleRadius` from the endpoint,
+ * matching the renderer which draws the bubble at `endpoint + dir * (ext + bubbleRadius)`.
  *
- * The bubble center is at `ext + bubbleR` from the endpoint, but the inner
- * edge of the bubble circle is at just `ext` from the endpoint.
+ * This ensures the dimension line sits right at the gridline bubble circles.
  */
-function getBubbleInnerEdge(
+function getBubbleCenterPosition(
   g: GridlineShape,
   side: 'start' | 'end',
-  scaledExt: number,
+  ext: number,
+  scaledBubbleRadius: number,
 ): Point {
   const angle = Math.atan2(g.end.y - g.start.y, g.end.x - g.start.x);
   const dx = Math.cos(angle);
   const dy = Math.sin(angle);
+  const dist = ext + scaledBubbleRadius;
   if (side === 'start') {
     return {
-      x: g.start.x - dx * scaledExt,
-      y: g.start.y - dy * scaledExt,
+      x: g.start.x - dx * dist,
+      y: g.start.y - dy * dist,
     };
   } else {
     return {
-      x: g.end.x + dx * scaledExt,
-      y: g.end.y + dy * scaledExt,
+      x: g.end.x + dx * dist,
+      y: g.end.y + dy * dist,
     };
   }
 }
@@ -201,8 +203,9 @@ export function regenerateGridDimensions(options: GridDimensionOptions = DEFAULT
 
   // Calculate scale-adjusted offsets (matches renderer scaleFactor = LINE_DASH_REFERENCE_SCALE / drawingScale)
   const drawingScale = state.drawings.find(d => d.id === activeDrawingId)?.scale || 0.02;
-  const scaleFactor = 0.01 / drawingScale;
-  const scaledExt = storeGridlineExtension * 0.01;
+  const scaleFactor = LINE_DASH_REFERENCE_SCALE / drawingScale;
+  // Per-scale gridlineExtension values are already in model mm — use directly
+  const ext = storeGridlineExtension;
 
   // Row offset between total and span dimension lines (300mm default)
   const rowOffset = storeDimLineOffset * scaleFactor;
@@ -234,15 +237,16 @@ export function regenerateGridDimensions(options: GridDimensionOptions = DEFAULT
       const bubbleEdges = sorted.map(g => {
         const sides = getVerticalEndpointSides(g);
         const endpointSide = side.sideKey === 'minY' ? sides.minYSide : sides.maxYSide;
-        return getBubbleInnerEdge(g, endpointSide, scaledExt);
+        const scaledBubbleR = (g.bubbleRadius || 300) * scaleFactor;
+        return getBubbleCenterPosition(g, endpointSide, ext, scaledBubbleR);
       });
 
-      // Pick the most extreme bubble inner edge Y for the dimension reference line
+      // Pick the most extreme bubble center Y for the dimension reference line
       const refY = side.sideKey === 'minY'
         ? Math.min(...bubbleEdges.map(bc => bc.y))
         : Math.max(...bubbleEdges.map(bc => bc.y));
 
-      // Total dimension: measurement points at bubble inner edge Y, offset = 0
+      // Total dimension: measurement points at bubble center Y, offset = 0
       if (includeTotal && sorted.length >= 2) {
         const x1 = (sorted[0].start.x + sorted[0].end.x) / 2;
         const x2 = (sorted[sorted.length - 1].start.x + sorted[sorted.length - 1].end.x) / 2;
@@ -278,19 +282,20 @@ export function regenerateGridDimensions(options: GridDimensionOptions = DEFAULT
     if (placeRight) placeSides.push({ sideKey: 'maxX', sign: 1 });
 
     for (const side of placeSides) {
-      // Compute bubble inner edge X for each gridline on the relevant side
+      // Compute bubble center X for each gridline on the relevant side
       const bubbleEdges = sorted.map(g => {
         const sides = getHorizontalEndpointSides(g);
         const endpointSide = side.sideKey === 'minX' ? sides.minXSide : sides.maxXSide;
-        return getBubbleInnerEdge(g, endpointSide, scaledExt);
+        const scaledBubbleR = (g.bubbleRadius || 300) * scaleFactor;
+        return getBubbleCenterPosition(g, endpointSide, ext, scaledBubbleR);
       });
 
-      // Pick the most extreme bubble inner edge X for the dimension reference line
+      // Pick the most extreme bubble center X for the dimension reference line
       const refX = side.sideKey === 'minX'
         ? Math.min(...bubbleEdges.map(bc => bc.x))
         : Math.max(...bubbleEdges.map(bc => bc.x));
 
-      // Total dimension: measurement points at bubble inner edge X, offset = 0
+      // Total dimension: measurement points at bubble center X, offset = 0
       if (includeTotal && sorted.length >= 2) {
         const y1 = (sorted[0].start.y + sorted[0].end.y) / 2;
         const y2 = (sorted[sorted.length - 1].start.y + sorted[sorted.length - 1].end.y) / 2;
@@ -348,8 +353,11 @@ export function regenerateGridDimensions(options: GridDimensionOptions = DEFAULT
       // that lie along a line perpendicular to the gridline direction
       const lineDir = { x: Math.cos(refAngle), y: Math.sin(refAngle) };
 
-      // Place dimension line at the "start" end of gridlines (bubble inner edge)
-      const bubbleEdges = sorted.map(g => getBubbleInnerEdge(g, 'start', scaledExt));
+      // Place dimension line at the "start" end of gridlines (bubble center)
+      const bubbleEdges = sorted.map(g => {
+        const scaledBubbleR = (g.bubbleRadius || 300) * scaleFactor;
+        return getBubbleCenterPosition(g, 'start', ext, scaledBubbleR);
+      });
 
       // Find the most extreme point along the gridline direction to place the dimension line
       const projections = bubbleEdges.map(pt => pt.x * lineDir.x + pt.y * lineDir.y);

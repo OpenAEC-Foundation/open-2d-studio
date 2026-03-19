@@ -444,6 +444,7 @@ function App() {
     pdfUnderlayDialogOpen,
     pdfUnderlayFileName,
     closePdfUnderlayDialog,
+    activeRibbonTab,
   } = useAppStore();
 
   return (
@@ -459,20 +460,22 @@ function App() {
 
       {/* Main Content Area */}
       <div className="flex flex-1 overflow-hidden">
-        {/* Left Panel - Navigation (Drawings & Sheets) */}
-        {leftSidebarCollapsed ? (
-          <div className="flex flex-col bg-cad-bg border-r border-cad-border" style={{ width: 28 }}>
-            <button
-              type="button"
-              onClick={toggleLeftSidebar}
-              className="flex items-center justify-center w-full h-7 hover:bg-cad-hover text-cad-text-dim hover:text-cad-text transition-colors"
-              title="Expand left panel"
-            >
-              <PanelLeftOpen size={16} />
-            </button>
-          </div>
-        ) : (
-          <NavigationPanel onCollapse={toggleLeftSidebar} />
+        {/* Left Panel - Navigation (Drawings & Sheets) — completely hidden when IFC tab is active */}
+        {activeRibbonTab !== 'ifc' && (
+          leftSidebarCollapsed ? (
+            <div className="flex flex-col bg-cad-bg border-r border-cad-border" style={{ width: 28 }}>
+              <button
+                type="button"
+                onClick={toggleLeftSidebar}
+                className="flex items-center justify-center w-full h-7 hover:bg-cad-hover text-cad-text-dim hover:text-cad-text transition-colors"
+                title="Expand left panel"
+              >
+                <PanelLeftOpen size={16} />
+              </button>
+            </div>
+          ) : (
+            <NavigationPanel onCollapse={toggleLeftSidebar} />
+          )
         )}
 
         {/* Center - Canvas + Tabs */}

@@ -1561,9 +1561,11 @@ export const createModelSlice = (
   syncSectionReferenceToSource: (sectionRefShapeId) => {
     const store = get();
     const refShape = store.shapes.find(s => s.id === sectionRefShapeId);
+    console.log('[SectionSync] syncSectionReferenceToSource called:', sectionRefShapeId, 'found:', !!refShape, 'isSectionRef:', refShape ? isSectionReferenceShape(refShape) : false);
     if (!refShape || !isSectionReferenceShape(refShape)) return;
 
     const sourceId = getSourceIdFromSectionRef(refShape);
+    console.log('[SectionSync] sourceId:', sourceId);
     if (!sourceId) return;
 
     // Find the section drawing this reference belongs to
@@ -1619,9 +1621,11 @@ export const createModelSlice = (
     } else if (refShape.type === 'level') {
       // Reverse sync: level reference -> storey elevation
       const newElevation = syncLevelFromSection(refShape as LevelShape);
+      console.log('[SectionSync] level sync: newElevation =', newElevation, 'sourceId =', sourceId);
       if (newElevation !== null) {
         // Find and update the storey
         const storeyIdMatch = sourceId.match(/^storey-(.+)$/);
+        console.log('[SectionSync] storeyIdMatch:', storeyIdMatch);
         if (storeyIdMatch) {
           const storeyId = storeyIdMatch[1];
           set((state) => {

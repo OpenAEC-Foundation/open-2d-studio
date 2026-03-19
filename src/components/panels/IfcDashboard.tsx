@@ -7,7 +7,7 @@
  */
 
 import { memo, useState, useCallback, useRef, useMemo, useEffect } from 'react';
-import { ChevronDown, ChevronRight, Copy, Download, RefreshCw, X, FileCode, FileJson } from 'lucide-react';
+import { ChevronDown, ChevronRight, Copy, Download, RefreshCw, X } from 'lucide-react';
 import { useAppStore } from '../../state/appStore';
 import type { Shape, BeamShape, Drawing } from '../../types/geometry';
 import type { ProjectStructure, ProjectBuilding, ProjectStorey } from '../../state/slices/parametricSlice';
@@ -758,8 +758,6 @@ function highlightJson(json: string): React.ReactNode {
 // Main IFC Dashboard Component
 // ============================================================================
 
-type RawViewerTab = 'step' | 'ifcx';
-
 export const IfcDashboard = memo(function IfcDashboard() {
   const shapes = useAppStore((s) => s.shapes);
   const drawings = useAppStore((s) => s.drawings);
@@ -772,7 +770,6 @@ export const IfcDashboard = memo(function IfcDashboard() {
   const selectShapes = useAppStore((s) => s.selectShapes);
 
   const [selectedClass, setSelectedClass] = useState<string | null>(null);
-  const [activeViewerTab, setActiveViewerTab] = useState<RawViewerTab>('step');
   const [ifcxContent, setIfcxContent] = useState<string>('');
 
   // Generate IFCX content dynamically
@@ -840,12 +837,14 @@ export const IfcDashboard = memo(function IfcDashboard() {
     }
   }, []);
 
-  // Regenerate IFCX when switching to the IFCX tab or when shapes change
+  // Regenerate IFCX when shapes change (only when dashboard is visible)
   useEffect(() => {
-    if (activeViewerTab === 'ifcx') {
+    try {
       generateIfcxContent();
+    } catch {
+      // Silently ignore IFCX generation errors
     }
-  }, [activeViewerTab, shapes, generateIfcxContent]);
+  }, [shapes, generateIfcxContent]);
 
   // Handle clicking on a class node in the graph - select those shapes
   const handleSelectShapes = useCallback((ids: string[]) => {
@@ -923,58 +922,27 @@ export const IfcDashboard = memo(function IfcDashboard() {
         {/* Divider */}
         <div className="ifc-dashboard-divider" />
 
-        {/* Right: Raw IFC viewer with STEP / IFCX tabs */}
-        <div className="ifc-dashboard-right">
-          <div className="ifc-dashboard-pane-header" style={{ display: 'flex', alignItems: 'center', gap: 0 }}>
-            <button
-              className={`ifc-dashboard-viewer-tab ${activeViewerTab === 'step' ? 'active' : ''}`}
-              onClick={() => setActiveViewerTab('step')}
-              title="View IFC4 STEP format"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '2px 10px',
-                border: 'none',
-                borderBottom: activeViewerTab === 'step' ? '2px solid var(--cad-accent, #3b82f6)' : '2px solid transparent',
-                background: 'transparent',
-                color: activeViewerTab === 'step' ? 'var(--cad-text)' : 'var(--cad-text-dim)',
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: activeViewerTab === 'step' ? 600 : 400,
-              }}
-            >
-              <FileCode size={12} />
-              IFC4 STEP
-            </button>
-            <button
-              className={`ifc-dashboard-viewer-tab ${activeViewerTab === 'ifcx' ? 'active' : ''}`}
-              onClick={() => setActiveViewerTab('ifcx')}
-              title="View IFCX JSON format"
-              style={{
-                display: 'inline-flex',
-                alignItems: 'center',
-                gap: 4,
-                padding: '2px 10px',
-                border: 'none',
-                borderBottom: activeViewerTab === 'ifcx' ? '2px solid var(--cad-accent, #3b82f6)' : '2px solid transparent',
-                background: 'transparent',
-                color: activeViewerTab === 'ifcx' ? 'var(--cad-text)' : 'var(--cad-text-dim)',
-                cursor: 'pointer',
-                fontSize: 11,
-                fontWeight: activeViewerTab === 'ifcx' ? 600 : 400,
-              }}
-            >
-              <FileJson size={12} />
-              IFCX JSON
-            </button>
-          </div>
-          <div className="ifc-dashboard-pane-content">
-            {activeViewerTab === 'step' ? (
-              <StepViewer content={ifcContent} />
-            ) : (
-              <IfcxViewer content={ifcxContent} />
-            )}
+        {/* Right: IFC4 STEP and IFCX JSON side by side */}
+        <div className="ifc-dashboard-right" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+            {/* Left column: IFC4 STEP */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', borderRight: '1px solid var(--cad-border, #333)' }}>
+              <div className="ifc-dashboard-pane-header">
+                IFC4 STEP
+              </div>
+              <div className="ifc-dashboard-pane-content">
+                <StepViewer content={ifcContent} />
+              </div>
+            </div>
+            {/* Right column: IFCX JSON */}
+            <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+              <div className="ifc-dashboard-pane-header">
+                IFCX JSON
+              </div>
+              <div className="ifc-dashboard-pane-content">
+                <IfcxViewer content={ifcxContent} />
+              </div>
+            </div>
           </div>
         </div>
       </div>

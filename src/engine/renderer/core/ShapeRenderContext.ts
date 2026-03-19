@@ -16,7 +16,7 @@ export interface ShapeRenderContext {
   drawingScale: number;
   currentZoom: number;
   showLineweight: boolean;
-  /** Gridline extension in mm on paper (scale-relative). Renderers multiply by LINE_DASH_REFERENCE_SCALE. */
+  /** Gridline extension in model mm (from the per-scale table). Used directly by renderers — no extra scaling needed. */
   gridlineExtension: number;
   seaLevelDatum: number;
   materialHatchSettings: MaterialHatchSettings;

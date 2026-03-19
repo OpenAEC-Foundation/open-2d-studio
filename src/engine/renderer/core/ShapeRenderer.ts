@@ -55,8 +55,8 @@ export class ShapeRenderer extends BaseRenderer {
   private slabSurfacePatternEnabled: boolean = true;
   // How slab openings are rendered
   private openingDisplayStyle: 'cross' | 'diagonal' | 'outline' = 'cross';
-  // Gridline extension distance in mm on paper (distance beyond start/end before the bubble)
-  private gridlineExtension: number = 2.5;
+  // Gridline extension distance in model mm (from the per-scale table)
+  private gridlineExtension: number = 1000;
   // Sea level datum: peil=0 elevation relative to NAP in meters (default 0)
   private seaLevelDatum: number = 0;
   // All shapes lookup for linked label text resolution
