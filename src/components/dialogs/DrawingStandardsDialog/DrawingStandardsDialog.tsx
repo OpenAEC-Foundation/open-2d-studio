@@ -1262,6 +1262,23 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
                   className="flex-1 h-6 px-1 text-xs bg-cad-bg border border-cad-border text-cad-text rounded w-16"
                 />
               </div>
+              <div className="flex items-center gap-3">
+                <label className="text-xs text-cad-text-secondary w-32">Label start distance (mm)</label>
+                <input
+                  type="number"
+                  step="100"
+                  min="0"
+                  max="10000"
+                  value={planSubtypeSettings.structuralPlan.beamLabelStartDistance ?? 1000}
+                  onChange={(e) => updatePlanSubtypeSettings({
+                    structuralPlan: {
+                      ...planSubtypeSettings.structuralPlan,
+                      beamLabelStartDistance: parseFloat(e.target.value) || 1000,
+                    },
+                  })}
+                  className="flex-1 h-6 px-1 text-xs bg-cad-bg border border-cad-border text-cad-text rounded w-16"
+                />
+              </div>
             </div>
           )}
 

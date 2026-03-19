@@ -86,11 +86,12 @@ export function useBeamDrawing() {
       const template = getDefaultLabelTemplate('beam');
       const labelText = resolveTemplate(template, beamShape);
 
-      // Compute label position: offset perpendicular to the beam direction
-      const labelPosData = computeLinkedLabelPosition(beamShape);
-
       // Resolve active text style for consistent formatting
       const state = useAppStore.getState();
+
+      // Compute label position: offset perpendicular to the beam direction
+      const beamLabelStartDistance = state.planSubtypeSettings?.structuralPlan?.beamLabelStartDistance ?? 1000;
+      const labelPosData = computeLinkedLabelPosition(beamShape, beamLabelStartDistance);
       const { defaultTextStyle, activeTextStyleId, textStyles } = state;
       const activeStyle = activeTextStyleId
         ? textStyles.find(s => s.id === activeTextStyleId)

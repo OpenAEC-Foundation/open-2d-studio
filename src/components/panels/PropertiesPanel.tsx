@@ -985,6 +985,115 @@ function GridlineSpacingInput({ gridline }: { gridline: GridlineShape }) {
   );
 }
 
+/** Profile search for a selected beam — lets you swap the beam profile inline */
+function BeamProfileSearch({ beam, update }: { beam: BeamShape; update: (updates: Record<string, unknown>) => void }) {
+  const [profileQuery, setProfileQuery] = useState('');
+  const [profileResults, setProfileResults] = useState<any[]>([]);
+
+  const handleProfileSearch = (query: string) => {
+    setProfileQuery(query);
+    if (query.length >= 2) {
+      const { searchPresets } = require('../../services/parametric/profileLibrary');
+      const results = searchPresets(query).slice(0, 8);
+      setProfileResults(results);
+    } else {
+      setProfileResults([]);
+    }
+  };
+
+  const applyPreset = (preset: any) => {
+    update({
+      profileType: preset.profileType,
+      profileParameters: preset.parameters,
+      presetId: preset.id,
+      presetName: preset.name,
+      flangeWidth: preset.parameters.flangeWidth || preset.parameters.width || beam.flangeWidth,
+    });
+    setProfileQuery(preset.name);
+    setProfileResults([]);
+  };
+
+  return (
+    <div className="mb-3 relative">
+      <label className={labelClass}>Change Profile</label>
+      <input
+        type="text"
+        className="w-full px-2 py-1 text-xs bg-cad-bg border border-cad-border rounded text-cad-text placeholder-cad-text-dim focus:border-cad-accent outline-none"
+        placeholder="Search profile (e.g. HEA300)"
+        value={profileQuery}
+        onChange={(e) => handleProfileSearch(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' && profileResults.length > 0) {
+            applyPreset(profileResults[0]);
+          }
+        }}
+      />
+      {profileResults.length > 0 && profileQuery.length >= 2 && (
+        <div className="absolute z-50 left-0 right-0 mt-1 bg-cad-surface border border-cad-border rounded shadow-lg max-h-40 overflow-y-auto">
+          {profileResults.map((preset: any) => (
+            <button
+              key={preset.id}
+              className="w-full px-2 py-1 text-xs text-left text-cad-text hover:bg-cad-hover"
+              onClick={() => applyPreset(preset)}
+            >
+              {preset.name}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Quick size input for a selected column — type e.g. "300x400" or "300" to set width/depth */
+function ColumnSizeSearch({ col, update }: { col: ColumnShape; update: (updates: Record<string, unknown>) => void }) {
+  const [sizeQuery, setSizeQuery] = useState('');
+
+  const applySize = (input: string) => {
+    const trimmed = input.trim();
+    // Parse "WxD" or "W*D" or just "W" (square)
+    const match = trimmed.match(/^(\d+)\s*[x*]\s*(\d+)$/i);
+    if (match) {
+      const w = parseInt(match[1], 10);
+      const d = parseInt(match[2], 10);
+      if (w >= 50 && d >= 50) {
+        update({ width: w, depth: d, profile: `${w}x${d}` });
+        setSizeQuery('');
+      }
+    } else {
+      const single = parseInt(trimmed, 10);
+      if (single >= 50) {
+        update({ width: single, depth: single, profile: `${single}x${single}` });
+        setSizeQuery('');
+      }
+    }
+  };
+
+  return (
+    <div className="mb-3">
+      <label className={labelClass}>Change Size</label>
+      <input
+        type="text"
+        className="w-full px-2 py-1 text-xs bg-cad-bg border border-cad-border rounded text-cad-text placeholder-cad-text-dim focus:border-cad-accent outline-none"
+        placeholder="e.g. 300x400 or 300"
+        value={sizeQuery}
+        onChange={(e) => setSizeQuery(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter') {
+            applySize(sizeQuery);
+          }
+        }}
+        onBlur={() => {
+          if (sizeQuery.trim()) applySize(sizeQuery);
+        }}
+      />
+      <div className="text-[10px] text-cad-text-dim mt-1">
+        Type WxD (e.g. 300x400) or single value for square column. Press Enter to apply.
+      </div>
+    </div>
+  );
+}
+
 function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (id: string, updates: Partial<Shape>) => void }) {
   const update = (updates: Record<string, unknown>) => updateShape(shape.id, updates as Partial<Shape>);
   const unitSettings = useUnitSettings();
@@ -1438,6 +1547,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
       return (
         <>
           <PropertyGroup label="Geometry">
+            <BeamProfileSearch beam={beam} update={update} />
             <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
               <div className="text-xs font-semibold text-cad-accent mb-1">
                 {beam.presetName || beam.profileType}
@@ -2462,6 +2572,7 @@ function ShapeProperties({ shape, updateShape }: { shape: Shape; updateShape: (i
       return (
         <>
           <PropertyGroup label="Properties">
+            <ColumnSizeSearch col={col} update={update} />
             <SelectField<ColumnMaterial>
               label="Material"
               value={col.material}

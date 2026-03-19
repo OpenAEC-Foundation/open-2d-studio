@@ -620,7 +620,8 @@ export function DynamicInput() {
         viewMode: pb.viewMode || 'plan',
       };
       // Create label alongside beam (same as useBeamDrawing)
-      const labelPosData = computeLinkedLabelPosition(beamShape as any);
+      const beamLabelStartDistance = state.planSubtypeSettings?.structuralPlan?.beamLabelStartDistance ?? 1000;
+      const labelPosData = computeLinkedLabelPosition(beamShape as any, beamLabelStartDistance);
       const template = getDefaultLabelTemplate('beam');
       const labelText = resolveTemplate(template, beamShape as any);
       const { defaultTextStyle, activeTextStyleId, textStyles } = state;

@@ -1327,9 +1327,49 @@ function computeGripUpdates(shape: Shape, gripIndex: number, newPos: Point, edge
         }
 
         if (gripIndex === 2 || gripIndex === 3) {
-          // Witness line grips - these move along the dimension line direction
-          // For now, just return null (could implement witness line adjustment later)
-          return null;
+          // Witness line grips - move the corresponding measurement point.
+          // Grip 2 corresponds to points[0], grip 3 corresponds to points[1].
+          // The witness line grip sits on the dimension line; we project the
+          // drag position back perpendicular to get the new measurement point.
+          const pointIndex = gripIndex - 2;
+          const newPoints = [...dim.points];
+
+          if (dim.linearDirection === 'horizontal') {
+            // Horizontal: dimension line is horizontal, witness lines are vertical.
+            // Moving grip along X moves measurement point's X; Y stays the same.
+            newPoints[pointIndex] = { x: newPos.x, y: dim.points[pointIndex].y };
+          } else if (dim.linearDirection === 'vertical') {
+            // Vertical: dimension line is vertical, witness lines are horizontal.
+            // Moving grip along Y moves measurement point's Y; X stays the same.
+            newPoints[pointIndex] = { x: dim.points[pointIndex].x, y: newPos.y };
+          } else {
+            // Aligned: dimension line is parallel to p1->p2.
+            // Project newPos onto the dimension line direction to get the
+            // displacement along the line, then shift the measurement point.
+            const lineAngle = angleBetweenPoints(dim.points[0], dim.points[1]);
+            const dimDir = { x: Math.cos(lineAngle), y: Math.sin(lineAngle) };
+            // Current grip position on dimension line
+            const currentGrip = pointIndex === 0 ? geometry.start : geometry.end;
+            const delta = {
+              x: newPos.x - currentGrip.x,
+              y: newPos.y - currentGrip.y,
+            };
+            // Only move along the dimension line direction
+            const alongDist = delta.x * dimDir.x + delta.y * dimDir.y;
+            newPoints[pointIndex] = {
+              x: dim.points[pointIndex].x + alongDist * dimDir.x,
+              y: dim.points[pointIndex].y + alongDist * dimDir.y,
+            };
+          }
+
+          // Recalculate dimension value (unless user has overridden it)
+          if (!dim.valueOverridden) {
+            const newValue = calculateDimensionValue(newPoints, dim.dimensionType, dim.linearDirection);
+            const formattedValue = formatDimensionValue(newValue, dim.dimensionType, dim.dimensionStyle.precision, useAppStore.getState().unitSettings);
+            return { points: newPoints, value: formattedValue } as Partial<Shape>;
+          }
+
+          return { points: newPoints } as Partial<Shape>;
         }
 
         if (gripIndex >= 4) {
@@ -1549,7 +1589,7 @@ export function useGripEditing() {
             axisConstraint: effectiveAxisHit, originalGripPoint: { ...grips[i] },
             clickOffset: { x: worldPos.x - grips[i].x, y: worldPos.y - grips[i].y },
             axisAngle: gripAxisAngle || undefined,
-            enableSnapping: shape.type === 'plate-system' || shape.type === 'slab',
+            enableSnapping: (shape.type === 'dimension' && i >= 2) || shape.type === 'plate-system' || shape.type === 'slab',
           };
           return true;
         }
@@ -1612,9 +1652,9 @@ export function useGripEditing() {
             // Only width can be adjusted via grip editing
             const forceXAxisConstraint = shape.type === 'text' && (i === 1 || i === 2);
 
-            // Enable snapping for dimension reference point handles (gripIndex >= 4)
+            // Enable snapping for dimension measurement point handles (gripIndex >= 2, skipping text and offset grips)
             // and for all plate-system and slab grips (vertex and edge midpoint)
-            const enableSnapping = (shape.type === 'dimension' && i >= 4) || shape.type === 'plate-system' || shape.type === 'slab';
+            const enableSnapping = (shape.type === 'dimension' && i >= 2) || shape.type === 'plate-system' || shape.type === 'slab';
 
             // For text rotation handle (grip 3), calculate initial angle
             let initialRotationAngle: number | undefined;
@@ -2302,10 +2342,12 @@ export function useGripEditing() {
 
       // Update linked labels to stay parallel with the modified shape
       {
-        const allShapesNow = useAppStore.getState().shapes;
+        const gripState = useAppStore.getState();
+        const allShapesNow = gripState.shapes;
+        const beamLabelStartDistance = gripState.planSubtypeSettings?.structuralPlan?.beamLabelStartDistance ?? 1000;
         const updatedShape = allShapesNow.find(s => s.id === drag.shapeId);
         if (updatedShape) {
-          const labelPos = computeLinkedLabelPosition(updatedShape);
+          const labelPos = computeLinkedLabelPosition(updatedShape, beamLabelStartDistance);
           if (labelPos) {
             const linkedLabels = findLinkedLabels(allShapesNow, drag.shapeId);
             if (linkedLabels.length > 0) {

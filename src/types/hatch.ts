@@ -970,6 +970,8 @@ export interface StructuralPlanDisplaySettings {
   openingDisplayStyle: 'cross' | 'diagonal' | 'outline';
   /** Beam label font size settings per drawing scale */
   beamLabelFontSize?: BeamLabelScaleSettings;
+  /** Distance from beam start point to the label along the beam direction (mm). Default 1000. */
+  beamLabelStartDistance?: number;
 }
 
 export interface FloorPlanDisplaySettings {
@@ -1009,6 +1011,7 @@ export const DEFAULT_PLAN_SUBTYPE_SETTINGS: PlanSubtypeSettings = {
     showSlabSurfacePattern: false,
     openingDisplayStyle: 'cross',
     beamLabelFontSize: { scale100: 1.8, scale50: 2.5 },
+    beamLabelStartDistance: 1000,
   },
   floorPlan: {
     showRoomLabels: true,

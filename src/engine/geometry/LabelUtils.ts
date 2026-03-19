@@ -422,8 +422,8 @@ const LABEL_MARGIN = 150;
  * Compute the correct position and rotation for a linked label based on
  * the current geometry of its parent shape (wall, beam, line, gridline, etc.).
  *
- * Position: 1000mm from the start along the element direction
- *           (or midpoint if element is shorter than 2000mm),
+ * Position: configurable distance from the start along the element direction
+ *           (default 1000mm, or midpoint if element is shorter),
  *           offset perpendicular to the element direction so the label
  *           appears clearly to the SIDE of the element (to the left when
  *           looking from start to end) rather than overlapping the element.
@@ -433,6 +433,7 @@ const LABEL_MARGIN = 150;
  */
 export function computeLinkedLabelPosition(
   parentShape: Shape,
+  beamLabelStartDistance: number = 1000,
 ): { position: Point; rotation: number } | null {
   if (!('start' in parentShape && 'end' in parentShape)) {
     return null;
@@ -444,9 +445,9 @@ export function computeLinkedLabelPosition(
 
   const rotation = Math.atan2(dy, dx);
 
-  // Place label 1000mm from start along the element direction.
-  // If element is shorter than 1000mm, place at midpoint.
-  const alongOffset = length > 0 ? Math.min(1000, length / 2) : 0;
+  // Place label at the configured distance from start along the element direction.
+  // If element is shorter than the configured distance, place at midpoint.
+  const alongOffset = length > 0 ? Math.min(beamLabelStartDistance, length / 2) : 0;
   const dirX = length > 0 ? dx / length : 1;
   const dirY = length > 0 ? dy / length : 0;
 

@@ -92,7 +92,8 @@ export function useLeaderDrawing() {
           textPosition = clickPos;
         }
       } else {
-        const labelPos = computeLinkedLabelPosition(linkedShape);
+        const leaderBeamLabelDist = useAppStore.getState().planSubtypeSettings?.structuralPlan?.beamLabelStartDistance ?? 1000;
+        const labelPos = computeLinkedLabelPosition(linkedShape, leaderBeamLabelDist);
         if (labelPos) {
           textPosition = labelPos.position;
           rotation = labelPos.rotation;

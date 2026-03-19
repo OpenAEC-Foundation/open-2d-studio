@@ -33,8 +33,8 @@ import { regenerateGridDimensions, updateLinkedDimensions } from '../../utils/gr
  * Collect transform updates for all linked labels of the given shapes.
  *
  * For shapes with start/end geometry (wall, beam, line, gridline, etc.),
- * the label position and rotation are recalculated to stay 1000mm from
- * the start and parallel with the element direction.
+ * the label position and rotation are recalculated to stay at the configured
+ * beam label start distance from the start and parallel with the element direction.
  *
  * For other shapes, the same spatial transform is applied to the label.
  *
@@ -50,6 +50,7 @@ function getLinkedLabelUpdates(
    *  to the original shape to derive the new geometry. */
   pendingParentUpdates?: Map<string, Partial<Shape>>,
 ): { id: string; updates: Partial<Shape> }[] {
+  const beamLabelStartDistance = useAppStore.getState().planSubtypeSettings?.structuralPlan?.beamLabelStartDistance ?? 1000;
   const updates: { id: string; updates: Partial<Shape> }[] = [];
   for (const s of movedShapes) {
     const linkedLabels = findLinkedLabels(allShapes, s.id);
@@ -65,7 +66,7 @@ function getLinkedLabelUpdates(
     }
 
     // Try to compute precise label position from parent geometry
-    const labelPos = computeLinkedLabelPosition(postTransformParent);
+    const labelPos = computeLinkedLabelPosition(postTransformParent, beamLabelStartDistance);
 
     for (const label of linkedLabels) {
       if (selectedIdSet.has(label.id)) continue;
@@ -337,7 +338,8 @@ export function useModifyTools() {
 
               // Update linked labels to stay parallel with the modified shape
               const postShape = { ...shape, ...shapeUpdates } as Shape;
-              const labelPos = computeLinkedLabelPosition(postShape);
+              const stretchBeamLabelDist = useAppStore.getState().planSubtypeSettings?.structuralPlan?.beamLabelStartDistance ?? 1000;
+              const labelPos = computeLinkedLabelPosition(postShape, stretchBeamLabelDist);
               if (labelPos) {
                 const linkedLabels = findLinkedLabels(allShapesNow, shape.id);
                 for (const label of linkedLabels) {
@@ -1611,7 +1613,8 @@ export function useModifyTools() {
                     movedIds.add(label.id);
                     // Compute post-update parent geometry for accurate label placement
                     const postParent = { ...parentShape, ...u.updates } as Shape;
-                    const labelPos = computeLinkedLabelPosition(postParent);
+                    const alignBeamLabelDist = useAppStore.getState().planSubtypeSettings?.structuralPlan?.beamLabelStartDistance ?? 1000;
+                    const labelPos = computeLinkedLabelPosition(postParent, alignBeamLabelDist);
                     if (labelPos) {
                       updates.push({
                         id: label.id,

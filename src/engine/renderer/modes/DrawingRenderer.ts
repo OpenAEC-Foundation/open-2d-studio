@@ -268,12 +268,28 @@ export class DrawingRenderer extends BaseRenderer {
     // IFC category filter
     const hiddenCats = options.hiddenIfcCategories || [];
 
-    // Draw shapes in five passes:
-    // 1. Underlay images (background reference images)
-    // 2. Slabs (rendered behind walls so they don't overlap)
-    // 3. Non-text, non-slab, non-gridline shapes (walls, beams, lines, etc.)
-    // 4. Text shapes (labels on top)
-    // 5. Gridlines (stramien) — always on top of everything
+    // IFC/AEC shape types — rendered below 2D annotation shapes
+    const ifcAecTypes = new Set([
+      'wall', 'beam', 'column', 'pile', 'puntniveau', 'cpt', 'space',
+      'section-callout', 'spot-elevation', 'plate-system', 'rebar',
+      'wall-opening', 'slab-opening', 'slab-label',
+    ]);
+
+    // 2D annotation shape types — rendered above IFC/AEC shapes
+    const annotationTypes = new Set([
+      'line', 'arc', 'circle', 'polyline', 'rectangle', 'hatch',
+      'dimension', 'image',
+    ]);
+
+    // Draw shapes in six passes:
+    // 1.  Underlay images (background reference images)
+    // 2.  Slabs (rendered behind walls so they don't overlap)
+    // 3a. IFC/AEC shapes (walls, beams, columns, piles, etc.)
+    // 3b. 2D annotation shapes (lines, arcs, circles, dimensions, hatches, non-underlay images, etc.)
+    // 4.  Text shapes (labels on top)
+    // 5.  Gridlines (stramien) — always on top of everything
+
+    // Pass 1: Underlay images
     for (const shape of shapes) {
       if (!shape.visible) continue;
       if (shape.type !== 'image' || !(shape as ImageShape).isUnderlay) continue;
@@ -282,6 +298,7 @@ export class DrawingRenderer extends BaseRenderer {
       const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
       this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
     }
+    // Pass 2: Slabs
     for (const shape of shapes) {
       if (!shape.visible || shape.type !== 'slab') continue;
       if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
@@ -289,14 +306,27 @@ export class DrawingRenderer extends BaseRenderer {
       const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
       this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
     }
+    // Pass 3a: IFC/AEC structural shapes (below 2D annotations)
     for (const shape of shapes) {
-      if (!shape.visible || shape.type === 'text' || shape.type === 'slab' || shape.type === 'gridline') continue;
-      if (shape.type === 'image' && (shape as ImageShape).isUnderlay) continue;
+      if (!shape.visible) continue;
+      if (!ifcAecTypes.has(shape.type)) continue;
       if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
       const isSelected = selectedSet.has(shape.id);
       const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
       this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
     }
+    // Pass 3b: 2D annotation shapes (above IFC/AEC shapes)
+    for (const shape of shapes) {
+      if (!shape.visible) continue;
+      if (shape.type === 'text' || shape.type === 'slab' || shape.type === 'gridline') continue;
+      if (shape.type === 'image' && (shape as ImageShape).isUnderlay) continue;
+      if (ifcAecTypes.has(shape.type)) continue;
+      if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
+      const isSelected = selectedSet.has(shape.id);
+      const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
+      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
+    }
+    // Pass 4: Text shapes (labels on top)
     for (const shape of shapes) {
       if (!shape.visible || shape.type !== 'text') continue;
       if (isShapeInHiddenCategory(shape, hiddenCats)) continue;

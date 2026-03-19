@@ -2,7 +2,7 @@
  * Modify geometry utilities - pure functions for transform operations
  */
 
-import type { Point, Shape, LineShape, ArcShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, CPTShape, WallShape, BeamShape, SlabShape, SpaceShape, PlateSystemShape } from '../../types/geometry';
+import type { Point, Shape, LineShape, ArcShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, CPTShape, WallShape, BeamShape, SlabShape, SpaceShape, PlateSystemShape, ColumnShape, WallOpeningShape, SlabOpeningShape, SlabLabelShape, SectionCalloutShape, SpotElevationShape, FoundationZoneShape, RebarShape } from '../../types/geometry';
 import { generateId } from '../../state/slices/types';
 import { formatPeilLabel, calculatePeilFromY } from '../../hooks/drawing/useLevelDrawing';
 import { bulgeToArc } from './GeometryUtils';
@@ -259,6 +259,60 @@ export function transformShape(shape: Shape, transform: PointTransform, newId?: 
       const probeT = transform(probe);
       const angleChange = Math.atan2(probeT.y - cloned.position.y, probeT.x - cloned.position.x);
       cloned.rotation = (cloned.rotation || 0) + angleChange;
+      break;
+    }
+    case 'column': {
+      const col = cloned as unknown as ColumnShape;
+      const oldColPos = col.position;
+      col.position = transform(col.position);
+      // Derive rotation change from transform
+      const colProbe = { x: oldColPos.x + 1, y: oldColPos.y };
+      const colProbeT = transform(colProbe);
+      const colAngle = Math.atan2(colProbeT.y - col.position.y, colProbeT.x - col.position.x);
+      col.rotation = (col.rotation || 0) + colAngle;
+      break;
+    }
+    case 'wall-opening': {
+      // Wall openings are positioned relative to their host wall (positionAlongWall),
+      // so they move implicitly when the host wall moves. No geometry to transform.
+      break;
+    }
+    case 'slab-opening': {
+      const so = cloned as unknown as SlabOpeningShape;
+      so.points = so.points.map(transform);
+      break;
+    }
+    case 'slab-label': {
+      const sl = cloned as unknown as SlabLabelShape;
+      sl.position = transform(sl.position);
+      break;
+    }
+    case 'section-callout': {
+      const sc = cloned as unknown as SectionCalloutShape;
+      sc.start = transform(sc.start);
+      sc.end = transform(sc.end);
+      if (sc.detailCenter) {
+        sc.detailCenter = transform(sc.detailCenter);
+      }
+      break;
+    }
+    case 'spot-elevation': {
+      const se = cloned as unknown as SpotElevationShape;
+      se.position = transform(se.position);
+      se.labelPosition = transform(se.labelPosition);
+      break;
+    }
+    case 'foundation-zone': {
+      const fz = cloned as unknown as FoundationZoneShape;
+      fz.contourPoints = fz.contourPoints.map(transform);
+      break;
+    }
+    case 'rebar': {
+      const rb = cloned as unknown as RebarShape;
+      rb.position = transform(rb.position);
+      if (rb.endPoint) {
+        rb.endPoint = transform(rb.endPoint);
+      }
       break;
     }
   }
