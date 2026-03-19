@@ -109,6 +109,9 @@ export interface ToolState {
     bubbleEnd: 'start' | 'end';
   } | null;
 
+  // Level label editing (inline elevation edit in section views)
+  editingLevelId: string | null;
+
   // Plate system edit mode (TAB to enter, TAB/ESC to exit)
   plateSystemEditMode: boolean;
   editingPlateSystemId: string | null;
@@ -216,6 +219,10 @@ export interface ToolActions {
   // Gridline label editing actions
   startGridlineLabelEdit: (shapeId: string, bubbleEnd: 'start' | 'end') => void;
   endGridlineLabelEdit: () => void;
+
+  // Level label editing actions (inline elevation edit in section views)
+  startLevelLabelEdit: (shapeId: string) => void;
+  endLevelLabelEdit: () => void;
 
   // Plate system edit mode actions
   setPlateSystemEditMode: (editing: boolean, systemId?: string) => void;
@@ -333,6 +340,9 @@ export const initialToolState: ToolState = {
 
   // Gridline label editing
   editingGridlineLabel: null,
+
+  // Level label editing
+  editingLevelId: null,
 
   // Plate system edit mode
   plateSystemEditMode: false,
@@ -783,6 +793,17 @@ export const createToolSlice = (
   endGridlineLabelEdit: () =>
     set((state) => {
       state.editingGridlineLabel = null;
+    }),
+
+  // Level label editing actions
+  startLevelLabelEdit: (shapeId) =>
+    set((state) => {
+      state.editingLevelId = shapeId;
+    }),
+
+  endLevelLabelEdit: () =>
+    set((state) => {
+      state.editingLevelId = null;
     }),
 
   // Plate system edit mode actions

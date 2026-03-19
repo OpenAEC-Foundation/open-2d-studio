@@ -8,7 +8,7 @@ import { useDrawingKeyboard } from '../../hooks/keyboard/useDrawingKeyboard';
 import { DynamicInput } from './DynamicInput/DynamicInput';
 import { TextEditor } from '../editors/TextEditor/TextEditor';
 import { ContextMenu } from '../shared/ContextMenu';
-import type { TextShape, GridlineShape, Point } from '../../types/geometry';
+import type { TextShape, GridlineShape, LevelShape, Point } from '../../types/geometry';
 import { MM_TO_PIXELS } from '../../engine/renderer/types';
 import { screenToWorld, worldToScreen } from '../../engine/geometry/GeometryUtils';
 import { setRotationGizmoVisible } from '../../engine/renderer/rotationGizmoState';
@@ -17,6 +17,7 @@ import { parseSpacingPattern, createGridlinesFromPattern } from '../../utils/gri
 import { regenerateGridDimensions } from '../../utils/gridDimensionUtils';
 import { resolveGridlineExtension } from '../../types/hatch';
 import { ShortcutHUD } from './ShortcutHUD';
+import { formatSectionPeilLabel } from '../../services/section/sectionReferenceService';
 
 function GridlineLabelInput({ shape, bubbleEnd, viewport, onSave, onCancel, drawingScale }: {
   shape: GridlineShape;
@@ -61,6 +62,70 @@ function GridlineLabelInput({ shape, bubbleEnd, viewport, onSave, onCancel, draw
         left: screenPos.x - 20,
         top: screenPos.y - 12,
         width: 40,
+        height: 24,
+        fontSize: 12,
+      }}
+    />
+  );
+}
+
+/**
+ * LevelLabelInput - Inline elevation editor shown on double-click of a level shape.
+ * Accepts values like "3100", "+3100", "-400".
+ * On Enter: parses elevation in mm, updates the level shape's Y position and label,
+ * and updates the corresponding storey elevation.
+ */
+function LevelLabelInput({ shape, viewport, onSave, onCancel, drawingScale }: {
+  shape: LevelShape;
+  viewport: { offsetX: number; offsetY: number; zoom: number };
+  onSave: (newElevation: number) => void;
+  onCancel: () => void;
+  drawingScale?: number;
+}) {
+  const [value, setValue] = useState(String(shape.elevation));
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  // Position the input at the label location (end of the level line, offset past the marker)
+  const sf = drawingScale && drawingScale > 0 ? 0.01 / drawingScale : 1;
+  const bubbleRadius = shape.bubbleRadius * sf;
+  const sz = bubbleRadius * 0.7;
+
+  const angle = Math.atan2(shape.end.y - shape.start.y, shape.end.x - shape.start.x);
+  const dx = Math.cos(angle), dy = Math.sin(angle);
+  const textWorldX = shape.end.x + dx * (sz * 1.5 + bubbleRadius * 0.3);
+  const textWorldY = shape.end.y + dy * (sz * 1.5 + bubbleRadius * 0.3);
+  const screenPos = worldToScreen(textWorldX, textWorldY, viewport);
+
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+
+  const handleSubmit = () => {
+    const trimmed = value.trim();
+    if (!trimmed) { onCancel(); return; }
+    // Parse: accept "3100", "+3100", "-400"
+    const parsed = parseInt(trimmed, 10);
+    if (isNaN(parsed)) { onCancel(); return; }
+    onSave(parsed);
+  };
+
+  return (
+    <input
+      ref={inputRef}
+      value={value}
+      onChange={e => setValue(e.target.value)}
+      onKeyDown={e => {
+        if (e.key === 'Enter') handleSubmit();
+        if (e.key === 'Escape') onCancel();
+        e.stopPropagation();
+      }}
+      onBlur={handleSubmit}
+      className="absolute bg-cad-surface border border-blue-500 text-cad-text rounded z-50"
+      style={{
+        left: screenPos.x,
+        top: screenPos.y - 12,
+        width: 80,
         height: 24,
         fontSize: 12,
       }}
@@ -444,12 +509,20 @@ export function Canvas() {
   const confirmPlacement = useAppStore(s => s.confirmPlacement);
   const setViewport = useAppStore(s => s.setViewport);
   const endGridlineLabelEdit = useAppStore(s => s.endGridlineLabelEdit);
+  const endLevelLabelEdit = useAppStore(s => s.endLevelLabelEdit);
 
   // Gridline label editing state
   const editingGridlineLabel = useAppStore(s => s.editingGridlineLabel);
   const editingGridlineShape = useAppStore(s => {
     if (!s.editingGridlineLabel) return null;
     return (s.shapes.find(sh => sh.id === s.editingGridlineLabel!.shapeId && sh.type === 'gridline') as GridlineShape | undefined) || null;
+  });
+
+  // Level label editing state
+  const editingLevelId = useAppStore(s => s.editingLevelId);
+  const editingLevelShape = useAppStore(s => {
+    if (!s.editingLevelId) return null;
+    return (s.shapes.find(sh => sh.id === s.editingLevelId && sh.type === 'level') as LevelShape | undefined) || null;
   });
   const viewportForOverlay = useAppStore(s => s.viewport);
   const activeDrawingScale = useAppStore(s => {
@@ -571,6 +644,47 @@ export function Canvas() {
   const handleGridlineLabelCancel = useCallback(() => {
     endGridlineLabelEdit();
   }, [endGridlineLabelEdit]);
+
+  // Handle level label save (inline elevation edit)
+  const handleLevelLabelSave = useCallback((newElevation: number) => {
+    const state = useAppStore.getState();
+    const levelId = state.editingLevelId;
+    if (!levelId) { endLevelLabelEdit(); return; }
+
+    const shape = state.shapes.find(s => s.id === levelId) as LevelShape | undefined;
+    if (!shape) { endLevelLabelEdit(); return; }
+
+    const newY = -newElevation; // canvas Y is inverted
+    const peilLabel = formatSectionPeilLabel(newElevation);
+
+    // Update shape position and label
+    updateShape(levelId, {
+      start: { x: shape.start.x, y: newY },
+      end: { x: shape.end.x, y: newY },
+      elevation: newElevation,
+      peil: newElevation,
+      label: peilLabel,
+    } as any);
+
+    // If this is a section-ref level, update the corresponding storey elevation
+    if (levelId.startsWith('section-ref-lv-')) {
+      const storeyId = levelId.replace('section-ref-lv-', '');
+      for (const building of state.projectStructure.buildings) {
+        const storey = building.storeys.find((s: any) => s.id === storeyId);
+        if (storey) {
+          state.updateStorey(building.id, storeyId, { elevation: newElevation });
+          break;
+        }
+      }
+    }
+
+    endLevelLabelEdit();
+  }, [updateShape, endLevelLabelEdit]);
+
+  // Handle level label cancel
+  const handleLevelLabelCancel = useCallback(() => {
+    endLevelLabelEdit();
+  }, [endLevelLabelEdit]);
 
   // rAF render loop — reads state directly from Zustand, no deps array
   useEffect(() => {
@@ -924,6 +1038,17 @@ export function Canvas() {
           viewport={viewportForOverlay}
           onSave={handleGridlineLabelSave}
           onCancel={handleGridlineLabelCancel}
+          drawingScale={activeDrawingScale}
+        />
+      )}
+
+      {/* Level Label Editor Overlay */}
+      {editingLevelId && editingLevelShape && (
+        <LevelLabelInput
+          shape={editingLevelShape}
+          viewport={viewportForOverlay}
+          onSave={handleLevelLabelSave}
+          onCancel={handleLevelLabelCancel}
           drawingScale={activeDrawingScale}
         />
       )}

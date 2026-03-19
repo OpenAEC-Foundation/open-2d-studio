@@ -12,7 +12,7 @@
 
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
-import type { Point, GridlineShape, BeamShape, PlateSystemShape, PlateSystemOpening, WallShape } from '../../types/geometry';
+import type { Point, GridlineShape, LevelShape, BeamShape, PlateSystemShape, PlateSystemOpening, WallShape } from '../../types/geometry';
 import { screenToWorld, isPointNearShape, isPointNearParametricShape, snapToAngle, bulgeToArc, calculateBulgeFrom3Points } from '../../engine/geometry/GeometryUtils';
 import { regeneratePlateSystemBeams } from '../drawing/usePlateSystemDrawing';
 import { QuadTree } from '../../engine/spatial/QuadTree';
@@ -80,6 +80,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     switchToDrawing,
     updateShape,
     startGridlineLabelEdit,
+    startLevelLabelEdit,
     setCursor2D,
     modifyOrtho,
     orthoMode,
@@ -1399,6 +1400,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
             return;
           }
         }
+        // Double-click on a level shape — inline elevation edit
+        if (shape && shape.type === 'level') {
+          startLevelLabelEdit(shapeId);
+          return;
+        }
         // Double-click on a plate system or its child beam: enter edit mode
         if (shape && shape.type === 'plate-system') {
           setPlateSystemEditMode(true, shape.id);
@@ -1423,7 +1429,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         }
       }
     },
-    [editorMode, panZoom, viewport, findShapeAtPoint, shapes, textDrawing, viewportEditing, switchToDrawing, updateShape, startGridlineLabelEdit, selectShapes, setPlateSystemEditMode]
+    [editorMode, panZoom, viewport, findShapeAtPoint, shapes, textDrawing, viewportEditing, switchToDrawing, updateShape, startGridlineLabelEdit, startLevelLabelEdit, selectShapes, setPlateSystemEditMode]
   );
 
   /**
