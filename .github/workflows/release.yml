@@ -210,7 +210,7 @@ jobs:
         run: npx tauri android init
 
       - name: Build Android APK
-        run: npx tauri android build --apk true
+        run: npx tauri android build --apk
 
       - name: Sign APK
         env:
