@@ -1394,6 +1394,7 @@ impl DwgParser {
         data: &[u8],
         dwg: &mut DwgFile,
     ) -> Result<(), DwgError> {
+        #[allow(unused_imports)]
         use crate::r2007;
 
         // Decrypt the R2007 file header (same LCG as R2004)
