@@ -12,7 +12,7 @@
 
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
-import type { Point, GridlineShape, LevelShape, BeamShape, PlateSystemShape, PlateSystemOpening, WallShape } from '../../types/geometry';
+import type { Point, GridlineShape, BeamShape, PlateSystemShape, PlateSystemOpening, WallShape } from '../../types/geometry';
 import { screenToWorld, isPointNearShape, isPointNearParametricShape, snapToAngle, bulgeToArc, calculateBulgeFrom3Points } from '../../engine/geometry/GeometryUtils';
 import { regeneratePlateSystemBeams } from '../drawing/usePlateSystemDrawing';
 import { QuadTree } from '../../engine/spatial/QuadTree';
@@ -100,10 +100,10 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     selectedWallSubElement,
     slabEditMode,
     editingSlabId,
-    slabInnerContourPoints,
+    slabInnerContourPoints: _slabInnerContourPoints,
     addSlabInnerContourPoint,
-    finishSlabInnerContour,
-    cancelSlabInnerContour,
+    finishSlabInnerContour: _finishSlabInnerContour,
+    cancelSlabInnerContour: _cancelSlabInnerContour,
   } = useAppStore();
 
   // Get the active drawing's scale for text hit detection

@@ -74,7 +74,6 @@ import {
   buildSectionCoordinateSystem,
   syncGridlineFromSection,
   syncLevelFromSection,
-  formatSectionPeilLabel,
 } from '../../services/section/sectionReferenceService';
 import type { SectionCalloutShape, GridlineShape, LevelShape } from '../../types/geometry';
 
@@ -481,6 +480,8 @@ type FullStore = ModelState & StoreWithHistory & {
   autoGridDimension: boolean;
   projectStructure: import('./parametricSlice').ProjectStructure;
   sectionGridlineDimensioning: boolean;
+  gridlineExtensionPerScale?: Record<string, number>;
+  gridlineExtension: number;
 };
 
 function withHistory(state: FullStore, mutate: (draft: Shape[]) => void): void {

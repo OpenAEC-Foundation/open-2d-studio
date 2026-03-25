@@ -653,7 +653,7 @@ export function BeamProfileSearch({ beam, update }: { beam: BeamShape; update: (
 }
 
 /** Quick size input for a selected column — type e.g. "300x400" or "300" to set width/depth */
-export function ColumnSizeSearch({ col, update }: { col: ColumnShape; update: (updates: Record<string, unknown>) => void }) {
+export function ColumnSizeSearch({ col: _col, update }: { col: ColumnShape; update: (updates: Record<string, unknown>) => void }) {
   const [sizeQuery, setSizeQuery] = useState('');
 
   const applySize = (input: string) => {

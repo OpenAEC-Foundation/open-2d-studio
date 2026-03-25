@@ -167,7 +167,6 @@ export function parseGEF(text: string, fileName?: string): CPTParsedData {
       parts = line.split(/[\s;,]+/).filter(Boolean);
     }
 
-    const maxCol = Math.max(depthCol, qcCol, fsCol, rfCol);
     if (parts.length <= Math.max(depthCol, qcCol)) continue;
 
     const dVal = parseFloat(parts[depthCol]);

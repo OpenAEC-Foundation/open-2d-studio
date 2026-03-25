@@ -2,7 +2,7 @@
  * PatternManagerDialog - Dialog for managing custom hatch patterns
  */
 
-import { useState, useMemo, useRef } from 'react';
+import { useState, useMemo, useRef, type JSX } from 'react';
 import {
   Plus,
   Copy,

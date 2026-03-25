@@ -541,6 +541,7 @@ export interface ParametricActions {
   clearWallSubElement: () => void;
 
   // Slab types
+  setSlabTypes: (slabTypes: SlabType[]) => void;
   addSlabType: (slabType: SlabType) => void;
   updateSlabType: (id: string, updates: Partial<SlabType>) => void;
   deleteSlabType: (id: string) => void;
@@ -556,6 +557,7 @@ export interface ParametricActions {
   deleteBeamType: (id: string) => void;
 
   // Pile types
+  setPileTypes: (pileTypes: PileTypeDefinition[]) => void;
   addPileType: (pileType: PileTypeDefinition) => void;
   updatePileType: (id: string, updates: Partial<PileTypeDefinition>) => void;
   removePileType: (id: string) => void;

@@ -10,9 +10,7 @@
  * - data: flat array of typed objects with wefc:// cross-references
  */
 
-import type { Shape, Layer, Point } from '../../types/geometry';
-import type { Drawing } from '../../types/drawing';
-import type { Sheet, SheetViewport } from '../../types/sheet';
+import type { Shape, Layer, Point, Drawing, Sheet, SheetViewport } from '../../types/geometry';
 import type { ProjectInfo } from '../../types/projectInfo';
 import type {
   WefcFile,

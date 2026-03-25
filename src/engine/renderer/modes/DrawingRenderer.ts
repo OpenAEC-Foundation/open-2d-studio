@@ -276,11 +276,6 @@ export class DrawingRenderer extends BaseRenderer {
     ]);
 
     // 2D annotation shape types — rendered above IFC/AEC shapes
-    const annotationTypes = new Set([
-      'line', 'arc', 'circle', 'polyline', 'rectangle', 'hatch',
-      'dimension', 'image',
-    ]);
-
     // Draw shapes in six passes:
     // 1.  Underlay images (background reference images)
     // 2.  Slabs (rendered behind walls so they don't overlap)

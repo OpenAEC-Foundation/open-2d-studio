@@ -2,7 +2,7 @@
  * Modify geometry utilities - pure functions for transform operations
  */
 
-import type { Point, Shape, LineShape, ArcShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, CPTShape, WallShape, BeamShape, SlabShape, SpaceShape, PlateSystemShape, ColumnShape, WallOpeningShape, SlabOpeningShape, SlabLabelShape, SectionCalloutShape, SpotElevationShape, FoundationZoneShape, RebarShape } from '../../types/geometry';
+import type { Point, Shape, LineShape, ArcShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, CPTShape, WallShape, BeamShape, SlabShape, SpaceShape, PlateSystemShape, ColumnShape, SlabOpeningShape, SlabLabelShape, SectionCalloutShape, SpotElevationShape, FoundationZoneShape, RebarShape } from '../../types/geometry';
 import { generateId } from '../../state/slices/types';
 import { formatPeilLabel, calculatePeilFromY } from '../../hooks/drawing/useLevelDrawing';
 import { bulgeToArc } from './GeometryUtils';
@@ -277,7 +277,7 @@ export function transformShape(shape: Shape, transform: PointTransform, newId?: 
       // Move opening along its host wall by projecting the move delta onto the wall direction
       const wo = cloned as any;
       const allShapes = useAppStore.getState().shapes;
-      const hostWall = allShapes.find((s: any) => s.id === wo.hostWallId);
+      const hostWall = allShapes.find((s: any) => s.id === wo.hostWallId) as any;
       if (hostWall && hostWall.start && hostWall.end) {
         const wdx = hostWall.end.x - hostWall.start.x;
         const wdy = hostWall.end.y - hostWall.start.y;

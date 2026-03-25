@@ -178,6 +178,11 @@ export function createTypeLibraryActions(
     // Slab Types
     // ========================================================================
 
+    setSlabTypes: (slabTypes: SlabType[]) =>
+      set((state) => {
+        state.slabTypes = slabTypes;
+      }),
+
     addSlabType: (slabType: SlabType) =>
       set((state) => {
         state.slabTypes.push(slabType);
@@ -243,6 +248,11 @@ export function createTypeLibraryActions(
     // ========================================================================
     // Pile Types
     // ========================================================================
+
+    setPileTypes: (pileTypes: PileTypeDefinition[]) =>
+      set((state) => {
+        state.pileTypes = pileTypes;
+      }),
 
     addPileType: (pileType: PileTypeDefinition) =>
       set((state) => {

@@ -85,6 +85,7 @@ export interface SnapActions {
   setTrackingPoint: (point: Point | null) => void;
   setDirectDistanceAngle: (angle: number | null) => void;
   toggleWhiteBackground: () => void;
+  setTransparentBackground: (enabled: boolean) => void;
   toggleBoundaryVisible: () => void;
   setUITheme: (theme: UITheme) => void;
   toggleRotationGizmo: () => void;

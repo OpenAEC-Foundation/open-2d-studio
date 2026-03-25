@@ -200,7 +200,8 @@ function App() {
       );
 
       // DEV: Load AEC extension directly from source for live development
-      import('@aec-ext/index').then((aecExt) => {
+      // @ts-ignore - optional dev-only module, may not exist
+      import('@aec-ext/index').then((aecExt: any) => {
         const ext = aecExt.default || aecExt;
         if (ext.onLoad) {
           ext.onLoad();
@@ -672,7 +673,8 @@ function App() {
             // A typical A3 plan printed at 1:100 represents 42000x29700mm in real world
             // The PDF physical size is in mm, but the drawing it represents is at scale
             // Use drawingScale to convert: if drawingScale=0.01 (1:100), multiply by 100
-            const drawingScale = state.drawingScale || 0.01;
+            const activeDrawing = state.drawings?.find((d: any) => d.id === state.activeDrawingId);
+            const drawingScale = activeDrawing?.scale || 0.01;
             const scaleFactor = 1 / drawingScale; // e.g. 100 for 1:100
             const worldW = result.worldWidth * scaleFactor;
             const worldH = result.worldHeight * scaleFactor;

@@ -86,7 +86,7 @@ export function RibbonTooltip({ label, shortcut, parentRef }: { label: string; s
 export function useTooltip(delay = 400) {
   const [show, setShow] = useState(false);
   const ref = useRef<HTMLButtonElement>(null);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const onEnter = useCallback(() => {
     timerRef.current = setTimeout(() => setShow(true), delay);
@@ -143,9 +143,10 @@ interface RibbonSmallButtonProps {
   active?: boolean;
   disabled?: boolean;
   shortcut?: string;
+  tooltip?: string;
 }
 
-export function RibbonSmallButton({ icon, label, onClick, active, disabled, shortcut }: RibbonSmallButtonProps) {
+export function RibbonSmallButton({ icon, label, onClick, active, disabled, shortcut, tooltip }: RibbonSmallButtonProps) {
   const tt = useTooltip();
   return (
     <>
@@ -160,12 +161,12 @@ export function RibbonSmallButton({ icon, label, onClick, active, disabled, shor
         <span className="ribbon-btn-icon">{icon}</span>
         <span className="ribbon-btn-label">{label}</span>
       </button>
-      {tt.show && <RibbonTooltip label={label} shortcut={shortcut} parentRef={tt.ref as React.RefObject<HTMLElement>} />}
+      {tt.show && <RibbonTooltip label={tooltip || label} shortcut={shortcut} parentRef={tt.ref as React.RefObject<HTMLElement>} />}
     </>
   );
 }
 
-export function RibbonMediumButton({ icon, label, onClick, active, disabled, shortcut }: RibbonSmallButtonProps) {
+export function RibbonMediumButton({ icon, label, onClick, active, disabled, shortcut, tooltip }: RibbonSmallButtonProps) {
   const tt = useTooltip();
   return (
     <>
@@ -180,7 +181,7 @@ export function RibbonMediumButton({ icon, label, onClick, active, disabled, sho
         <span className="ribbon-btn-icon">{icon}</span>
         <span className="ribbon-btn-label">{label}</span>
       </button>
-      {tt.show && <RibbonTooltip label={label} shortcut={shortcut} parentRef={tt.ref as React.RefObject<HTMLElement>} />}
+      {tt.show && <RibbonTooltip label={tooltip || label} shortcut={shortcut} parentRef={tt.ref as React.RefObject<HTMLElement>} />}
     </>
   );
 }

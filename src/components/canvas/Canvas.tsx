@@ -851,7 +851,7 @@ export function Canvas() {
 
   // Handle mouse events
   const { handleMouseDown, handleMouseMove, handleMouseUp, handleWheel, handleClick, handleDoubleClick, handleContextMenu: baseHandleContextMenu, isPanning, consumeRightDrag, titleBlockEditing } =
-    useCanvasEvents(canvasRef);
+    useCanvasEvents(canvasRef as React.RefObject<HTMLCanvasElement>);
 
   // Context menu state
   const { menuState, openMenu, closeMenu, getMenuItems } = useContextMenu();

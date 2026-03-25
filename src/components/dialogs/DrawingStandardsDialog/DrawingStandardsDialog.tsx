@@ -9,14 +9,10 @@
 import { Fragment, useState, useCallback, useEffect, useMemo } from 'react';
 import { X, Save, Upload, Trash2, Pencil, ChevronDown, ChevronRight, Plus, RotateCcw, Eye, EyeOff } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
-import type { GridlineShape, Point, PlanSubtype } from '../../../types/geometry';
+import type { PlanSubtype } from '../../../types/geometry';
 import { MATERIAL_CATEGORIES, PLAN_SUBTYPE_CONFIG } from '../../../types/geometry';
-import type { DimensionShape } from '../../../types/dimension';
 import type { MaterialHatchTemplate, MaterialHatchSetting } from '../../../types/hatch';
 import { BUILTIN_PATTERNS } from '../../../types/hatch';
-import type { UnitSettings } from '../../../units/types';
-import { DIM_ASSOCIATE_STYLE } from '../../../constants/cadDefaults';
-import { calculateDimensionValue, formatDimAssociateValue } from '../../../engine/geometry/DimensionUtils';
 import { ALL_IFC_CATEGORIES, IFC_CATEGORY_LABELS, getIfcCategory } from '../../../utils/ifcCategoryUtils';
 import { DraggableModal, ModalButton } from '../../shared/DraggableModal';
 
@@ -94,8 +90,6 @@ interface DrawingStandardsDialogProps {
 }
 
 export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDialogProps) {
-  const gridlineExtension = useAppStore(s => s.gridlineExtension);
-  const setGridlineExtension = useAppStore(s => s.setGridlineExtension);
   const gridlineExtensionPerScale = useAppStore(s => s.gridlineExtensionPerScale);
   const setGridlineExtensionForScale = useAppStore(s => s.setGridlineExtensionForScale);
   const gridDimensionLineOffset = useAppStore(s => s.gridDimensionLineOffset);
@@ -231,190 +225,6 @@ export function DrawingStandardsDialog({ isOpen, onClose }: DrawingStandardsDial
     delete newSettings[materialName];
     setMaterialHatchSettings(newSettings);
   }, [materialHatchSettings, setMaterialHatchSettings]);
-
-  /** Helper: create a DimensionShape for grid dimensioning using DimAssociate style */
-  const makeDim = useCallback((
-    p1: Point, p2: Point, offset: number, direction: 'horizontal' | 'vertical',
-    drawingId: string, layerId: string, _style: DimensionShape['style'], _unitSettings: UnitSettings
-  ): DimensionShape => {
-    const value = calculateDimensionValue([p1, p2], 'linear', direction);
-    const formattedValue = formatDimAssociateValue(value);
-    return {
-      id: crypto.randomUUID(),
-      type: 'dimension',
-      layerId, drawingId,
-      style: { strokeColor: '#000000', strokeWidth: 2.5, lineStyle: 'solid' as const },
-      visible: true, locked: false,
-      dimensionType: 'linear',
-      points: [p1, p2],
-      dimensionLineOffset: offset,
-      linearDirection: direction,
-      value: formattedValue,
-      valueOverridden: false,
-      dimensionStyle: { ...DIM_ASSOCIATE_STYLE },
-      isGridDimension: true,
-      dimensionStyleName: 'DimAssociate',
-    };
-  }, []);
-
-  const handleGridDimension = useCallback(() => {
-    const state = useAppStore.getState();
-    const { shapes, activeDrawingId, activeLayerId, currentStyle, addShapes, unitSettings } = state;
-    const storeGridlineExtension = state.gridlineExtension;
-    const storeDimLineOffset = state.gridDimensionLineOffset;
-
-    if (!activeDrawingId) return;
-
-    // First remove any existing auto-generated grid dimensions
-    const existingGridDims = shapes.filter(
-      s => s.type === 'dimension' && s.drawingId === activeDrawingId &&
-        ((s as DimensionShape).isGridDimension === true)
-    );
-    if (existingGridDims.length > 0) {
-      state.deleteShapes(existingGridDims.map(s => s.id));
-    }
-
-    const gridlines = shapes.filter(
-      (s): s is GridlineShape => s.type === 'gridline' && s.drawingId === activeDrawingId
-    );
-    if (gridlines.length < 2) return;
-
-    const isVert = (g: GridlineShape) => Math.abs(g.end.y - g.start.y) > Math.abs(g.end.x - g.start.x);
-    const verticals = gridlines.filter(isVert);
-    const horizontals = gridlines.filter(g => !isVert(g));
-
-    // Calculate scale-adjusted offsets (matches renderer scaleFactor = LINE_DASH_REFERENCE_SCALE / drawingScale)
-    const drawingScale = state.drawings.find(d => d.id === activeDrawingId)?.scale || 0.02;
-    const scaleFactor = 0.01 / drawingScale;
-    const scaledExt = storeGridlineExtension * scaleFactor;
-
-    // Row offset between total and span dimension lines (300mm default)
-    const rowOffset = storeDimLineOffset * scaleFactor;
-
-    /**
-     * Compute the bubble inner edge position for a gridline on a specific side.
-     * This is where the bubble circle meets the gridline extension, at distance
-     * `scaledExt` from the endpoint (NOT the bubble center).
-     */
-    const getBubbleInnerEdge = (g: GridlineShape, endpointSide: 'start' | 'end'): Point => {
-      const angle = Math.atan2(g.end.y - g.start.y, g.end.x - g.start.x);
-      const dx = Math.cos(angle);
-      const dy = Math.sin(angle);
-      if (endpointSide === 'start') {
-        return {
-          x: g.start.x - dx * scaledExt,
-          y: g.start.y - dy * scaledExt,
-        };
-      } else {
-        return {
-          x: g.end.x + dx * scaledExt,
-          y: g.end.y + dy * scaledExt,
-        };
-      }
-    };
-
-    const newDims: DimensionShape[] = [];
-
-    // Vertical gridlines - horizontal dimensions (bottom / top)
-    // Measurement points are placed at the bubble inner edge positions so the
-    // total dimension line sits at the intersection of bubble and gridline.
-    if (verticals.length >= 2) {
-      const sorted = [...verticals].sort((a, b) => (a.start.x + a.end.x) / 2 - (b.start.x + b.end.x) / 2);
-
-      const placeSides: { sideKey: 'minY' | 'maxY'; sign: number }[] = [];
-      if (placeBottom) placeSides.push({ sideKey: 'minY', sign: -1 });
-      if (placeTop) placeSides.push({ sideKey: 'maxY', sign: 1 });
-
-      for (const side of placeSides) {
-        // Compute bubble inner edge Y for each gridline on the relevant side
-        const bubbleEdges = sorted.map(g => {
-          const minYSide: 'start' | 'end' = g.start.y <= g.end.y ? 'start' : 'end';
-          const maxYSide: 'start' | 'end' = g.start.y <= g.end.y ? 'end' : 'start';
-          const endpointSide = side.sideKey === 'minY' ? minYSide : maxYSide;
-          return getBubbleInnerEdge(g, endpointSide);
-        });
-
-        // Pick the most extreme bubble inner edge Y for the dimension reference line
-        const refY = side.sideKey === 'minY'
-          ? Math.min(...bubbleEdges.map(bc => bc.y))
-          : Math.max(...bubbleEdges.map(bc => bc.y));
-
-        // Total dimension: measurement points at bubble inner edge Y, offset = 0
-        if (includeTotal && sorted.length >= 2) {
-          const x1 = (sorted[0].start.x + sorted[0].end.x) / 2;
-          const x2 = (sorted[sorted.length - 1].start.x + sorted[sorted.length - 1].end.x) / 2;
-          newDims.push(makeDim(
-            { x: x1, y: refY }, { x: x2, y: refY },
-            0, 'horizontal',
-            activeDrawingId, activeLayerId, currentStyle, unitSettings
-          ));
-        }
-
-        // Span dimensions: offset one row INWARD (between gridlines and total dim)
-        const spanOffset = includeTotal ? -side.sign * rowOffset : 0;
-        for (let i = 0; i < sorted.length - 1; i++) {
-          const x1 = (sorted[i].start.x + sorted[i].end.x) / 2;
-          const x2 = (sorted[i + 1].start.x + sorted[i + 1].end.x) / 2;
-          newDims.push(makeDim(
-            { x: x1, y: refY }, { x: x2, y: refY },
-            spanOffset, 'horizontal',
-            activeDrawingId, activeLayerId, currentStyle, unitSettings
-          ));
-        }
-      }
-    }
-
-    // Horizontal gridlines - vertical dimensions (left / right)
-    if (horizontals.length >= 2) {
-      const sorted = [...horizontals].sort((a, b) => (a.start.y + a.end.y) / 2 - (b.start.y + b.end.y) / 2);
-
-      const placeSides: { sideKey: 'minX' | 'maxX'; sign: number }[] = [];
-      if (placeLeft) placeSides.push({ sideKey: 'minX', sign: -1 });
-      if (placeRight) placeSides.push({ sideKey: 'maxX', sign: 1 });
-
-      for (const side of placeSides) {
-        // Compute bubble inner edge X for each gridline on the relevant side
-        const bubbleEdges = sorted.map(g => {
-          const minXSide: 'start' | 'end' = g.start.x <= g.end.x ? 'start' : 'end';
-          const maxXSide: 'start' | 'end' = g.start.x <= g.end.x ? 'end' : 'start';
-          const endpointSide = side.sideKey === 'minX' ? minXSide : maxXSide;
-          return getBubbleInnerEdge(g, endpointSide);
-        });
-
-        // Pick the most extreme bubble inner edge X for the dimension reference line
-        const refX = side.sideKey === 'minX'
-          ? Math.min(...bubbleEdges.map(bc => bc.x))
-          : Math.max(...bubbleEdges.map(bc => bc.x));
-
-        // Total dimension: measurement points at bubble inner edge X, offset = 0
-        if (includeTotal && sorted.length >= 2) {
-          const y1 = (sorted[0].start.y + sorted[0].end.y) / 2;
-          const y2 = (sorted[sorted.length - 1].start.y + sorted[sorted.length - 1].end.y) / 2;
-          newDims.push(makeDim(
-            { x: refX, y: y1 }, { x: refX, y: y2 },
-            0, 'vertical',
-            activeDrawingId, activeLayerId, currentStyle, unitSettings
-          ));
-        }
-
-        // Span dimensions: offset one row INWARD (between gridlines and total dim)
-        const spanOffset = includeTotal ? -side.sign * rowOffset : 0;
-        for (let i = 0; i < sorted.length - 1; i++) {
-          const y1 = (sorted[i].start.y + sorted[i].end.y) / 2;
-          const y2 = (sorted[i + 1].start.y + sorted[i + 1].end.y) / 2;
-          newDims.push(makeDim(
-            { x: refX, y: y1 }, { x: refX, y: y2 },
-            spanOffset, 'vertical',
-            activeDrawingId, activeLayerId, currentStyle, unitSettings
-          ));
-        }
-      }
-    }
-
-    if (newDims.length > 0) {
-      addShapes(newDims);
-    }
-  }, [placeBottom, placeTop, placeLeft, placeRight, includeTotal, makeDim]);
 
   // Auto-trigger is now always-on at the store/hook level (useGridlineDrawing,
   // useGripEditing, useModifyTools, deleteSelectedShapes). No dialog subscription needed.

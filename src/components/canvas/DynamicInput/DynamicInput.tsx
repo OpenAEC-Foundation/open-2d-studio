@@ -202,7 +202,7 @@ export function DynamicInput() {
   }, [isModifyMode, focusedField, field1Text, setLockedDistance, drawingPoints, mousePosition, viewport]);
 
   // Execute move/copy with typed distance
-  const executeModifyWithDistance = useCallback((dist: number, shiftKey: boolean = false) => {
+  const executeModifyWithDistance = useCallback((dist: number, _shiftKey: boolean = false) => {
     if (!isModifyMode || drawingPoints.length < 1) return;
 
     const state = useAppStore.getState();

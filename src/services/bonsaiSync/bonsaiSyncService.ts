@@ -21,9 +21,6 @@ import { generateIFC } from '../ifc/ifcGenerator';
 /** Debounce delay in ms before pushing the IFC data after a change */
 const SYNC_DEBOUNCE_MS = 2000;
 
-/** Interval in ms for polling WebSocket client count */
-const CLIENT_COUNT_POLL_MS = 3000;
-
 /** localStorage key for persisting the sync enabled state */
 const SYNC_ENABLED_KEY = 'open2dstudio_bonsai_sync_enabled';
 
@@ -257,6 +254,11 @@ export function startBonsaiSync(): () => void {
     }
     // cleanup done
   };
+}
+
+/** Stop client count polling (no-op — polling removed). */
+function stopClientCountPolling(): void {
+  // Placeholder — client-count polling was removed.
 }
 
 /**

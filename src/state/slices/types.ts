@@ -90,6 +90,8 @@ export type DrawingPreview =
   | { type: 'beam-circle'; center: Point; radius: number; flangeWidth: number; showCenterline: boolean }
   | { type: 'slab'; points: Point[]; currentPoint: Point; material?: string }
   | { type: 'slab-opening'; points: Point[]; currentPoint: Point }
+  | { type: 'slab-label'; position: Point; thickness: number; fontSize: number; linkedSlabId?: string }
+  | { type: 'column'; position: Point; width: number; depth: number; rotation: number; material?: string }
   | { type: 'plate-system'; points: Point[]; currentPoint: Point; systemType: string; mainProfile: { width: number; spacing: number; direction: number }; edgeWidth?: number; bulges?: number[]; currentBulge?: number; arcThroughPoint?: Point }
   | { type: 'section-callout'; start: Point; end: Point; label: string; bubbleRadius: number; flipDirection: boolean; viewDepth?: number }
   | { type: 'spot-elevation'; position: Point; elevation: number; labelPosition: Point; showLeader: boolean }

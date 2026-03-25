@@ -29,8 +29,12 @@ const CATEGORY_LABELS: Record<ShapeType, string> = {
   level: 'Levels',
   pile: 'Piles',
   puntniveau: 'Puntniveaus',
+  column: 'Columns',
   wall: 'Walls',
+  'wall-opening': 'Wall Openings',
   slab: 'Slabs',
+  'slab-opening': 'Slab Openings',
+  'slab-label': 'Slab Labels',
   'section-callout': 'Sections',
   space: 'Spaces',
   'plate-system': 'Plate Systems',
@@ -38,6 +42,7 @@ const CATEGORY_LABELS: Record<ShapeType, string> = {
   cpt: 'CPTs',
   'foundation-zone': 'Foundation Zones',
   'block-instance': 'Block Instances',
+  rebar: 'Rebar',
 };
 
 // Singular labels for count = 1
@@ -59,8 +64,12 @@ const CATEGORY_LABELS_SINGULAR: Record<ShapeType, string> = {
   level: 'Level',
   pile: 'Pile',
   puntniveau: 'Puntniveau',
+  column: 'Column',
   wall: 'Wall',
+  'wall-opening': 'Wall Opening',
   slab: 'Slab',
+  'slab-opening': 'Slab Opening',
+  'slab-label': 'Slab Label',
   'section-callout': 'Section',
   space: 'Space',
   'plate-system': 'Plate System',
@@ -68,6 +77,7 @@ const CATEGORY_LABELS_SINGULAR: Record<ShapeType, string> = {
   cpt: 'CPT',
   'foundation-zone': 'Foundation Zone',
   'block-instance': 'Block Instance',
+  rebar: 'Rebar',
 };
 
 // Preferred display order for categories

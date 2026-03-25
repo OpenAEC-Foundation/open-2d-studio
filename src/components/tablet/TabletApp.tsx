@@ -156,7 +156,7 @@ export default function TabletApp() {
   }, [theme]);
 
   // Auto-hide info bar timer
-  const infoBarTimerRef = useRef<ReturnType<typeof setTimeout>>();
+  const infoBarTimerRef = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   const hasProject = useAppStore(s => s.shapes.length > 0 || s.drawings.length > 0);
 

@@ -5,9 +5,7 @@
  * back to O2D shapes, layers, drawings and sheets.
  */
 
-import type { Shape, Layer, Point, ShapeStyle } from '../../types/geometry';
-import type { Drawing } from '../../types/drawing';
-import type { Sheet, SheetViewport } from '../../types/sheet';
+import type { Shape, Layer, Point, ShapeStyle, Drawing, Sheet, SheetViewport } from '../../types/geometry';
 import type { ProjectInfo } from '../../types/projectInfo';
 import type { WefcFile, WefcNode } from '../../types/wefc';
 
@@ -20,14 +18,6 @@ function resolveRef(ref: string): string {
   if (ref.startsWith('wefc://')) return ref.slice(7);
   if (ref.startsWith('wfc://')) return ref.slice(6);  // legacy
   return ref;
-}
-
-function defaultStyle(): ShapeStyle {
-  return {
-    strokeColor: '#000000',
-    strokeWidth: 1,
-    lineStyle: 'solid',
-  };
 }
 
 function nodeStyle(node: WefcNode): ShapeStyle {
