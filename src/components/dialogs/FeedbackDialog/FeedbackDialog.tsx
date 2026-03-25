@@ -1,11 +1,17 @@
 import { useState, useEffect, useRef } from 'react';
 import { getVersion } from '@tauri-apps/api/app';
 import { DraggableModal } from '../../shared/DraggableModal';
+import { getSetting, setSetting } from '../../../utils/settings';
 
 type FeedbackCategory = 'bug' | 'feature' | 'general';
 type FeedbackStatus = 'idle' | 'submitting' | 'success' | 'error';
 
 const FEEDBACK_API_URL = 'https://open-feedback-studio.pages.dev/api/feedback';
+const APP_ID = 'open-2D-studio';
+const MAX_IMAGES = 3;
+const MAX_TOTAL_SIZE = 1 * 1024 * 1024; // 1MB total
+const MAX_MESSAGE = 5000;
+const MIN_MESSAGE = 10;
 
 const SENTIMENT_LABELS: Record<number, string> = {
   1: 'Frustrated',
@@ -16,6 +22,15 @@ const SENTIMENT_LABELS: Record<number, string> = {
 interface FeedbackDialogProps {
   isOpen: boolean;
   onClose: () => void;
+}
+
+function buildUserAgent(): string {
+  const parts: string[] = [];
+  parts.push(`${APP_ID}`);
+  if (typeof navigator !== 'undefined') {
+    parts.push(navigator.userAgent);
+  }
+  return parts.join(' ');
 }
 
 function ImageThumbnail({ file, onRemove }: { file: File; onRemove: () => void }) {
@@ -43,6 +58,8 @@ function ImageThumbnail({ file, onRemove }: { file: File; onRemove: () => void }
 }
 
 export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
+  const [email, setEmail] = useState('');
+  const [fullName, setFullName] = useState('');
   const [category, setCategory] = useState<FeedbackCategory>('general');
   const [message, setMessage] = useState('');
   const [rating, setRating] = useState<number | null>(null);
@@ -51,22 +68,28 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
   const [appVersion, setAppVersion] = useState('');
   const [images, setImages] = useState<File[]>([]);
   const [imageError, setImageError] = useState('');
+  const [emailTouched, setEmailTouched] = useState(false);
+  const [messageTouched, setMessageTouched] = useState(false);
+  const [submitAttempted, setSubmitAttempted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     getVersion().then(setAppVersion);
+    // Restore saved email and name
+    getSetting<string>('feedbackEmail', '').then(v => { if (v) setEmail(v); });
+    getSetting<string>('feedbackFullName', '').then(v => { if (v) setFullName(v); });
   }, []);
+
+  const isValidEmail = (v: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(v.trim());
 
   const handleImageAdd = (files: FileList | null) => {
     if (!files) return;
     setImageError('');
     const incoming = Array.from(files);
-    const MAX_FILES = 3;
-    const MAX_TOTAL_SIZE = 1 * 1024 * 1024; // 1MB total
 
     const combined = [...images, ...incoming];
-    if (combined.length > MAX_FILES) {
-      setImageError(`Maximum ${MAX_FILES} images allowed.`);
+    if (combined.length > MAX_IMAGES) {
+      setImageError(`Maximum ${MAX_IMAGES} images allowed.`);
       return;
     }
     const totalSize = combined.reduce((sum, f) => sum + f.size, 0);
@@ -87,11 +110,16 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
     setError('');
 
     try {
+      const ua = buildUserAgent();
+      const emailVal = email.trim();
+      const nameVal = fullName.trim() || undefined;
       let res: Response;
 
       if (images.length > 0) {
         const formData = new FormData();
-        formData.append('app', 'open-2D-studio');
+        formData.append('app', APP_ID);
+        formData.append('email', emailVal);
+        if (nameVal) formData.append('fullname', nameVal);
         formData.append('category', category);
         formData.append('message', message.trim());
         if (rating) formData.append('sentiment', SENTIMENT_LABELS[rating]);
@@ -100,14 +128,17 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
 
         res = await fetch(FEEDBACK_API_URL, {
           method: 'POST',
+          headers: ua ? { 'User-Agent': ua } : {},
           body: formData,
         });
       } else {
         res = await fetch(FEEDBACK_API_URL, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...(ua ? { 'User-Agent': ua } : {}) },
           body: JSON.stringify({
-            app: 'open-2D-studio',
+            app: APP_ID,
+            email: emailVal,
+            fullname: nameVal,
             category,
             message: message.trim(),
             sentiment: rating ? SENTIMENT_LABELS[rating] : undefined,
@@ -122,6 +153,10 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
         setStatus('error');
         return;
       }
+
+      // Remember email and name for next time
+      setSetting('feedbackEmail', emailVal);
+      setSetting('feedbackFullName', fullName.trim());
 
       setStatus('success');
       setMessage('');
@@ -146,6 +181,8 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
     { value: 3, label: '\u{1F60A}' },
   ];
 
+  const canSubmit = isValidEmail(email) && message.trim().length >= MIN_MESSAGE && status !== 'submitting';
+
   const content = status === 'success' ? (
     <div className="p-4 flex flex-col">
       <p className="text-sm text-cad-text mb-2">Thank you for your feedback!</p>
@@ -158,6 +195,38 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
     </div>
   ) : (
     <div className="p-4 flex flex-col gap-3">
+      {/* Email & Name */}
+      <div className="flex flex-col gap-2">
+        <div>
+          <label className="block text-xs text-cad-text-dim mb-1">
+            Email <span className="text-cad-accent">*</span>
+          </label>
+          <input
+            type="email"
+            className={`w-full bg-cad-surface border text-cad-text text-sm rounded px-3 py-1.5 focus:outline-none focus:border-cad-border-light ${
+              emailTouched && !isValidEmail(email) ? 'border-red-500' : 'border-cad-border'
+            }`}
+            placeholder="your@email.com"
+            value={email}
+            onChange={e => setEmail(e.target.value)}
+            onBlur={() => setEmailTouched(true)}
+          />
+          {emailTouched && !isValidEmail(email) && (
+            <p className="text-[10px] text-red-400 mt-0.5">Please enter a valid email address</p>
+          )}
+        </div>
+        <div>
+          <label className="block text-xs text-cad-text-dim mb-1">Full Name</label>
+          <input
+            type="text"
+            className="w-full bg-cad-surface border border-cad-border text-cad-text text-sm rounded px-3 py-1.5 focus:outline-none focus:border-cad-border-light"
+            placeholder="(optional)"
+            value={fullName}
+            onChange={e => setFullName(e.target.value)}
+          />
+        </div>
+      </div>
+
       {/* Category toggles */}
       <div className="flex gap-2">
         {categories.map(c => (
@@ -178,16 +247,24 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
       {/* Message */}
       <div className="flex flex-col gap-1">
         <textarea
-          className="w-full bg-cad-surface border border-cad-border text-cad-text text-sm rounded px-3 py-2 resize-none focus:outline-none focus:border-cad-border-light"
+          className={`w-full bg-cad-surface border text-cad-text text-sm rounded px-3 py-2 resize-none focus:outline-none focus:border-cad-border-light ${
+            (messageTouched || submitAttempted) && message.trim().length < MIN_MESSAGE ? 'border-red-500' : 'border-cad-border'
+          }`}
           rows={4}
-          maxLength={5000}
+          maxLength={MAX_MESSAGE}
           placeholder="Describe your feedback (min. 10 characters)..."
           value={message}
           onChange={e => setMessage(e.target.value)}
+          onBlur={() => setMessageTouched(true)}
         />
-        <span className={`text-[10px] self-end ${message.length > 4500 ? 'text-red-400' : 'text-cad-text-muted'}`}>
-          {message.length}/5000
-        </span>
+        <div className="flex justify-between">
+          {(messageTouched || submitAttempted) && message.trim().length > 0 && message.trim().length < MIN_MESSAGE ? (
+            <span className="text-[10px] text-red-400">Minimum {MIN_MESSAGE} characters required</span>
+          ) : <span />}
+          <span className={`text-[10px] ${message.length > 4500 ? 'text-red-400' : 'text-cad-text-muted'}`}>
+            {message.length}/{MAX_MESSAGE}
+          </span>
+        </div>
       </div>
 
       {/* Image attachments */}
@@ -203,11 +280,11 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
         <button
           type="button"
           className="self-start flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded bg-cad-surface border border-cad-border text-cad-text-dim hover:bg-cad-hover cursor-default disabled:opacity-50"
-          disabled={images.length >= 3}
+          disabled={images.length >= MAX_IMAGES}
           onClick={() => fileInputRef.current?.click()}
         >
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="m21 15-5-5L5 21"/></svg>
-          Attach images ({images.length}/3)
+          Attach images ({images.length}/{MAX_IMAGES})
         </button>
         {images.length > 0 && (
           <div className="flex gap-2 flex-wrap">
@@ -217,6 +294,7 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
           </div>
         )}
         {imageError && <p className="text-xs text-red-400">{imageError}</p>}
+        <div className="text-[10px] text-cad-text-muted">Max 3 images, 1 MB total</div>
       </div>
 
       {/* Emoji rating */}
@@ -242,9 +320,21 @@ export function FeedbackDialog({ isOpen, onClose }: FeedbackDialogProps) {
 
       {/* Submit */}
       <button
-        className="self-start px-5 py-1.5 text-sm font-medium text-white rounded transition-colors cursor-default bg-cad-accent hover:bg-cad-accent/80 disabled:opacity-50 disabled:cursor-default"
-        disabled={message.trim().length < 10 || status === 'submitting'}
-        onClick={handleSubmit}
+        className={`self-start px-5 py-1.5 text-sm font-medium text-white rounded transition-colors cursor-default ${
+          canSubmit
+            ? 'bg-cad-accent hover:bg-cad-accent/80'
+            : 'bg-cad-accent/50 cursor-default'
+        }`}
+        disabled={status === 'submitting'}
+        onClick={() => {
+          if (!canSubmit) {
+            setSubmitAttempted(true);
+            setEmailTouched(true);
+            setMessageTouched(true);
+            return;
+          }
+          handleSubmit();
+        }}
       >
         {status === 'submitting' ? 'Submitting...' : 'Submit'}
       </button>

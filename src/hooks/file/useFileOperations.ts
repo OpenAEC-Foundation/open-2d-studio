@@ -27,6 +27,7 @@ import { generateIFC } from '../../services/ifc/ifcGenerator';
 import { addRecentFile } from '../../services/file/recentFiles';
 import { logger } from '../../services/log/logService';
 import { DEFAULT_PROJECT_INFO } from '../../types/projectInfo';
+import { importDwgFile } from '../../services/file/dwgImportService';
 
 
 export function useFileOperations() {
@@ -110,6 +111,43 @@ export function useFileOperations() {
         addRecentFile(filePath, fileName).catch(() => {});
       } catch (err) {
         await showError(`Failed to open DXF: ${err}`);
+      }
+      return;
+    }
+
+    if (extension === 'dwg') {
+      try {
+        const fileName = filePath.split(/[/\\]/).pop()?.replace('.dwg', '') || 'Untitled';
+
+        const s = useAppStore.getState();
+        const prevDocId = s.activeDocumentId;
+        const isEmptyUntitled = !s.isModified && !s.currentFilePath
+          && s.shapes.length === 0 && s.projectName.startsWith('Untitled');
+
+        const docId = generateId();
+        s.openDocument(docId, {
+          projectName: fileName,
+          isModified: false,
+          projectInfo: { ...DEFAULT_PROJECT_INFO },
+        });
+
+        const newState = useAppStore.getState();
+        const shapes = await importDwgFile(filePath, newState.activeLayerId, newState.activeDrawingId);
+
+        if (shapes.length === 0) {
+          await showInfo('No supported entities found in the DWG file.');
+          return;
+        }
+
+        useAppStore.getState().addShapes(shapes);
+
+        if (isEmptyUntitled) {
+          useAppStore.getState().closeDocument(prevDocId);
+        }
+        logger.info(`Opened DWG file: ${fileName} (${shapes.length} entities)`, 'File');
+        addRecentFile(filePath, fileName).catch(() => {});
+      } catch (err) {
+        await showError(`Failed to open DWG: ${err}`);
       }
       return;
     }
@@ -520,6 +558,49 @@ export function useFileOperations() {
         addRecentFile(filePath, fileName).catch(() => {});
       } catch (err) {
         await showError(`Failed to open DXF: ${err}`);
+      }
+      return;
+    }
+
+    if (extension === 'dwg') {
+      try {
+        const fileName = filePath.split(/[/\\]/).pop()?.replace('.dwg', '') || 'Untitled';
+
+        const s = useAppStore.getState();
+        const prevDocId = s.activeDocumentId;
+        const isEmptyUntitled = !s.isModified && !s.currentFilePath
+          && s.shapes.length === 0 && s.projectName.startsWith('Untitled');
+
+        const docId = generateId();
+        s.openDocument(docId, {
+          projectName: fileName,
+          isModified: false,
+          projectInfo: { ...DEFAULT_PROJECT_INFO },
+        });
+
+        const newState = useAppStore.getState();
+        const shapes = await importDwgFile(filePath, newState.activeLayerId, newState.activeDrawingId);
+
+        if (shapes.length === 0) {
+          await showInfo('No supported entities found in the DWG file.');
+          return;
+        }
+
+        useAppStore.getState().addShapes(shapes);
+
+        // Zoom to fit so imported geometry is visible regardless of coordinates
+        setTimeout(() => {
+          useAppStore.getState().fitBoundaryToContent(useAppStore.getState().activeDrawingId, 100);
+          useAppStore.getState().zoomToFit();
+        }, 100);
+
+        if (isEmptyUntitled) {
+          useAppStore.getState().closeDocument(prevDocId);
+        }
+        logger.info(`Opened DWG file: ${fileName} (${shapes.length} entities)`, 'File');
+        addRecentFile(filePath, fileName).catch(() => {});
+      } catch (err) {
+        await showError(`Failed to open DWG: ${err}`);
       }
       return;
     }

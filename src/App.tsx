@@ -247,7 +247,7 @@ function App() {
         getSetting<number>('polarAngleIncrement', 45),
         getSetting<boolean>('whiteBackground', true),
         getSetting<boolean>('boundaryVisible', false),
-        getSetting<string>('uiTheme', 'dark'),
+        getSetting<string>('uiTheme', 'default'),
         getSetting<boolean>('showRotationGizmo', true),
         getSetting<boolean>('axesVisible', false),
       ]);

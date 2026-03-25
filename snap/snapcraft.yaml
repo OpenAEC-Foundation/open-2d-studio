@@ -1,6 +1,6 @@
 name: open-2d-studio
 base: core22
-version: '0.32.0'
+version: '0.33.0'
 summary: Free, open-source 2D CAD application
 description: |
   Open 2D Studio is a free, open-source 2D CAD application built for architects,

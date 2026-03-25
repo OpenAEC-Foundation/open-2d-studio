@@ -15,18 +15,58 @@
    Theme CSS Variables
    ============================================================================ */
 
+/* Default theme - Warm Dark Brown with Construction Amber accent */
 :root,
+[data-theme="default"] {
+  --theme-bg: #3E3636;
+  --theme-surface: #4a4242;
+  --theme-surface-elevated: #564e4e;
+  --theme-border: rgba(217, 119, 6, 0.25);
+  --theme-border-light: rgba(217, 119, 6, 0.15);
+  --theme-accent: #D97706;
+  --theme-accent-hover: #B45309;
+  --theme-text: #F5F0EB;
+  --theme-text-dim: rgba(245, 240, 235, 0.6);
+  --theme-text-muted: rgba(245, 240, 235, 0.4);
+  --theme-grid: #4a4242;
+  --theme-grid-major: #5a5252;
+  --theme-input-bg: rgba(217, 119, 6, 0.05);
+  --theme-hover: rgba(217, 119, 6, 0.1);
+  --theme-active: #D97706;
+  --theme-active-border: #D97706;
+  --theme-dropdown-bg: #4a4242;
+  --theme-scrollbar-track: #3E3636;
+  --theme-scrollbar-thumb: rgba(217, 119, 6, 0.3);
+  --theme-ribbon-bg: linear-gradient(to bottom, #4a4242 0%, #3E3636 100%);
+  --theme-ribbon-tab-bg: linear-gradient(to bottom, #4a4242 0%, #443c3c 100%);
+  --theme-ribbon-content-bg: #3E3636;
+  --theme-file-tab-bg: #D97706;
+  --theme-file-tab-hover: #B45309;
+
+  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
+  line-height: 1.5;
+  font-weight: 400;
+  color-scheme: dark;
+  color: var(--theme-text);
+  background-color: var(--theme-bg);
+
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Dark theme */
 [data-theme="dark"] {
-  /* Dark theme (default) */
   --theme-bg: #1a1a2e;
   --theme-surface: #16213e;
   --theme-surface-elevated: #1e293b;
   --theme-border: #0f3460;
   --theme-border-light: #334155;
-  --theme-accent: #e94560;
-  --theme-accent-hover: #d63d56;
+  --theme-accent: #a82d6e;
+  --theme-accent-hover: #922560;
   --theme-text: #eaeaea;
-  --theme-text-dim: #a0a0a0;
+  --theme-text-dim: #8b8b8b;
   --theme-text-muted: #64748b;
   --theme-grid: #2a2a4a;
   --theme-grid-major: #3a3a5a;
@@ -43,28 +83,20 @@
   --theme-file-tab-bg: #a82d6e;
   --theme-file-tab-hover: #922560;
 
-  font-family: Inter, system-ui, Avenir, Helvetica, Arial, sans-serif;
-  line-height: 1.5;
-  font-weight: 400;
   color-scheme: dark;
   color: var(--theme-text);
   background-color: var(--theme-bg);
-
-  font-synthesis: none;
-  text-rendering: optimizeLegibility;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
+/* Light theme */
 [data-theme="light"] {
-  /* Light theme */
   --theme-bg: #f5f5f5;
   --theme-surface: #ffffff;
   --theme-surface-elevated: #fafafa;
   --theme-border: #d1d5db;
   --theme-border-light: #e5e7eb;
-  --theme-accent: #e94560;
-  --theme-accent-hover: #d63d56;
+  --theme-accent: #a82d6e;
+  --theme-accent-hover: #922560;
   --theme-text: #1f2937;
   --theme-text-dim: #6b7280;
   --theme-text-muted: #9ca3af;
@@ -88,15 +120,15 @@
   background-color: var(--theme-bg);
 }
 
+/* Blue theme (DevExpress-like) */
 [data-theme="blue"] {
-  /* Blue theme (DevExpress-like) */
   --theme-bg: #0d1b2a;
   --theme-surface: #1b263b;
   --theme-surface-elevated: #253a52;
   --theme-border: #2c4a6b;
   --theme-border-light: #3d5a80;
-  --theme-accent: #00b4d8;
-  --theme-accent-hover: #0096c7;
+  --theme-accent: #0077b6;
+  --theme-accent-hover: #005f8a;
   --theme-text: #e0e1dd;
   --theme-text-dim: #98c1d9;
   --theme-text-muted: #778da9;
@@ -120,8 +152,72 @@
   background-color: var(--theme-bg);
 }
 
+/* Amber Navy theme - Deep Navy with Construction Amber accent */
+[data-theme="amber-navy"] {
+  --theme-bg: #1a1a2e;
+  --theme-surface: #242445;
+  --theme-surface-elevated: #2e2e55;
+  --theme-border: rgba(217, 119, 6, 0.2);
+  --theme-border-light: rgba(217, 119, 6, 0.15);
+  --theme-accent: #D97706;
+  --theme-accent-hover: #B45309;
+  --theme-text: #C4B199;
+  --theme-text-dim: rgba(196, 177, 153, 0.6);
+  --theme-text-muted: rgba(196, 177, 153, 0.4);
+  --theme-grid: #242445;
+  --theme-grid-major: #343465;
+  --theme-input-bg: rgba(217, 119, 6, 0.05);
+  --theme-hover: rgba(217, 119, 6, 0.1);
+  --theme-active: #D97706;
+  --theme-active-border: #D97706;
+  --theme-dropdown-bg: #242445;
+  --theme-scrollbar-track: #1a1a2e;
+  --theme-scrollbar-thumb: rgba(217, 119, 6, 0.3);
+  --theme-ribbon-bg: linear-gradient(to bottom, #242445 0%, #1a1a2e 100%);
+  --theme-ribbon-tab-bg: linear-gradient(to bottom, #242445 0%, #1f1f3a 100%);
+  --theme-ribbon-content-bg: #1a1a2e;
+  --theme-file-tab-bg: #D97706;
+  --theme-file-tab-hover: #B45309;
+
+  color-scheme: dark;
+  color: var(--theme-text);
+  background-color: var(--theme-bg);
+}
+
+/* Deep Forge theme - Steel Gray with Signal Orange accent */
+[data-theme="deep-forge"] {
+  --theme-bg: #36363E;
+  --theme-surface: #44444C;
+  --theme-surface-elevated: #50505A;
+  --theme-border: rgba(217, 119, 6, 0.25);
+  --theme-border-light: rgba(250, 250, 249, 0.15);
+  --theme-accent: #D97706;
+  --theme-accent-hover: #EA580C;
+  --theme-text: #FAFAF9;
+  --theme-text-dim: rgba(250, 250, 249, 0.6);
+  --theme-text-muted: rgba(250, 250, 249, 0.4);
+  --theme-grid: #44444C;
+  --theme-grid-major: #54545C;
+  --theme-input-bg: rgba(217, 119, 6, 0.05);
+  --theme-hover: rgba(217, 119, 6, 0.1);
+  --theme-active: #D97706;
+  --theme-active-border: #D97706;
+  --theme-dropdown-bg: #44444C;
+  --theme-scrollbar-track: #36363E;
+  --theme-scrollbar-thumb: rgba(217, 119, 6, 0.3);
+  --theme-ribbon-bg: linear-gradient(to bottom, #44444C 0%, #36363E 100%);
+  --theme-ribbon-tab-bg: linear-gradient(to bottom, #44444C 0%, #3E3E46 100%);
+  --theme-ribbon-content-bg: #36363E;
+  --theme-file-tab-bg: #D97706;
+  --theme-file-tab-hover: #EA580C;
+
+  color-scheme: dark;
+  color: var(--theme-text);
+  background-color: var(--theme-bg);
+}
+
+/* High Contrast theme */
 [data-theme="highContrast"] {
-  /* High Contrast theme */
   --theme-bg: #000000;
   --theme-surface: #0a0a0a;
   --theme-surface-elevated: #141414;

@@ -1,7 +1,8 @@
 mod commands;
 mod api_server;
+mod dwg_parser;
 
-use commands::{save_file, load_file, export_dxf, import_dxf, execute_shell, open_file_with_default_app, print_file, get_printers, open_printer_properties};
+use commands::{save_file, load_file, export_dxf, import_dxf, import_dwg, execute_shell, open_file_with_default_app, print_file, get_printers, open_printer_properties};
 use api_server::{ApiServerState, find_free_port, write_discovery_file, remove_discovery_file, start_server};
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
@@ -45,6 +46,7 @@ pub fn run() {
             load_file,
             export_dxf,
             import_dxf,
+            import_dwg,
             execute_shell,
             open_file_with_default_app,
             print_file,
@@ -66,7 +68,7 @@ pub fn run() {
             let args: Vec<String> = std::env::args().collect();
             if args.len() > 1 {
                 let file_arg = &args[1];
-                if file_arg.ends_with(".o2d") || file_arg.ends_with(".dxf") {
+                if file_arg.ends_with(".o2d") || file_arg.ends_with(".dxf") || file_arg.ends_with(".dwg") {
                     let file_path = file_arg.clone();
                     let app_handle = app.handle().clone();
                     // Emit after a short delay to ensure the frontend is ready

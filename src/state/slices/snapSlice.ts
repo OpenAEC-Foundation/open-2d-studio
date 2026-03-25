@@ -9,12 +9,15 @@ import { setSetting } from '../../utils/settings';
 // Theme Types
 // ============================================================================
 
-export type UITheme = 'dark' | 'light' | 'blue' | 'highContrast';
+export type UITheme = 'default' | 'dark' | 'light' | 'blue' | 'amber-navy' | 'deep-forge' | 'highContrast';
 
 export const UI_THEMES: { id: UITheme; label: string }[] = [
+  { id: 'default', label: 'Default' },
   { id: 'dark', label: 'Dark' },
   { id: 'light', label: 'Light' },
   { id: 'blue', label: 'Blue' },
+  { id: 'amber-navy', label: 'Amber Navy' },
+  { id: 'deep-forge', label: 'Deep Forge' },
   { id: 'highContrast', label: 'High Contrast' },
 ];
 
@@ -114,7 +117,7 @@ export const initialSnapState: SnapState = {
   whiteBackground: true,
   transparentBackground: false,
   boundaryVisible: false,
-  uiTheme: 'dark',
+  uiTheme: 'default',
   showRotationGizmo: true,
   axesVisible: false,
   hiddenIfcCategories: [],

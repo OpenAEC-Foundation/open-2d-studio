@@ -969,6 +969,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "92773504d58c093f6de2459af4af33faa518c13451eb8f2b5698ed3d36e7c813"
 
 [[package]]
+name = "dwg-parser"
+version = "0.1.0"
+dependencies = [
+ "serde_json",
+]
+
+[[package]]
 name = "dxf"
 version = "0.6.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2902,9 +2909,10 @@ dependencies = [
 
 [[package]]
 name = "open-2d-studio"
-version = "0.32.0"
+version = "0.33.0"
 dependencies = [
  "clap",
+ "dwg-parser",
  "dxf",
  "serde",
  "serde_json",

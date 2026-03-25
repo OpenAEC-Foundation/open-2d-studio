@@ -1,6 +1,13 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import path from 'path';
+import fs from 'fs';
+
+// Only alias @aec-ext if the extension project exists locally (dev mode)
+const aecExtPath = path.resolve(__dirname, '../open-2D-studio-AEC-extension/src');
+const aecExtAlias = fs.existsSync(aecExtPath)
+  ? { '@aec-ext': aecExtPath }
+  : {};
 
 // https://vitejs.dev/config/
 export default defineConfig({
@@ -9,7 +16,7 @@ export default defineConfig({
     alias: {
       '@': path.resolve(__dirname, './src'),
       'open-2d-studio': path.resolve(__dirname, './src/extensionSdk'),
-      '@aec-ext': path.resolve(__dirname, '../open-2D-studio-AEC-extension/src'),
+      ...aecExtAlias,
     },
   },
   // Prevent vite from obscuring rust errors
@@ -37,5 +44,9 @@ export default defineConfig({
     // Produce sourcemaps for debug builds
     sourcemap: !!process.env.TAURI_DEBUG,
     chunkSizeWarningLimit: 2048,
+    rollupOptions: {
+      // @aec-ext is an optional dev-only extension loaded dynamically
+      external: (id) => id.startsWith('@aec-ext'),
+    },
   },
 });

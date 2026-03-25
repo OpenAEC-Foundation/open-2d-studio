@@ -2,6 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::process::Command;
 
+use crate::dwg_parser::{DwgParser};
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct SaveResult {
     success: bool,
@@ -168,6 +170,91 @@ pub fn import_dxf(path: String) -> LoadResult {
             success: false,
             data: None,
             message: format!("Failed to serialize shapes: {}", e),
+        },
+    }
+}
+
+/// Import drawing from DWG format
+#[tauri::command]
+pub fn import_dwg(path: String) -> LoadResult {
+    let data = match fs::read(&path) {
+        Ok(d) => d,
+        Err(e) => {
+            return LoadResult {
+                success: false,
+                data: None,
+                message: format!("Failed to read DWG file: {}", e),
+            }
+        }
+    };
+
+    let parse_result = std::panic::catch_unwind(|| {
+        let mut parser = DwgParser::new();
+        parser.parse(&data)
+    });
+
+    let dwg_file = match parse_result {
+        Ok(Ok(f)) => f,
+        Ok(Err(e)) => {
+            return LoadResult {
+                success: false,
+                data: None,
+                message: format!("Failed to parse DWG file: {}", e),
+            }
+        }
+        Err(_) => {
+            return LoadResult {
+                success: false,
+                data: None,
+                message: "DWG parser crashed (unsupported file format or corrupted file)".to_string(),
+            }
+        }
+    };
+
+    // Manually build JSON since DwgFile does not derive Serialize
+    let objects_json: Vec<serde_json::Value> = dwg_file
+        .objects
+        .iter()
+        .filter(|obj| obj.is_entity)
+        .map(|obj| {
+            let mut map = serde_json::Map::new();
+            map.insert("type_name".to_string(), serde_json::Value::String(obj.type_name.clone()));
+            map.insert("data".to_string(), serde_json::Value::Object(
+                obj.data.iter().map(|(k, v)| (k.clone(), v.clone())).collect()
+            ));
+            map.insert("is_entity".to_string(), serde_json::Value::Bool(obj.is_entity));
+            map.insert("handle".to_string(), serde_json::json!(obj.handle));
+
+            // Include layer handle reference if present
+            if let Some(layer_handle) = obj.handle_refs.layer {
+                map.insert("layer_handle".to_string(), serde_json::json!(layer_handle));
+            }
+
+            // Try to extract layer name from entity data if available
+            if let Some(layer_val) = obj.data.get("layer") {
+                map.insert("layer".to_string(), layer_val.clone());
+            }
+
+            serde_json::Value::Object(map)
+        })
+        .collect();
+
+    let result = serde_json::json!({
+        "version": dwg_file.version,
+        "version_code": dwg_file.version_code,
+        "objects": objects_json,
+    });
+
+    match serde_json::to_string(&result) {
+        Ok(json) => LoadResult {
+            success: true,
+            data: Some(json),
+            message: "DWG imported successfully".to_string(),
+        },
+        Err(e) => LoadResult {
+            success: false,
+            data: None,
+            message: format!("Failed to serialize DWG data: {}", e),
         },
     }
 }

@@ -1,6 +1,6 @@
 [package]
 name = "open-2d-studio"
-version = "0.32.0"
+version = "0.33.0"
 description = "A cross-platform 2D CAD application"
 authors = ["Open 2D Studio Contributors"]
 license = "LGPL-3.0-or-later"
@@ -29,6 +29,7 @@ clap = { version = "4", features = ["derive"] }
 tauri-plugin-http = "2"
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+dwg-parser = { path = "dwg-parser" }
 
 [features]
 default = ["custom-protocol"]

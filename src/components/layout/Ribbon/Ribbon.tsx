@@ -330,18 +330,19 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     { id: 'home', label: 'Home' },
     { id: 'modify', label: 'Modify' },
     { id: 'view', label: 'View' },
-    { id: 'ifc', label: 'IFC' },
   ];
+
+  const ifcTab: { id: RibbonTab; label: string } = { id: 'ifc', label: 'IFC' };
 
   const extTabs = extensionRibbonTabs
     .slice()
     .sort((a, b) => a.order - b.order)
     .map((t) => ({ id: t.id as RibbonTab, label: t.label, render: t.render }));
 
-  const tabs = [...builtInTabs, ...extTabs];
+  const tabs = [...builtInTabs, ...extTabs, ifcTab];
 
   // Helper: render extension buttons injected into a built-in tab
-  const builtInTabIds = new Set(builtInTabs.map((t) => t.id));
+  const builtInTabIds = new Set([...builtInTabs.map((t) => t.id), ifcTab.id]);
   const renderExtensionButtonsForTab = (tabId: string) => {
     const btns = extensionRibbonButtons.filter((b) => b.tab === tabId && builtInTabIds.has(b.tab));
     if (btns.length === 0) return null;
@@ -384,18 +385,21 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
         >
           File
         </button>
-        {tabs.map((tab) => (
-          <button
-            key={tab.id}
-            className={`ribbon-tab ${activeTab === tab.id ? 'active' : ''}`}
-            onClick={() => {
-              setActiveTab(tab.id);
-              setIfcDashboardVisible(tab.id === 'ifc');
-            }}
-          >
-            {tab.label}
-          </button>
-        ))}
+        {tabs.map((tab) => {
+          const isExtension = !builtInTabIds.has(tab.id);
+          return (
+            <button
+              key={tab.id}
+              className={`ribbon-tab ${activeTab === tab.id ? 'active' : ''}${isExtension ? ' extension' : ''}`}
+              onClick={() => {
+                setActiveTab(tab.id);
+                setIfcDashboardVisible(tab.id === 'ifc');
+              }}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
       </div>
 
       {/* Ribbon Content */}
