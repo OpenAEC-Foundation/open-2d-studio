@@ -9,7 +9,7 @@ on:
       version:
         description: 'Version tag (e.g., v1.0.0)'
         required: true
-        default: 'v0.32.0'
+        default: 'v0.35.0'
 
 jobs:
   create-release:
@@ -142,7 +142,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Sign Windows installer
-        uses: azure/trusted-signing-action@v0.5.0
+        uses: azure/trusted-signing-action@v1.2.0
         with:
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
