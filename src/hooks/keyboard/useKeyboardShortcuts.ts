@@ -1,7 +1,8 @@
 import { useEffect } from 'react';
 import { useAppStore } from '../../state/appStore';
-import { getShapeBounds } from '../../engine/geometry/GeometryUtils';
+import { getShapeBounds, screenToWorld } from '../../engine/geometry/GeometryUtils';
 import { findConnectedShapes } from '../../engine/geometry/ConnectedShapeDetection';
+import { offsetShape } from '../../engine/geometry/Modify';
 import { getNextSectionLabel } from '../drawing/useSectionCalloutDrawing';
 import type { Point, Shape } from '../../types/geometry';
 import { keyboardShortcutRegistry } from '../../engine/registry/KeyboardShortcutRegistry';
@@ -627,6 +628,18 @@ export function useKeyboardShortcuts() {
       if (key === 'tab' && !ctrl && !shift && activeTool === 'offset') {
         e.preventDefault();
         useAppStore.getState().toggleOffsetFlip();
+        // Immediately refresh the offset preview so the ghost flips without moving the mouse
+        const st = useAppStore.getState();
+        const worldPos = screenToWorld(st.mousePosition.x, st.mousePosition.y, st.viewport);
+        const hoveredShape = st.hoveredShapeId ? st.shapes.find(s => s.id === st.hoveredShapeId) : null;
+        if (hoveredShape) {
+          const result = offsetShape(hoveredShape, st.offsetDistance, worldPos, st.offsetFlipped);
+          if (result) {
+            st.setDrawingPreview({ type: 'modifyPreview', shapes: [result] });
+          } else {
+            st.setDrawingPreview(null);
+          }
+        }
         return;
       }
 

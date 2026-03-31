@@ -147,6 +147,7 @@ export const SNAP_COLORS: Record<SnapType, string> = {
   nearest: '#ff88ff',      // Pink
   grid: '#8888ff',         // Light blue
   origin: '#ff4444',       // Red
+  alignment: '#00cc88',    // Teal green
 };
 
 // Snap labels
@@ -161,6 +162,7 @@ export const SNAP_LABELS: Record<SnapType, string> = {
   nearest: 'Nearest',
   grid: 'Grid',
   origin: 'Origin',
+  alignment: 'Alignment',
 };
 
 // Line dash patterns (values in world/drawing units, e.g. mm)

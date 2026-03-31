@@ -290,6 +290,11 @@ export function useGlobalKeyboard() {
             e.preventDefault();
             toggleTerminal();
             break;
+
+          case 'k':
+            e.preventDefault();
+            useAppStore.getState().toggleCommandPalette();
+            break;
         }
       }
 

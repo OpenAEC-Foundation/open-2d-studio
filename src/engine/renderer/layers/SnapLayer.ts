@@ -120,6 +120,18 @@ export class SnapLayer extends BaseRenderer {
     ctx.lineTo(x + size / 2, y + size / 4);
   }
 
+  private pathAlignment(x: number, y: number, size: number): void {
+    // Three horizontal bars (alignment symbol)
+    const ctx = this.ctx;
+    ctx.beginPath();
+    ctx.moveTo(x - size / 2, y - size / 3);
+    ctx.lineTo(x + size / 2, y - size / 3);
+    ctx.moveTo(x - size / 2, y);
+    ctx.lineTo(x + size / 2, y);
+    ctx.moveTo(x - size / 2, y + size / 3);
+    ctx.lineTo(x + size / 2, y + size / 3);
+  }
+
   private pathDefault(x: number, y: number, size: number): void {
     // Small filled circle fallback
     const ctx = this.ctx;
@@ -144,6 +156,7 @@ export class SnapLayer extends BaseRenderer {
       case 'grid':           this.pathGrid(x, y, size); return true;
       case 'origin':         this.pathOrigin(x, y, size); return true;
       case 'parallel':       this.pathParallel(x, y, size); return true;
+      case 'alignment':      this.pathAlignment(x, y, size); return true;
       default:               this.pathDefault(x, y, size); return false;
     }
   }
@@ -202,6 +215,38 @@ export class SnapLayer extends BaseRenderer {
       ctx.lineWidth = 1.2 * invZoom;
       ctx.stroke();
     }
+
+    ctx.restore();
+  }
+
+  /**
+   * Draw alignment guide line (dashed line from source key point to snap point)
+   */
+  drawAlignmentGuide(snapPoint: SnapPoint, viewport: Viewport): void {
+    if (snapPoint.type !== 'alignment' || !snapPoint.alignmentSource) return;
+
+    const ctx = this.ctx;
+    const { point, alignmentSource } = snapPoint;
+
+    ctx.save();
+
+    const color = this.getSnapColor('alignment');
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1 / viewport.zoom;
+    ctx.setLineDash([6 / viewport.zoom, 4 / viewport.zoom]);
+    ctx.globalAlpha = 0.7;
+
+    ctx.beginPath();
+    ctx.moveTo(alignmentSource.x, alignmentSource.y);
+    ctx.lineTo(point.x, point.y);
+    ctx.stroke();
+
+    // Draw small circle at source key point
+    ctx.setLineDash([]);
+    ctx.globalAlpha = 0.5;
+    ctx.beginPath();
+    ctx.arc(alignmentSource.x, alignmentSource.y, 3 / viewport.zoom, 0, Math.PI * 2);
+    ctx.stroke();
 
     ctx.restore();
   }

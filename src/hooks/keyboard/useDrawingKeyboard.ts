@@ -88,6 +88,12 @@ export function useDrawingKeyboard() {
           return;
       }
 
+      // Prevent Tab from focusing interface fields when the dimension tool is active
+      if (e.key === 'Tab' && activeTool === 'dimension') {
+        e.preventDefault();
+        return;
+      }
+
       // Drawing-specific shortcuts - only when in drawing mode
       if (!isDrawing || drawingPoints.length === 0) return;
 

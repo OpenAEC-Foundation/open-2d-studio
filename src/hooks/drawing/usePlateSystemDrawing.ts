@@ -285,6 +285,15 @@ export function generatePlateSystemBeams(
     // Resolve profile preset for edge beams (when a standard profile is selected)
     const edgePreset = edgeProfile.profileId ? getPresetById(edgeProfile.profileId) : undefined;
 
+    // Pre-compute the offset centerline polygon by intersecting adjacent offset
+    // edges.  This ensures edge beams meet cleanly at corners without gaps or
+    // overlaps, regardless of the angle between adjacent edges.
+    const offsetCenterline = offsetPolygonPerEdge(
+      contourPoints,
+      contourPoints.map(() => halfEdgeW),
+      windSign,
+    );
+
     for (let i = 0; i < n; i++) {
       // Skip this edge if explicitly disabled
       if (edgeBeamEnabled && !edgeBeamEnabled[i]) continue;
@@ -295,21 +304,11 @@ export function generatePlateSystemBeams(
       const edgeBulge = contourBulges ? (contourBulges[i] ?? 0) : 0;
       const isArcEdge = Math.abs(edgeBulge) > 0.0001;
 
-      // For arc edges the inward normal is approximated from the chord;
-      // for straight edges it's exact.
-      const norm = inwardNormal(p1, p2, windSign);
-
-      // Edge beam start/end match the contour edge vertices,
-      // offset inward by half the edge width so the outer face
-      // aligns with the boundary.
-      const start: Point = {
-        x: p1.x + norm.x * halfEdgeW,
-        y: p1.y + norm.y * halfEdgeW,
-      };
-      const end: Point = {
-        x: p2.x + norm.x * halfEdgeW,
-        y: p2.y + norm.y * halfEdgeW,
-      };
+      // Use the pre-computed offset polygon vertices so that adjacent edge
+      // beams share the exact same corner point (the intersection of the two
+      // offset edges).  This eliminates gaps/overlaps at corners.
+      const start: Point = offsetCenterline[i];
+      const end: Point = offsetCenterline[j];
 
       // Compute edge direction angle so the beam profile is oriented along the edge
       const edgeAngle = Math.atan2(p2.y - p1.y, p2.x - p1.x);

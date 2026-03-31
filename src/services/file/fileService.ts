@@ -146,6 +146,7 @@ export const PROJECT_FILTER = {
 export const EXPORT_FILTERS = {
   svg: { name: 'SVG Vector Image', extensions: ['svg'] },
   dxf: { name: 'DXF', extensions: ['dxf'] },
+  dgn: { name: 'DGN (MicroStation Design)', extensions: ['dgn'] },
   ifc: { name: 'IFC4 (Industry Foundation Classes)', extensions: ['ifc'] },
   json: { name: 'JSON Data', extensions: ['json'] },
 };
@@ -516,7 +517,7 @@ export async function showExportDialog(
       const ext = filter.extensions[0];
       const mimeMap: Record<string, string> = {
         svg: 'image/svg+xml', dxf: 'application/dxf',
-        ifc: 'application/x-step', json: 'application/json',
+        dgn: 'application/octet-stream', ifc: 'application/x-step', json: 'application/json',
       };
       const handle = await window.showSaveFilePicker!({
         suggestedName: (defaultName || 'export') + '.' + ext,

@@ -361,6 +361,8 @@ export class DrawingRenderer extends BaseRenderer {
 
     // Draw snap point indicator (skip grid snaps - they're not useful to show)
     if (currentSnapPoint && currentSnapPoint.type !== 'grid') {
+      // Draw alignment guide line before the snap marker (so marker appears on top)
+      this.snapLayer.drawAlignmentGuide(currentSnapPoint, viewport);
       this.snapLayer.drawSnapIndicator(currentSnapPoint, viewport);
     }
 

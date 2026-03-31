@@ -1129,7 +1129,8 @@ export type SnapType =
   | 'parallel'
   | 'tangent'
   | 'nearest'
-  | 'origin';
+  | 'origin'
+  | 'alignment';
 
 export interface SnapPoint {
   point: Point;
@@ -1139,6 +1140,9 @@ export interface SnapPoint {
   pointIndex?: number;
   /** Angle of the source edge (for beams, lines) - used for perpendicular/parallel tracking */
   sourceAngle?: number;
+  /** For alignment snaps - the source key point we're aligned to and axis */
+  alignmentSource?: Point;
+  alignmentAxis?: 'horizontal' | 'vertical';
 }
 
 // Tool types

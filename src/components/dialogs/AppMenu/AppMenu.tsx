@@ -388,7 +388,7 @@ function AboutPanel() {
 }
 
 export function AppMenu({ isOpen, onClose, initialView, onOpenSheetTemplateImport }: AppMenuProps) {
-  const { handleNew, handleOpen, handleOpenPath, handleSave, handleSaveAs, handleExportSVG, handleExportDXF, handleExportIFC, handleExportJSON, handleImportDXF, handleImportDXFAsUnderlay, handlePrint, handleExit } = useFileOperations();
+  const { handleNew, handleOpen, handleOpenPath, handleSave, handleSaveAs, handleExportSVG, handleExportDXF, handleExportDGN, handleExportIFC, handleExportJSON, handleImportDXF, handleImportDXFAsUnderlay, handlePrint, handleExit } = useFileOperations();
   const [activeView, setActiveView] = useState<AppMenuView>('none');
   const extensionAppMenuPanels = useAppStore((s) => s.extensionAppMenuPanels);
   const setFeedbackDialogOpen = useAppStore((s) => s.setFeedbackDialogOpen);
@@ -657,6 +657,19 @@ export function AppMenu({ isOpen, onClose, initialView, onOpenSheetTemplateImpor
                 <div>
                   <div className="text-sm font-medium text-cad-text">DXF</div>
                   <div className="text-xs text-cad-text-muted mt-0.5">Drawing Exchange Format (.dxf)</div>
+                </div>
+              </button>
+              <button
+                className="flex items-center gap-4 px-5 py-4 rounded bg-cad-surface border border-cad-border hover:border-cad-border-light hover:bg-cad-hover transition-colors cursor-default text-left"
+                onClick={action(handleExportDGN)}
+              >
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" className="stroke-cad-text-dim" strokeWidth="2">
+                  <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+                  <polyline points="14 2 14 8 20 8"/>
+                </svg>
+                <div>
+                  <div className="text-sm font-medium text-cad-text">DGN</div>
+                  <div className="text-xs text-cad-text-muted mt-0.5">MicroStation Design File (.dgn)</div>
                 </div>
               </button>
               <button

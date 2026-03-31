@@ -1319,11 +1319,19 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         setActiveTool('select');
         // Clear any lingering snap/tracking indicators
         snapDetection.clearTracking();
+        return;
+      }
+
+      // Fallback: place 2D cursor at snapped position on right-click
+      // (select tool with nothing else to do)
+      if (editorMode === 'drawing') {
+        const snapResult = snapDetection.snapPoint(worldPos);
+        setCursor2D(snapResult.point);
       }
     },
     [editorMode, annotationEditing, shapeDrawing, activeTool, setActiveTool, snapDetection, modifyTools, setPrintDialogOpen,
      panZoom, viewport, findShapeAtPoint, parametricShapes, selectedShapeIds, explodeParametricShapes, addShapes,
-     pendingSection, clearPendingSection, setSectionPlacementPreview, aecTools, leaderDrawing]
+     pendingSection, clearPendingSection, setSectionPlacementPreview, aecTools, leaderDrawing, setCursor2D]
   );
 
   /**

@@ -1005,6 +1005,92 @@ export function getShapeSnapPoints(
   return snapPoints;
 }
 
+/**
+ * Get alignment snap points - finds horizontal/vertical alignment with key points of other shapes.
+ * Returns snap points where the cursor aligns horizontally or vertically with endpoints,
+ * midpoints, or centers of existing shapes.
+ */
+function getAlignmentSnapPoints(
+  cursor: Point,
+  shapes: Shape[],
+  tolerance: number,
+): SnapPoint[] {
+  const alignmentSnaps: SnapPoint[] = [];
+
+  // Collect all key points from all shapes (endpoints, midpoints, centers)
+  const keyPoints: { point: Point; shapeId: string }[] = [];
+
+  for (const shape of shapes) {
+    if (!shape.visible) continue;
+
+    // Get endpoint/midpoint/center snap points from each shape (reuse existing logic)
+    const shapeSnaps = getShapeSnapPoints(shape, ['endpoint', 'midpoint', 'center'], cursor);
+    for (const snap of shapeSnaps) {
+      keyPoints.push({ point: snap.point, shapeId: snap.sourceShapeId || shape.id });
+    }
+  }
+
+  // For each key point, check horizontal and vertical alignment
+  let bestH: { dist: number; snap: SnapPoint } | null = null;
+  let bestV: { dist: number; snap: SnapPoint } | null = null;
+
+  for (const kp of keyPoints) {
+    // Horizontal alignment: same Y within tolerance
+    const dy = Math.abs(cursor.y - kp.point.y);
+    if (dy <= tolerance && dy > 0.01) {
+      // Snap cursor Y to key point Y, keep cursor X
+      if (!bestH || dy < bestH.dist) {
+        bestH = {
+          dist: dy,
+          snap: {
+            point: { x: cursor.x, y: kp.point.y },
+            type: 'alignment',
+            sourceShapeId: kp.shapeId,
+            alignmentSource: kp.point,
+            alignmentAxis: 'horizontal',
+          },
+        };
+      }
+    }
+
+    // Vertical alignment: same X within tolerance
+    const dx = Math.abs(cursor.x - kp.point.x);
+    if (dx <= tolerance && dx > 0.01) {
+      // Snap cursor X to key point X, keep cursor Y
+      if (!bestV || dx < bestV.dist) {
+        bestV = {
+          dist: dx,
+          snap: {
+            point: { x: kp.point.x, y: cursor.y },
+            type: 'alignment',
+            sourceShapeId: kp.shapeId,
+            alignmentSource: kp.point,
+            alignmentAxis: 'vertical',
+          },
+        };
+      }
+    }
+  }
+
+  // If both horizontal and vertical alignment are found, snap to the intersection
+  if (bestH && bestV) {
+    // Combined alignment - snap to exact intersection of both guides
+    alignmentSnaps.push({
+      point: { x: bestV.snap.point.x, y: bestH.snap.point.y },
+      type: 'alignment',
+      sourceShapeId: `${bestH.snap.sourceShapeId},${bestV.snap.sourceShapeId}`,
+      alignmentSource: bestH.snap.alignmentSource,
+      alignmentAxis: 'horizontal', // Primary axis for label
+    });
+  } else if (bestH) {
+    alignmentSnaps.push(bestH.snap);
+  } else if (bestV) {
+    alignmentSnaps.push(bestV.snap);
+  }
+
+  return alignmentSnaps;
+}
+
 // Find the nearest snap point within tolerance
 export function findNearestSnapPoint(
   cursor: Point,
@@ -1045,6 +1131,11 @@ export function findNearestSnapPoint(
     snapPoints.push(...getIntersectionPoints(shapes));
   }
 
+  // Get alignment snap points if enabled
+  if (activeSnaps.includes('alignment')) {
+    snapPoints.push(...getAlignmentSnapPoints(cursor, shapes, tolerance));
+  }
+
   // Find the nearest snap point within tolerance
   let nearestSnap: SnapPoint | null = null;
   let nearestDistance = tolerance;
@@ -1059,8 +1150,9 @@ export function findNearestSnapPoint(
     parallel: 6,
     tangent: 7,
     nearest: 8,
-    origin: 9,
-    grid: 10,
+    alignment: 9,
+    origin: 10,
+    grid: 11,
   };
 
   snapPoints.forEach((snap) => {
@@ -1102,6 +1194,8 @@ export function getSnapSymbol(type: SnapType): string {
       return '+';
     case 'origin':
       return '⊕';
+    case 'alignment':
+      return '≡';
     default:
       return '•';
   }
@@ -1130,6 +1224,8 @@ export function getSnapTypeName(type: SnapType): string {
       return 'Grid';
     case 'origin':
       return 'Origin';
+    case 'alignment':
+      return 'Alignment';
     default:
       return type;
   }

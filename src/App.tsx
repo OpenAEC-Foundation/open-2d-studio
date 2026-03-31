@@ -5,6 +5,7 @@ import { getSetting, setSetting } from './utils/settings';
 // Layout components
 import { TitleBar } from './components/layout/TitleBar/TitleBar';
 import { Ribbon } from './components/layout/Ribbon/Ribbon';
+import { CommandPalette } from './components/layout/CommandPalette/CommandPalette';
 import { StatusBar } from './components/layout/StatusBar/StatusBar';
 import { FileTabBar } from './components/layout/FileTabBar/FileTabBar';
 
@@ -239,7 +240,7 @@ function App() {
         getSetting<number>('gridSize', 10),
         getSetting<boolean>('gridVisible', false),
         getSetting<boolean>('snapEnabled', true),
-        getSetting<string[]>('activeSnaps', ['endpoint', 'midpoint', 'center', 'intersection', 'origin']),
+        getSetting<string[]>('activeSnaps', ['endpoint', 'midpoint', 'center', 'intersection', 'origin', 'alignment']),
         getSetting<number>('snapTolerance', 10),
         getSetting<boolean>('trackingEnabled', true),
         getSetting<boolean>('polarTrackingEnabled', true),
@@ -446,6 +447,8 @@ function App() {
     pdfUnderlayFileName,
     closePdfUnderlayDialog,
     activeRibbonTab,
+    commandPaletteOpen,
+    setCommandPaletteOpen,
   } = useAppStore();
 
   return (
@@ -709,6 +712,12 @@ function App() {
             console.error('Failed to render PDF page for underlay:', err);
           }
         }}
+      />
+
+      {/* Command Palette (Ctrl+K) */}
+      <CommandPalette
+        isOpen={commandPaletteOpen}
+        onClose={() => setCommandPaletteOpen(false)}
       />
 
       {/* Extension components */}

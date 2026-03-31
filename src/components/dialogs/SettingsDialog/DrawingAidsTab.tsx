@@ -18,6 +18,7 @@ const snapTypes: SnapTypeOption[] = [
   { type: 'parallel', label: 'Parallel', description: 'Snap parallel to lines', symbol: '\u2225', color: '#ff8800' },
   { type: 'tangent', label: 'Tangent', description: 'Snap tangent to circles and arcs', symbol: '\u25CE', color: '#88ff00' },
   { type: 'nearest', label: 'Nearest', description: 'Snap to nearest point on an object', symbol: '\u25C7', color: '#ff88ff' },
+  { type: 'alignment', label: 'Alignment', description: 'Snap to horizontal/vertical alignment with other shapes\u0027 key points', symbol: '\u2261', color: '#00cc88' },
   { type: 'origin', label: 'Origin', description: 'Snap to the coordinate origin (0,0)', symbol: '\u2295', color: '#ff4444' },
   { type: 'grid', label: 'Grid', description: 'Snap to grid intersections', symbol: '+', color: '#8888ff' },
 ];

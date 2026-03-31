@@ -24,6 +24,7 @@ import {
   type ProjectFile,
 } from '../../services/file/fileService';
 import { generateIFC } from '../../services/ifc/ifcGenerator';
+import { exportToDGN } from '../../services/export/dgnExport';
 import { addRecentFile } from '../../services/file/recentFiles';
 import { logger } from '../../services/log/logService';
 import { DEFAULT_PROJECT_INFO } from '../../types/projectInfo';
@@ -391,6 +392,8 @@ export function useFileOperations() {
         content = result.content;
       } else if (extension === 'dxf') {
         content = exportToDXF(s.shapes, s.unitSettings);
+      } else if (extension === 'dgn') {
+        content = exportToDGN(s.shapes, s.unitSettings);
       } else if (extension === 'json') {
         content = JSON.stringify({ shapes: s.shapes, layers: s.layers }, null, 2);
       } else {
@@ -458,6 +461,17 @@ export function useFileOperations() {
       await writeTextFileUniversal(filePath, JSON.stringify({ shapes: s.shapes, layers: s.layers }, null, 2), 'application/json');
       await showInfo(`Exported successfully to ${filePath}`);
     } catch (err) { await showError(`Failed to export: ${err}`); }
+  }, []);
+
+  const handleExportDGN = useCallback(async () => {
+    const s = useAppStore.getState();
+    if (s.shapes.length === 0) { await showInfo('Nothing to export. Draw some shapes first.'); return; }
+    const filePath = await showExportDialog('dgn', s.projectName);
+    if (!filePath) return;
+    try {
+      await writeTextFileUniversal(filePath, exportToDGN(s.shapes, s.unitSettings), 'application/octet-stream');
+      await showInfo(`Exported DGN successfully to ${filePath}\n\nNote: This file uses DXF format internally. MicroStation reads it natively.`);
+    } catch (err) { await showError(`Failed to export DGN: ${err}`); }
   }, []);
 
   const handleImportDXF = useCallback(async () => {
@@ -705,6 +719,9 @@ export function useFileOperations() {
       // DXF
       files.push({ name: `${name}.dxf`, content: exportToDXF(s.shapes, s.unitSettings) });
 
+      // DGN (DXF-based, for MicroStation interoperability)
+      files.push({ name: `${name}.dgn`, content: exportToDGN(s.shapes, s.unitSettings) });
+
       // IFC (parametric)
       const ifcResult = generateIFC(s.shapes, s.wallTypes, s.slabTypes, s.projectStructure, s.drawings, s.pileTypes);
       files.push({ name: `${name}.ifc`, content: ifcResult.content });
@@ -734,5 +751,5 @@ export function useFileOperations() {
     }
   }, []);
 
-  return { handleNew, handleOpen, handleOpenPath, handleSave, handleSaveAs, handleExport, handleExportSVG, handleExportDXF, handleExportIFC, handleExportJSON, handleExportToFolder, handleImportDXF, handleImportDXFAsUnderlay, handlePrint, handleExit };
+  return { handleNew, handleOpen, handleOpenPath, handleSave, handleSaveAs, handleExport, handleExportSVG, handleExportDXF, handleExportDGN, handleExportIFC, handleExportJSON, handleExportToFolder, handleImportDXF, handleImportDXFAsUnderlay, handlePrint, handleExit };
 }
