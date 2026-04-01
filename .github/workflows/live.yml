@@ -22,7 +22,7 @@ jobs:
       deploy_user: ${{ vars.DEPLOY_USER }}
       deploy_path: /var/www/open-2d-studio.open-aec.com
       node_version: "22"
-      install_command: npm ci
+      install_command: npm install
       build_command: npm run build
       deploy_source: dist
     secrets:
