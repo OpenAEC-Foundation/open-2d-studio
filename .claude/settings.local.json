@@ -14,7 +14,20 @@
       "Bash(ls \"C:/Program Files \\(x86\\)/Microsoft Visual Studio/2022/\")",
       "Bash(ls \"C:/Program Files \\(x86\\)/Microsoft Visual Studio/2019/\")",
       "Bash(find:*)",
-      "Bash(ls:*)"
+      "Bash(ls:*)",
+      "mcp__Claude_Preview__preview_start",
+      "Bash(netstat -ano)",
+      "Bash(grep -E 300[0-9])",
+      "Bash(powershell -c \"netstat -ano | Select-String ''''LISTENING'''' | Select-String ''''300''''\")",
+      "Bash(powershell -c \"netstat -ano | Select-String ''LISTENING'' | Select-String ''300''\")",
+      "Bash(gh issue:*)",
+      "Bash(xargs grep:*)",
+      "Bash(xargs -I {} find {} -type f -name \"*.yml\" -o -name \"*.yaml\")",
+      "Bash(npx tsc:*)",
+      "Bash(npx vitest:*)",
+      "Bash(git status:*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   },
   "enabledMcpjsonServers": [
