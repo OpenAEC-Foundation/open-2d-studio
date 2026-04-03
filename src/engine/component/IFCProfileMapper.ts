@@ -51,9 +51,7 @@ const DEFAULT_STYLE: ShapeStyle = {
   strokeColor: '#e5e7eb',
   strokeWidth: 1,
   fillColor: 'none',
-  fillOpacity: 0,
-  strokeOpacity: 1,
-  lineType: 'solid',
+  lineStyle: 'solid',
 };
 
 // ── Helpers ────────────────────────────────────────────────
@@ -89,7 +87,7 @@ const PROFILE_SCHEMAS: IFCProfileSchema[] = [
       XDim: 'width',
       YDim: 'height',
     },
-    geometryFactory: (p) => [
+    geometryFactory: (_p) => [
       {
         id: nextId('rect'),
         type: 'parametric-rectangle',
@@ -116,7 +114,7 @@ const PROFILE_SCHEMAS: IFCProfileSchema[] = [
     parameterMapping: {
       Radius: 'radius',
     },
-    geometryFactory: (p) => [
+    geometryFactory: (_p) => [
       {
         id: nextId('circ'),
         type: 'parametric-circle',
@@ -207,8 +205,7 @@ const PROFILE_SCHEMAS: IFCProfileSchema[] = [
       Thickness: 'thickness',
       FilletRadius: 'filletRadius',
     },
-    geometryFactory: (p) => {
-      const { depth = 100, width = 100, thickness = 10 } = p;
+    geometryFactory: (_p) => {
       const vertexParamIds = [
         { xParamId: 'lshape_vx0', yParamId: 'lshape_vy0' },
         { xParamId: 'lshape_vx1', yParamId: 'lshape_vy1' },
@@ -249,7 +246,7 @@ const PROFILE_SCHEMAS: IFCProfileSchema[] = [
       WebThickness: 'webThickness',
       FlangeThickness: 'flangeThickness',
     },
-    geometryFactory: (p) => {
+    geometryFactory: (_p) => {
       const vertexParamIds = Array.from({ length: 8 }, (_, i) => ({
         xParamId: `tshape_vx${i}`,
         yParamId: `tshape_vy${i}`,
@@ -286,7 +283,7 @@ const PROFILE_SCHEMAS: IFCProfileSchema[] = [
       WebThickness: 'webThickness',
       FlangeThickness: 'flangeThickness',
     },
-    geometryFactory: (p) => {
+    geometryFactory: (_p) => {
       const vertexParamIds = Array.from({ length: 8 }, (_, i) => ({
         xParamId: `ushape_vx${i}`,
         yParamId: `ushape_vy${i}`,
@@ -321,7 +318,7 @@ const PROFILE_SCHEMAS: IFCProfileSchema[] = [
       YDim: 'height',
       WallThickness: 'wallThickness',
     },
-    geometryFactory: (p) => {
+    geometryFactory: (_p) => {
       // Two rectangles: outer and inner
       const outerGeom: ComponentGeometryElement = {
         id: nextId('rhs_outer'),
@@ -364,7 +361,7 @@ const PROFILE_SCHEMAS: IFCProfileSchema[] = [
       Radius: 'radius',
       WallThickness: 'wallThickness',
     },
-    geometryFactory: (p) => {
+    geometryFactory: (_p) => {
       const outer: ComponentGeometryElement = {
         id: nextId('chs_outer'),
         type: 'parametric-circle',

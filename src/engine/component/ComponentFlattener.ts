@@ -341,7 +341,7 @@ function flattenText(
     bold: false,
     italic: false,
     underline: false,
-    color: element.style.color ?? '#000000',
+    color: element.style.strokeColor ?? '#000000',
     lineHeight: 1.2,
   } as Shape;
 

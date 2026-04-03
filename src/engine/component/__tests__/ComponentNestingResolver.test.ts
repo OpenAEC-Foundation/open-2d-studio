@@ -16,7 +16,7 @@ function makeDef(
     createdAt: 0,
     updatedAt: 0,
     parameters: [],
-    constraintGraph: { constraints: [], variables: [] },
+    constraintGraph: { parameters: [], vertices: [], edges: [], constraintGraph: { nodes: {}, solveOrder: [], globalParameters: {}, isDirty: false } },
     representations: [],
     nestedComponents: nestedIds.map<NestedComponentRef>((nid, i) => ({
       id: `ref-${id}-${nid}-${i}`,

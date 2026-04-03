@@ -1,0 +1,142 @@
+<h2>Formula Engine vs Node-Based Editor</h2>
+<p class="subtitle">Twee fundamenteel verschillende paradigma's voor parametrisch ontwerp</p>
+
+<div class="split">
+  <div class="mockup">
+    <div class="mockup-header">Formula-based (huidige richting)</div>
+    <div class="mockup-body" style="padding: 16px; font-family: monospace; font-size: 13px; background: #1e1e2e; color: #cdd6f4;">
+      <div style="margin-bottom: 12px; color: #a6adc8;">// I-Profiel parameters</div>
+      <div style="margin-bottom: 4px;"><span style="color:#89b4fa;">height</span> = <span style="color:#fab387;">300</span></div>
+      <div style="margin-bottom: 4px;"><span style="color:#89b4fa;">flangeWidth</span> = <span style="color:#fab387;">height * 0.5</span></div>
+      <div style="margin-bottom: 4px;"><span style="color:#89b4fa;">webThick</span> = <span style="color:#a6e3a1;">max</span>(<span style="color:#fab387;">8</span>, height / <span style="color:#fab387;">40</span>)</div>
+      <div style="margin-bottom: 4px;"><span style="color:#89b4fa;">flangeThick</span> = <span style="color:#fab387;">webThick * 1.5</span></div>
+      <div style="margin-bottom: 4px;"><span style="color:#89b4fa;">radius</span> = <span style="color:#a6e3a1;">if</span>(height > <span style="color:#fab387;">200</span>, <span style="color:#fab387;">12</span>, <span style="color:#fab387;">8</span>)</div>
+      <div style="margin-bottom: 12px;"><span style="color:#89b4fa;">area</span> = <span style="color:#fab387;">2 * flangeWidth * flangeThick + (height - 2*flangeThick) * webThick</span></div>
+      <div style="color: #a6adc8;">// Cross-object</div>
+      <div><span style="color:#89b4fa;">beamOffset</span> = <span style="color:#f38ba8;">@Kolom1</span>.width / <span style="color:#fab387;">2</span></div>
+    </div>
+  </div>
+  <div class="mockup">
+    <div class="mockup-header">Node-based (Blender Geometry Nodes stijl)</div>
+    <div class="mockup-body" style="padding: 16px; background: #1e1e2e; color: #cdd6f4; font-size: 12px;">
+      <div style="display: flex; gap: 12px; flex-wrap: wrap;">
+        <div style="background: #313244; border-radius: 8px; padding: 8px 12px; border-left: 3px solid #89b4fa; min-width: 100px;">
+          <div style="color: #89b4fa; font-size: 10px; margin-bottom: 4px;">INPUT</div>
+          <div>height: 300</div>
+          <div style="color:#6c7086; font-size:10px;">ratio: 0.5</div>
+        </div>
+        <div style="background: #313244; border-radius: 8px; padding: 8px 12px; border-left: 3px solid #a6e3a1; min-width: 100px;">
+          <div style="color: #a6e3a1; font-size: 10px; margin-bottom: 4px;">MATH</div>
+          <div>Multiply</div>
+          <div style="color:#6c7086; font-size:10px;">height * ratio</div>
+        </div>
+        <div style="background: #313244; border-radius: 8px; padding: 8px 12px; border-left: 3px solid #f9e2af; min-width: 100px;">
+          <div style="color: #f9e2af; font-size: 10px; margin-bottom: 4px;">PROFILE</div>
+          <div>I-Beam</div>
+          <div style="color:#6c7086; font-size:10px;">h, w, tw, tf, r</div>
+        </div>
+        <div style="background: #313244; border-radius: 8px; padding: 8px 12px; border-left: 3px solid #f38ba8; min-width: 100px;">
+          <div style="color: #f38ba8; font-size: 10px; margin-bottom: 4px;">REFERENCE</div>
+          <div>@Kolom1</div>
+          <div style="color:#6c7086; font-size:10px;">.width</div>
+        </div>
+        <div style="background: #313244; border-radius: 8px; padding: 8px 12px; border-left: 3px solid #cba6f7; min-width: 100px;">
+          <div style="color: #cba6f7; font-size: 10px; margin-bottom: 4px;">OUTPUT</div>
+          <div>Geometry</div>
+          <div style="color:#6c7086; font-size:10px;">+ Transform</div>
+        </div>
+      </div>
+      <div style="margin-top: 16px; color: #6c7086; font-size: 11px;">
+        Nodes verbonden met visuele links &bull; Drag & drop &bull; Groepeerbaar tot herbruikbare node groups
+      </div>
+    </div>
+  </div>
+</div>
+
+<div style="height: 24px;"></div>
+
+<div class="options">
+  <div class="option" data-choice="formula" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Formula Engine + Properties Panel</h3>
+      <p>Formules in een tekstveld per parameter. Krachtig, compact, snel te gebruiken voor ervaren gebruikers.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Voordelen</h4>
+          <ul>
+            <li>Snel te bouwen (weken, niet maanden)</li>
+            <li>Past in bestaand properties panel</li>
+            <li>Lage leercurve voor simpele cases</li>
+            <li>Compacte representatie, makkelijk te serialiseren</li>
+            <li>Bestaande parametric types direct migreerbaar</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Nadelen</h4>
+          <ul>
+            <li>Complexe logica wordt onleesbaar in tekst</li>
+            <li>Geen visuele data-flow overzicht</li>
+            <li>Minder aantrekkelijk / modern</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="nodes" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Full Node-Based Editor</h3>
+      <p>Visuele node graph zoals Blender Geometry Nodes. Nodes voor input, math, geometry, output. Verbind met links.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Voordelen</h4>
+          <ul>
+            <li>Visueel overzicht van de volledige data-flow</li>
+            <li>Complexe logica blijft begrijpelijk</li>
+            <li>Zeer uitbreidbaar (nieuwe node types toevoegen)</li>
+            <li>Modern, aantrekkelijk voor gebruikers</li>
+            <li>Node groups = herbruikbare componenten</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Nadelen</h4>
+          <ul>
+            <li>Enorm veel UI-werk (node canvas, links, zoom, pan, minimap)</li>
+            <li>3-5x meer ontwikkeltijd dan formules</li>
+            <li>Overkill voor simpele parameter-aanpassingen</li>
+            <li>Grotere state footprint per object</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Hybrid: Formula Engine nu, Node Editor later</h3>
+      <p>Bouw de constraint graph engine met formules als fase 1. De DAG die je toch al bouwt IS de node graph — je voegt later alleen de visuele node UI toe als frontend.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Voordelen</h4>
+          <ul>
+            <li>Snel werkend systeem (fase 1 = formules)</li>
+            <li>De engine is al node-compatibel (DAG = node graph)</li>
+            <li>Node UI kan later zonder engine-rewrite</li>
+            <li>Gebruikers kunnen al parametrisch werken tijdens node UI-ontwikkeling</li>
+            <li>Risicospreiding: engine bewezen voordat UI-investering</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Nadelen</h4>
+          <ul>
+            <li>Node UI is alsnog veel werk in fase 2</li>
+            <li>Moet bij engine-ontwerp al rekening houden met node-compatibiliteit</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>

@@ -9,13 +9,10 @@ import type { ShapeStyle } from '../../../types/geometry';
 // ── Helpers ──────────────────────────────────────────────────
 
 const defaultStyle: ShapeStyle = {
-  color: '#000000',
-  lineWeight: 1,
+  strokeColor: '#000000',
+  strokeWidth: 1,
   lineStyle: 'solid',
-  opacity: 1,
 };
-
-const noTransform = { position: { x: 0, y: 0 }, rotation: 0, scale: 1 };
 
 function makeRep(elements: ComponentGeometryElement[]): ComponentRepresentation {
   return {

@@ -1,0 +1,85 @@
+<h2>Architectuur-benaderingen: Parametric Constraint Engine</h2>
+<p class="subtitle">Kies de aanpak die het beste past bij Open 2D Studio</p>
+
+<div class="options">
+  <div class="option" data-choice="a" onclick="toggleSelect(this)">
+    <div class="letter">A</div>
+    <div class="content">
+      <h3>Constraint Graph Engine (Aanbevolen)</h3>
+      <p>Een <strong>Directed Acyclic Graph (DAG)</strong> als kern. Elke parameter is een node, elke formule/constraint is een edge. Topologische sort bepaalt de solve-volgorde. Circulaire afhankelijkheden worden geblokkeerd bij invoer.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Voordelen</h4>
+          <ul>
+            <li>Bewezen patroon (FreeCAD, SolveSpace, Fusion 360)</li>
+            <li>Incrementeel updaten: alleen downstream nodes herberekenen</li>
+            <li>Dependency graph direct bruikbaar als debug/visualisatie tool</li>
+            <li>Cross-object referenties (@Object.param) passen er natuurlijk in</li>
+            <li>Past bij bestaande ParameterDefinition.dependencies veld</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Nadelen</h4>
+          <ul>
+            <li>Graph-datastructuur toevoegen aan state</li>
+            <li>Formule-parser nodig (expressie-evaluator)</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="b" onclick="toggleSelect(this)">
+    <div class="letter">B</div>
+    <div class="content">
+      <h3>Spreadsheet Model</h3>
+      <p>Parameters als cellen in een spreadsheet. Formules verwijzen naar andere cellen via adressen. Reactive herberekening bij wijziging. Vergelijkbaar met hoe Excel werkt.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Voordelen</h4>
+          <ul>
+            <li>Zeer intuïtief voor gebruikers (iedereen kent Excel)</li>
+            <li>Formule-syntax is bekend (=A1*2)</li>
+            <li>Flat data model, makkelijk te serialiseren</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Nadelen</h4>
+          <ul>
+            <li>Minder geschikt voor geometrische constraints op edges/vertices</li>
+            <li>Cross-object referenties worden omslachtig (SheetName!Cell)</li>
+            <li>Mismatch met bestaande type-gebaseerde architectuur</li>
+            <li>Moeilijker te visualiseren als dependency graph</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="option" data-choice="c" onclick="toggleSelect(this)">
+    <div class="letter">C</div>
+    <div class="content">
+      <h3>Entity-Component Constraints</h3>
+      <p>ECS-achtig: shapes zijn entities, parameters en constraints zijn components. Een constraint solver system loopt over alle constraint-components en resolved ze. Zeer modulair.</p>
+      <div class="pros-cons">
+        <div class="pros">
+          <h4>Voordelen</h4>
+          <ul>
+            <li>Zeer modulair en uitbreidbaar</li>
+            <li>Makkelijk nieuwe constraint-types toevoegen</li>
+            <li>Past goed bij een plugin-architectuur</li>
+          </ul>
+        </div>
+        <div class="cons">
+          <h4>Nadelen</h4>
+          <ul>
+            <li>Grote architectuurwijziging nodig (huidige code is niet ECS)</li>
+            <li>Overhead voor een 2D CAD applicatie</li>
+            <li>Complexer dan nodig voor fase 1</li>
+            <li>Lastige migratie van bestaande ParametricShape types</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
