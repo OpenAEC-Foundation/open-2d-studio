@@ -132,7 +132,7 @@ export function parse(input: string): ASTNode {
   // Level 7: unary - and !
   function parseUnary(): ASTNode {
     if (peek().type === 'operator' && peek().value === '-') {
-      const t = advance();
+      advance();
       const operand = parseUnary();
       return { kind: 'unary', operator: '-', operand };
     }
