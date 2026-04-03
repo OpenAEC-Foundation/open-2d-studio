@@ -43,6 +43,7 @@ const CATEGORY_LABELS: Record<ShapeType, string> = {
   'foundation-zone': 'Foundation Zones',
   'block-instance': 'Block Instances',
   rebar: 'Rebar',
+  'component-instance': 'Components',
 };
 
 // Singular labels for count = 1
@@ -78,6 +79,7 @@ const CATEGORY_LABELS_SINGULAR: Record<ShapeType, string> = {
   'foundation-zone': 'Foundation Zone',
   'block-instance': 'Block Instance',
   rebar: 'Rebar',
+  'component-instance': 'Component',
 };
 
 // Preferred display order for categories
