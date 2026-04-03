@@ -10,9 +10,18 @@ import { COLORS } from '../types';
 import type { ParametricShape, ProfileParametricShape } from '../../../types/parametric';
 import { CAD_DEFAULT_FONT } from '../../../constants/cadDefaults';
 import { PROFILE_TEMPLATES } from '../../../services/parametric/profileTemplates';
+import { ConstraintLayer } from '../layers/ConstraintLayer';
 
 export class ParametricRenderer extends BaseRenderer {
   private _showLineweight: boolean = true;
+  private constraintLayer: ConstraintLayer | null = null;
+
+  /**
+   * Attach a ConstraintLayer used to draw constraint overlays on selected shapes.
+   */
+  setConstraintLayer(layer: ConstraintLayer): void {
+    this.constraintLayer = layer;
+  }
 
   /**
    * Set whether to display actual line weights (false = all lines 1px thin)
@@ -128,6 +137,16 @@ export class ParametricRenderer extends BaseRenderer {
     // Draw selection handles if selected
     if (isSelected) {
       this.drawParametricHandles(shape);
+    }
+
+    // Draw constraint overlay if selected and shape has a constraint graph
+    if (isSelected && shape.constraintGraph && this.constraintLayer) {
+      this.constraintLayer.drawConstraintOverlay(
+        shape.constraintGraph,
+        shape.position,
+        shape.rotation,
+        shape.scale,
+      );
     }
 
     ctx.restore();
