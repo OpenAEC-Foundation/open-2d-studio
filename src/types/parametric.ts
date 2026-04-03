@@ -12,6 +12,7 @@
  */
 
 import type { Point, ShapeStyle } from './geometry';
+import type { ShapeConstraintGraph } from './constraints';
 
 // ============================================================================
 // Parameter System
@@ -213,6 +214,8 @@ export interface BaseParametricShape {
   scale: number;
   /** Whether this shape has been exploded into regular shapes */
   exploded?: boolean;
+  /** Constraint graph for parametric constraint engine */
+  constraintGraph?: ShapeConstraintGraph;
   /**
    * Metadata for future extensibility
    * Can store constraint info, relationships, custom data
