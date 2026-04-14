@@ -240,7 +240,7 @@ function App() {
         getSetting<number>('gridSize', 10),
         getSetting<boolean>('gridVisible', false),
         getSetting<boolean>('snapEnabled', true),
-        getSetting<string[]>('activeSnaps', ['endpoint', 'midpoint', 'center', 'intersection', 'origin', 'alignment']),
+        getSetting<string[]>('activeSnaps', ['endpoint', 'midpoint', 'center', 'intersection', 'origin']),
         getSetting<number>('snapTolerance', 10),
         getSetting<boolean>('trackingEnabled', true),
         getSetting<boolean>('polarTrackingEnabled', true),

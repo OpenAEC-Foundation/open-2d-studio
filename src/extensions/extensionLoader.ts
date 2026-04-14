@@ -52,6 +52,8 @@ export async function loadExtension(
         case 'open-2d-studio': return (window as any).__open2dStudioSdk;
         case 'react': return (window as any).__open2dStudioReact;
         case 'react/jsx-runtime': return (window as any).__open2dStudioReactJsxRuntime;
+        case 'react-dom': return (window as any).__open2dStudioReactDOM;
+        case 'react-dom/client': return (window as any).__open2dStudioReactDOMClient;
         case 'lucide-react': return (window as any).__open2dStudioLucideReact;
         default: throw new Error(`[Extensions] Unknown module: '${moduleName}'`);
       }

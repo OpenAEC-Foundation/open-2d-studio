@@ -691,12 +691,12 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5, strokeColor: '#000000' },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 30, strokeColor: '#000000' },
     ],
   },
 
   // NEN47 13 - Loofhout (hardwood)
-  // Crosshatch at 45deg with fine line spacing
+  // Crosshatch at 45deg with coarse line spacing
   {
     id: 'nen47-loofhout',
     name: 'NEN47-13 Loofhout',
@@ -705,8 +705,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5, strokeColor: '#000000' },
-      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5, strokeColor: '#000000' },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 30, strokeColor: '#000000' },
+      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 30, strokeColor: '#000000' },
     ],
   },
 

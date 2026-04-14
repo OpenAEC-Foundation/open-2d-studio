@@ -371,13 +371,20 @@ function TypeDropdownItem({
 
 function TypeDropdown({ options, value, onChange, placeholder }: TypeDropdownProps) {
   const [open, setOpen] = useState(false);
+  const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
 
   const currentOption = options.find(o => o.id === value);
+
+  const filteredOptions = search
+    ? options.filter(o => o.label.toLowerCase().includes(search.toLowerCase()))
+    : options;
 
   const handleClickOutside = useCallback((e: MouseEvent) => {
     if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
       setOpen(false);
+      setSearch('');
     }
   }, []);
 
@@ -409,23 +416,46 @@ function TypeDropdown({ options, value, onChange, placeholder }: TypeDropdownPro
         <ChevronDown className="w-3 h-3 text-cad-text-dim flex-shrink-0" />
       </button>
 
-      {/* Dropdown list */}
+      {/* Dropdown list with search */}
       {open && (
-        <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-cad-surface border border-cad-border rounded shadow-lg max-h-48 overflow-y-auto">
-          {options.map(option => (
-            <TypeDropdownItem
-              key={option.id}
-              option={option}
-              selected={option.id === value}
-              onClick={() => {
-                onChange(option.id);
-                setOpen(false);
-              }}
-            />
-          ))}
-          {options.length === 0 && (
-            <div className="px-2 py-1 text-xs text-cad-text-dim italic">No types available</div>
+        <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-cad-surface border border-cad-border rounded shadow-lg max-h-64 flex flex-col">
+          {/* Search input */}
+          {options.length > 5 && (
+            <div className="p-1.5 border-b border-cad-border">
+              <input
+                ref={searchRef}
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Zoeken..."
+                className="w-full bg-cad-bg border border-cad-border rounded px-2 py-1 text-xs text-cad-text outline-none focus:border-cad-accent"
+                autoFocus
+                onKeyDown={e => {
+                  if (e.key === 'Escape') { setOpen(false); setSearch(''); }
+                }}
+              />
+            </div>
           )}
+          {/* Options list */}
+          <div className="overflow-y-auto flex-1">
+            {filteredOptions.map(option => (
+              <TypeDropdownItem
+                key={option.id}
+                option={option}
+                selected={option.id === value}
+                onClick={() => {
+                  onChange(option.id);
+                  setOpen(false);
+                  setSearch('');
+                }}
+              />
+            ))}
+            {filteredOptions.length === 0 && (
+              <div className="px-2 py-2 text-xs text-cad-text-dim italic text-center">
+                {search ? `Geen resultaten voor "${search}"` : 'Geen types beschikbaar'}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

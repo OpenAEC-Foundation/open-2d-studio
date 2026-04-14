@@ -378,15 +378,10 @@ export function MultiSelectShapeProperties({
       const commonBackgroundColor = getCommonValue(s => (s as typeof hatchShapes[0]).backgroundColor);
       const commonMasking = getCommonValue(s => (s as typeof hatchShapes[0]).masking ?? true);
       const commonBoundaryVisible = getCommonValue(s => (s as typeof hatchShapes[0]).boundaryVisible ?? true);
-      const commonTypeId = getCommonValue(s => (s as typeof hatchShapes[0]).filledRegionTypeId);
+      // commonTypeId removed — Region Type selector is now handled by TypeSelector at top of Properties Panel
       return (
         <>
-          <PropertyGroup label="Region Type">
-            <RegionTypeSelector
-              currentTypeId={commonTypeId}
-              onApplyType={(typeId, props) => updateAll({ filledRegionTypeId: typeId, ...props })}
-            />
-          </PropertyGroup>
+          {/* Region Type selector removed — use the TypeSelector at the top of Properties Panel */}
 
           <PropertyGroup label="Foreground Pattern">
             <PatternPickerPanel
@@ -1049,7 +1044,6 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
           </PropertyGroup>
 
           <PropertyGroup label="Geometry">
-            <NumberField label="Boundary Points" value={shape.points.length} onChange={() => {}} readOnly />
             {shape.innerLoops && shape.innerLoops.length > 0 && (
               <NumberField label="Inner Loops" value={shape.innerLoops.length} onChange={() => {}} readOnly />
             )}

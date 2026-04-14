@@ -57,15 +57,8 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
     }
   };
 
-  const handleLineStyleChange = (lineStyle: LineStyle) => {
-    if (hasRegularShapeSelection) {
-      selectedShapes.forEach((shape) => {
-        updateShape(shape.id, { style: { ...shape.style, lineStyle } });
-      });
-    } else {
-      setCurrentStyle({ lineStyle });
-    }
-  };
+  // handleLineStyleChange removed — Line style is now handled by the TypeSelector
+  void 0 as unknown as LineStyle; // keep LineStyle import used
 
   // Determine if a structural/drawing tool with pending state is active
   const isToolWithProperties = [
@@ -116,22 +109,8 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
         {/* Hide Style section for IFC/AEC object types (only show for basic 2D shapes) */}
         {!(selectedShapes.length > 0 && selectedShapes.every(s => ['wall', 'beam', 'column', 'slab', 'pile', 'gridline', 'level', 'section-callout', 'space', 'puntniveau', 'cpt', 'wall-opening', 'slab-opening', 'rebar', 'slab-label', 'spot-elevation', 'plate-system'].includes(s.type))) && <PropertyGroup label="Style">
           <ColorPalette label="Color" value={displayStyle.strokeColor} onChange={handleColorChange} />
-
           <LineweightInput value={displayStyle.strokeWidth} onChange={handleWidthChange} />
-
-          <div className="mb-3">
-            <label className="block text-xs text-cad-text-dim mb-1">Line Style</label>
-            <select
-              value={displayStyle.lineStyle}
-              onChange={(e) => handleLineStyleChange(e.target.value as LineStyle)}
-              className="w-full bg-cad-bg border border-cad-border rounded px-2 py-1 text-xs text-cad-text"
-            >
-              <option value="solid">Solid</option>
-              <option value="dashed">Dashed</option>
-              <option value="dotted">Dotted</option>
-              <option value="dashdot">Dash-Dot</option>
-            </select>
-          </div>
+          {/* Line Style is handled by the TypeSelector above — no duplicate dropdown */}
         </PropertyGroup>}
 
         {/* Shape-specific properties - single selection */}

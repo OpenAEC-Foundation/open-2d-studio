@@ -1015,6 +1015,9 @@ function getAlignmentSnapPoints(
   shapes: Shape[],
   tolerance: number,
 ): SnapPoint[] {
+  // Use a tighter tolerance for alignment (1/3 of normal snap tolerance)
+  // to prevent alignment indicators from appearing too aggressively
+  const alignTolerance = tolerance * 0.3;
   const alignmentSnaps: SnapPoint[] = [];
 
   // Collect all key points from all shapes (endpoints, midpoints, centers)
@@ -1037,7 +1040,7 @@ function getAlignmentSnapPoints(
   for (const kp of keyPoints) {
     // Horizontal alignment: same Y within tolerance
     const dy = Math.abs(cursor.y - kp.point.y);
-    if (dy <= tolerance && dy > 0.01) {
+    if (dy <= alignTolerance && dy > 0.01) {
       // Snap cursor Y to key point Y, keep cursor X
       if (!bestH || dy < bestH.dist) {
         bestH = {
@@ -1055,7 +1058,7 @@ function getAlignmentSnapPoints(
 
     // Vertical alignment: same X within tolerance
     const dx = Math.abs(cursor.x - kp.point.x);
-    if (dx <= tolerance && dx > 0.01) {
+    if (dx <= alignTolerance && dx > 0.01) {
       // Snap cursor X to key point X, keep cursor Y
       if (!bestV || dx < bestV.dist) {
         bestV = {

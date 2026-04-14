@@ -435,9 +435,10 @@ export async function showOpenDialog(): Promise<string | null> {
     const result = await open({
       multiple: false,
       filters: [
-        { name: 'Supported Files', extensions: [PROJECT_EXTENSION, 'dxf'] },
+        { name: 'Supported Files', extensions: [PROJECT_EXTENSION, 'dxf', 'dwg'] },
         PROJECT_FILTER,
         { name: 'DXF', extensions: ['dxf'] },
+        { name: 'DWG', extensions: ['dwg'] },
       ],
       title: 'Open',
     });
