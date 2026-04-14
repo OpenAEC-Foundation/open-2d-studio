@@ -476,6 +476,7 @@ export function PatternManagerDialog({
               width={28}
               height={20}
               scale={0.5}
+              lineColor={pattern.lineFamilies[0]?.strokeColor ?? '#ffffff'}
             />
             <span className="text-xs truncate flex-1">{pattern.name}</span>
             {/* Star icon for toggling favorite */}
