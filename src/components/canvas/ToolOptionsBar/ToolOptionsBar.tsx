@@ -983,7 +983,8 @@ function FilledRegionSketchOptions() {
       </span>
       {Separator()}
       <button
-        onClick={finishFilledRegion}
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); finishFilledRegion(); }}
         disabled={drawingPoints.length < 3}
         className={`px-3 py-0.5 text-xs border rounded font-medium ${
           drawingPoints.length >= 3

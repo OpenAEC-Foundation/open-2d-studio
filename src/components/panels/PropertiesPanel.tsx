@@ -75,6 +75,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
   if (!hasSelection) {
     return (
       <div className="flex-1 overflow-auto">
+        <TypeSelector selectedShapes={[]} />
         {isToolWithProperties && <ActiveToolProperties activeTool={activeTool} />}
         <DrawingPropertiesPanel showHeader={false} />
       </div>
