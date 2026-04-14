@@ -917,9 +917,34 @@ function FilledRegionSketchOptions() {
 
   const finishFilledRegion = () => {
     if (drawingPoints.length < 3) return;
-    // Simulate Enter key to trigger the filled region creation in useDrawingKeyboard
-    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
-    document.dispatchEvent(event);
+    const s = useAppStore.getState();
+    const frt = s.selectedFilledRegionTypeId ? s.getFilledRegionTypeById(s.selectedFilledRegionTypeId) : undefined;
+    const hatchShape = {
+      id: `hatch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+      type: 'hatch' as const,
+      layerId: s.activeLayerId,
+      drawingId: s.activeDrawingId,
+      style: { ...s.currentStyle },
+      visible: true,
+      locked: false,
+      points: [...drawingPoints],
+      bulge: s.drawingBulges?.some((b: number) => b !== 0) ? [...s.drawingBulges] : undefined,
+      patternType: frt ? frt.fgPatternType : s.hatchPatternType,
+      patternAngle: frt ? frt.fgPatternAngle : s.hatchPatternAngle,
+      patternScale: frt ? frt.fgPatternScale : s.hatchPatternScale,
+      fillColor: frt ? frt.fgColor : s.hatchFillColor,
+      backgroundColor: frt ? (frt.backgroundColor ?? undefined) : (s.hatchBackgroundColor ?? undefined),
+      customPatternId: frt ? (frt.fgCustomPatternId ?? undefined) : (s.hatchCustomPatternId ?? undefined),
+      bgPatternType: frt?.bgPatternType,
+      bgPatternAngle: frt?.bgPatternAngle,
+      bgPatternScale: frt?.bgPatternScale,
+      bgFillColor: frt?.bgColor,
+      bgCustomPatternId: frt?.bgCustomPatternId,
+      masking: frt?.masking,
+      filledRegionTypeId: frt?.id,
+    };
+    s.addShape(hatchShape);
+    cancelFilledRegionMode();
   };
 
   return (
