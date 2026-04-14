@@ -10,6 +10,25 @@
 import { readFile } from '@tauri-apps/plugin-fs';
 
 // Re-use the global pdfjsLib declared in pdfImportService.ts
+declare global {
+  interface Window {
+    pdfjsLib?: {
+      getDocument: (src: { data: ArrayBuffer }) => {
+        promise: Promise<{
+          numPages: number;
+          getPage: (num: number) => Promise<{
+            getViewport: (options: { scale: number }) => { width: number; height: number };
+            render: (context: {
+              canvasContext: CanvasRenderingContext2D;
+              viewport: { width: number; height: number };
+            }) => { promise: Promise<void> };
+          }>;
+        }>;
+      };
+      GlobalWorkerOptions: { workerSrc: string };
+    };
+  }
+}
 
 // ---------------------------------------------------------------------------
 // pdf.js loader (mirrors pdfImportService logic)
