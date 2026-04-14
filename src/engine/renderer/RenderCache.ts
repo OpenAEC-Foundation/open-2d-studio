@@ -106,6 +106,8 @@ export class RenderCache {
     const deltaY = currentViewport.offsetY - this.cacheViewport.offsetY;
 
     try {
+      // Clear the canvas first to prevent ghosting artifacts
+      targetCtx.clearRect(0, 0, targetCtx.canvas.width, targetCtx.canvas.height);
       targetCtx.drawImage(this.cache, deltaX, deltaY);
     } catch {
       this.invalidate();
