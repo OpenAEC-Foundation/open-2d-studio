@@ -30,6 +30,8 @@ export function useDrawingKeyboard() {
     dimensionMode,
     linearDimensionDirection,
     setLinearDimensionDirection,
+    filledRegionMode,
+    cancelFilledRegionMode,
     // Snap and tracking toggles
     toggleSnap,
     toggleOrthoMode,
@@ -113,6 +115,11 @@ export function useDrawingKeyboard() {
         case 'Escape':
           // Finalize drawing if enough points exist, otherwise cancel
           e.preventDefault();
+          // If in filled region sketch mode, Escape cancels the mode
+          if (filledRegionMode) {
+            cancelFilledRegionMode();
+            break;
+          }
           if (activeTool === 'polyline' && drawingPoints.length >= 2) {
             const bulges = useAppStore.getState().drawingBulges;
             const polylineShape: PolylineShape = {
@@ -178,6 +185,39 @@ export function useDrawingKeyboard() {
         case 'Enter':
           // Finish drawing operation - create shape if applicable
           e.preventDefault();
+          // In filled region sketch mode: Enter creates the hatch from drawn boundary
+          if (filledRegionMode && activeTool === 'polyline' && drawingPoints.length >= 3) {
+            const {
+              hatchPatternType,
+              hatchPatternAngle,
+              hatchPatternScale,
+              hatchFillColor,
+              hatchBackgroundColor,
+              hatchCustomPatternId,
+              drawingBulges,
+              cancelFilledRegionMode: cancelFR,
+            } = useAppStore.getState();
+            const hatchShape: HatchShape = {
+              id: generateId(),
+              type: 'hatch',
+              layerId: activeLayerId,
+              drawingId: activeDrawingId,
+              style: { ...currentStyle },
+              visible: true,
+              locked: false,
+              points: [...drawingPoints],
+              bulge: drawingBulges && drawingBulges.some((b: number) => b !== 0) ? [...drawingBulges] : undefined,
+              patternType: hatchPatternType,
+              patternAngle: hatchPatternAngle,
+              patternScale: hatchPatternScale,
+              fillColor: hatchFillColor,
+              backgroundColor: hatchBackgroundColor ?? undefined,
+              customPatternId: hatchCustomPatternId ?? undefined,
+            };
+            addShape(hatchShape);
+            cancelFR();
+            break;
+          }
           if (activeTool === 'polyline' && drawingPoints.length >= 2) {
             const bulges = useAppStore.getState().drawingBulges;
             const polylineShape: PolylineShape = {
@@ -270,6 +310,40 @@ export function useDrawingKeyboard() {
           // Close shape - works for line and polyline tools
           if (drawingPoints.length >= 2) {
             e.preventDefault();
+
+            // In filled region sketch mode with polyline: C closes and creates hatch
+            if (filledRegionMode && activeTool === 'polyline' && drawingPoints.length >= 3) {
+              const {
+                hatchPatternType,
+                hatchPatternAngle,
+                hatchPatternScale,
+                hatchFillColor,
+                hatchBackgroundColor,
+                hatchCustomPatternId,
+                drawingBulges,
+                cancelFilledRegionMode: cancelFR2,
+              } = useAppStore.getState();
+              const hatchShape: HatchShape = {
+                id: generateId(),
+                type: 'hatch',
+                layerId: activeLayerId,
+                drawingId: activeDrawingId,
+                style: { ...currentStyle },
+                visible: true,
+                locked: false,
+                points: [...drawingPoints],
+                bulge: drawingBulges && drawingBulges.some((b: number) => b !== 0) ? [...drawingBulges] : undefined,
+                patternType: hatchPatternType,
+                patternAngle: hatchPatternAngle,
+                patternScale: hatchPatternScale,
+                fillColor: hatchFillColor,
+                backgroundColor: hatchBackgroundColor ?? undefined,
+                customPatternId: hatchCustomPatternId ?? undefined,
+              };
+              addShape(hatchShape);
+              cancelFR2();
+              break;
+            }
 
             if (activeTool === 'line') {
               // Create closing line from last point to first point
@@ -405,6 +479,8 @@ export function useDrawingKeyboard() {
     dimensionMode,
     linearDimensionDirection,
     setLinearDimensionDirection,
+    filledRegionMode,
+    cancelFilledRegionMode,
     toggleSnap,
     toggleOrthoMode,
     togglePolarTracking,

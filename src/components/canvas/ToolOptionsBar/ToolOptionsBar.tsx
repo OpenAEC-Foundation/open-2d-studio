@@ -903,11 +903,80 @@ function LeaderOptions() {
 }
 
 /**
+ * Filled Region Sketch Mode options bar
+ * Shown when filledRegionMode is active (polyline active tool + sketch mode)
+ */
+function FilledRegionSketchOptions() {
+  const setFilledRegionDrawTool = useAppStore((s) => s.setFilledRegionDrawTool);
+  const polylineArcMode = useAppStore((s) => s.polylineArcMode);
+  const drawingPoints = useAppStore((s) => s.drawingPoints);
+  const cancelFilledRegionMode = useAppStore((s) => s.cancelFilledRegionMode);
+
+  // Sync draw tool with polylineArcMode if needed
+  const currentSegment = polylineArcMode ? 'arc' : 'line';
+
+  return (
+    <>
+      <span className="text-cad-accent font-semibold text-xs mr-1">Sketch Boundary:</span>
+      {Separator()}
+      <label className="flex items-center gap-1">
+        <span className="text-cad-text-dim">Segment:</span>
+        <div className="flex">
+          <button
+            className={`px-2 py-0.5 text-xs border border-cad-border rounded-l ${
+              currentSegment === 'line' ? 'bg-cad-accent text-white' : 'bg-cad-bg text-cad-text hover:bg-cad-hover'
+            }`}
+            onClick={() => setFilledRegionDrawTool('line')}
+            title="Draw straight line segments (L)"
+          >
+            Line
+          </button>
+          <button
+            className={`px-2 py-0.5 text-xs border border-l-0 border-cad-border rounded-r ${
+              currentSegment === 'arc' ? 'bg-cad-accent text-white' : 'bg-cad-bg text-cad-text hover:bg-cad-hover'
+            }`}
+            onClick={() => setFilledRegionDrawTool('arc')}
+            title="Draw arc segments (A)"
+          >
+            Arc
+          </button>
+        </div>
+      </label>
+      {Separator()}
+      <span className="text-cad-text-dim text-xs">
+        {drawingPoints.length === 0
+          ? 'Click to start boundary'
+          : `${drawingPoints.length} point${drawingPoints.length !== 1 ? 's' : ''} — Enter or C to finish`}
+      </span>
+      {Separator()}
+      <button
+        onClick={() => cancelFilledRegionMode()}
+        className="px-2 py-0.5 text-xs border border-cad-border bg-cad-bg text-cad-text hover:bg-red-500/20 hover:border-red-500/50 rounded"
+        title="Cancel filled region sketch (Esc)"
+      >
+        Cancel (Esc)
+      </button>
+    </>
+  );
+}
+
+/**
  * Tool Options Bar - Always visible below the Ribbon.
  * Shows per-tool settings based on the active tool.
  */
 export const ToolOptionsBar = memo(function ToolOptionsBar() {
   const activeTool = useAppStore((s) => s.activeTool);
+  const filledRegionMode = useAppStore((s) => s.filledRegionMode);
+
+  // When in filled region sketch mode, show sketch options instead of regular tool options
+  if (filledRegionMode) {
+    return (
+      <div className="h-7 bg-cad-surface border-b border-cad-border border-l-2 border-l-cad-accent flex items-center px-3 gap-4 text-xs font-mono">
+        <FilledRegionSketchOptions />
+        <SelectionFilterBar />
+      </div>
+    );
+  }
 
   const renderToolOptions = () => {
     switch (activeTool) {

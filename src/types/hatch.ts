@@ -682,7 +682,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
   },
 
   // NEN47 12 - Naaldhout (softwood)
-  // Single diagonal at 45deg
+  // Single diagonal at 45deg — explicit black stroke so it renders correctly regardless of hatch fill color
   {
     id: 'nen47-naaldhout',
     name: 'NEN47-12 Naaldhout',
@@ -691,7 +691,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5, strokeColor: '#000000' },
     ],
   },
 
@@ -705,8 +705,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5 },
-      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5, strokeColor: '#000000' },
+      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5, strokeColor: '#000000' },
     ],
   },
 
@@ -720,7 +720,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 0, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5 },
+      { angle: 0, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5, strokeColor: '#000000' },
     ],
   },
 
@@ -734,7 +734,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 90, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5 },
+      { angle: 90, originX: 0, originY: 0, deltaX: 0, deltaY: 1.5, strokeColor: '#000000' },
     ],
   },
 

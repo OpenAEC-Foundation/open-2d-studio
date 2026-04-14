@@ -163,6 +163,8 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
 
   const {
     activeTool,
+    filledRegionMode,
+    startFilledRegionMode,
     switchToDrawingTool,
     switchToolAndCancelCommand,
     dimensionMode,
@@ -513,8 +515,8 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 <RibbonMediumButton
                   icon={<FilledRegionIcon size={18} />}
                   label="Filled Region"
-                  onClick={() => switchToDrawingTool('hatch')}
-                  active={activeTool === 'hatch'}
+                  onClick={() => startFilledRegionMode()}
+                  active={activeTool === 'hatch' || filledRegionMode}
                   disabled={isSheetMode}
                 />
               </RibbonMediumButtonStack>

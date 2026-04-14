@@ -190,8 +190,18 @@ export function PatternManagerDialog({
   };
 
   const handleEdit = () => {
-    if (!selectedPatternId || selectedCategory === 'builtin' || !selectedPattern) return;
-    setEditingPattern(selectedPattern);
+    if (!selectedPatternId || !selectedPattern) return;
+    if (selectedCategory === 'builtin') {
+      // Built-in patterns cannot be modified in place — open editor with a copy
+      // so the user can save it as a new user pattern
+      setEditingPattern({
+        ...selectedPattern,
+        name: `${selectedPattern.name} (Custom)`,
+        source: 'user',
+      });
+    } else {
+      setEditingPattern(selectedPattern);
+    }
     setEditorOpen(true);
   };
 
@@ -204,8 +214,12 @@ export function PatternManagerDialog({
     const { addUserPattern, updateUserPattern, updateProjectPattern } = useAppStore.getState();
 
     if (editingPattern) {
-      // Editing existing pattern
-      if (selectedCategory === 'user') {
+      if (selectedCategory === 'builtin') {
+        // Built-in patterns are read-only — save as a new user pattern
+        const newId = addUserPattern(patternData);
+        setSelectedPatternId(newId);
+        setExpandedCategories(prev => ({ ...prev, user: true }));
+      } else if (selectedCategory === 'user') {
         updateUserPattern(editingPattern.id, patternData);
       } else if (selectedCategory === 'project') {
         updateProjectPattern(editingPattern.id, patternData);
@@ -545,9 +559,9 @@ export function PatternManagerDialog({
             </button>
             <button
               onClick={handleEdit}
-              disabled={!selectedPatternId || selectedCategory === 'builtin'}
+              disabled={!selectedPatternId}
               className="p-1.5 hover:bg-cad-hover rounded transition-colors disabled:opacity-30 disabled:cursor-not-allowed"
-              title="Edit Pattern"
+              title={selectedCategory === 'builtin' ? 'Edit as Copy (built-in patterns are read-only)' : 'Edit Pattern'}
             >
               <Edit size={14} />
             </button>

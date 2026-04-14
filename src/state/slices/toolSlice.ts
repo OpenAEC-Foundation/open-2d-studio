@@ -314,7 +314,7 @@ export const initialToolState: ToolState = {
   hatchPatternType: 'diagonal' as const,
   hatchPatternAngle: 45,
   hatchPatternScale: 1,
-  hatchFillColor: '#ffffff',
+  hatchFillColor: '#000000',
   hatchBackgroundColor: null,
   hatchCustomPatternId: null,
 
