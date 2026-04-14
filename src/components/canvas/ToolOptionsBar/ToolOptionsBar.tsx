@@ -911,30 +911,20 @@ function FilledRegionSketchOptions() {
   const polylineArcMode = useAppStore((s) => s.polylineArcMode);
   const drawingPoints = useAppStore((s) => s.drawingPoints);
   const cancelFilledRegionMode = useAppStore((s) => s.cancelFilledRegionMode);
-  const filledRegionTypes = useAppStore((s) => s.filledRegionTypes);
-  const selectedFilledRegionTypeId = useAppStore((s) => s.selectedFilledRegionTypeId);
-  const setSelectedFilledRegionTypeId = useAppStore((s) => s.setSelectedFilledRegionTypeId);
 
   // Sync draw tool with polylineArcMode if needed
   const currentSegment = polylineArcMode ? 'arc' : 'line';
 
+  const finishFilledRegion = () => {
+    if (drawingPoints.length < 3) return;
+    // Simulate Enter key to trigger the filled region creation in useDrawingKeyboard
+    const event = new KeyboardEvent('keydown', { key: 'Enter', bubbles: true });
+    document.dispatchEvent(event);
+  };
+
   return (
     <>
       <span className="text-cad-accent font-semibold text-xs mr-1">Sketch Boundary:</span>
-      {Separator()}
-      <label className="flex items-center gap-1">
-        <span className="text-cad-text-dim">Type:</span>
-        <select
-          value={selectedFilledRegionTypeId || ''}
-          onChange={(e) => setSelectedFilledRegionTypeId(e.target.value || null)}
-          className="bg-cad-bg border border-cad-border text-cad-text text-xs px-1 py-0.5 rounded max-w-[160px]"
-        >
-          <option value="">-- Kies type --</option>
-          {filledRegionTypes.map((t) => (
-            <option key={t.id} value={t.id}>{t.name}</option>
-          ))}
-        </select>
-      </label>
       {Separator()}
       <label className="flex items-center gap-1">
         <span className="text-cad-text-dim">Segment:</span>
@@ -963,15 +953,28 @@ function FilledRegionSketchOptions() {
       <span className="text-cad-text-dim text-xs">
         {drawingPoints.length === 0
           ? 'Click to start boundary'
-          : `${drawingPoints.length} point${drawingPoints.length !== 1 ? 's' : ''} — Enter or C to finish`}
+          : `${drawingPoints.length} point${drawingPoints.length !== 1 ? 's' : ''}`}
       </span>
+      {Separator()}
+      <button
+        onClick={finishFilledRegion}
+        disabled={drawingPoints.length < 3}
+        className={`px-3 py-0.5 text-xs border rounded font-medium ${
+          drawingPoints.length >= 3
+            ? 'border-green-500 bg-green-600/20 text-green-300 hover:bg-green-600/40'
+            : 'border-cad-border bg-cad-bg text-cad-text-dim cursor-not-allowed'
+        }`}
+        title="Finish boundary and create filled region (Enter)"
+      >
+        ✓ Finish
+      </button>
       {Separator()}
       <button
         onClick={() => cancelFilledRegionMode()}
         className="px-2 py-0.5 text-xs border border-cad-border bg-cad-bg text-cad-text hover:bg-red-500/20 hover:border-red-500/50 rounded"
         title="Cancel filled region sketch (Esc)"
       >
-        Cancel (Esc)
+        ✕ Cancel
       </button>
     </>
   );
