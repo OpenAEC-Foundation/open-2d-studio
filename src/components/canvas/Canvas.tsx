@@ -707,6 +707,7 @@ export function Canvas() {
 
     // Frame budget tracker for performance monitoring
     const frameBudget = new FrameBudget();
+    (window as any).__frameBudget = frameBudget;
 
     // Last-rendered snapshots for smart dirty-check (skip identical frames)
     let lastRenderedShapeCount = -1;

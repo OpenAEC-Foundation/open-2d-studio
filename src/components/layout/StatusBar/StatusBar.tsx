@@ -374,6 +374,32 @@ function isPresetScale(scale: number): boolean {
   return SCALE_PRESETS.some(p => Math.abs(p.value - scale) < 0.0001);
 }
 
+/** Live FPS meter — reads from the global FrameBudget instance */
+function FPSMeter() {
+  const [fps, setFps] = useState(0);
+  const [frameTime, setFrameTime] = useState(0);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      const fb = (window as any).__frameBudget;
+      if (fb) {
+        setFps(fb.getCurrentFps?.() ?? 0);
+        setFrameTime(fb.getLastFrameTime?.() ?? 0);
+      }
+    }, 500);
+    return () => clearInterval(interval);
+  }, []);
+
+  const color = fps >= 60 ? 'text-green-400' : fps >= 30 ? 'text-yellow-400' : 'text-red-400';
+
+  return (
+    <div className="flex items-center gap-1.5" title={`Frame time: ${frameTime.toFixed(1)}ms`}>
+      <span className={`font-mono text-xs font-medium ${color}`}>{fps}</span>
+      <span className="text-cad-text-dim text-xs">FPS</span>
+    </div>
+  );
+}
+
 export const StatusBar = memo(function StatusBar() {
   const [customScaleDialogOpen, setCustomScaleDialogOpen] = useState(false);
   const [customScaleDenominator, setCustomScaleDenominator] = useState('');
@@ -697,6 +723,9 @@ export const StatusBar = memo(function StatusBar() {
         <span>Objects:</span>
         <span className="text-cad-text font-mono">{shapeCount}</span>
       </div>
+
+      {/* FPS meter */}
+      <FPSMeter />
     </div>
   );
 });
