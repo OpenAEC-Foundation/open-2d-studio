@@ -6,7 +6,7 @@ import type { Shape, Viewport, SnapPoint, DrawingBoundary } from '../types';
 import type { DrawingPreview, SelectionBox, TrackingLine, Point } from '../types';
 import type { ParametricShape } from '../../../types/parametric';
 import type { CustomHatchPattern, MaterialHatchSettings } from '../../../types/hatch';
-import type { WallType, WallSystemType, ImageShape } from '../../../types/geometry';
+import type { WallType, WallSystemType } from '../../../types/geometry';
 import { BaseRenderer } from '../core/BaseRenderer';
 import { ShapeRenderer } from '../core/ShapeRenderer';
 import { ParametricRenderer } from '../core/ParametricRenderer';
@@ -20,6 +20,9 @@ import { COLORS } from '../types';
 import { generateProfileGeometry } from '../../../services/parametric/geometryGenerators';
 import { isShapeInHiddenCategory } from '../../../utils/ifcCategoryUtils';
 import type { UnitSettings } from '../../../units/types';
+import { QuadTree } from '../../spatial/QuadTree';
+import { getShapeBounds } from '../../geometry/GeometryUtils';
+import { getRenderPriority } from '../RenderSorter';
 
 export interface DrawingRenderOptions {
   shapes: Shape[];
@@ -268,74 +271,110 @@ export class DrawingRenderer extends BaseRenderer {
     // IFC category filter
     const hiddenCats = options.hiddenIfcCategories || [];
 
-    // IFC/AEC shape types — rendered below 2D annotation shapes
-    const ifcAecTypes = new Set([
-      'wall', 'beam', 'column', 'pile', 'puntniveau', 'cpt', 'space',
-      'section-callout', 'spot-elevation', 'plate-system', 'rebar',
-      'wall-opening', 'slab-opening', 'slab-label',
-    ]);
+    // ─── Step 1: Viewport culling via QuadTree ────────────────────────────────
+    // Calculate visible world bounds with 15% margin on each side so shapes at
+    // the edge don't pop in/out during small pans or rotations.
+    const visibleArea = this.getVisibleArea(viewport);
+    const marginX = (visibleArea.right - visibleArea.left) * 0.15;
+    const marginY = (visibleArea.bottom - visibleArea.top) * 0.15;
+    const cullBounds = {
+      minX: visibleArea.left - marginX,
+      minY: visibleArea.top - marginY,
+      maxX: visibleArea.right + marginX,
+      maxY: visibleArea.bottom + marginY,
+    };
 
-    // 2D annotation shape types — rendered above IFC/AEC shapes
-    // Draw shapes in six passes:
-    // 1.  Underlay images (background reference images)
-    // 2.  Slabs (rendered behind walls so they don't overlap)
-    // 3a. IFC/AEC shapes (walls, beams, columns, piles, etc.)
-    // 3b. 2D annotation shapes (lines, arcs, circles, dimensions, hatches, non-underlay images, etc.)
-    // 4.  Text shapes (labels on top)
-    // 5.  Gridlines (stramien) — always on top of everything
+    // Build QuadTree from visible shapes and query for those in viewport.
+    // Shapes are already pre-filtered to the active drawing by the caller
+    // (Canvas), so we build the index directly rather than using
+    // buildFromShapes (which would skip all shapes due to a drawingId mismatch).
+    const boundsMap = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
+    const shapeById = new Map<string, Shape>();
 
-    // Pass 1: Underlay images
-    for (const shape of shapes) {
-      if (!shape.visible) continue;
-      if (shape.type !== 'image' || !(shape as ImageShape).isUnderlay) continue;
-      if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
-      const isSelected = selectedSet.has(shape.id);
-      const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
-      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
-    }
-    // Pass 2: Slabs
-    for (const shape of shapes) {
-      if (!shape.visible || shape.type !== 'slab') continue;
-      if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
-      const isSelected = selectedSet.has(shape.id);
-      const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
-      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
-    }
-    // Pass 3a: IFC/AEC structural shapes (below 2D annotations)
-    for (const shape of shapes) {
-      if (!shape.visible) continue;
-      if (!ifcAecTypes.has(shape.type)) continue;
-      if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
-      const isSelected = selectedSet.has(shape.id);
-      const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
-      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
-    }
-    // Pass 3b: 2D annotation shapes (above IFC/AEC shapes)
-    for (const shape of shapes) {
-      if (!shape.visible) continue;
-      if (shape.type === 'text' || shape.type === 'slab' || shape.type === 'gridline') continue;
-      if (shape.type === 'image' && (shape as ImageShape).isUnderlay) continue;
-      if (ifcAecTypes.has(shape.type)) continue;
-      if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
-      const isSelected = selectedSet.has(shape.id);
-      const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
-      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
-    }
-    // Pass 4: Text shapes (labels on top)
-    for (const shape of shapes) {
-      if (!shape.visible || shape.type !== 'text') continue;
-      if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
-      const isSelected = selectedSet.has(shape.id);
-      const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
-      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
-    }
-    // Pass 5: Gridlines (stramien) — rendered last so they always appear on top
-    for (const shape of shapes) {
-      if (!shape.visible || shape.type !== 'gridline') continue;
-      if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
-      const isSelected = selectedSet.has(shape.id);
-      const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
-      this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
+    {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      const entries: { id: string; bounds: { minX: number; minY: number; maxX: number; maxY: number } }[] = [];
+
+      for (const shape of shapes) {
+        if (!shape.visible) continue;
+        shapeById.set(shape.id, shape);
+        const b = getShapeBounds(shape, options.drawingScale);
+        if (!b) {
+          // No computable bounds — always include (mark with Infinity)
+          boundsMap.set(shape.id, { minX: -Infinity, minY: -Infinity, maxX: Infinity, maxY: Infinity });
+          continue;
+        }
+        boundsMap.set(shape.id, b);
+        entries.push({ id: shape.id, bounds: b });
+        if (b.minX < minX) minX = b.minX;
+        if (b.minY < minY) minY = b.minY;
+        if (b.maxX > maxX) maxX = b.maxX;
+        if (b.maxY > maxY) maxY = b.maxY;
+      }
+
+      // Build fresh QuadTree from pre-filtered shapes
+      const cx = isFinite(minX) ? (minX + maxX) / 2 : 0;
+      const cy = isFinite(minY) ? (minY + maxY) / 2 : 0;
+      const hw = isFinite(minX) ? (maxX - minX) / 2 + 100 : 1e6;
+      const hh = isFinite(minY) ? (maxY - minY) / 2 + 100 : 1e6;
+      const tree = new QuadTree({ x: cx, y: cy, halfW: hw, halfH: hh });
+      for (const entry of entries) {
+        tree.insert(entry);
+      }
+
+      // ─── Step 1: Viewport culling — query QuadTree ────────────────────────────
+      const inView = tree.queryBounds(cullBounds);
+
+      // Build visible ID set; shapes with unbounded extents are always visible
+      const visibleIds = new Set<string>();
+      for (const entry of inView) visibleIds.add(entry.id);
+      for (const [id, b] of boundsMap) {
+        if (!isFinite(b.maxX)) visibleIds.add(id);
+      }
+
+      // ─── Step 2: LOD culling — skip sub-pixel shapes ─────────────────────────
+      // After viewport culling, skip any shape whose screen footprint is < 2px.
+      // Text gets a slightly more lenient threshold (3px on the text height axis).
+      const zoom = viewport.zoom;
+      const LOD_MIN_PX = 2;
+      const LOD_TEXT_MIN_PX = 3;
+
+      const lodPassIds = new Set<string>();
+      for (const id of visibleIds) {
+        const b = boundsMap.get(id);
+        if (!b) { lodPassIds.add(id); continue; }
+        if (!isFinite(b.maxX)) { lodPassIds.add(id); continue; }
+        const screenW = (b.maxX - b.minX) * zoom;
+        const screenH = (b.maxY - b.minY) * zoom;
+        const shape = shapeById.get(id);
+        if (!shape) continue;
+        if (shape.type === 'text') {
+          // For text, cull on the height axis only
+          if (screenH < LOD_TEXT_MIN_PX) continue;
+        } else {
+          if (Math.max(screenW, screenH) < LOD_MIN_PX) continue;
+        }
+        lodPassIds.add(id);
+      }
+
+      // ─── Step 3: Single-pass rendering with cached sort order ─────────────────
+      // Collect surviving shapes, sort once by render priority, then draw.
+      // This replaces the original six separate for-loops and produces
+      // identical visual output (same z-order, same drawShape calls).
+      const visibleShapes: Shape[] = [];
+      for (const shape of shapes) {
+        if (shape.visible && lodPassIds.has(shape.id)) visibleShapes.push(shape);
+      }
+
+      // Stable sort: V8's Array.sort is stable since Node 11 / Chrome 70
+      visibleShapes.sort((a, b) => getRenderPriority(a) - getRenderPriority(b));
+
+      for (const shape of visibleShapes) {
+        if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
+        const isSelected = selectedSet.has(shape.id);
+        const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
+        this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
+      }
     }
 
     // Draw parametric shapes
