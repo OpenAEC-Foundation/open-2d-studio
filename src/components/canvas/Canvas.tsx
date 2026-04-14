@@ -563,22 +563,36 @@ export function Canvas() {
     const canvas = canvasRef.current;
     if (!container || !canvas) return;
 
-    const resizeObserver = new ResizeObserver((entries) => {
-      for (const entry of entries) {
-        const { width, height } = entry.contentRect;
-        canvas.width = width * window.devicePixelRatio;
-        canvas.height = height * window.devicePixelRatio;
-        canvas.style.width = `${width}px`;
-        canvas.style.height = `${height}px`;
-        setCanvasSize({ width, height });
-        rendererRef.current?.resize(width, height);
-        // Canvas size changed — cached image is no longer valid
-        renderCacheRef.current.invalidate();
-      }
-    });
+    let lastDpr = window.devicePixelRatio;
 
+    const updateCanvasSize = () => {
+      if (!canvas || !container) return;
+      const { width, height } = container.getBoundingClientRect();
+      const dpr = window.devicePixelRatio;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      canvas.style.width = `${width}px`;
+      canvas.style.height = `${height}px`;
+      setCanvasSize({ width, height });
+      rendererRef.current?.resize(width, height);
+      renderCacheRef.current.invalidate();
+      lastDpr = dpr;
+    };
+
+    const resizeObserver = new ResizeObserver(() => updateCanvasSize());
     resizeObserver.observe(container);
-    return () => resizeObserver.disconnect();
+
+    // Detect DPI change when moving between monitors
+    const dprCheck = setInterval(() => {
+      if (window.devicePixelRatio !== lastDpr) {
+        updateCanvasSize();
+      }
+    }, 500);
+
+    return () => {
+      resizeObserver.disconnect();
+      clearInterval(dprCheck);
+    };
   }, [setCanvasSize]);
 
   // Center viewport on drawing boundary when canvas first gets sized
