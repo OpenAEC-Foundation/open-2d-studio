@@ -1173,6 +1173,7 @@ export type ToolType =
   | 'column'
   | 'cpt'
   | 'wall'
+  | 'wall-opening'
   | 'slab'
   | 'slab-opening'
   | 'slab-label'
