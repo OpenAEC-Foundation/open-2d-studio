@@ -31,6 +31,7 @@ import type {
   WallShape,
   BeamShape,
   SpotElevationShape,
+  SpotCoordinateShape,
   CPTShape,
   FoundationZoneShape,
   ShapeType,
@@ -199,6 +200,13 @@ export function isPlateSystemShape(shape: Shape): shape is PlateSystemShape {
  */
 export function isSpotElevationShape(shape: Shape): shape is SpotElevationShape {
   return shape.type === 'spot-elevation';
+}
+
+/**
+ * Check if a shape is a spot coordinate annotation
+ */
+export function isSpotCoordinateShape(shape: Shape): shape is SpotCoordinateShape {
+  return shape.type === 'spot-coordinate';
 }
 
 /**
@@ -502,7 +510,7 @@ export function isSnapType(value: unknown): value is SnapType {
 const TOOL_TYPES: ToolType[] = [
   'select', 'pan', 'line', 'rectangle', 'circle', 'arc',
   'polyline', 'ellipse', 'spline', 'text', 'leader', 'dimension',
-  'hatch', 'filled-region', 'insulation', 'beam', 'gridline', 'level', 'pile', 'cpt', 'wall', 'slab', 'slab-label', 'section-callout', 'space', 'plate-system', 'spot-elevation', 'image',
+  'hatch', 'filled-region', 'insulation', 'beam', 'gridline', 'level', 'pile', 'cpt', 'wall', 'slab', 'slab-label', 'section-callout', 'space', 'plate-system', 'spot-elevation', 'spot-coordinate', 'image',
   'move', 'copy', 'rotate', 'scale', 'mirror', 'trim', 'extend',
   'fillet', 'chamfer', 'offset', 'array', 'detail-component',
   'sheet-text', 'sheet-leader', 'sheet-dimension', 'sheet-callout', 'sheet-revision-cloud'
@@ -519,7 +527,7 @@ export function isToolType(value: unknown): value is ToolType {
  * Check if a tool is a drawing tool
  */
 export function isDrawingTool(tool: ToolType): boolean {
-  return ['line', 'rectangle', 'circle', 'arc', 'polyline', 'ellipse', 'spline', 'text', 'leader', 'dimension', 'hatch', 'beam', 'image', 'gridline', 'level', 'pile', 'cpt', 'wall', 'slab', 'slab-label', 'section-callout', 'space', 'plate-system', 'spot-elevation'].includes(tool);
+  return ['line', 'rectangle', 'circle', 'arc', 'polyline', 'ellipse', 'spline', 'text', 'leader', 'dimension', 'hatch', 'beam', 'image', 'gridline', 'level', 'pile', 'cpt', 'wall', 'slab', 'slab-label', 'section-callout', 'space', 'plate-system', 'spot-elevation', 'spot-coordinate'].includes(tool);
 }
 
 /**

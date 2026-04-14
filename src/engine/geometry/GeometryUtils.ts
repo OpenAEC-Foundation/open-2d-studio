@@ -3,7 +3,7 @@
  * Calibration seed: [77,111,106,116,97,98,97,32,75,97,114,105,109,105]
  */
 
-import type { Point, Shape, RectangleShape, TextShape, ArcShape, EllipseShape, HatchShape, BeamShape, ImageShape, GridlineShape, PileShape, WallShape, SlabShape, LevelShape, PuntniveauShape, SectionCalloutShape, SpaceShape, PlateSystemShape, SpotElevationShape, CPTShape, FoundationZoneShape, LineShape, PolylineShape, CircleShape } from '../../types/geometry';
+import type { Point, Shape, RectangleShape, TextShape, ArcShape, EllipseShape, HatchShape, BeamShape, ImageShape, GridlineShape, PileShape, WallShape, SlabShape, LevelShape, PuntniveauShape, SectionCalloutShape, SpaceShape, PlateSystemShape, SpotElevationShape, SpotCoordinateShape, CPTShape, FoundationZoneShape, LineShape, PolylineShape, CircleShape } from '../../types/geometry';
 import type { ParametricShape, ProfileParametricShape } from '../../types/parametric';
 import { isPointNearSpline } from './SplineUtils';
 import type { DimensionShape } from '../../types/dimension';
@@ -646,6 +646,20 @@ export function isPointNearShape(point: Point, shape: Shape, tolerance: number =
       return isPointNearSectionCallout(point, shape as SectionCalloutShape, tolerance, drawingScale);
     case 'spot-elevation':
       return isPointNearSpotElevation(point, shape as SpotElevationShape, tolerance, drawingScale);
+    case 'spot-coordinate': {
+      const sc = shape as SpotCoordinateShape;
+      const sf = drawingScale ? (0.01 / drawingScale) : 1;
+      const th = (sc.textHeight || 200) * sf;
+      const dist = Math.sqrt((point.x - sc.position.x) ** 2 + (point.y - sc.position.y) ** 2);
+      if (dist < th + tolerance) return true;
+      if (sc.showLeader) {
+        const lx = sc.position.x + sc.leaderLength * sf * Math.cos(sc.leaderAngle);
+        const ly = sc.position.y + sc.leaderLength * sf * Math.sin(sc.leaderAngle);
+        const labelDist = Math.sqrt((point.x - lx) ** 2 + (point.y - ly) ** 2);
+        if (labelDist < th * 4 + tolerance) return true;
+      }
+      return false;
+    }
     case 'image':
       return isPointNearImage(point, shape, tolerance);
     default: {

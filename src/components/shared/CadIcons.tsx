@@ -1361,6 +1361,24 @@ export function PlateSystemIcon({ size = 24, className }: IconProps) {
   );
 }
 
+/** Spot Coordinate Icon - Cross marker with X/Y coordinate labels */
+export function SpotCoordinateIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      {/* Cross/plus marker */}
+      <line x1="4" y1="15" x2="10" y2="15" />
+      <line x1="7" y1="12" x2="7" y2="18" />
+      {/* Circle around cross */}
+      <circle cx="7" cy="15" r="3.5" strokeWidth="1" />
+      {/* Leader line */}
+      <line x1="10.5" y1="15" x2="13" y2="9" strokeWidth="1" />
+      {/* X Y coordinate text */}
+      <text x="14" y="8" fontSize="4" fill="currentColor" stroke="none" fontFamily="sans-serif">X:</text>
+      <text x="14" y="13" fontSize="4" fill="currentColor" stroke="none" fontFamily="sans-serif">Y:</text>
+    </svg>
+  );
+}
+
 /** Spot Elevation Icon - Cross marker with elevation text (IfcSpotElevation) */
 export function SpotElevationIcon({ size = 24, className }: IconProps) {
   return (

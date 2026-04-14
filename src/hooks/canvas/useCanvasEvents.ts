@@ -360,7 +360,9 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Handle AEC drawing tools
-      if (aecTools.isAecTool(activeTool) && aecTools.hasPendingState(activeTool)) {
+      // Some tools (like spot-coordinate) are stateless and don't need a pending state
+      const isStatelessAecTool = activeTool === 'spot-coordinate';
+      if (aecTools.isAecTool(activeTool) && (aecTools.hasPendingState(activeTool) || isStatelessAecTool)) {
         deselectAll();
         if (aecTools.handleToolClick(activeTool, snappedPos, orthoMode, snapResult)) {
           snapDetection.clearTracking();
@@ -998,7 +1000,8 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // AEC drawing tool preview
-      if (aecTools.isAecTool(activeTool) && aecTools.hasPendingState(activeTool) && editorMode === 'drawing') {
+      const isStatelessAecMove = activeTool === 'spot-coordinate';
+      if (aecTools.isAecTool(activeTool) && (aecTools.hasPendingState(activeTool) || isStatelessAecMove) && editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
         const basePoint = aecTools.getToolBasePoint(activeTool);
         // For beam: pass sourceSnapAngle for perpendicular/parallel tracking
@@ -1224,7 +1227,8 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Cancel AEC drawing tools
-      if (aecTools.isAecTool(activeTool) && aecTools.hasPendingState(activeTool)) {
+      const isStatelessAecCancel = activeTool === 'spot-coordinate';
+      if (aecTools.isAecTool(activeTool) && (aecTools.hasPendingState(activeTool) || isStatelessAecCancel)) {
         if (aecTools.handleToolCancel(activeTool, setActiveTool, snapDetection.clearTracking)) {
           return;
         }

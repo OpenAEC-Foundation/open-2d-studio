@@ -404,6 +404,9 @@ export class ShapeRenderer extends BaseRenderer {
       case 'image':
         this.drawImage(shape as ImageShape);
         break;
+      case 'spot-coordinate':
+        this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, isSelected);
+        break;
       default: {
         const extRenderer = shapeRendererRegistry.get(shape.type);
         if (extRenderer) {
@@ -478,6 +481,9 @@ export class ShapeRenderer extends BaseRenderer {
         break;
       case 'image':
         this.drawImage(shape as ImageShape);
+        break;
+      case 'spot-coordinate':
+        this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, false);
         break;
       default: {
         const extSimpleRenderer = shapeRendererRegistry.getSimple(shape.type);
@@ -696,6 +702,21 @@ export class ShapeRenderer extends BaseRenderer {
         }
         break;
 
+      case 'spot-coordinate': {
+        // Draw a simple cross preview at the current mouse position
+        const sf2 = this.drawingScale ? (0.01 / this.drawingScale) : 1;
+        const ms2 = 200 * sf2;
+        ctx.beginPath();
+        ctx.moveTo(preview.position.x - ms2, preview.position.y);
+        ctx.lineTo(preview.position.x + ms2, preview.position.y);
+        ctx.moveTo(preview.position.x, preview.position.y - ms2);
+        ctx.lineTo(preview.position.x, preview.position.y + ms2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(preview.position.x, preview.position.y, ms2 * 0.4, 0, Math.PI * 2);
+        ctx.stroke();
+        break;
+      }
 
       case 'leader': {
         // Draw leader preview: arrow tip → diagonal line → landing line under text area
@@ -3415,6 +3436,96 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.lineTo(x2, y2);
     }
     ctx.stroke();
+  }
+
+  /**
+   * Draw a spot coordinate annotation.
+   * Shows X/Y coordinates at a point with an optional leader line.
+   */
+  private drawSpotCoordinate(shape: import('../../../types/geometry').SpotCoordinateShape, isSelected: boolean): void {
+    const ctx = this.ctx;
+    const { position, displayX, displayY, unit, textHeight, leaderLength, leaderAngle, showLeader, decimalPlaces, prefix } = shape;
+
+    const sf = this.drawingScale ? (0.01 / this.drawingScale) : 1;
+    const th = textHeight * sf;
+    const ll = leaderLength * sf;
+
+    const color = shape.style.strokeColor || '#ffffff';
+    ctx.save();
+    ctx.strokeStyle = color;
+    ctx.fillStyle = color;
+    ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth || 0.5);
+    ctx.setLineDash([]);
+
+    // Draw cross/marker at position
+    const ms = th * 0.6;
+    ctx.beginPath();
+    ctx.moveTo(position.x - ms, position.y);
+    ctx.lineTo(position.x + ms, position.y);
+    ctx.moveTo(position.x, position.y - ms);
+    ctx.lineTo(position.x, position.y + ms);
+    ctx.stroke();
+
+    // Draw small circle at marker
+    ctx.beginPath();
+    ctx.arc(position.x, position.y, ms * 0.4, 0, Math.PI * 2);
+    ctx.stroke();
+
+    // Leader line
+    let labelX = position.x + ll * Math.cos(leaderAngle);
+    let labelY = position.y + ll * Math.sin(leaderAngle);
+
+    if (showLeader && ll > 0.001) {
+      ctx.beginPath();
+      ctx.moveTo(position.x, position.y);
+      ctx.lineTo(labelX, labelY);
+      ctx.stroke();
+    }
+
+    // Format coordinates
+    const xVal = displayX.toFixed(decimalPlaces);
+    const yVal = displayY.toFixed(decimalPlaces);
+    const unitLabel = unit;
+    const pre = prefix || '';
+    const xText = `X: ${pre}${xVal} ${unitLabel}`;
+    const yText = `Y: ${pre}${yVal} ${unitLabel}`;
+
+    // Draw text label (two lines)
+    ctx.font = `${th}px ${CAD_DEFAULT_FONT}`;
+    ctx.textBaseline = 'bottom';
+    const lineGap = th * 0.2;
+
+    // Determine text anchor side based on leader angle
+    const rightHalf = Math.cos(leaderAngle) >= 0;
+    ctx.textAlign = rightHalf ? 'left' : 'right';
+    const textOffX = rightHalf ? th * 0.3 : -th * 0.3;
+
+    // Draw background for readability
+    const xMetrics = ctx.measureText(xText);
+    const yMetrics = ctx.measureText(yText);
+    const maxW = Math.max(xMetrics.width, yMetrics.width);
+    const boxX = rightHalf ? labelX + textOffX - th * 0.1 : labelX + textOffX - maxW - th * 0.1;
+    const boxY = labelY - th * 2 - lineGap - th * 0.1;
+    const boxH = th * 2 + lineGap + th * 0.2;
+
+    const bgColor = isSelected ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.6)';
+    ctx.fillStyle = bgColor;
+    ctx.fillRect(boxX, boxY, maxW + th * 0.2, boxH);
+
+    ctx.fillStyle = color;
+    ctx.fillText(xText, labelX + textOffX, labelY - th - lineGap);
+    ctx.fillText(yText, labelX + textOffX, labelY);
+
+    // Selection indicator
+    if (isSelected) {
+      ctx.strokeStyle = '#00aaff';
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 3]);
+      ctx.strokeRect(boxX - 2, boxY - 2, maxW + th * 0.2 + 4, boxH + 4);
+      ctx.setLineDash([]);
+    }
+
+    ctx.restore();
   }
 
   /**

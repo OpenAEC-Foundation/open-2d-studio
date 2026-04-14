@@ -71,6 +71,7 @@ import {
   AngularDimensionIcon,
   RadiusDimensionIcon,
   DiameterDimensionIcon,
+  SpotCoordinateIcon,
 } from '../../shared/CadIcons';
 import { useFileOperations } from '../../../hooks/file/useFileOperations';
 import { showPdfFileDialog } from '../../../services/file/pdfUnderlayService';
@@ -832,6 +833,17 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   active={activeTool === 'dimension' && dimensionMode === 'diameter'}
                   disabled={isSheetMode}
                   shortcut="DD"
+                />
+              </RibbonButtonStack>
+              <RibbonButtonStack>
+                <RibbonSmallButton
+                  icon={<SpotCoordinateIcon size={14} />}
+                  label="Spot Coord."
+                  onClick={() => switchToDrawingTool('spot-coordinate')}
+                  active={activeTool === 'spot-coordinate'}
+                  disabled={isSheetMode}
+                  tooltip="Place X/Y coordinate annotation at a point"
+                  shortcut="SC"
                 />
               </RibbonButtonStack>
             </RibbonGroup>

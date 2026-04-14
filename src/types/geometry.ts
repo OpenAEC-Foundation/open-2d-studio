@@ -43,7 +43,7 @@ export interface ShapeGroup {
 /** @deprecated Use drawingId instead */
 export type BaseShapeWithDraftId = BaseShape & { draftId?: string };
 
-export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'puntniveau' | 'pile' | 'column' | 'wall' | 'wall-opening' | 'slab' | 'slab-opening' | 'slab-label' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation' | 'block-instance' | 'rebar' | 'component-instance';
+export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'puntniveau' | 'pile' | 'column' | 'wall' | 'wall-opening' | 'slab' | 'slab-opening' | 'slab-label' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation' | 'spot-coordinate' | 'block-instance' | 'rebar' | 'component-instance';
 
 export type HatchPatternType = 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots' | 'custom';
 
@@ -756,6 +756,21 @@ export interface SpotElevationShape extends BaseShape {
   markerSize: number;        // Size of cross/circle marker (drawing units)
 }
 
+// Spot Coordinate shape — places X/Y coordinate annotation at a point
+export interface SpotCoordinateShape extends BaseShape {
+  type: 'spot-coordinate';
+  position: Point;          // The annotated point in world coords
+  displayX: number;         // X coordinate value to display (world units, already converted)
+  displayY: number;         // Y coordinate value to display (world units, Y un-inverted for display)
+  unit: 'mm' | 'm';         // Display unit
+  textHeight: number;       // Text size (drawing units)
+  leaderLength: number;     // Length of the leader line (drawing units)
+  leaderAngle: number;      // Angle of leader from position (radians, 0 = right)
+  showLeader: boolean;      // Whether to draw a leader line
+  decimalPlaces: number;    // Number of decimal places
+  prefix?: string;          // Optional prefix (e.g. "RD ")
+}
+
 // Image shape - embedded raster image on the canvas
 export interface ImageShape extends BaseShape {
   type: 'image';
@@ -1093,6 +1108,7 @@ export type Shape =
   | SpaceShape
   | PlateSystemShape
   | SpotElevationShape
+  | SpotCoordinateShape
   | CPTShape
   | FoundationZoneShape
   | BlockInstanceShape
@@ -1181,6 +1197,7 @@ export type ToolType =
   | 'space'
   | 'plate-system'
   | 'spot-elevation'
+  | 'spot-coordinate'
   | 'puntniveau'
   | 'label'
   | 'rebar'

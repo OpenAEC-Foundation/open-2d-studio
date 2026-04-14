@@ -2,7 +2,7 @@
  * Modify geometry utilities - pure functions for transform operations
  */
 
-import type { Point, Shape, LineShape, ArcShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, CPTShape, WallShape, BeamShape, SlabShape, SpaceShape, PlateSystemShape, ColumnShape, SlabOpeningShape, SlabLabelShape, SectionCalloutShape, SpotElevationShape, FoundationZoneShape, RebarShape } from '../../types/geometry';
+import type { Point, Shape, LineShape, ArcShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, CPTShape, WallShape, BeamShape, SlabShape, SpaceShape, PlateSystemShape, ColumnShape, SlabOpeningShape, SlabLabelShape, SectionCalloutShape, SpotElevationShape, SpotCoordinateShape, FoundationZoneShape, RebarShape } from '../../types/geometry';
 import { generateId } from '../../state/slices/types';
 import { formatPeilLabel, calculatePeilFromY } from '../../hooks/drawing/useLevelDrawing';
 import { bulgeToArc } from './GeometryUtils';
@@ -320,6 +320,11 @@ export function transformShape(shape: Shape, transform: PointTransform, newId?: 
       const se = cloned as unknown as SpotElevationShape;
       se.position = transform(se.position);
       se.labelPosition = transform(se.labelPosition);
+      break;
+    }
+    case 'spot-coordinate': {
+      const sc2 = cloned as unknown as SpotCoordinateShape;
+      sc2.position = transform(sc2.position);
       break;
     }
     case 'foundation-zone': {

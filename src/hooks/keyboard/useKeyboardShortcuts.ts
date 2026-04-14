@@ -40,6 +40,7 @@ function getShapeRotationCenter(shape: Shape): Point | null {
     case 'cpt':
     case 'image':
     case 'spot-elevation':
+    case 'spot-coordinate':
       return { x: shape.position.x, y: shape.position.y };
 
     // Rectangle: use center
@@ -379,6 +380,7 @@ export function useKeyboardShortcuts() {
                       slab: 'slab', beam: 'beam', pile: 'pile', puntniveau: 'puntniveau', cpt: 'cpt', space: 'space',
                       'plate-system': 'plate-system', 'section-callout': 'section-callout',
                       'spot-elevation': 'spot-elevation',
+                      'spot-coordinate': 'spot-coordinate',
                     };
                     const mappedTool = isLeader ? 'leader' : typeToTool[selShape.type];
                     if (mappedTool === 'gridline') {

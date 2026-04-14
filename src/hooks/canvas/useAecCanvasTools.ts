@@ -25,10 +25,12 @@ import { useSpaceDrawing } from '../drawing/useSpaceDrawing';
 import { usePlateSystemDrawing } from '../drawing/usePlateSystemDrawing';
 import { useSlabOpeningDrawing } from '../drawing/useSlabOpeningDrawing';
 import { useColumnDrawing } from '../drawing/useColumnDrawing';
+import { useSpotCoordinateDrawing } from '../drawing/useSpotCoordinateDrawing';
 
 const AEC_TOOL_NAMES = [
   'beam', 'gridline', 'level', 'pile', 'column', 'cpt',
   'wall', 'slab', 'slab-opening', 'slab-label', 'puntniveau', 'section-callout', 'space', 'plate-system',
+  'spot-coordinate',
 ] as const;
 
 export function useAecCanvasTools() {
@@ -47,6 +49,7 @@ export function useAecCanvasTools() {
   const plateSystemDrawing = usePlateSystemDrawing();
   const slabOpeningDrawing = useSlabOpeningDrawing();
   const columnDrawing = useColumnDrawing();
+  const spotCoordinateDrawing = useSpotCoordinateDrawing();
 
   // Read pending states from store
   const {
@@ -224,6 +227,9 @@ export function useAecCanvasTools() {
       case 'space':
         if (!pendingSpace) return false;
         return spaceDrawing.handleSpaceClick(snappedPos);
+      case 'spot-coordinate':
+        spotCoordinateDrawing.handleSpotCoordinateClick(snappedPos);
+        return true;
       default:
         return false;
     }
@@ -312,6 +318,9 @@ export function useAecCanvasTools() {
         if (!pendingSectionCallout) return false;
         sectionCalloutDrawing.updateSectionCalloutPreview(snappedPos, shiftKey);
         return true;
+      case 'spot-coordinate':
+        spotCoordinateDrawing.updateSpotCoordinatePreview(snappedPos);
+        return true;
       default:
         return false;
     }
@@ -383,6 +392,10 @@ export function useAecCanvasTools() {
       case 'space':
         if (!pendingSpace) return false;
         spaceDrawing.cancelSpaceDrawing();
+        setActiveTool('select');
+        return true;
+      case 'spot-coordinate':
+        spotCoordinateDrawing.cancelSpotCoordinateDrawing();
         setActiveTool('select');
         return true;
       default:

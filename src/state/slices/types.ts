@@ -95,6 +95,7 @@ export type DrawingPreview =
   | { type: 'plate-system'; points: Point[]; currentPoint: Point; systemType: string; mainProfile: { width: number; spacing: number; direction: number }; edgeWidth?: number; bulges?: number[]; currentBulge?: number; arcThroughPoint?: Point }
   | { type: 'section-callout'; start: Point; end: Point; label: string; bubbleRadius: number; flipDirection: boolean; viewDepth?: number }
   | { type: 'spot-elevation'; position: Point; elevation: number; labelPosition: Point; showLeader: boolean }
+  | { type: 'spot-coordinate'; position: Point }
   | { type: 'modifyPreview'; shapes: Shape[]; basePoint?: Point; currentPoint?: Point }
   | { type: 'mirrorAxis'; start: Point; end: Point; shapes: Shape[] }
   | { type: 'rotateGuide'; center: Point; startRay?: Point; endRay: Point; angle?: number; shapes: Shape[] }
@@ -433,6 +434,19 @@ export const getShapeBounds = (shape: Shape): { minX: number; minY: number; maxX
         minY: Math.min(seShape.position.y, seShape.labelPosition.y) - ms,
         maxX: Math.max(seShape.position.x, seShape.labelPosition.x) + ms,
         maxY: Math.max(seShape.position.y, seShape.labelPosition.y) + ms,
+      };
+    }
+    case 'spot-coordinate': {
+      const scShape = shape as import('../../types/geometry').SpotCoordinateShape;
+      const th = scShape.textHeight || 200;
+      const ll = scShape.leaderLength || 1000;
+      const lx = scShape.position.x + ll * Math.cos(scShape.leaderAngle || 0);
+      const ly = scShape.position.y + ll * Math.sin(scShape.leaderAngle || 0);
+      return {
+        minX: Math.min(scShape.position.x, lx) - th * 2,
+        minY: Math.min(scShape.position.y, ly) - th * 2,
+        maxX: Math.max(scShape.position.x, lx) + th * 6,
+        maxY: Math.max(scShape.position.y, ly) + th * 4,
       };
     }
     default:

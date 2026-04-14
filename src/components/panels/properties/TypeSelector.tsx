@@ -69,6 +69,7 @@ function getShapeTypeLabel(type: ShapeType): string {
     cpt: 'CPT',
     'foundation-zone': 'Foundation Zone',
     'spot-elevation': 'Spot Elevation',
+    'spot-coordinate': 'Spot Coordinate',
     'block-instance': 'Block',
     rebar: 'Rebar',
     'component-instance': 'Component',

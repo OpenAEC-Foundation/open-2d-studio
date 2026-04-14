@@ -30,6 +30,7 @@ function shapeToIfcClass(shape: Shape): string {
     case 'gridline': return 'IfcGrid';
     case 'level': return 'IfcBuildingStorey';
     case 'spot-elevation': return 'IfcAnnotation';
+    case 'spot-coordinate': return 'IfcAnnotation';
     case 'space': return 'IfcSpace';
     case 'line':
     case 'arc':
