@@ -3,7 +3,7 @@
  * Calibration seed: [77,111,106,116,97,98,97,32,75,97,114,105,109,105]
  */
 
-import type { Point, Shape, RectangleShape, TextShape, ArcShape, EllipseShape, HatchShape, BeamShape, ImageShape, GridlineShape, PileShape, WallShape, SlabShape, LevelShape, PuntniveauShape, SectionCalloutShape, SpaceShape, PlateSystemShape, SpotElevationShape, CPTShape, FoundationZoneShape } from '../../types/geometry';
+import type { Point, Shape, RectangleShape, TextShape, ArcShape, EllipseShape, HatchShape, BeamShape, ImageShape, GridlineShape, PileShape, WallShape, SlabShape, LevelShape, PuntniveauShape, SectionCalloutShape, SpaceShape, PlateSystemShape, SpotElevationShape, CPTShape, FoundationZoneShape, LineShape, PolylineShape, CircleShape } from '../../types/geometry';
 import type { ParametricShape, ProfileParametricShape } from '../../types/parametric';
 import { isPointNearSpline } from './SplineUtils';
 import type { DimensionShape } from '../../types/dimension';
@@ -2153,4 +2153,394 @@ export function getShapeBoundaryWithBulge(shape: Shape, segmentCount: number = 6
       // For other shapes, just return points (no bulge needed - they're approximated with straight segments)
       return { points: getShapeBoundaryPoints(shape, segmentCount) };
   }
+}
+
+// ============================================================================
+// AutoCAD-style "pick internal point" hatch boundary detection
+// ============================================================================
+
+/** Tolerance for endpoint matching in boundary detection (world units, mm) */
+const BOUNDARY_ENDPOINT_TOL = 5;
+
+interface BoundarySegment {
+  start: Point;
+  end: Point;
+}
+
+/**
+ * Extract all line segments from the given shapes that could form a boundary.
+ * Handles: line, polyline (open and closed), rectangle, circle (approximated),
+ * arc (approximated), ellipse (approximated), wall, beam.
+ */
+function extractBoundarySegments(shapes: Shape[]): BoundarySegment[] {
+  const segs: BoundarySegment[] = [];
+
+  for (const shape of shapes) {
+    if (!shape.visible) continue;
+
+    switch (shape.type) {
+      case 'line': {
+        const l = shape as LineShape;
+        segs.push({ start: l.start, end: l.end });
+        break;
+      }
+      case 'polyline': {
+        const pl = shape as PolylineShape;
+        const pts = pl.points;
+        const n = pts.length;
+        const limit = pl.closed ? n : n - 1;
+        for (let i = 0; i < limit; i++) {
+          segs.push({ start: pts[i], end: pts[(i + 1) % n] });
+        }
+        break;
+      }
+      case 'rectangle': {
+        const r = shape as RectangleShape;
+        const { topLeft: tl, width: w, height: h, rotation: rot } = r;
+        const cos = Math.cos(rot || 0);
+        const sin = Math.sin(rot || 0);
+        const toWorld = (lx: number, ly: number): Point => ({
+          x: tl.x + lx * cos - ly * sin,
+          y: tl.y + lx * sin + ly * cos,
+        });
+        const corners: Point[] = [
+          toWorld(0, 0), toWorld(w, 0), toWorld(w, h), toWorld(0, h),
+        ];
+        for (let i = 0; i < 4; i++) {
+          segs.push({ start: corners[i], end: corners[(i + 1) % 4] });
+        }
+        break;
+      }
+      case 'circle': {
+        // Approximate circle with 64 segments
+        const c = shape as CircleShape;
+        const N = 64;
+        for (let i = 0; i < N; i++) {
+          const a0 = (i / N) * Math.PI * 2;
+          const a1 = ((i + 1) / N) * Math.PI * 2;
+          segs.push({
+            start: { x: c.center.x + c.radius * Math.cos(a0), y: c.center.y + c.radius * Math.sin(a0) },
+            end:   { x: c.center.x + c.radius * Math.cos(a1), y: c.center.y + c.radius * Math.sin(a1) },
+          });
+        }
+        break;
+      }
+      case 'arc': {
+        const a = shape as ArcShape;
+        const N = 32;
+        const span = ((a.endAngle - a.startAngle) + Math.PI * 2) % (Math.PI * 2) || Math.PI * 2;
+        for (let i = 0; i < N; i++) {
+          const t0 = a.startAngle + (i / N) * span;
+          const t1 = a.startAngle + ((i + 1) / N) * span;
+          segs.push({
+            start: { x: a.center.x + a.radius * Math.cos(t0), y: a.center.y + a.radius * Math.sin(t0) },
+            end:   { x: a.center.x + a.radius * Math.cos(t1), y: a.center.y + a.radius * Math.sin(t1) },
+          });
+        }
+        break;
+      }
+      case 'ellipse': {
+        const e = shape as EllipseShape;
+        const N = 64;
+        const cos = Math.cos(e.rotation || 0);
+        const sin = Math.sin(e.rotation || 0);
+        for (let i = 0; i < N; i++) {
+          const a0 = (i / N) * Math.PI * 2;
+          const a1 = ((i + 1) / N) * Math.PI * 2;
+          const lx0 = e.radiusX * Math.cos(a0); const ly0 = e.radiusY * Math.sin(a0);
+          const lx1 = e.radiusX * Math.cos(a1); const ly1 = e.radiusY * Math.sin(a1);
+          segs.push({
+            start: { x: e.center.x + lx0 * cos - ly0 * sin, y: e.center.y + lx0 * sin + ly0 * cos },
+            end:   { x: e.center.x + lx1 * cos - ly1 * sin, y: e.center.y + lx1 * sin + ly1 * cos },
+          });
+        }
+        break;
+      }
+      case 'wall': {
+        const wall = shape as WallShape;
+        const { start: ws, end: we, thickness, justification } = wall;
+        const dx = we.x - ws.x;
+        const dy = we.y - ws.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-6) break;
+        const px = -dy / len;
+        const py = dx / len;
+        let lt = thickness / 2;
+        let rt = thickness / 2;
+        if (justification === 'left') { lt = thickness; rt = 0; }
+        else if (justification === 'right') { lt = 0; rt = thickness; }
+        const corners: Point[] = [
+          { x: ws.x + px * lt, y: ws.y + py * lt },
+          { x: we.x + px * lt, y: we.y + py * lt },
+          { x: we.x - px * rt, y: we.y - py * rt },
+          { x: ws.x - px * rt, y: ws.y - py * rt },
+        ];
+        for (let i = 0; i < 4; i++) {
+          segs.push({ start: corners[i], end: corners[(i + 1) % 4] });
+        }
+        break;
+      }
+      case 'beam': {
+        const beam = shape as BeamShape;
+        const bw = (beam.profileParameters?.width as number) ?? 100;
+        const bh = (beam.profileParameters?.height as number) ?? 200;
+        const { start: bs, end: be } = beam;
+        const dx = be.x - bs.x;
+        const dy = be.y - bs.y;
+        const len = Math.sqrt(dx * dx + dy * dy);
+        if (len < 1e-6) break;
+        const px = -dy / len;
+        const py = dx / len;
+        const half = bw / 2;
+        const corners: Point[] = [
+          { x: bs.x + px * half, y: bs.y + py * half },
+          { x: be.x + px * half, y: be.y + py * half },
+          { x: be.x - px * half, y: be.y - py * half },
+          { x: bs.x - px * half, y: bs.y - py * half },
+        ];
+        // suppress unused bh
+        void bh;
+        for (let i = 0; i < 4; i++) {
+          segs.push({ start: corners[i], end: corners[(i + 1) % 4] });
+        }
+        break;
+      }
+    }
+  }
+
+  return segs;
+}
+
+/**
+ * Segment intersection helper for boundary detection
+ */
+function boundarySegmentIntersection(
+  a1: Point, a2: Point,
+  b1: Point, b2: Point
+): Point | null {
+  const d1x = a2.x - a1.x; const d1y = a2.y - a1.y;
+  const d2x = b2.x - b1.x; const d2y = b2.y - b1.y;
+  const denom = d1x * d2y - d1y * d2x;
+  if (Math.abs(denom) < 1e-10) return null;
+  const t = ((b1.x - a1.x) * d2y - (b1.y - a1.y) * d2x) / denom;
+  const u = ((b1.x - a1.x) * d1y - (b1.y - a1.y) * d1x) / denom;
+  if (t >= -1e-6 && t <= 1 + 1e-6 && u >= -1e-6 && u <= 1 + 1e-6) {
+    return { x: a1.x + t * d1x, y: a1.y + t * d1y };
+  }
+  return null;
+}
+
+/** Round a value to a grid for vertex key matching */
+function bvKey(p: Point): string {
+  return `${Math.round(p.x / BOUNDARY_ENDPOINT_TOL) * BOUNDARY_ENDPOINT_TOL},${Math.round(p.y / BOUNDARY_ENDPOINT_TOL) * BOUNDARY_ENDPOINT_TOL}`;
+}
+
+function bvParse(key: string): Point {
+  const [x, y] = key.split(',').map(Number);
+  return { x, y };
+}
+
+/**
+ * Split segments at mutual intersection points to form a proper planar graph.
+ */
+function splitBoundarySegments(segs: BoundarySegment[]): BoundarySegment[] {
+  const splitParams = new Map<number, number[]>();
+  for (let i = 0; i < segs.length; i++) splitParams.set(i, []);
+
+  for (let i = 0; i < segs.length; i++) {
+    for (let j = i + 1; j < segs.length; j++) {
+      const ip = boundarySegmentIntersection(segs[i].start, segs[i].end, segs[j].start, segs[j].end);
+      if (!ip) continue;
+      const si = segs[i]; const sj = segs[j];
+      const lenSqI = (si.end.x - si.start.x) ** 2 + (si.end.y - si.start.y) ** 2;
+      const lenSqJ = (sj.end.x - sj.start.x) ** 2 + (sj.end.y - sj.start.y) ** 2;
+      if (lenSqI > 1e-10) {
+        const ti = ((ip.x - si.start.x) * (si.end.x - si.start.x) + (ip.y - si.start.y) * (si.end.y - si.start.y)) / lenSqI;
+        if (ti > 0.001 && ti < 0.999) splitParams.get(i)!.push(ti);
+      }
+      if (lenSqJ > 1e-10) {
+        const tj = ((ip.x - sj.start.x) * (sj.end.x - sj.start.x) + (ip.y - sj.start.y) * (sj.end.y - sj.start.y)) / lenSqJ;
+        if (tj > 0.001 && tj < 0.999) splitParams.get(j)!.push(tj);
+      }
+    }
+  }
+
+  const result: BoundarySegment[] = [];
+  for (let i = 0; i < segs.length; i++) {
+    const params = splitParams.get(i)!;
+    if (params.length === 0) { result.push(segs[i]); continue; }
+    params.sort((a, b) => a - b);
+    const allT = [0, ...params, 1];
+    const seg = segs[i];
+    const dx = seg.end.x - seg.start.x; const dy = seg.end.y - seg.start.y;
+    for (let k = 0; k < allT.length - 1; k++) {
+      const t0 = allT[k]; const t1 = allT[k + 1];
+      if (t1 - t0 < 0.001) continue;
+      result.push({
+        start: { x: seg.start.x + dx * t0, y: seg.start.y + dy * t0 },
+        end:   { x: seg.start.x + dx * t1, y: seg.start.y + dy * t1 },
+      });
+    }
+  }
+  return result;
+}
+
+/**
+ * Build a planar graph from boundary segments.
+ */
+function buildBoundaryGraph(
+  segs: BoundarySegment[]
+): Map<string, { target: string; angle: number }[]> {
+  const graph = new Map<string, { target: string; angle: number }[]>();
+
+  const addEdge = (from: Point, to: Point) => {
+    const fk = bvKey(from); const tk = bvKey(to);
+    if (fk === tk) return;
+    if (!graph.has(fk)) graph.set(fk, []);
+    const angle = Math.atan2(to.y - from.y, to.x - from.x);
+    const edges = graph.get(fk)!;
+    const exists = edges.some(e => e.target === tk && Math.abs(e.angle - angle) < 1e-6);
+    if (!exists) edges.push({ target: tk, angle });
+  };
+
+  for (const seg of segs) {
+    addEdge(seg.start, seg.end);
+    addEdge(seg.end, seg.start);
+  }
+
+  for (const [, edges] of graph) {
+    edges.sort((a, b) => a.angle - b.angle);
+  }
+
+  return graph;
+}
+
+/**
+ * Given a click point inside a closed region formed by visible shapes,
+ * detect the boundary polygon using a planar-face-walk algorithm.
+ *
+ * Returns the boundary as an array of Points (or null if no closed region found).
+ */
+export function detectBoundaryAtPoint(point: Point, shapes: Shape[]): Point[] | null {
+  if (shapes.length === 0) return null;
+
+  const rawSegs = extractBoundarySegments(shapes);
+  if (rawSegs.length === 0) return null;
+
+  const segs = splitBoundarySegments(rawSegs);
+  const graph = buildBoundaryGraph(segs);
+
+  // Cast ray in +X direction to find nearest segment
+  const rayDir = { x: 1, y: 0 };
+  let nearestT = Infinity;
+  let nearestSeg: BoundarySegment | null = null;
+
+  for (const seg of segs) {
+    const dx = seg.end.x - seg.start.x; const dy = seg.end.y - seg.start.y;
+    const denom = rayDir.x * dy - rayDir.y * dx;
+    if (Math.abs(denom) < 1e-10) continue;
+    const t = ((seg.start.x - point.x) * dy - (seg.start.y - point.y) * dx) / denom;
+    const u = ((seg.start.x - point.x) * rayDir.y - (seg.start.y - point.y) * rayDir.x) / denom;
+    if (t > 1e-6 && u >= -1e-6 && u <= 1 + 1e-6 && t < nearestT) {
+      nearestT = t;
+      nearestSeg = seg;
+    }
+  }
+
+  if (!nearestSeg) return null;
+
+  // Determine walk direction: interior on the left
+  const edgeDx = nearestSeg.end.x - nearestSeg.start.x;
+  const edgeDy = nearestSeg.end.y - nearestSeg.start.y;
+  const toClick = { x: point.x - nearestSeg.start.x, y: point.y - nearestSeg.start.y };
+  const cross = edgeDx * toClick.y - edgeDy * toClick.x;
+
+  let startVertex: string;
+  let currentVertex: string;
+  let prevAngle: number;
+
+  if (cross >= 0) {
+    startVertex = bvKey(nearestSeg.start);
+    currentVertex = bvKey(nearestSeg.end);
+    prevAngle = Math.atan2(nearestSeg.end.y - nearestSeg.start.y, nearestSeg.end.x - nearestSeg.start.x);
+  } else {
+    startVertex = bvKey(nearestSeg.end);
+    currentVertex = bvKey(nearestSeg.start);
+    prevAngle = Math.atan2(nearestSeg.start.y - nearestSeg.end.y, nearestSeg.start.x - nearestSeg.end.x);
+  }
+
+  // Walk the face boundary turning right (clockwise) at each vertex
+  const contour: Point[] = [bvParse(startVertex)];
+  let steps = 0;
+  const maxSteps = segs.length * 2 + 20;
+
+  const normalizeA = (a: number): number => {
+    const TWO_PI = Math.PI * 2;
+    let r = a % TWO_PI;
+    if (r < 0) r += TWO_PI;
+    return r;
+  };
+
+  while (steps < maxSteps) {
+    steps++;
+    const edges = graph.get(currentVertex);
+    if (!edges || edges.length === 0) return null;
+
+    const incomingAngle = normalizeA(prevAngle + Math.PI);
+    let bestEdge: { target: string; angle: number } | null = null;
+    let bestDelta = Infinity;
+
+    for (const edge of edges) {
+      if (edge.target === currentVertex) continue;
+      let delta = normalizeA(incomingAngle - edge.angle);
+      if (delta < 1e-6) delta = Math.PI * 2;
+      if (delta < bestDelta) { bestDelta = delta; bestEdge = edge; }
+    }
+
+    if (!bestEdge) return null;
+
+    const nextVertex = bestEdge.target;
+    contour.push(bvParse(currentVertex));
+
+    if (nextVertex === startVertex) break;
+
+    prevAngle = bestEdge.angle;
+    currentVertex = nextVertex;
+  }
+
+  if (contour.length < 3) return null;
+
+  // Verify click point is inside the contour (ray-cast)
+  let inside = false;
+  for (let i = 0, j = contour.length - 1; i < contour.length; j = i++) {
+    const xi = contour[i].x; const yi = contour[i].y;
+    const xj = contour[j].x; const yj = contour[j].y;
+    if (((yi > point.y) !== (yj > point.y)) && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+      inside = !inside;
+    }
+  }
+
+  if (!inside) {
+    // Try reversed winding
+    contour.reverse();
+    inside = false;
+    for (let i = 0, j = contour.length - 1; i < contour.length; j = i++) {
+      const xi = contour[i].x; const yi = contour[i].y;
+      const xj = contour[j].x; const yj = contour[j].y;
+      if (((yi > point.y) !== (yj > point.y)) && (point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi)) {
+        inside = !inside;
+      }
+    }
+    if (!inside) return null;
+  }
+
+  // Minimum area check
+  let area = 0;
+  for (let i = 0; i < contour.length; i++) {
+    const j = (i + 1) % contour.length;
+    area += contour[i].x * contour[j].y - contour[j].x * contour[i].y;
+  }
+  if (Math.abs(area) / 2 < 100) return null;
+
+  return contour;
 }

@@ -5,7 +5,7 @@
 import { useCallback } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
 import type { Point, LineShape, RectangleShape, CircleShape, ArcShape, PolylineShape, SplineShape, EllipseShape, SnapPoint, Shape, HatchShape } from '../../types/geometry';
-import { snapToAngle, calculateCircleFrom3Points, isPointNearShape, findClosedShapeContainingPoint, getShapeBoundaryWithBulge, calculateBulgeFrom3Points } from '../../engine/geometry/GeometryUtils';
+import { snapToAngle, calculateCircleFrom3Points, isPointNearShape, findClosedShapeContainingPoint, getShapeBoundaryWithBulge, calculateBulgeFrom3Points, detectBoundaryAtPoint } from '../../engine/geometry/GeometryUtils';
 import { useDimensionDrawing } from './useDimensionDrawing';
 
 /**
@@ -342,28 +342,35 @@ export function useShapeDrawing() {
   /**
    * Handle click for hatch drawing
    * - If clicking inside a closed shape (circle, rectangle, ellipse, closed polyline), fill it immediately
-   * - Otherwise, draw a new hatch boundary polygon
+   * - If clicking inside a closed region formed by intersecting lines/polylines, auto-detect boundary (AutoCAD-style)
+   * - Otherwise, draw a new hatch boundary polygon manually
    */
   const handleHatchClick = useCallback(
     (snappedPos: Point, shiftKey: boolean) => {
-      // If no points drawn yet, check if clicking inside an existing closed shape
+      // If no points drawn yet, check if clicking inside an existing closed shape or region
       if (drawingPoints.length === 0) {
         const { shapes } = useAppStore.getState();
-        const activeShapes = shapes.filter(s => s.drawingId === activeDrawingId);
-        const containingShape = findClosedShapeContainingPoint(snappedPos, activeShapes);
+        const activeShapes = shapes.filter(s => s.drawingId === activeDrawingId && s.visible && s.type !== 'hatch');
 
+        // First try: click inside a single closed primitive (circle, rectangle, closed polyline, ellipse)
+        const containingShape = findClosedShapeContainingPoint(snappedPos, activeShapes);
         if (containingShape) {
-          // Get boundary points and bulge data from the shape
           const boundary = getShapeBoundaryWithBulge(containingShape);
           if (boundary.points.length >= 3) {
-            // Create hatch immediately with this boundary (including curves)
             createHatch(boundary.points, boundary.bulge);
             return;
           }
         }
+
+        // Second try: AutoCAD-style boundary detection — find smallest closed region enclosing the click
+        const boundaryPoints = detectBoundaryAtPoint(snappedPos, activeShapes);
+        if (boundaryPoints && boundaryPoints.length >= 3) {
+          createHatch(boundaryPoints);
+          return;
+        }
       }
 
-      // Fall back to drawing a new boundary polygon
+      // Fall back to drawing a new boundary polygon manually
       let finalPos = snappedPos;
       if (shiftKey && drawingPoints.length > 0) {
         const lastPoint = drawingPoints[drawingPoints.length - 1];
