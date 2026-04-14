@@ -640,17 +640,21 @@ function TitleBlockCard({ titleBlock, isSelected, onClick, onDelete }: TitleBloc
             <span>-</span>
             <span>{titleBlock.fieldMappings.length} field{titleBlock.fieldMappings.length !== 1 ? 's' : ''}</span>
             <span>-</span>
-            <span className="text-cad-accent">Custom</span>
+            <span className={titleBlock.isBuiltIn ? 'text-cad-text-dim' : 'text-cad-accent'}>
+              {titleBlock.isBuiltIn ? 'Ingebouwd' : 'Custom'}
+            </span>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={handleDeleteClick}
-          className="p-1.5 text-cad-text-dim hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
-          title="Delete sheet template"
-        >
-          <Trash2 size={14} />
-        </button>
+        {!titleBlock.isBuiltIn && (
+          <button
+            type="button"
+            onClick={handleDeleteClick}
+            className="p-1.5 text-cad-text-dim hover:text-red-500 hover:bg-red-500/10 rounded transition-colors"
+            title="Delete sheet template"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
       </div>
     </div>
   );

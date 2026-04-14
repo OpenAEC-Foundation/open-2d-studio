@@ -343,42 +343,193 @@ export async function generateThumbnail(
  */
 const SVG_TEMPLATES_STORAGE_KEY = 'open2dstudio_svg_titleblock_templates';
 
+// ============================================================================
+// Built-in 3BM title block templates (A4, A3, A2, A1, A0)
+// Lightweight inline SVG templates with {{placeholder}} field syntax
+// ============================================================================
+
+/** Generate a simple 3BM-style title block SVG for the given paper size */
+function make3BMTemplateSVG(
+  widthMm: number,
+  heightMm: number,
+  paperLabel: string,
+  tbWidth: number,
+  tbHeight: number
+): string {
+  const tbX = widthMm - tbWidth - 5;
+  const tbY = heightMm - tbHeight - 5;
+  const revX = tbX - tbWidth - 5;
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${widthMm}mm" height="${heightMm}mm" viewBox="0 0 ${widthMm} ${heightMm}">
+  <rect x="5" y="5" width="${widthMm - 10}" height="${heightMm - 10}" fill="none" stroke="#000" stroke-width="0.7"/>
+  <rect x="20" y="20" width="${widthMm - 40}" height="${heightMm - 60}" fill="none" stroke="#000" stroke-width="0.35"/>
+  <!-- Title block -->
+  <rect x="${tbX}" y="${tbY}" width="${tbWidth}" height="${tbHeight}" fill="white" stroke="#000" stroke-width="0.5"/>
+  <line x1="${tbX}" y1="${tbY + 10}" x2="${tbX + tbWidth}" y2="${tbY + 10}" stroke="#000" stroke-width="0.35"/>
+  <line x1="${tbX}" y1="${tbY + 20}" x2="${tbX + tbWidth}" y2="${tbY + 20}" stroke="#000" stroke-width="0.35"/>
+  <line x1="${tbX}" y1="${tbY + 30}" x2="${tbX + tbWidth}" y2="${tbY + 30}" stroke="#000" stroke-width="0.35"/>
+  <line x1="${tbX + Math.round(tbWidth * 0.4)}" y1="${tbY}" x2="${tbX + Math.round(tbWidth * 0.4)}" y2="${tbY + tbHeight}" stroke="#000" stroke-width="0.35"/>
+  <line x1="${tbX + Math.round(tbWidth * 0.75)}" y1="${tbY + 20}" x2="${tbX + Math.round(tbWidth * 0.75)}" y2="${tbY + tbHeight}" stroke="#000" stroke-width="0.35"/>
+  <!-- 3BM label -->
+  <text x="${tbX + Math.round(tbWidth * 0.2)}" y="${tbY + 8}" font-family="Arial,sans-serif" font-size="7" font-weight="bold" text-anchor="middle" fill="#000">3BM</text>
+  <!-- Field labels -->
+  <text x="${tbX + 2}" y="${tbY + 15}" font-family="Arial,sans-serif" font-size="2.5" fill="#666">Project</text>
+  <text x="${tbX + 2}" y="${tbY + 19}" font-family="Arial,sans-serif" font-size="3.5" fill="#000">{{projectnaam}}</text>
+  <text x="${tbX + Math.round(tbWidth * 0.4) + 2}" y="${tbY + 13}" font-family="Arial,sans-serif" font-size="2.5" fill="#666">Tekening</text>
+  <text x="${tbX + Math.round(tbWidth * 0.4) + 2}" y="${tbY + 18}" font-family="Arial,sans-serif" font-size="3.5" fill="#000">{{title}}</text>
+  <text x="${tbX + 2}" y="${tbY + 25}" font-family="Arial,sans-serif" font-size="2.5" fill="#666">Schaal</text>
+  <text x="${tbX + 2}" y="${tbY + 29}" font-family="Arial,sans-serif" font-size="3" fill="#000">{{schaal}}</text>
+  <text x="${tbX + Math.round(tbWidth * 0.4) + 2}" y="${tbY + 25}" font-family="Arial,sans-serif" font-size="2.5" fill="#666">Datum</text>
+  <text x="${tbX + Math.round(tbWidth * 0.4) + 2}" y="${tbY + 29}" font-family="Arial,sans-serif" font-size="3" fill="#000">{{datum}}</text>
+  <text x="${tbX + Math.round(tbWidth * 0.75) + 2}" y="${tbY + 25}" font-family="Arial,sans-serif" font-size="2.5" fill="#666">Tekeningnr.</text>
+  <text x="${tbX + Math.round(tbWidth * 0.75) + 2}" y="${tbY + 29}" font-family="Arial,sans-serif" font-size="3" fill="#000">{{kenmerk}}</text>
+  <text x="${tbX + 2}" y="${tbY + 35}" font-family="Arial,sans-serif" font-size="2.5" fill="#666">Gemaakt door</text>
+  <text x="${tbX + 2}" y="${tbY + 39}" font-family="Arial,sans-serif" font-size="3" fill="#000">{{auteur}}</text>
+  <text x="${tbX + Math.round(tbWidth * 0.4) + 2}" y="${tbY + 35}" font-family="Arial,sans-serif" font-size="2.5" fill="#666">Gecontroleerd</text>
+  <text x="${tbX + Math.round(tbWidth * 0.4) + 2}" y="${tbY + 39}" font-family="Arial,sans-serif" font-size="3" fill="#000">{{checkedby}}</text>
+  <text x="${tbX + Math.round(tbWidth * 0.75) + 2}" y="${tbY + 35}" font-family="Arial,sans-serif" font-size="2.5" fill="#666">Bladnr.</text>
+  <text x="${tbX + Math.round(tbWidth * 0.75) + 2}" y="${tbY + 39}" font-family="Arial,sans-serif" font-size="3" fill="#000">{{blad}}</text>
+  <!-- Revision table -->
+  <rect x="${revX}" y="${tbY}" width="${tbWidth}" height="${tbHeight}" fill="white" stroke="#000" stroke-width="0.5"/>
+  <text x="${revX + 2}" y="${tbY + 6}" font-family="Arial,sans-serif" font-size="2.5" font-weight="bold" fill="#000">Rev. | Datum | Omschrijving | Gemaakt</text>
+  <line x1="${revX}" y1="${tbY + 8}" x2="${revX + tbWidth}" y2="${tbY + 8}" stroke="#000" stroke-width="0.35"/>
+  <!-- Paper label -->
+  <text x="${widthMm - 6}" y="12" font-family="Arial,sans-serif" font-size="3" text-anchor="end" fill="#000">${paperLabel}</text>
+</svg>`;
+}
+
+/** Standard field mappings for a 3BM title block */
+const STANDARD_3BM_FIELD_MAPPINGS: SVGFieldMapping[] = [
+  { fieldId: 'projectnaam', svgSelector: '{{projectnaam}}', label: 'Projectnaam', defaultValue: '' },
+  { fieldId: 'title', svgSelector: '{{title}}', label: 'Tekeningstitel', defaultValue: '' },
+  { fieldId: 'schaal', svgSelector: '{{schaal}}', label: 'Schaal', defaultValue: '1:100', isAutoField: true, autoFieldType: 'scale' },
+  { fieldId: 'datum', svgSelector: '{{datum}}', label: 'Datum', defaultValue: '', isAutoField: true, autoFieldType: 'date' },
+  { fieldId: 'kenmerk', svgSelector: '{{kenmerk}}', label: 'Tekeningnummer', defaultValue: '' },
+  { fieldId: 'auteur', svgSelector: '{{auteur}}', label: 'Gemaakt door', defaultValue: '' },
+  { fieldId: 'checkedby', svgSelector: '{{checkedby}}', label: 'Gecontroleerd door', defaultValue: '' },
+  { fieldId: 'blad', svgSelector: '{{blad}}', label: 'Bladnummer', defaultValue: '1', isAutoField: true, autoFieldType: 'sheetNumber' },
+];
+
+/**
+ * Built-in 3BM SVG title block templates (A4, A3, A2, A1, A0)
+ */
+export const BUILT_IN_SVG_TEMPLATES: SVGTitleBlockTemplate[] = [
+  {
+    id: 'builtin_3bm_a4',
+    name: '3BM Tekenkader A4',
+    description: '3BM standaard tekenkader formaat A4 (210×297mm)',
+    paperSizes: ['A4'],
+    svgContent: make3BMTemplateSVG(210, 297, 'A4', 150, 45),
+    width: 150,
+    height: 45,
+    fieldMappings: STANDARD_3BM_FIELD_MAPPINGS,
+    isBuiltIn: true,
+    isFullPage: false,
+    createdAt: '2026-04-14T00:00:00.000Z',
+    modifiedAt: '2026-04-14T00:00:00.000Z',
+  },
+  {
+    id: 'builtin_3bm_a3',
+    name: '3BM Tekenkader A3',
+    description: '3BM standaard tekenkader formaat A3 (420×297mm)',
+    paperSizes: ['A3'],
+    svgContent: make3BMTemplateSVG(420, 297, 'A3', 175, 45),
+    width: 175,
+    height: 45,
+    fieldMappings: STANDARD_3BM_FIELD_MAPPINGS,
+    isBuiltIn: true,
+    isFullPage: false,
+    createdAt: '2026-04-14T00:00:00.000Z',
+    modifiedAt: '2026-04-14T00:00:00.000Z',
+  },
+  {
+    id: 'builtin_3bm_a2',
+    name: '3BM Tekenkader A2',
+    description: '3BM standaard tekenkader formaat A2 (594×420mm)',
+    paperSizes: ['A2'],
+    svgContent: make3BMTemplateSVG(594, 420, 'A2', 185, 50),
+    width: 185,
+    height: 50,
+    fieldMappings: STANDARD_3BM_FIELD_MAPPINGS,
+    isBuiltIn: true,
+    isFullPage: false,
+    createdAt: '2026-04-14T00:00:00.000Z',
+    modifiedAt: '2026-04-14T00:00:00.000Z',
+  },
+  {
+    id: 'builtin_3bm_a1',
+    name: '3BM Tekenkader A1',
+    description: '3BM standaard tekenkader formaat A1 (841×594mm)',
+    paperSizes: ['A1'],
+    svgContent: make3BMTemplateSVG(841, 594, 'A1', 190, 55),
+    width: 190,
+    height: 55,
+    fieldMappings: STANDARD_3BM_FIELD_MAPPINGS,
+    isBuiltIn: true,
+    isFullPage: false,
+    createdAt: '2026-04-14T00:00:00.000Z',
+    modifiedAt: '2026-04-14T00:00:00.000Z',
+  },
+  {
+    id: 'builtin_3bm_a0',
+    name: '3BM Tekenkader A0',
+    description: '3BM standaard tekenkader formaat A0 (1189×841mm)',
+    paperSizes: ['A0'],
+    svgContent: make3BMTemplateSVG(1189, 841, 'A0', 200, 55),
+    width: 200,
+    height: 55,
+    fieldMappings: STANDARD_3BM_FIELD_MAPPINGS,
+    isBuiltIn: true,
+    isFullPage: false,
+    createdAt: '2026-04-14T00:00:00.000Z',
+    modifiedAt: '2026-04-14T00:00:00.000Z',
+  },
+];
+
 /**
  * Load custom SVG templates from localStorage
  */
 export function loadCustomSVGTemplates(): SVGTitleBlockTemplate[] {
   try {
     const stored = localStorage.getItem(SVG_TEMPLATES_STORAGE_KEY);
-    if (!stored) return [];
-    return JSON.parse(stored);
+    const custom: SVGTitleBlockTemplate[] = stored ? JSON.parse(stored) : [];
+    // Merge built-in templates (prepend) with custom templates, filtering out
+    // any user-stored copies of built-in IDs so built-ins always reflect latest
+    const customFiltered = custom.filter(t => !BUILT_IN_SVG_TEMPLATES.some(b => b.id === t.id));
+    return [...BUILT_IN_SVG_TEMPLATES, ...customFiltered];
   } catch {
-    return [];
+    return [...BUILT_IN_SVG_TEMPLATES];
   }
 }
 
 /**
- * Save custom SVG templates to localStorage
+ * Save custom SVG templates to localStorage (excludes built-in templates)
  */
 export function saveCustomSVGTemplates(templates: SVGTitleBlockTemplate[]): void {
-  localStorage.setItem(SVG_TEMPLATES_STORAGE_KEY, JSON.stringify(templates));
+  const customOnly = templates.filter(t => !BUILT_IN_SVG_TEMPLATES.some(b => b.id === t.id));
+  localStorage.setItem(SVG_TEMPLATES_STORAGE_KEY, JSON.stringify(customOnly));
 }
 
 /**
  * Add a new custom SVG template
  */
 export function addCustomSVGTemplate(template: SVGTitleBlockTemplate): void {
-  const templates = loadCustomSVGTemplates();
-  templates.push(template);
-  saveCustomSVGTemplates(templates);
+  const allTemplates = loadCustomSVGTemplates();
+  // Only persist non-built-in templates
+  const customOnly = allTemplates.filter(t => !BUILT_IN_SVG_TEMPLATES.some(b => b.id === t.id));
+  customOnly.push(template);
+  localStorage.setItem(SVG_TEMPLATES_STORAGE_KEY, JSON.stringify(customOnly));
 }
 
 /**
- * Delete a custom SVG template
+ * Delete a custom SVG template (built-in templates cannot be deleted)
  */
 export function deleteCustomSVGTemplate(templateId: string): void {
-  const templates = loadCustomSVGTemplates();
-  const filtered = templates.filter(t => t.id !== templateId);
-  saveCustomSVGTemplates(filtered);
+  if (BUILT_IN_SVG_TEMPLATES.some(t => t.id === templateId)) return;
+  const allTemplates = loadCustomSVGTemplates();
+  const customOnly = allTemplates.filter(t => !BUILT_IN_SVG_TEMPLATES.some(b => b.id === t.id));
+  const filtered = customOnly.filter(t => t.id !== templateId);
+  localStorage.setItem(SVG_TEMPLATES_STORAGE_KEY, JSON.stringify(filtered));
 }
 
 /**
