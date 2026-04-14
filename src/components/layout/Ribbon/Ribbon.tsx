@@ -163,6 +163,8 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
   const filledRegionDrawTool = useAppStore(s => s.filledRegionDrawTool);
   const setFilledRegionDrawTool = useAppStore(s => s.setFilledRegionDrawTool);
   const sketchShapeIds = useAppStore(s => s.sketchShapeIds);
+  const sketchInnerLoopShapeIds = useAppStore(s => s.sketchInnerLoopShapeIds);
+  const editingHatchId = useAppStore(s => s.editingHatchId);
 
   const {
     activeTool,
@@ -363,24 +365,19 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     .map((t) => ({ id: t.id as RibbonTab, label: t.label, render: t.render }));
 
   // Sketch tab handlers (inline so they can call setActiveTab)
-  const handleSketchFinish = useCallback(() => {
-    const s = useAppStore.getState();
-    const ids = s.sketchShapeIds;
-    if (ids.length < 3) return;
 
-    const sketchShapes = s.shapes.filter((sh: any) => ids.includes(sh.id));
+  /** Helper: extract edges from sketch shapes */
+  type SkPt = { x: number; y: number };
+  interface SkEdge { p1: SkPt; p2: SkPt; bulge?: number; }
 
-    // Inline edge extraction and chaining (same as ToolOptionsBar)
-    const SKETCH_TOL = 5;
-    type Pt = { x: number; y: number };
-    interface SEdge { p1: Pt; p2: Pt; bulge?: number; }
-
-    const edges: SEdge[] = [];
+  const extractSkEdges = useCallback((shapeIds: string[], allShapes: any[]): SkEdge[] => {
+    const sketchShapes = allShapes.filter((sh: any) => shapeIds.includes(sh.id));
+    const edges: SkEdge[] = [];
     for (const shape of sketchShapes) {
       if (shape.type === 'line') {
-        edges.push({ p1: (shape as any).start, p2: (shape as any).end });
+        edges.push({ p1: shape.start, p2: shape.end });
       } else if (shape.type === 'arc') {
-        const { center, radius, startAngle, endAngle } = shape as any;
+        const { center, radius, startAngle, endAngle } = shape;
         const p1 = { x: center.x + radius * Math.cos(startAngle), y: center.y + radius * Math.sin(startAngle) };
         const p2 = { x: center.x + radius * Math.cos(endAngle), y: center.y + radius * Math.sin(endAngle) };
         let theta = endAngle - startAngle;
@@ -389,16 +386,15 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
         edges.push({ p1, p2, bulge: Math.tan(theta / 4) });
       }
     }
+    return edges;
+  }, []);
 
-    const ptClose = (a: Pt, b: Pt, tol: number) => {
-      const dx = a.x - b.x; const dy = a.y - b.y;
-      return dx * dx + dy * dy <= tol * tol;
-    };
-
-    // Chain edges into a closed loop
-    if (edges.length === 0) { alert('No segments drawn.'); return; }
+  /** Helper: chain edges into a closed loop. Returns null if not closed. */
+  const chainSkEdges = useCallback((edges: SkEdge[], tol: number): { points: SkPt[]; bulges: number[] } | null => {
+    if (edges.length === 0) return null;
+    const ptClose = (a: SkPt, b: SkPt) => { const dx = a.x - b.x; const dy = a.y - b.y; return dx * dx + dy * dy <= tol * tol; };
     const used = new Array(edges.length).fill(false);
-    const pts: Pt[] = [];
+    const pts: SkPt[] = [];
     const bulges: number[] = [];
     used[0] = true;
     pts.push({ ...edges[0].p1 }, { ...edges[0].p2 });
@@ -409,61 +405,122 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
       let found = false;
       for (let i = 0; i < edges.length; i++) {
         if (used[i]) continue;
-        if (ptClose(last, edges[i].p1, SKETCH_TOL)) {
+        if (ptClose(last, edges[i].p1)) {
           pts.push({ ...edges[i].p2 }); bulges.push(edges[i].bulge ?? 0); used[i] = true; found = true; attached++; break;
-        } else if (ptClose(last, edges[i].p2, SKETCH_TOL)) {
+        } else if (ptClose(last, edges[i].p2)) {
           pts.push({ ...edges[i].p1 }); bulges.push(-(edges[i].bulge ?? 0)); used[i] = true; found = true; attached++; break;
         }
       }
       if (!found) break;
     }
-    if (!ptClose(pts[0], pts[pts.length - 1], SKETCH_TOL)) {
-      alert('Cannot finish: the boundary is not a closed loop. Make sure all segments connect end-to-end.');
+    if (!ptClose(pts[0], pts[pts.length - 1])) return null;
+    pts.pop();
+    if (pts.length < 3) return null;
+    return { points: pts, bulges };
+  }, []);
+
+  const handleSketchFinish = useCallback(() => {
+    const s = useAppStore.getState();
+    const outerIds = s.sketchShapeIds;
+    if (outerIds.length < 3) return;
+
+    const SKETCH_TOL = 5;
+
+    // Chain outer boundary
+    const outerEdges = extractSkEdges(outerIds, s.shapes);
+    const outerLoop = chainSkEdges(outerEdges, SKETCH_TOL);
+    if (!outerLoop) {
+      alert('Cannot finish: the outer boundary is not a closed loop. Make sure all segments connect end-to-end.');
       return;
     }
-    pts.pop();
-    if (pts.length < 3) { alert('Need at least 3 segments.'); return; }
 
-    const hasBulge = bulges.some((b) => b !== 0);
+    // Chain inner loops
+    const innerLoops: SkPt[][] = [];
+    for (const innerIds of s.sketchInnerLoopShapeIds) {
+      if (innerIds.length >= 3) {
+        const innerEdges = extractSkEdges(innerIds, s.shapes);
+        const innerLoop = chainSkEdges(innerEdges, SKETCH_TOL);
+        if (innerLoop) {
+          innerLoops.push(innerLoop.points);
+        }
+      }
+    }
+
+    const hasBulge = outerLoop.bulges.some((b) => b !== 0);
     const frtId = s.selectedFilledRegionTypeId;
     const frt = frtId ? (s as any).filledRegionTypes?.find((t: any) => t.id === frtId) : undefined;
 
-    s.addShape({
-      id: `hatch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      type: 'hatch',
-      layerId: s.activeLayerId,
-      drawingId: s.activeDrawingId,
-      style: { ...s.currentStyle },
-      visible: true,
-      locked: false,
-      points: pts,
-      bulge: hasBulge ? bulges : undefined,
-      patternType: frt ? frt.fgPatternType : s.hatchPatternType,
-      patternAngle: frt ? frt.fgPatternAngle : s.hatchPatternAngle,
-      patternScale: frt ? frt.fgPatternScale : s.hatchPatternScale,
-      fillColor: frt ? frt.fgColor : s.hatchFillColor,
-      backgroundColor: frt?.backgroundColor ?? s.hatchBackgroundColor ?? undefined,
-      customPatternId: frt?.fgCustomPatternId ?? s.hatchCustomPatternId ?? undefined,
-      bgPatternType: frt ? frt.bgPatternType : undefined,
-      bgPatternAngle: frt ? frt.bgPatternAngle : undefined,
-      bgPatternScale: frt ? frt.bgPatternScale : undefined,
-      bgFillColor: frt ? frt.bgColor : undefined,
-      bgCustomPatternId: frt ? frt.bgCustomPatternId : undefined,
-      masking: frt ? frt.masking : undefined,
-      filledRegionTypeId: frt?.id,
-    } as any);
+    const editingHatchId = s.editingHatchId;
 
-    s.deleteShapes(ids);
+    if (editingHatchId) {
+      // Update existing hatch
+      s.updateShape(editingHatchId, {
+        visible: true,
+        points: outerLoop.points,
+        bulge: hasBulge ? outerLoop.bulges : undefined,
+        innerLoops: innerLoops.length > 0 ? innerLoops : undefined,
+      } as any);
+    } else {
+      // Create new hatch
+      s.addShape({
+        id: `hatch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: 'hatch',
+        layerId: s.activeLayerId,
+        drawingId: s.activeDrawingId,
+        style: { ...s.currentStyle },
+        visible: true,
+        locked: false,
+        points: outerLoop.points,
+        bulge: hasBulge ? outerLoop.bulges : undefined,
+        innerLoops: innerLoops.length > 0 ? innerLoops : undefined,
+        patternType: frt ? frt.fgPatternType : s.hatchPatternType,
+        patternAngle: frt ? frt.fgPatternAngle : s.hatchPatternAngle,
+        patternScale: frt ? frt.fgPatternScale : s.hatchPatternScale,
+        fillColor: frt ? frt.fgColor : s.hatchFillColor,
+        backgroundColor: frt?.backgroundColor ?? s.hatchBackgroundColor ?? undefined,
+        customPatternId: frt?.fgCustomPatternId ?? s.hatchCustomPatternId ?? undefined,
+        bgPatternType: frt ? frt.bgPatternType : undefined,
+        bgPatternAngle: frt ? frt.bgPatternAngle : undefined,
+        bgPatternScale: frt ? frt.bgPatternScale : undefined,
+        bgFillColor: frt ? frt.bgColor : undefined,
+        bgCustomPatternId: frt ? frt.bgCustomPatternId : undefined,
+        masking: frt ? frt.masking : undefined,
+        filledRegionTypeId: frt?.id,
+      } as any);
+    }
+
+    // Delete all sketch shapes (outer + all inner loops)
+    const allSketchIds = [
+      ...outerIds,
+      ...s.sketchInnerLoopShapeIds.flat(),
+    ];
+    s.deleteShapes(allSketchIds);
     s.clearSketchShapeIds();
+    s.clearSketchInnerLoops();
     s.finishFilledRegion();
-  }, []);
+  }, [extractSkEdges, chainSkEdges]);
 
   const handleSketchCancel = useCallback(() => {
     const s = useAppStore.getState();
-    const ids = s.sketchShapeIds;
-    if (ids.length > 0) s.deleteShapes(ids);
+    const outerIds = s.sketchShapeIds;
+    const innerIds = s.sketchInnerLoopShapeIds.flat();
+    const allIds = [...outerIds, ...innerIds];
+    if (allIds.length > 0) s.deleteShapes(allIds);
+
+    // If editing an existing hatch, restore its visibility
+    if (s.editingHatchId) {
+      s.updateShape(s.editingHatchId, { visible: true } as any);
+    }
+
     s.clearSketchShapeIds();
+    s.clearSketchInnerLoops();
     s.cancelFilledRegionMode();
+  }, []);
+
+  const handleAddInnerLoop = useCallback(() => {
+    const s = useAppStore.getState();
+    // Commit the current outer/previous boundary as a completed loop and start fresh
+    s.commitOuterLoopAndStartInner();
   }, []);
 
   const tabs = [...builtInTabs, ...extTabs, ifcTab];
@@ -1299,12 +1356,21 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   tooltip="Draw polyline boundary segment"
                 />
               </RibbonGroup>
+              <RibbonGroup label="Loops">
+                <RibbonButton
+                  icon={<FilledRegionIcon size={24} />}
+                  label="Add Inner Loop"
+                  onClick={handleAddInnerLoop}
+                  tooltip={`Start drawing an inner loop (hole). Current: ${sketchInnerLoopShapeIds.length} inner loop(s)`}
+                  active={false}
+                />
+              </RibbonGroup>
               <RibbonGroup label="Finish">
                 <RibbonButton
                   icon={<Check size={24} />}
-                  label="Finish"
+                  label={editingHatchId ? 'Update' : 'Finish'}
                   onClick={handleSketchFinish}
-                  tooltip={`Finish boundary and create filled region (${sketchShapeIds.length} segments)`}
+                  tooltip={`${editingHatchId ? 'Update existing hatch boundary' : 'Finish boundary and create filled region'} (${sketchShapeIds.length} segments)`}
                   active={false}
                 />
                 <RibbonButton

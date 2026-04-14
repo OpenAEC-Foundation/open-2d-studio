@@ -1051,45 +1051,64 @@ function FilledRegionSketchOptions() {
     const frt = frtId ? (s as any).filledRegionTypes?.find((t: any) => t.id === frtId) : undefined;
 
     const hasBulge = loop.bulges.some((b) => b !== 0);
+    const editingHatchId = s.editingHatchId;
 
-    s.addShape({
-      id: `hatch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      type: 'hatch',
-      layerId: s.activeLayerId,
-      drawingId: s.activeDrawingId,
-      style: { ...s.currentStyle },
-      visible: true,
-      locked: false,
-      points: loop.points,
-      bulge: hasBulge ? loop.bulges : undefined,
-      patternType: frt ? frt.fgPatternType : s.hatchPatternType,
-      patternAngle: frt ? frt.fgPatternAngle : s.hatchPatternAngle,
-      patternScale: frt ? frt.fgPatternScale : s.hatchPatternScale,
-      fillColor: frt ? frt.fgColor : s.hatchFillColor,
-      backgroundColor: frt?.backgroundColor ?? s.hatchBackgroundColor ?? undefined,
-      customPatternId: frt?.fgCustomPatternId ?? s.hatchCustomPatternId ?? undefined,
-      bgPatternType: frt ? frt.bgPatternType : undefined,
-      bgPatternAngle: frt ? frt.bgPatternAngle : undefined,
-      bgPatternScale: frt ? frt.bgPatternScale : undefined,
-      bgFillColor: frt ? frt.bgColor : undefined,
-      bgCustomPatternId: frt ? frt.bgCustomPatternId : undefined,
-      masking: frt ? frt.masking : undefined,
-      filledRegionTypeId: frt?.id,
-    } as any);
+    if (editingHatchId) {
+      // Update existing hatch boundary
+      s.updateShape(editingHatchId, {
+        visible: true,
+        points: loop.points,
+        bulge: hasBulge ? loop.bulges : undefined,
+      } as any);
+    } else {
+      s.addShape({
+        id: `hatch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+        type: 'hatch',
+        layerId: s.activeLayerId,
+        drawingId: s.activeDrawingId,
+        style: { ...s.currentStyle },
+        visible: true,
+        locked: false,
+        points: loop.points,
+        bulge: hasBulge ? loop.bulges : undefined,
+        patternType: frt ? frt.fgPatternType : s.hatchPatternType,
+        patternAngle: frt ? frt.fgPatternAngle : s.hatchPatternAngle,
+        patternScale: frt ? frt.fgPatternScale : s.hatchPatternScale,
+        fillColor: frt ? frt.fgColor : s.hatchFillColor,
+        backgroundColor: frt?.backgroundColor ?? s.hatchBackgroundColor ?? undefined,
+        customPatternId: frt?.fgCustomPatternId ?? s.hatchCustomPatternId ?? undefined,
+        bgPatternType: frt ? frt.bgPatternType : undefined,
+        bgPatternAngle: frt ? frt.bgPatternAngle : undefined,
+        bgPatternScale: frt ? frt.bgPatternScale : undefined,
+        bgFillColor: frt ? frt.bgColor : undefined,
+        bgCustomPatternId: frt ? frt.bgCustomPatternId : undefined,
+        masking: frt ? frt.masking : undefined,
+        filledRegionTypeId: frt?.id,
+      } as any);
+    }
 
     // Delete all sketch shapes
-    s.deleteShapes(ids);
+    const allSketchIds = [...ids, ...s.sketchInnerLoopShapeIds.flat()];
+    s.deleteShapes(allSketchIds);
     s.clearSketchShapeIds();
+    s.clearSketchInnerLoops();
     s.finishFilledRegion();
   };
 
   const handleCancel = () => {
     const s = useAppStore.getState();
     const ids = s.sketchShapeIds;
-    if (ids.length > 0) {
-      s.deleteShapes(ids);
+    const innerIds = s.sketchInnerLoopShapeIds.flat();
+    const allIds = [...ids, ...innerIds];
+    if (allIds.length > 0) {
+      s.deleteShapes(allIds);
+    }
+    // Restore hatch visibility if editing
+    if (s.editingHatchId) {
+      s.updateShape(s.editingHatchId, { visible: true } as any);
     }
     s.clearSketchShapeIds();
+    s.clearSketchInnerLoops();
     s.cancelFilledRegionMode();
   };
 

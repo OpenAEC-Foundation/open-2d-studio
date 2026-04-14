@@ -719,6 +719,47 @@ export function useKeyboardShortcuts() {
                 return;
               }
             }
+            // If a hatch is selected, enter sketch edit mode to modify its boundary
+            if (selectedShape.type === 'hatch') {
+              e.preventDefault();
+              const hatch = selectedShape as import('../../types/geometry').HatchShape;
+              const st = useAppStore.getState();
+
+              // Start filled region mode
+              st.startFilledRegionMode();
+              st.setEditingHatchId(hatch.id);
+
+              // Convert hatch boundary points to line shapes
+              const pts = hatch.points;
+              if (pts.length >= 2) {
+                const generatedIds: string[] = [];
+                for (let i = 0; i < pts.length; i++) {
+                  const p1 = pts[i];
+                  const p2 = pts[(i + 1) % pts.length];
+                  const lineId = `sketch_line_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 6)}`;
+                  st.addShape({
+                    id: lineId,
+                    type: 'line',
+                    layerId: hatch.layerId,
+                    drawingId: hatch.drawingId,
+                    style: { ...st.currentStyle, strokeColor: '#00aaff', lineStyle: 'dashed' },
+                    visible: true,
+                    locked: false,
+                    start: { ...p1 },
+                    end: { ...p2 },
+                  } as any);
+                  generatedIds.push(lineId);
+                }
+                // Register all generated sketch shape IDs
+                for (const id of generatedIds) {
+                  st.addSketchShapeId(id);
+                }
+              }
+
+              // Hide the original hatch while editing
+              st.updateShape(hatch.id, { visible: false } as any);
+              return;
+            }
           }
         }
       }

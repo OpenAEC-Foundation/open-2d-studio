@@ -93,7 +93,9 @@ export interface ToolState {
   // Filled Region mode (sketch-based boundary drawing)
   filledRegionMode: boolean;
   filledRegionDrawTool: 'line' | 'rectangle' | 'polygon' | 'circle' | 'arc' | 'spline' | 'pickLines';
-  sketchShapeIds: string[];    // IDs of shapes created during filled region sketch
+  sketchShapeIds: string[];    // IDs of shapes created during filled region sketch (outer boundary)
+  editingHatchId: string | null;  // ID of hatch being edited via sketch (null = new hatch)
+  sketchInnerLoopShapeIds: string[][];  // Completed inner loops (each is array of shape IDs)
 
   // Dynamic Input toggle
   dynamicInputEnabled: boolean;
@@ -209,6 +211,9 @@ export interface ToolActions {
   setFilledRegionDrawTool: (tool: 'line' | 'rectangle' | 'polygon' | 'circle' | 'arc' | 'spline' | 'pickLines') => void;
   addSketchShapeId: (id: string) => void;
   clearSketchShapeIds: () => void;
+  setEditingHatchId: (id: string | null) => void;
+  commitOuterLoopAndStartInner: () => void;  // Moves current sketchShapeIds to sketchInnerLoopShapeIds and clears for new loop
+  clearSketchInnerLoops: () => void;
 
   // Leader tool actions
   updateDefaultLeaderConfig: (config: Partial<LeaderConfig>) => void;
@@ -325,6 +330,8 @@ export const initialToolState: ToolState = {
   filledRegionMode: false,
   filledRegionDrawTool: 'line' as const,
   sketchShapeIds: [],
+  editingHatchId: null,
+  sketchInnerLoopShapeIds: [],
 
   // Dynamic Input
   dynamicInputEnabled: true,
@@ -711,6 +718,8 @@ export const createToolSlice = (
       state.filledRegionMode = true;
       state.filledRegionDrawTool = 'line';
       state.sketchShapeIds = [];
+      state.editingHatchId = null;
+      state.sketchInnerLoopShapeIds = [];
       // Set active tool to 'line' so continuous single-segment drawing works
       state.activeTool = 'line';
       state.drawingPoints = [];
@@ -722,6 +731,8 @@ export const createToolSlice = (
     set((state) => {
       // sketchShapeIds kept intact so the component can delete them before clearing
       state.filledRegionMode = false;
+      state.editingHatchId = null;
+      state.sketchInnerLoopShapeIds = [];
       state.activeTool = 'select';
       state.drawingPoints = [];
       state.drawingBulges = [];
@@ -732,6 +743,8 @@ export const createToolSlice = (
     set((state) => {
       // sketchShapeIds kept intact so the component can delete them before clearing
       state.filledRegionMode = false;
+      state.editingHatchId = null;
+      state.sketchInnerLoopShapeIds = [];
       state.activeTool = 'select';
       state.drawingPoints = [];
       state.drawingBulges = [];
@@ -748,6 +761,28 @@ export const createToolSlice = (
   clearSketchShapeIds: () =>
     set((state) => {
       state.sketchShapeIds = [];
+    }),
+
+  setEditingHatchId: (id) =>
+    set((state) => {
+      state.editingHatchId = id;
+    }),
+
+  commitOuterLoopAndStartInner: () =>
+    set((state) => {
+      // Save current sketchShapeIds as a new inner loop, then clear for drawing the next boundary
+      if (state.sketchShapeIds.length > 0) {
+        state.sketchInnerLoopShapeIds.push([...state.sketchShapeIds]);
+        state.sketchShapeIds = [];
+      }
+      state.drawingPoints = [];
+      state.drawingBulges = [];
+      state.drawingPreview = null;
+    }),
+
+  clearSketchInnerLoops: () =>
+    set((state) => {
+      state.sketchInnerLoopShapeIds = [];
     }),
 
   setFilledRegionDrawTool: (tool) =>
