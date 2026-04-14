@@ -19,6 +19,7 @@ import { resolveGridlineExtension } from '../../types/hatch';
 import { ShortcutHUD } from './ShortcutHUD';
 import { formatSectionPeilLabel } from '../../services/section/sectionReferenceService';
 import { FrameBudget } from '../../engine/renderer/FrameBudget';
+import { RenderCache } from '../../engine/renderer/RenderCache';
 
 function GridlineLabelInput({ shape, bubbleEnd, viewport, onSave, onCancel, drawingScale }: {
   shape: GridlineShape;
@@ -495,6 +496,7 @@ export function Canvas() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<CADRenderer | null>(null);
+  const renderCacheRef = useRef<RenderCache>(new RenderCache());
 
   // Only subscribe to state needed for React DOM rendering
   const activeTool = useAppStore(s => s.activeTool);
@@ -570,6 +572,8 @@ export function Canvas() {
         canvas.style.height = `${height}px`;
         setCanvasSize({ width, height });
         rendererRef.current?.resize(width, height);
+        // Canvas size changed — cached image is no longer valid
+        renderCacheRef.current.invalidate();
       }
     });
 
@@ -724,7 +728,8 @@ export function Canvas() {
 
         // Smart dirty-check: skip the render if nothing visible has changed.
         // We compare shape count (cheap proxy) and a serialised viewport key.
-        const activeShapeCount = s.shapes.filter(sh => sh.drawingId === s.activeDrawingId).length;
+        const activeShapes = s.shapes.filter(sh => sh.drawingId === s.activeDrawingId);
+        const activeShapeCount = activeShapes.length;
         const vp = s.viewport;
         const viewportKey = `${s.editorMode}|${vp.offsetX.toFixed(2)}|${vp.offsetY.toFixed(2)}|${vp.zoom}|${s.activeDrawingId}|${s.activeSheetId}`;
         if (activeShapeCount === lastRenderedShapeCount && viewportKey === lastRenderedViewportKey) {
@@ -733,6 +738,37 @@ export function Canvas() {
         }
         lastRenderedShapeCount = activeShapeCount;
         lastRenderedViewportKey = viewportKey;
+
+        // ── OffscreenCanvas render cache (drawing mode only) ───────────────
+        // In drawing mode, try to serve pan-only movements from the cache.
+        // Sheet mode is complex (multi-viewport) and always renders fully.
+        const canvas = canvasRef.current;
+        const renderCache = renderCacheRef.current;
+
+        if (s.editorMode === 'drawing' && canvas) {
+          // Quick hash: shape count + last shape id is O(1) and catches add/remove/replace.
+          // Property edits are caught because the dirty flag fires and appStore subscription
+          // causes a re-render; the hash may be the same but the renderer draws fresh state
+          // — we only skip drawing when hash AND zoom AND full viewportKey all match (handled
+          // above by the identical-frame skip). Here we use the hash to decide cache validity.
+          const lastShape = activeShapes[activeShapes.length - 1];
+          const shapeHash = `${activeShapeCount}_${lastShape?.id ?? ''}`;
+
+          const ctx = canvas.getContext('2d');
+
+          if (ctx && renderCache.isValid(vp.zoom, shapeHash)) {
+            // Cache hit — pan only. Translate the cached image instead of a full render.
+            renderCache.ensureSize(canvas.width, canvas.height);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            const hit = renderCache.drawCached(ctx, vp);
+            if (hit) {
+              rafId = requestAnimationFrame(tick);
+              return;
+            }
+            // drawCached returned false (cache threw) — fall through to full render below
+          }
+        }
+        // ── End render cache fast-path ─────────────────────────────────────
 
         const frameStart = frameBudget.startFrame();
 
@@ -852,6 +888,29 @@ export function Canvas() {
             editingSlabId: s.editingSlabId,
             slabInnerContourPoints: s.slabInnerContourPoints,
           });
+
+          // ── Capture result into OffscreenCanvas cache ──────────────────
+          // Only cache when there is nothing dynamic that would make the
+          // snapshot incorrect during a future pan (no active snap, no
+          // drawing preview, no selection box, no tracking lines).
+          if (canvas) {
+            const lastShape2 = activeShapes[activeShapes.length - 1];
+            const shapeHash2 = `${activeShapeCount}_${lastShape2?.id ?? ''}`;
+            const hasDynamic =
+              !!s.drawingPreview ||
+              !!s.selectionBox ||
+              (s.currentTrackingLines && s.currentTrackingLines.length > 0) ||
+              !!s.currentSnapPoint ||
+              !!s.trackingPoint;
+            if (!hasDynamic) {
+              renderCache.ensureSize(canvas.width, canvas.height);
+              renderCache.capture(canvas, vp, shapeHash2);
+            } else {
+              // Scene has dynamic overlays — invalidate so next pan forces a re-render
+              renderCache.invalidate();
+            }
+          }
+          // ── End cache capture ──────────────────────────────────────────
         }
 
         frameBudget.endFrame(frameStart);
