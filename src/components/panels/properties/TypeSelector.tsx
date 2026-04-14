@@ -114,20 +114,33 @@ function resolvePatternForType(
 
 // ─── preview render functions ─────────────────────────────────────────────────
 
+// Material → color mapping for wall type previews
+const MATERIAL_PREVIEW_COLORS: Record<string, { fill: string; stroke: string }> = {
+  concrete:           { fill: '#C0C0C0', stroke: '#808080' },
+  masonry:            { fill: '#D4908F', stroke: '#A06060' },
+  'calcium-silicate': { fill: '#C8C0B0', stroke: '#A8A090' },
+  timber:             { fill: '#F0DCB9', stroke: '#C0A060' },
+  steel:              { fill: '#A0B0C0', stroke: '#607080' },
+  insulation:         { fill: '#FFFDE0', stroke: '#C0C080' },
+  generic:            { fill: '#C0C0C0', stroke: '#808080' },
+};
+
 function renderWallPreview(
   ctx: CanvasRenderingContext2D,
   w: number,
   h: number,
   thickness: number,
-  color?: string,
+  material?: string,
+  colorOverride?: string,
 ) {
   ctx.clearRect(0, 0, w, h);
 
   const wallH = Math.min(h * 0.55, Math.max(6, thickness / 15));
   const cy = h / 2;
-  ctx.fillStyle = color || '#c0c0c0';
+  const colors = MATERIAL_PREVIEW_COLORS[material || 'generic'] || MATERIAL_PREVIEW_COLORS.generic;
+  ctx.fillStyle = colorOverride || colors.fill;
   ctx.fillRect(2, cy - wallH / 2, w - 4, wallH);
-  ctx.strokeStyle = '#ffffff';
+  ctx.strokeStyle = colors.stroke;
   ctx.lineWidth = 0.8;
   ctx.strokeRect(2, cy - wallH / 2, w - 4, wallH);
 }
@@ -511,7 +524,7 @@ function buildWallOptions(wallTypes: WallType[]): TypeOption[] {
     {
       id: '',
       label: '(Custom)',
-      renderPreview: (ctx, w, h) => renderWallPreview(ctx, w, h, 200, '#666666'),
+      renderPreview: (ctx, w, h) => renderWallPreview(ctx, w, h, 200, 'generic'),
     },
   ];
   for (const wt of wallTypes) {
@@ -519,7 +532,7 @@ function buildWallOptions(wallTypes: WallType[]): TypeOption[] {
     opts.push({
       id: wt.id,
       label: `${wt.name} (${wt.thickness}mm)`,
-      renderPreview: (ctx, w, h) => renderWallPreview(ctx, w, h, capturedWt.thickness, capturedWt.color),
+      renderPreview: (ctx, w, h) => renderWallPreview(ctx, w, h, capturedWt.thickness, capturedWt.material, capturedWt.color),
     });
   }
   return opts;
