@@ -2882,13 +2882,30 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.fill('evenodd');
     }
 
-    // Get bounding box
+    // Get bounding box — expand to include arc extents when bulge values are present
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
     for (const p of points) {
       if (p.x < minX) minX = p.x;
       if (p.y < minY) minY = p.y;
       if (p.x > maxX) maxX = p.x;
       if (p.y > maxY) maxY = p.y;
+    }
+    // Expand bounding box for arc segments (bulge != 0)
+    if (bulge && bulge.some(b => b !== 0)) {
+      for (let i = 0; i < points.length; i++) {
+        const b = bulge[i] ?? 0;
+        if (b === 0) continue;
+        const p1 = points[i];
+        const p2 = points[(i + 1) % points.length];
+        const arc = bulgeToArc(p1, p2, b);
+        // The arc bounding box extends from center ± radius in each axis,
+        // but only in the angular range of the arc. A conservative expansion
+        // using center ± radius is safe and avoids missing hatch lines.
+        if (arc.center.x - arc.radius < minX) minX = arc.center.x - arc.radius;
+        if (arc.center.y - arc.radius < minY) minY = arc.center.y - arc.radius;
+        if (arc.center.x + arc.radius > maxX) maxX = arc.center.x + arc.radius;
+        if (arc.center.y + arc.radius > maxY) maxY = arc.center.y + arc.radius;
+      }
     }
 
     // Step 2: Render background pattern layer (if set)
