@@ -93,6 +93,7 @@ export interface ToolState {
   // Filled Region mode (sketch-based boundary drawing)
   filledRegionMode: boolean;
   filledRegionDrawTool: 'line' | 'rectangle' | 'polygon' | 'circle' | 'arc' | 'spline' | 'pickLines';
+  sketchShapeIds: string[];    // IDs of shapes created during filled region sketch
 
   // Dynamic Input toggle
   dynamicInputEnabled: boolean;
@@ -206,6 +207,8 @@ export interface ToolActions {
   cancelFilledRegionMode: () => void;
   finishFilledRegion: () => void;
   setFilledRegionDrawTool: (tool: 'line' | 'rectangle' | 'polygon' | 'circle' | 'arc' | 'spline' | 'pickLines') => void;
+  addSketchShapeId: (id: string) => void;
+  clearSketchShapeIds: () => void;
 
   // Leader tool actions
   updateDefaultLeaderConfig: (config: Partial<LeaderConfig>) => void;
@@ -321,6 +324,7 @@ export const initialToolState: ToolState = {
   // Filled Region mode
   filledRegionMode: false,
   filledRegionDrawTool: 'line' as const,
+  sketchShapeIds: [],
 
   // Dynamic Input
   dynamicInputEnabled: true,
@@ -706,8 +710,9 @@ export const createToolSlice = (
     set((state) => {
       state.filledRegionMode = true;
       state.filledRegionDrawTool = 'line';
-      // Set actual activeTool to the drawing tool so canvas handles it
-      state.activeTool = 'polyline'; // Default to polyline for drawing boundary
+      state.sketchShapeIds = [];
+      // Set active tool to 'line' so continuous single-segment drawing works
+      state.activeTool = 'line';
       state.drawingPoints = [];
       state.drawingBulges = [];
       state.drawingPreview = null;
@@ -715,6 +720,7 @@ export const createToolSlice = (
 
   cancelFilledRegionMode: () =>
     set((state) => {
+      // sketchShapeIds kept intact so the component can delete them before clearing
       state.filledRegionMode = false;
       state.activeTool = 'select';
       state.drawingPoints = [];
@@ -724,6 +730,7 @@ export const createToolSlice = (
 
   finishFilledRegion: () =>
     set((state) => {
+      // sketchShapeIds kept intact so the component can delete them before clearing
       state.filledRegionMode = false;
       state.activeTool = 'select';
       state.drawingPoints = [];
@@ -731,32 +738,32 @@ export const createToolSlice = (
       state.drawingPreview = null;
     }),
 
+  addSketchShapeId: (id) =>
+    set((state) => {
+      if (!state.sketchShapeIds.includes(id)) {
+        state.sketchShapeIds.push(id);
+      }
+    }),
+
+  clearSketchShapeIds: () =>
+    set((state) => {
+      state.sketchShapeIds = [];
+    }),
+
   setFilledRegionDrawTool: (tool) =>
     set((state) => {
-      const prevTool = state.filledRegionDrawTool;
       state.filledRegionDrawTool = tool;
-
-      // Line and Arc are both polyline modes - just toggle arc mode without resetting
-      if ((prevTool === 'line' || prevTool === 'arc') && (tool === 'line' || tool === 'arc')) {
-        state.polylineArcMode = tool === 'arc';
-        state.polylineArcThroughPoint = null;
-        // Don't reset drawing points - continue the chain
-        return;
-      }
-
-      // Switching to a different tool type - reset drawing
+      // Line → use line tool directly; Arc → use arc tool directly
       const toolMap: Record<string, string> = {
-        'line': 'polyline',      // Polyline in line mode
-        'arc': 'polyline',       // Polyline in arc mode
+        'line': 'line',
+        'arc': 'arc',
         'rectangle': 'rectangle',
-        'polygon': 'polyline',   // Polygon is a closed polyline
+        'polygon': 'polyline',
         'circle': 'circle',
         'spline': 'spline',
-        'pickLines': 'select',   // Pick lines uses selection
+        'pickLines': 'select',
       };
-      state.activeTool = (toolMap[tool] || 'polyline') as any;
-      state.polylineArcMode = tool === 'arc';
-      state.polylineArcThroughPoint = null;
+      state.activeTool = (toolMap[tool] || 'line') as any;
       state.drawingPoints = [];
       state.drawingBulges = [];
       state.drawingPreview = null;

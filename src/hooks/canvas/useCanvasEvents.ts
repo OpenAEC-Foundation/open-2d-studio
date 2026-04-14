@@ -105,6 +105,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     finishSlabInnerContour: _finishSlabInnerContour,
     cancelSlabInnerContour: _cancelSlabInnerContour,
     filledRegionMode,
+    sketchShapeIds,
   } = useAppStore();
 
   // Get the active drawing's scale for text hit detection
@@ -274,7 +275,9 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         aecTools.hasAnyPendingState() || pendingSection ||
         drawingToolRegistry.hasAnyPendingState()
       );
-      if (editorMode === 'drawing' && e.button === 0 && !modifyToolActive && !drawingToolWithPending && !filledRegionMode) {
+      // In filledRegionMode, only allow grip editing / box selection on sketch shapes
+      const sketchSelectAllowed = !filledRegionMode || activeTool === 'select';
+      if (editorMode === 'drawing' && e.button === 0 && !modifyToolActive && !drawingToolWithPending && sketchSelectAllowed) {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
         if (gripEditing.handleGripMouseDown(worldPos)) {
           return;
@@ -282,12 +285,14 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Drawing mode: start box selection if clicking on empty space
-      // Blocked during filledRegionMode — clicks are for boundary drawing only
-      if (editorMode === 'drawing' && e.button === 0 && !filledRegionMode) {
+      if (editorMode === 'drawing' && e.button === 0 && sketchSelectAllowed) {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
         const shapeId = findShapeAtPoint(worldPos);
-        // Pass true if there IS a shape at point, false if empty
-        if (boxSelection.shouldStartBoxSelection(!!shapeId)) {
+        // In sketch mode, only count sketch shapes as "hits"
+        const effectiveShapeId = filledRegionMode
+          ? (shapeId && sketchShapeIds.includes(shapeId) ? shapeId : null)
+          : shapeId;
+        if (boxSelection.shouldStartBoxSelection(!!effectiveShapeId)) {
           boxSelection.startBoxSelection(screenPos);
         }
       }
@@ -376,8 +381,16 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Tool-specific handling
       switch (activeTool) {
         case 'select': {
-          // Block shape selection during filled region sketch mode
-          if (filledRegionMode) break;
+          // In filled region sketch mode: only allow selecting sketch shapes
+          if (filledRegionMode) {
+            const shapeId = findShapeAtPoint(worldPos);
+            if (shapeId && sketchShapeIds.includes(shapeId)) {
+              selectShape(shapeId);
+            } else {
+              deselectAll();
+            }
+            break;
+          }
 
           // Check boundary click first
           if (boundaryEditing.handleBoundaryClick(worldPos)) {
@@ -900,6 +913,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       editingSlabId,
       addSlabInnerContourPoint,
       filledRegionMode,
+      sketchShapeIds,
     ]
   );
 

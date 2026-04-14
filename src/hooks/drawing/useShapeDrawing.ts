@@ -122,6 +122,8 @@ export function useShapeDrawing() {
     polylineArcThroughPoint,
     setPolylineArcThroughPoint,
     addDrawingBulge,
+    filledRegionMode,
+    addSketchShapeId,
   } = useAppStore();
 
   // Dimension drawing hook
@@ -132,20 +134,28 @@ export function useShapeDrawing() {
    */
   const createLine = useCallback(
     (start: Point, end: Point) => {
+      const id = generateId();
+      // Apply sketch style (cyan, thicker) when in filled region mode
+      const style = filledRegionMode
+        ? { ...currentStyle, color: '#00e5ff', strokeWidth: Math.max(currentStyle.strokeWidth ?? 1, 2) }
+        : { ...currentStyle };
       const lineShape: LineShape = {
-        id: generateId(),
+        id,
         type: 'line',
         layerId: activeLayerId,
         drawingId: activeDrawingId,
-        style: { ...currentStyle },
+        style,
         visible: true,
         locked: false,
         start,
         end,
       };
       addShape(lineShape);
+      if (filledRegionMode) {
+        addSketchShapeId(id);
+      }
     },
-    [activeLayerId, activeDrawingId, currentStyle, addShape]
+    [activeLayerId, activeDrawingId, currentStyle, addShape, filledRegionMode, addSketchShapeId]
   );
 
   /**
@@ -244,12 +254,17 @@ export function useShapeDrawing() {
    */
   const createArc = useCallback(
     (center: Point, radius: number, startAngle: number, endAngle: number) => {
+      const id = generateId();
+      // Apply sketch style (cyan, thicker) when in filled region mode
+      const style = filledRegionMode
+        ? { ...currentStyle, color: '#00e5ff', strokeWidth: Math.max(currentStyle.strokeWidth ?? 1, 2) }
+        : { ...currentStyle };
       const arcShape: ArcShape = {
-        id: generateId(),
+        id,
         type: 'arc',
         layerId: activeLayerId,
         drawingId: activeDrawingId,
-        style: { ...currentStyle },
+        style,
         visible: true,
         locked: false,
         center,
@@ -258,8 +273,11 @@ export function useShapeDrawing() {
         endAngle,
       };
       addShape(arcShape);
+      if (filledRegionMode) {
+        addSketchShapeId(id);
+      }
     },
-    [activeLayerId, activeDrawingId, currentStyle, addShape]
+    [activeLayerId, activeDrawingId, currentStyle, addShape, filledRegionMode, addSketchShapeId]
   );
 
   /**

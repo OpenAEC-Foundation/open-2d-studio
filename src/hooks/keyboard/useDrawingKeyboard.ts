@@ -31,9 +31,6 @@ export function useDrawingKeyboard() {
     linearDimensionDirection,
     setLinearDimensionDirection,
     filledRegionMode,
-    cancelFilledRegionMode,
-    selectedFilledRegionTypeId,
-    getFilledRegionTypeById,
     // Snap and tracking toggles
     toggleSnap,
     toggleOrthoMode,
@@ -117,9 +114,13 @@ export function useDrawingKeyboard() {
         case 'Escape':
           // Finalize drawing if enough points exist, otherwise cancel
           e.preventDefault();
-          // If in filled region sketch mode, Escape cancels the mode
+          // If in filled region sketch mode, Escape stops current segment drawing
+          // (goes to select mode within sketch) — does NOT cancel the whole sketch
           if (filledRegionMode) {
-            cancelFilledRegionMode();
+            clearDrawingPoints();
+            setDrawingPreview(null);
+            // Switch to select within the sketch (user can still click Finish/Cancel in toolbar)
+            useAppStore.getState().setActiveTool('select');
             break;
           }
           if (activeTool === 'polyline' && drawingPoints.length >= 2) {
@@ -187,46 +188,12 @@ export function useDrawingKeyboard() {
         case 'Enter':
           // Finish drawing operation - create shape if applicable
           e.preventDefault();
-          // In filled region sketch mode: Enter creates the hatch from drawn boundary
-          if (filledRegionMode && activeTool === 'polyline' && drawingPoints.length >= 3) {
-            const {
-              hatchPatternType,
-              hatchPatternAngle,
-              hatchPatternScale,
-              hatchFillColor,
-              hatchBackgroundColor,
-              hatchCustomPatternId,
-              drawingBulges,
-              cancelFilledRegionMode: cancelFR,
-            } = useAppStore.getState();
-            // Resolve selected filled region type properties (if any)
-            const frt = selectedFilledRegionTypeId ? getFilledRegionTypeById(selectedFilledRegionTypeId) : undefined;
-            const hatchShape: HatchShape = {
-              id: generateId(),
-              type: 'hatch',
-              layerId: activeLayerId,
-              drawingId: activeDrawingId,
-              style: { ...currentStyle },
-              visible: true,
-              locked: false,
-              points: [...drawingPoints],
-              bulge: drawingBulges && drawingBulges.some((b: number) => b !== 0) ? [...drawingBulges] : undefined,
-              patternType: frt ? frt.fgPatternType : hatchPatternType,
-              patternAngle: frt ? frt.fgPatternAngle : hatchPatternAngle,
-              patternScale: frt ? frt.fgPatternScale : hatchPatternScale,
-              fillColor: frt ? frt.fgColor : hatchFillColor,
-              backgroundColor: frt ? (frt.backgroundColor ?? undefined) : (hatchBackgroundColor ?? undefined),
-              customPatternId: frt ? (frt.fgCustomPatternId ?? undefined) : (hatchCustomPatternId ?? undefined),
-              bgPatternType: frt ? frt.bgPatternType : undefined,
-              bgPatternAngle: frt ? frt.bgPatternAngle : undefined,
-              bgPatternScale: frt ? frt.bgPatternScale : undefined,
-              bgFillColor: frt ? frt.bgColor : undefined,
-              bgCustomPatternId: frt ? frt.bgCustomPatternId : undefined,
-              masking: frt ? frt.masking : undefined,
-              filledRegionTypeId: frt ? frt.id : undefined,
-            };
-            addShape(hatchShape);
-            cancelFR();
+          // In filled region sketch mode: Enter ends the current segment drawing
+          // (same as Escape — user clicks Finish in toolbar to create the hatch)
+          if (filledRegionMode) {
+            clearDrawingPoints();
+            setDrawingPreview(null);
+            useAppStore.getState().setActiveTool('select');
             break;
           }
           if (activeTool === 'polyline' && drawingPoints.length >= 2) {
@@ -322,46 +289,11 @@ export function useDrawingKeyboard() {
           if (drawingPoints.length >= 2) {
             e.preventDefault();
 
-            // In filled region sketch mode with polyline: C closes and creates hatch
-            if (filledRegionMode && activeTool === 'polyline' && drawingPoints.length >= 3) {
-              const {
-                hatchPatternType,
-                hatchPatternAngle,
-                hatchPatternScale,
-                hatchFillColor,
-                hatchBackgroundColor,
-                hatchCustomPatternId,
-                drawingBulges,
-                cancelFilledRegionMode: cancelFR2,
-              } = useAppStore.getState();
-              // Resolve selected filled region type properties (if any)
-              const frt2 = selectedFilledRegionTypeId ? getFilledRegionTypeById(selectedFilledRegionTypeId) : undefined;
-              const hatchShape: HatchShape = {
-                id: generateId(),
-                type: 'hatch',
-                layerId: activeLayerId,
-                drawingId: activeDrawingId,
-                style: { ...currentStyle },
-                visible: true,
-                locked: false,
-                points: [...drawingPoints],
-                bulge: drawingBulges && drawingBulges.some((b: number) => b !== 0) ? [...drawingBulges] : undefined,
-                patternType: frt2 ? frt2.fgPatternType : hatchPatternType,
-                patternAngle: frt2 ? frt2.fgPatternAngle : hatchPatternAngle,
-                patternScale: frt2 ? frt2.fgPatternScale : hatchPatternScale,
-                fillColor: frt2 ? frt2.fgColor : hatchFillColor,
-                backgroundColor: frt2 ? (frt2.backgroundColor ?? undefined) : (hatchBackgroundColor ?? undefined),
-                customPatternId: frt2 ? (frt2.fgCustomPatternId ?? undefined) : (hatchCustomPatternId ?? undefined),
-                bgPatternType: frt2 ? frt2.bgPatternType : undefined,
-                bgPatternAngle: frt2 ? frt2.bgPatternAngle : undefined,
-                bgPatternScale: frt2 ? frt2.bgPatternScale : undefined,
-                bgFillColor: frt2 ? frt2.bgColor : undefined,
-                bgCustomPatternId: frt2 ? frt2.bgCustomPatternId : undefined,
-                masking: frt2 ? frt2.masking : undefined,
-                filledRegionTypeId: frt2 ? frt2.id : undefined,
-              };
-              addShape(hatchShape);
-              cancelFR2();
+            // In filled region sketch mode: C ends the current segment drawing
+            if (filledRegionMode) {
+              clearDrawingPoints();
+              setDrawingPreview(null);
+              useAppStore.getState().setActiveTool('select');
               break;
             }
 
@@ -500,9 +432,6 @@ export function useDrawingKeyboard() {
     linearDimensionDirection,
     setLinearDimensionDirection,
     filledRegionMode,
-    cancelFilledRegionMode,
-    selectedFilledRegionTypeId,
-    getFilledRegionTypeById,
     toggleSnap,
     toggleOrthoMode,
     togglePolarTracking,

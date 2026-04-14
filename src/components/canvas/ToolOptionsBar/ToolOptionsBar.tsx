@@ -902,25 +902,155 @@ function LeaderOptions() {
   );
 }
 
+// ---------------------------------------------------------------------------
+// Sketch boundary utilities
+// ---------------------------------------------------------------------------
+
+/** Tolerance for endpoint matching when chaining segments (world units) */
+const SKETCH_CHAIN_TOL = 5;
+
+interface SketchEdge {
+  p1: { x: number; y: number };
+  p2: { x: number; y: number };
+  /** Bulge value for arc segments (0 = straight line) */
+  bulge?: number;
+}
+
+function ptClose(a: { x: number; y: number }, b: { x: number; y: number }, tol: number) {
+  const dx = a.x - b.x;
+  const dy = a.y - b.y;
+  return dx * dx + dy * dy <= tol * tol;
+}
+
+/**
+ * Extract edges from sketch shapes (lines and arcs).
+ * For arcs: compute approximate startPoint and endPoint from center/radius/angles.
+ */
+function extractSketchEdges(sketchShapes: any[]): SketchEdge[] {
+  const edges: SketchEdge[] = [];
+  for (const shape of sketchShapes) {
+    if (shape.type === 'line') {
+      edges.push({ p1: shape.start, p2: shape.end });
+    } else if (shape.type === 'arc') {
+      // Arc: start and end points from center + angles
+      const { center, radius, startAngle, endAngle } = shape;
+      const p1 = {
+        x: center.x + radius * Math.cos(startAngle),
+        y: center.y + radius * Math.sin(startAngle),
+      };
+      const p2 = {
+        x: center.x + radius * Math.cos(endAngle),
+        y: center.y + radius * Math.sin(endAngle),
+      };
+      // Approximate bulge for the arc
+      // bulge = tan(theta/4) where theta is the signed central angle
+      let theta = endAngle - startAngle;
+      // Normalize to (-2π, 2π)
+      while (theta > Math.PI * 2) theta -= Math.PI * 2;
+      while (theta < -Math.PI * 2) theta += Math.PI * 2;
+      const bulge = Math.tan(theta / 4);
+      edges.push({ p1, p2, bulge });
+    }
+  }
+  return edges;
+}
+
+/**
+ * Chain edges into an ordered closed loop.
+ * Returns ordered points array and corresponding bulge values, or null if loop not closed.
+ */
+function chainEdges(
+  edges: SketchEdge[],
+  tol: number
+): { points: { x: number; y: number }[]; bulges: number[] } | null {
+  if (edges.length === 0) return null;
+
+  const used = new Array(edges.length).fill(false);
+  const orderedPoints: { x: number; y: number }[] = [];
+  const orderedBulges: number[] = [];
+
+  // Start with the first edge
+  used[0] = true;
+  orderedPoints.push({ ...edges[0].p1 });
+  orderedPoints.push({ ...edges[0].p2 });
+  orderedBulges.push(edges[0].bulge ?? 0);
+
+  const remainingCount = edges.length - 1;
+  let attached = 0;
+
+  while (attached < remainingCount) {
+    const lastPt = orderedPoints[orderedPoints.length - 1];
+    let found = false;
+
+    for (let i = 0; i < edges.length; i++) {
+      if (used[i]) continue;
+      const e = edges[i];
+
+      if (ptClose(lastPt, e.p1, tol)) {
+        // Connect p1 → p2 forward
+        orderedPoints.push({ ...e.p2 });
+        orderedBulges.push(e.bulge ?? 0);
+        used[i] = true;
+        found = true;
+        attached++;
+        break;
+      } else if (ptClose(lastPt, e.p2, tol)) {
+        // Connect p2 → p1 reversed (negate bulge for arc direction)
+        orderedPoints.push({ ...e.p1 });
+        orderedBulges.push(-(e.bulge ?? 0));
+        used[i] = true;
+        found = true;
+        attached++;
+        break;
+      }
+    }
+
+    if (!found) break; // Chain is broken
+  }
+
+  // Check closure: last point must be close to first point
+  const firstPt = orderedPoints[0];
+  const lastPt = orderedPoints[orderedPoints.length - 1];
+  if (!ptClose(firstPt, lastPt, tol)) return null;
+
+  // Remove the duplicate closing point
+  orderedPoints.pop();
+  // The last bulge connects the last segment back to the first point — keep it
+
+  if (orderedPoints.length < 3) return null;
+  return { points: orderedPoints, bulges: orderedBulges };
+}
+
 /**
  * Filled Region Sketch Mode options bar
- * Shown when filledRegionMode is active (polyline active tool + sketch mode)
+ * Shown when filledRegionMode is active — user draws real line/arc shapes,
+ * then Finish chains them into a closed boundary and creates the HatchShape.
  */
 function FilledRegionSketchOptions() {
   const setFilledRegionDrawTool = useAppStore((s) => s.setFilledRegionDrawTool);
-  const polylineArcMode = useAppStore((s) => s.polylineArcMode);
-  const drawingPoints = useAppStore((s) => s.drawingPoints);
-  const cancelFilledRegionMode = useAppStore((s) => s.cancelFilledRegionMode);
-
-  // Sync draw tool with polylineArcMode if needed
-  const currentSegment = polylineArcMode ? 'arc' : 'line';
+  const filledRegionDrawTool = useAppStore((s) => s.filledRegionDrawTool);
+  const sketchShapeIds = useAppStore((s) => s.sketchShapeIds);
 
   const handleFinish = () => {
     const s = useAppStore.getState();
-    if (s.drawingPoints.length < 3) return;
+    const ids = s.sketchShapeIds;
+    if (ids.length < 3) return;
+
+    // Collect sketch shapes
+    const sketchShapes = s.shapes.filter((sh: any) => ids.includes(sh.id));
+    const edges = extractSketchEdges(sketchShapes);
+    const loop = chainEdges(edges, SKETCH_CHAIN_TOL);
+
+    if (!loop) {
+      // Boundary is not closed — alert user but don't exit mode
+      alert('Cannot finish: the boundary is not a closed loop. Make sure all segments connect end-to-end.');
+      return;
+    }
 
     const frtId = s.selectedFilledRegionTypeId;
     const frt = frtId ? (s as any).filledRegionTypes?.find((t: any) => t.id === frtId) : undefined;
+
+    const hasBulge = loop.bulges.some((b) => b !== 0);
 
     s.addShape({
       id: `hatch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -930,19 +1060,40 @@ function FilledRegionSketchOptions() {
       style: { ...s.currentStyle },
       visible: true,
       locked: false,
-      points: [...s.drawingPoints],
-      bulge: s.drawingBulges?.some((b: number) => b !== 0) ? [...s.drawingBulges] : undefined,
+      points: loop.points,
+      bulge: hasBulge ? loop.bulges : undefined,
       patternType: frt ? frt.fgPatternType : s.hatchPatternType,
       patternAngle: frt ? frt.fgPatternAngle : s.hatchPatternAngle,
       patternScale: frt ? frt.fgPatternScale : s.hatchPatternScale,
       fillColor: frt ? frt.fgColor : s.hatchFillColor,
       backgroundColor: frt?.backgroundColor ?? s.hatchBackgroundColor ?? undefined,
       customPatternId: frt?.fgCustomPatternId ?? s.hatchCustomPatternId ?? undefined,
+      bgPatternType: frt ? frt.bgPatternType : undefined,
+      bgPatternAngle: frt ? frt.bgPatternAngle : undefined,
+      bgPatternScale: frt ? frt.bgPatternScale : undefined,
+      bgFillColor: frt ? frt.bgColor : undefined,
+      bgCustomPatternId: frt ? frt.bgCustomPatternId : undefined,
+      masking: frt ? frt.masking : undefined,
       filledRegionTypeId: frt?.id,
     } as any);
 
+    // Delete all sketch shapes
+    s.deleteShapes(ids);
+    s.clearSketchShapeIds();
     s.finishFilledRegion();
   };
+
+  const handleCancel = () => {
+    const s = useAppStore.getState();
+    const ids = s.sketchShapeIds;
+    if (ids.length > 0) {
+      s.deleteShapes(ids);
+    }
+    s.clearSketchShapeIds();
+    s.cancelFilledRegionMode();
+  };
+
+  const canFinish = sketchShapeIds.length >= 3;
 
   return (
     <>
@@ -953,19 +1104,19 @@ function FilledRegionSketchOptions() {
         <div className="flex">
           <button
             className={`px-2 py-0.5 text-xs border border-cad-border rounded-l ${
-              currentSegment === 'line' ? 'bg-cad-accent text-white' : 'bg-cad-bg text-cad-text hover:bg-cad-hover'
+              filledRegionDrawTool === 'line' ? 'bg-cad-accent text-white' : 'bg-cad-bg text-cad-text hover:bg-cad-hover'
             }`}
             onClick={() => setFilledRegionDrawTool('line')}
-            title="Draw straight line segments (L)"
+            title="Draw straight line segments"
           >
             Line
           </button>
           <button
             className={`px-2 py-0.5 text-xs border border-l-0 border-cad-border rounded-r ${
-              currentSegment === 'arc' ? 'bg-cad-accent text-white' : 'bg-cad-bg text-cad-text hover:bg-cad-hover'
+              filledRegionDrawTool === 'arc' ? 'bg-cad-accent text-white' : 'bg-cad-bg text-cad-text hover:bg-cad-hover'
             }`}
             onClick={() => setFilledRegionDrawTool('arc')}
-            title="Draw arc segments (A)"
+            title="Draw arc segments"
           >
             Arc
           </button>
@@ -973,29 +1124,29 @@ function FilledRegionSketchOptions() {
       </label>
       {Separator()}
       <span className="text-cad-text-dim text-xs">
-        {drawingPoints.length === 0
-          ? 'Click to start boundary'
-          : `${drawingPoints.length} point${drawingPoints.length !== 1 ? 's' : ''}`}
+        {sketchShapeIds.length === 0
+          ? 'Click to draw segments'
+          : `${sketchShapeIds.length} segment${sketchShapeIds.length !== 1 ? 's' : ''}`}
       </span>
       {Separator()}
       <button
         onMouseDown={(e) => e.preventDefault()}
-        onClick={() => handleFinish()}
-        disabled={drawingPoints.length < 3}
+        onClick={handleFinish}
+        disabled={!canFinish}
         className={`px-3 py-0.5 text-xs border rounded font-medium ${
-          drawingPoints.length >= 3
+          canFinish
             ? 'border-green-500 bg-green-600/20 text-green-300 hover:bg-green-600/40'
             : 'border-cad-border bg-cad-bg text-cad-text-dim cursor-not-allowed'
         }`}
-        title="Finish boundary and create filled region (Enter)"
+        title="Finish boundary and create filled region"
       >
         ✓ Finish
       </button>
       {Separator()}
       <button
-        onClick={() => cancelFilledRegionMode()}
+        onClick={handleCancel}
         className="px-2 py-0.5 text-xs border border-cad-border bg-cad-bg text-cad-text hover:bg-red-500/20 hover:border-red-500/50 rounded"
-        title="Cancel filled region sketch (Esc)"
+        title="Cancel filled region sketch and delete all sketch segments"
       >
         ✕ Cancel
       </button>
