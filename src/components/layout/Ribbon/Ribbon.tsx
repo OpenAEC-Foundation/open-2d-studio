@@ -66,7 +66,6 @@ import {
   ExplodeIcon,
   FilledRegionIcon,
   DetailComponentIcon,
-  InsulationIcon,
   AlignedDimensionIcon,
   LinearDimensionIcon,
   AngularDimensionIcon,
@@ -79,7 +78,7 @@ import { triggerBonsaiSync, saveBonsaiSyncSettings, generateBlenderWatcherScript
 import { ALL_IFC_CATEGORIES, IFC_CATEGORY_LABELS, getIfcCategory } from '../../../utils/ifcCategoryUtils';
 import { RibbonButton, RibbonSmallButton, RibbonMediumButton, RibbonMediumButtonStack, RibbonGroup, RibbonButtonStack } from './RibbonComponents';
 import './Ribbon.css';
-type RibbonTab = 'home' | 'modify' | 'structural' | 'view' | string;
+type RibbonTab = 'home' | 'structural' | 'view' | string;
 
 /**
  * Theme Selector - DevExpress-style dropdown for selecting UI theme
@@ -231,6 +230,9 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     // PDF Underlay
     openPdfUnderlayDialog,
 
+    // Settings
+    setSettingsDialogOpen,
+
   } = useAppStore();
 
   const isSheetMode = editorMode !== 'drawing';
@@ -330,7 +332,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
 
   const builtInTabs: { id: RibbonTab; label: string }[] = [
     { id: 'home', label: 'Home' },
-    { id: 'modify', label: 'Modify' },
     { id: 'view', label: 'View' },
   ];
 
@@ -799,35 +800,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
               </RibbonButtonStack>
             </RibbonGroup>
 
-            {renderExtensionButtonsForTab('home')}
-          </div>
-        </div>
-
-        {/* Modify Tab */}
-        <div className={`ribbon-content ${activeTab === 'modify' ? 'active' : ''}`}>
-          <div className="ribbon-groups">
-            <RibbonGroup label="Region">
-              <RibbonButton
-                icon={<HatchIcon size={24} />}
-                label="Pattern Manager"
-                onClick={() => setPatternManagerOpen(true)}
-                disabled={isSheetMode}
-                tooltip="Manage hatch patterns"
-              />
-              <RibbonButton
-                icon={<InsulationIcon size={24} />}
-                label="Insulation"
-                onClick={() => {}}
-                disabled={true}
-              />
-              <RibbonButton
-                icon={<DetailComponentIcon size={24} />}
-                label="Detail Component"
-                onClick={() => {}}
-                disabled={true}
-              />
-            </RibbonGroup>
-
+            {/* Clipboard Group */}
             <RibbonGroup label="Clipboard">
               <RibbonButton
                 icon={<ClipboardPaste size={24} />}
@@ -860,7 +833,31 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 />
               </RibbonButtonStack>
             </RibbonGroup>
-            {renderExtensionButtonsForTab('modify')}
+
+            {/* Settings Group */}
+            <RibbonGroup label="Settings">
+              <RibbonButton
+                icon={<Settings size={24} />}
+                label="Settings"
+                onClick={() => setSettingsDialogOpen(true)}
+                tooltip="Open application settings"
+              />
+              <RibbonButton
+                icon={<HatchIcon size={24} />}
+                label="Pattern Manager"
+                onClick={() => setPatternManagerOpen(true)}
+                disabled={isSheetMode}
+                tooltip="Manage hatch patterns"
+              />
+              <RibbonButton
+                icon={<DetailComponentIcon size={24} />}
+                label="Detail Component"
+                onClick={() => {}}
+                disabled={true}
+              />
+            </RibbonGroup>
+
+            {renderExtensionButtonsForTab('home')}
           </div>
         </div>
 

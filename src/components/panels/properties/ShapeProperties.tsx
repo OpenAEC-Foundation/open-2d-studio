@@ -1567,7 +1567,6 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
       const dy = w.end.y - w.start.y;
       const length = Math.sqrt(dx * dx + dy * dy);
       const angle = Math.atan2(dy, dx) * RAD2DEG;
-      const wallTypes = useAppStore.getState().wallTypes;
       const wallProjectStructure = useAppStore.getState().projectStructure;
 
       // Collect all storeys from all buildings for level selectors
@@ -1586,34 +1585,6 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
             <div className="mb-3 p-2 bg-cad-bg rounded border border-cad-border">
               <div className="text-xs font-semibold text-cad-accent mb-1">IfcWall</div>
               <div className="text-xs text-cad-text-dim">IFC Type: IfcWall</div>
-            </div>
-            <div className="mb-3">
-              <label className={labelClass}>Wall Type</label>
-              <select
-                className={inputClass}
-                value={w.wallTypeId || ''}
-                onChange={(e) => {
-                  const newTypeId = e.target.value || undefined;
-                  if (newTypeId) {
-                    const selectedWt = wallTypes.find(wt => wt.id === newTypeId);
-                    if (selectedWt) {
-                      update({
-                        wallTypeId: newTypeId,
-                        thickness: selectedWt.thickness,
-                      });
-                    } else {
-                      update({ wallTypeId: newTypeId });
-                    }
-                  } else {
-                    update({ wallTypeId: undefined });
-                  }
-                }}
-              >
-                <option value="">(Custom)</option>
-                {wallTypes.map((wt) => (
-                  <option key={wt.id} value={wt.id}>{wt.name} ({wt.thickness}mm)</option>
-                ))}
-              </select>
             </div>
             {/* Grouped wall info */}
             {w.groupedWallTypeId && (() => {
