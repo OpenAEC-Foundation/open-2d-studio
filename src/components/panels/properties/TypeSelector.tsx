@@ -7,7 +7,7 @@
  * WallType for walls, PileTypeDefinition for piles, TextStyle for text, etc.).
  */
 
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Minus,
   Pentagon,
@@ -22,6 +22,8 @@ import {
   LayoutTemplate,
   Layers,
   GitBranch,
+  ChevronDown,
+  Check,
 } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
 import { getActiveDocumentStore } from '../../../state/documentStore';
@@ -30,7 +32,7 @@ import type { FilledRegionType } from '../../../types/filledRegion';
 import type { CustomHatchPattern } from '../../../types/hatch';
 import { BUILTIN_PATTERNS } from '../../../types/hatch';
 import type { DimensionShape } from '../../../types/dimension';
-import type { TextShape } from '../../../types/geometry';
+import type { TextShape, TextStyle, WallType, PileTypeDefinition } from '../../../types/geometry';
 import { DIMENSION_STYLE_PRESETS } from '../../../constants/cadDefaults';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -110,10 +112,186 @@ function resolvePatternForType(
   return builtin ?? BUILTIN_PATTERNS[0];
 }
 
-function HatchTypePreview({ frt, getPatternById }: {
-  frt: FilledRegionType;
-  getPatternById: (id: string) => CustomHatchPattern | undefined;
-}) {
+// ─── preview render functions ─────────────────────────────────────────────────
+
+function renderWallPreview(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  thickness: number,
+  color?: string,
+) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(0, 0, w, h);
+
+  const wallH = Math.min(h * 0.55, Math.max(4, thickness / 30));
+  const cy = h / 2;
+  ctx.fillStyle = color || '#808080';
+  ctx.fillRect(2, cy - wallH / 2, w - 4, wallH);
+  ctx.strokeStyle = '#cccccc';
+  ctx.lineWidth = 0.5;
+  ctx.strokeRect(2, cy - wallH / 2, w - 4, wallH);
+}
+
+function renderPilePreview(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  shape: string,
+) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.strokeStyle = '#cccccc';
+  ctx.lineWidth = 1;
+  const isRound = shape === 'round' || shape === 'circle' || shape === 'bored';
+  if (isRound) {
+    ctx.beginPath();
+    ctx.arc(w / 2, h / 2, 8, 0, Math.PI * 2);
+    ctx.stroke();
+    // cross inside
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - 5, h / 2);
+    ctx.lineTo(w / 2 + 5, h / 2);
+    ctx.moveTo(w / 2, h / 2 - 5);
+    ctx.lineTo(w / 2, h / 2 + 5);
+    ctx.stroke();
+  } else {
+    ctx.strokeRect(w / 2 - 7, h / 2 - 7, 14, 14);
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - 5, h / 2);
+    ctx.lineTo(w / 2 + 5, h / 2);
+    ctx.moveTo(w / 2, h / 2 - 5);
+    ctx.lineTo(w / 2, h / 2 + 5);
+    ctx.stroke();
+  }
+}
+
+function renderLinePreview(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  lineStyle: LineStyle,
+) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(0, 0, w, h);
+
+  ctx.strokeStyle = '#cccccc';
+  ctx.lineWidth = 1.5;
+  if (lineStyle === 'dashed') ctx.setLineDash([4, 3]);
+  else if (lineStyle === 'dotted') ctx.setLineDash([1, 3]);
+  else if (lineStyle === 'dashdot') ctx.setLineDash([6, 2, 1, 2]);
+  else ctx.setLineDash([]);
+
+  ctx.beginPath();
+  ctx.moveTo(3, h / 2);
+  ctx.lineTo(w - 3, h / 2);
+  ctx.stroke();
+  ctx.setLineDash([]);
+}
+
+function renderTextPreview(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  style: TextStyle,
+) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(0, 0, w, h);
+
+  const fontParts: string[] = [];
+  if (style.italic) fontParts.push('italic');
+  if (style.bold) fontParts.push('bold');
+  fontParts.push('10px');
+  fontParts.push(style.fontFamily || 'sans-serif');
+
+  ctx.font = fontParts.join(' ');
+  ctx.fillStyle = style.color || '#cccccc';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  if (style.underline) {
+    const metrics = ctx.measureText('Aa');
+    const tw = metrics.width;
+    ctx.strokeStyle = style.color || '#cccccc';
+    ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(w / 2 - tw / 2, h / 2 + 5);
+    ctx.lineTo(w / 2 + tw / 2, h / 2 + 5);
+    ctx.stroke();
+  }
+
+  ctx.fillText('Aa', w / 2, h / 2);
+}
+
+function renderDimensionPreview(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+) {
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#1e1e2e';
+  ctx.fillRect(0, 0, w, h);
+
+  const y = Math.round(h / 2) + 2;
+  const x1 = 3;
+  const x2 = w - 3;
+
+  ctx.strokeStyle = '#cccccc';
+  ctx.lineWidth = 0.8;
+
+  // Dimension line
+  ctx.beginPath();
+  ctx.moveTo(x1 + 3, y);
+  ctx.lineTo(x2 - 3, y);
+  ctx.stroke();
+
+  // Arrows
+  ctx.beginPath();
+  ctx.moveTo(x1 + 3, y);
+  ctx.lineTo(x1 + 7, y - 2);
+  ctx.lineTo(x1 + 7, y + 2);
+  ctx.closePath();
+  ctx.fillStyle = '#cccccc';
+  ctx.fill();
+
+  ctx.beginPath();
+  ctx.moveTo(x2 - 3, y);
+  ctx.lineTo(x2 - 7, y - 2);
+  ctx.lineTo(x2 - 7, y + 2);
+  ctx.closePath();
+  ctx.fill();
+
+  // Extension lines
+  ctx.strokeStyle = '#999999';
+  ctx.lineWidth = 0.5;
+  ctx.beginPath();
+  ctx.moveTo(x1 + 3, y - 5);
+  ctx.lineTo(x1 + 3, y + 2);
+  ctx.moveTo(x2 - 3, y - 5);
+  ctx.lineTo(x2 - 3, y + 2);
+  ctx.stroke();
+
+  // Text
+  ctx.fillStyle = '#cccccc';
+  ctx.font = '6px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'bottom';
+  ctx.fillText('dim', w / 2, y - 1);
+}
+
+// ─── generic mini canvas preview ─────────────────────────────────────────────
+
+interface MiniPreviewProps {
+  render: (ctx: CanvasRenderingContext2D, w: number, h: number) => void;
+  deps?: unknown[];
+}
+
+function MiniPreview({ render, deps = [] }: MiniPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const W = 24;
   const H = 24;
@@ -123,63 +301,9 @@ function HatchTypePreview({ frt, getPatternById }: {
     if (!canvas) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
-
-    ctx.clearRect(0, 0, W, H);
-
-    // Background
-    const bg = frt.backgroundColor ?? '#1e1e2e';
-    ctx.fillStyle = bg;
-    ctx.fillRect(0, 0, W, H);
-
-    const pattern = resolvePatternForType(frt, getPatternById);
-    const color = frt.fgColor;
-
-    // Solid fill
-    if (pattern.id === 'solid' || !('lineFamilies' in pattern) || pattern.lineFamilies.length === 0) {
-      ctx.fillStyle = color;
-      ctx.globalAlpha = 0.6;
-      ctx.fillRect(0, 0, W, H);
-      ctx.globalAlpha = 1;
-      return;
-    }
-
-    // Line families
-    for (const family of pattern.lineFamilies) {
-      const spacing = Math.max(1, (family.deltaY ?? 8) * (frt.fgPatternScale ?? 1));
-      const angleRad = ((family.angle ?? 0) + (frt.fgPatternAngle ?? 0)) * (Math.PI / 180);
-      const dx = Math.cos(angleRad);
-      const dy = Math.sin(angleRad);
-      const px = -dy;
-      const py = dx;
-      const diag = Math.sqrt(W * W + H * H);
-      const numLines = Math.ceil(diag / spacing) + 2;
-      const cx = W / 2;
-      const cy = H / 2;
-
-      ctx.strokeStyle = color;
-      ctx.lineWidth = Math.max(0.5, family.strokeWidth ?? 1);
-
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(0, 0, W, H);
-      ctx.clip();
-
-      if (family.dashPattern && family.dashPattern.length > 0 && family.dashPattern[0] !== 0) {
-        ctx.setLineDash(family.dashPattern.map(d => Math.abs(d)));
-      }
-
-      for (let i = -numLines; i <= numLines; i++) {
-        const ox = px * spacing * i;
-        const oy = py * spacing * i;
-        ctx.beginPath();
-        ctx.moveTo(cx + ox - dx * diag, cy + oy - dy * diag);
-        ctx.lineTo(cx + ox + dx * diag, cy + oy + dy * diag);
-        ctx.stroke();
-      }
-      ctx.setLineDash([]);
-      ctx.restore();
-    }
-  }, [frt, getPatternById]);
+    render(ctx, W, H);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [render, ...deps]);
 
   return (
     <canvas
@@ -189,6 +313,111 @@ function HatchTypePreview({ frt, getPatternById }: {
       className="border border-cad-border rounded flex-shrink-0"
       style={{ imageRendering: 'crisp-edges' }}
     />
+  );
+}
+
+// ─── generic TypeDropdown ─────────────────────────────────────────────────────
+
+interface TypeOption {
+  id: string;
+  label: string;
+  renderPreview: (ctx: CanvasRenderingContext2D, w: number, h: number) => void;
+}
+
+interface TypeDropdownProps {
+  options: TypeOption[];
+  value: string;
+  onChange: (id: string) => void;
+  placeholder?: string;
+}
+
+function TypeDropdownItem({
+  option,
+  selected,
+  onClick,
+}: {
+  option: TypeOption;
+  selected: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div
+      className={`flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-cad-hover ${
+        selected ? 'bg-cad-accent/20' : ''
+      }`}
+      onMouseDown={e => {
+        e.preventDefault();
+        e.stopPropagation();
+        onClick();
+      }}
+    >
+      <MiniPreview render={option.renderPreview} deps={[option.id]} />
+      <span className="flex-1 text-xs text-cad-text truncate">{option.label}</span>
+      {selected && <Check className="w-3 h-3 text-cad-accent flex-shrink-0" />}
+    </div>
+  );
+}
+
+function TypeDropdown({ options, value, onChange, placeholder }: TypeDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+
+  const currentOption = options.find(o => o.id === value);
+
+  const handleClickOutside = useCallback((e: MouseEvent) => {
+    if (containerRef.current && !containerRef.current.contains(e.target as Node)) {
+      setOpen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      document.addEventListener('mousedown', handleClickOutside);
+    } else {
+      document.removeEventListener('mousedown', handleClickOutside);
+    }
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [open, handleClickOutside]);
+
+  return (
+    <div ref={containerRef} className="relative flex-1 min-w-0">
+      {/* Trigger button */}
+      <button
+        type="button"
+        className="w-full flex items-center gap-2 bg-cad-bg border border-cad-border rounded px-2 py-1 text-xs text-cad-text hover:bg-cad-hover"
+        onClick={() => setOpen(prev => !prev)}
+      >
+        {currentOption ? (
+          <MiniPreview render={currentOption.renderPreview} deps={[currentOption.id]} />
+        ) : (
+          <div className="w-6 h-6 border border-cad-border rounded flex-shrink-0 bg-cad-bg" />
+        )}
+        <span className="flex-1 text-left truncate">
+          {currentOption?.label ?? placeholder ?? '— No type —'}
+        </span>
+        <ChevronDown className="w-3 h-3 text-cad-text-dim flex-shrink-0" />
+      </button>
+
+      {/* Dropdown list */}
+      {open && (
+        <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-cad-surface border border-cad-border rounded shadow-lg max-h-48 overflow-y-auto">
+          {options.map(option => (
+            <TypeDropdownItem
+              key={option.id}
+              option={option}
+              selected={option.id === value}
+              onClick={() => {
+                onChange(option.id);
+                setOpen(false);
+              }}
+            />
+          ))}
+          {options.length === 0 && (
+            <div className="px-2 py-1 text-xs text-cad-text-dim italic">No types available</div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -202,6 +431,172 @@ const LINE_STYLE_LABELS: Record<LineStyle, string> = {
 };
 
 const LINE_STYLE_OPTIONS: LineStyle[] = ['solid', 'dashed', 'dotted', 'dashdot'];
+
+// ─── option builders ──────────────────────────────────────────────────────────
+
+function buildHatchOptions(
+  filledRegionTypes: FilledRegionType[],
+  getPatternById: (id: string) => CustomHatchPattern | undefined,
+  hasNoType: boolean,
+): TypeOption[] {
+  const opts: TypeOption[] = [];
+  if (hasNoType) {
+    opts.push({
+      id: '',
+      label: '— No type —',
+      renderPreview: (ctx, w, h) => {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#1e1e2e';
+        ctx.fillRect(0, 0, w, h);
+      },
+    });
+  }
+  for (const frt of filledRegionTypes) {
+    const capturedFrt = frt;
+    opts.push({
+      id: frt.id,
+      label: frt.name,
+      renderPreview: (ctx, w, h) => {
+        // Reuse the HatchTypePreview drawing logic inline
+        ctx.clearRect(0, 0, w, h);
+        const bg = capturedFrt.backgroundColor ?? '#1e1e2e';
+        ctx.fillStyle = bg;
+        ctx.fillRect(0, 0, w, h);
+        const pattern = resolvePatternForType(capturedFrt, getPatternById);
+        const color = capturedFrt.fgColor;
+        if (pattern.id === 'solid' || !('lineFamilies' in pattern) || pattern.lineFamilies.length === 0) {
+          ctx.fillStyle = color;
+          ctx.globalAlpha = 0.6;
+          ctx.fillRect(0, 0, w, h);
+          ctx.globalAlpha = 1;
+          return;
+        }
+        for (const family of pattern.lineFamilies) {
+          const spacing = Math.max(1, (family.deltaY ?? 8) * (capturedFrt.fgPatternScale ?? 1));
+          const angleRad = ((family.angle ?? 0) + (capturedFrt.fgPatternAngle ?? 0)) * (Math.PI / 180);
+          const dx = Math.cos(angleRad);
+          const dy = Math.sin(angleRad);
+          const px = -dy;
+          const py = dx;
+          const diag = Math.sqrt(w * w + h * h);
+          const numLines = Math.ceil(diag / spacing) + 2;
+          const cx = w / 2;
+          const cy = h / 2;
+          ctx.strokeStyle = color;
+          ctx.lineWidth = Math.max(0.5, family.strokeWidth ?? 1);
+          ctx.save();
+          ctx.beginPath();
+          ctx.rect(0, 0, w, h);
+          ctx.clip();
+          if (family.dashPattern && family.dashPattern.length > 0 && family.dashPattern[0] !== 0) {
+            ctx.setLineDash(family.dashPattern.map(d => Math.abs(d)));
+          }
+          for (let i = -numLines; i <= numLines; i++) {
+            const ox = px * spacing * i;
+            const oy = py * spacing * i;
+            ctx.beginPath();
+            ctx.moveTo(cx + ox - dx * diag, cy + oy - dy * diag);
+            ctx.lineTo(cx + ox + dx * diag, cy + oy + dy * diag);
+            ctx.stroke();
+          }
+          ctx.setLineDash([]);
+          ctx.restore();
+        }
+      },
+    });
+  }
+  return opts;
+}
+
+function buildWallOptions(wallTypes: WallType[]): TypeOption[] {
+  const opts: TypeOption[] = [
+    {
+      id: '',
+      label: '(Custom)',
+      renderPreview: (ctx, w, h) => renderWallPreview(ctx, w, h, 200, '#666666'),
+    },
+  ];
+  for (const wt of wallTypes) {
+    const capturedWt = wt;
+    opts.push({
+      id: wt.id,
+      label: `${wt.name} (${wt.thickness}mm)`,
+      renderPreview: (ctx, w, h) => renderWallPreview(ctx, w, h, capturedWt.thickness, capturedWt.color),
+    });
+  }
+  return opts;
+}
+
+function buildPileOptions(pileTypes: PileTypeDefinition[]): TypeOption[] {
+  const opts: TypeOption[] = [
+    {
+      id: '',
+      label: '(Custom)',
+      renderPreview: (ctx, w, h) => renderPilePreview(ctx, w, h, 'round'),
+    },
+  ];
+  for (const pt of pileTypes) {
+    const capturedPt = pt;
+    opts.push({
+      id: pt.id,
+      label: pt.name,
+      renderPreview: (ctx, w, h) => renderPilePreview(ctx, w, h, capturedPt.shape),
+    });
+  }
+  return opts;
+}
+
+function buildTextStyleOptions(textStyles: TextStyle[]): TypeOption[] {
+  const opts: TypeOption[] = [
+    {
+      id: '',
+      label: '(Custom)',
+      renderPreview: (ctx, w, h) => {
+        ctx.clearRect(0, 0, w, h);
+        ctx.fillStyle = '#1e1e2e';
+        ctx.fillRect(0, 0, w, h);
+        ctx.fillStyle = '#cccccc';
+        ctx.font = '10px sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('Aa', w / 2, h / 2);
+      },
+    },
+  ];
+  for (const ts of textStyles) {
+    const capturedTs = ts;
+    opts.push({
+      id: ts.id,
+      label: ts.name,
+      renderPreview: (ctx, w, h) => renderTextPreview(ctx, w, h, capturedTs),
+    });
+  }
+  return opts;
+}
+
+function buildDimensionStyleOptions(presetNames: string[], currentStyleName: string): TypeOption[] {
+  const opts: TypeOption[] = presetNames.map(name => ({
+    id: name,
+    label: name,
+    renderPreview: (ctx, w, h) => renderDimensionPreview(ctx, w, h),
+  }));
+  if (!presetNames.includes(currentStyleName)) {
+    opts.push({
+      id: currentStyleName,
+      label: `${currentStyleName} (custom)`,
+      renderPreview: (ctx, w, h) => renderDimensionPreview(ctx, w, h),
+    });
+  }
+  return opts;
+}
+
+function buildLineStyleOptions(): TypeOption[] {
+  return LINE_STYLE_OPTIONS.map(ls => ({
+    id: ls,
+    label: LINE_STYLE_LABELS[ls],
+    renderPreview: (ctx, w, h) => renderLinePreview(ctx, w, h, ls),
+  }));
+}
 
 // ─── main component ──────────────────────────────────────────────────────────
 
@@ -245,7 +640,6 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
   if (firstType === 'hatch') {
     const hatch = selectedShapes[0] as HatchShape;
     const currentTypeId = hatch.filledRegionTypeId ?? '';
-    const currentFrt = filledRegionTypes.find(t => t.id === currentTypeId);
 
     const handleTypeChange = (newTypeId: string) => {
       const frt = filledRegionTypes.find(t => t.id === newTypeId);
@@ -254,7 +648,6 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       selectedShapes.forEach(shape => {
         updateShape(shape.id, {
           filledRegionTypeId: newTypeId,
-          // Sync pattern properties from the type
           patternType: frt.fgPatternType,
           patternAngle: frt.fgPatternAngle,
           patternScale: frt.fgPatternScale,
@@ -271,28 +664,15 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       });
     };
 
+    const hatchOptions = buildHatchOptions(filledRegionTypes, getPatternById, !currentTypeId);
+
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
-        {currentFrt ? (
-          <HatchTypePreview frt={currentFrt} getPatternById={getPatternById} />
-        ) : (
-          <div className="w-6 h-6 border border-cad-border rounded flex-shrink-0 bg-cad-bg" />
-        )}
-        <select
+        <TypeDropdown
+          options={hatchOptions}
           value={currentTypeId}
-          onChange={e => handleTypeChange(e.target.value)}
-          className="flex-1 bg-cad-bg border border-cad-border rounded px-2 py-0.5 text-xs text-cad-text min-w-0"
-          title="Filled Region Type"
-        >
-          {!currentTypeId && (
-            <option value="">— No type —</option>
-          )}
-          {filledRegionTypes.map(frt => (
-            <option key={frt.id} value={frt.id}>
-              {frt.name}
-            </option>
-          ))}
-        </select>
+          onChange={handleTypeChange}
+        />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
         )}
@@ -304,7 +684,6 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
   if (firstType === 'wall') {
     const wall = selectedShapes[0] as WallShape;
     const currentTypeId = wall.wallTypeId ?? '';
-    wallTypes.find(t => t.id === currentTypeId);
 
     const handleWallTypeChange = (newTypeId: string) => {
       selectedShapes.forEach(shape => {
@@ -321,22 +700,15 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       });
     };
 
+    const wallOptions = buildWallOptions(wallTypes);
+
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
-        <Box className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
-        <select
+        <TypeDropdown
+          options={wallOptions}
           value={currentTypeId}
-          onChange={e => handleWallTypeChange(e.target.value)}
-          className="flex-1 bg-cad-bg border border-cad-border rounded px-2 py-0.5 text-xs text-cad-text min-w-0"
-          title="Wall Type"
-        >
-          <option value="">(Custom)</option>
-          {wallTypes.map(wt => (
-            <option key={wt.id} value={wt.id}>
-              {wt.name} ({wt.thickness}mm)
-            </option>
-          ))}
-        </select>
+          onChange={handleWallTypeChange}
+        />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
         )}
@@ -355,22 +727,15 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       });
     };
 
+    const pileOptions = buildPileOptions(pileTypes);
+
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
-        <LayoutTemplate className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
-        <select
+        <TypeDropdown
+          options={pileOptions}
           value={currentTypeId}
-          onChange={e => handlePileTypeChange(e.target.value)}
-          className="flex-1 bg-cad-bg border border-cad-border rounded px-2 py-0.5 text-xs text-cad-text min-w-0"
-          title="Pile Type"
-        >
-          <option value="">(Custom)</option>
-          {pileTypes.map(pt => (
-            <option key={pt.id} value={pt.id}>
-              {pt.name}
-            </option>
-          ))}
-        </select>
+          onChange={handlePileTypeChange}
+        />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
         )}
@@ -414,22 +779,15 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       });
     };
 
+    const textOptions = buildTextStyleOptions(textStyles);
+
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
-        <Type className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
-        <select
+        <TypeDropdown
+          options={textOptions}
           value={currentStyleId}
-          onChange={e => handleTextStyleChange(e.target.value)}
-          className="flex-1 bg-cad-bg border border-cad-border rounded px-2 py-0.5 text-xs text-cad-text min-w-0"
-          title="Text Style"
-        >
-          <option value="">(Custom)</option>
-          {textStyles.map(ts => (
-            <option key={ts.id} value={ts.id}>
-              {ts.name}
-            </option>
-          ))}
-        </select>
+          onChange={handleTextStyleChange}
+        />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
         )}
@@ -454,25 +812,15 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       });
     };
 
+    const dimOptions = buildDimensionStyleOptions(presetNames, currentStyleName);
+
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
-        <Ruler className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
-        <select
+        <TypeDropdown
+          options={dimOptions}
           value={currentStyleName}
-          onChange={e => handleDimStyleChange(e.target.value)}
-          className="flex-1 bg-cad-bg border border-cad-border rounded px-2 py-0.5 text-xs text-cad-text min-w-0"
-          title="Dimension Style"
-        >
-          {presetNames.map(name => (
-            <option key={name} value={name}>
-              {name}
-            </option>
-          ))}
-          {/* If current style is not in presets, show it as custom */}
-          {!presetNames.includes(currentStyleName) && (
-            <option value={currentStyleName}>{currentStyleName} (custom)</option>
-          )}
-        </select>
+          onChange={handleDimStyleChange}
+        />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
         )}
@@ -486,29 +834,24 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
     const shape = selectedShapes[0];
     const currentLineStyle: LineStyle = shape.style?.lineStyle ?? 'solid';
 
-    const handleLineStyleChange = (newStyle: LineStyle) => {
+    const handleLineStyleChange = (newStyle: string) => {
       selectedShapes.forEach(s => {
         updateShape(s.id, {
-          style: { ...s.style, lineStyle: newStyle },
+          style: { ...s.style, lineStyle: newStyle as LineStyle },
         });
       });
     };
 
+    const lineOptions = buildLineStyleOptions();
+
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
         <ShapeTypeIcon type={firstType} />
-        <select
+        <TypeDropdown
+          options={lineOptions}
           value={currentLineStyle}
-          onChange={e => handleLineStyleChange(e.target.value as LineStyle)}
-          className="flex-1 bg-cad-bg border border-cad-border rounded px-2 py-0.5 text-xs text-cad-text min-w-0"
-          title="Line Style"
-        >
-          {LINE_STYLE_OPTIONS.map(ls => (
-            <option key={ls} value={ls}>
-              {LINE_STYLE_LABELS[ls]}
-            </option>
-          ))}
-        </select>
+          onChange={handleLineStyleChange}
+        />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
         )}
