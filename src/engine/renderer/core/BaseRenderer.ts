@@ -53,9 +53,16 @@ export class BaseRenderer {
 
   /**
    * Apply viewport transform
+   *
+   * Translate values are rounded to the nearest integer before being passed to
+   * the canvas context.  Canvas 2D uses float32 internally for transforms, so
+   * at large world coordinates (e.g. Dutch RD: x≈155 000, y≈463 000) the raw
+   * sub-pixel fractions accumulate float32 rounding errors that manifest as
+   * visible sub-pixel jitter at high zoom levels.  Rounding to whole pixels
+   * eliminates this artefact without affecting visible sharpness.
    */
   applyViewportTransform(viewport: Viewport): void {
-    this.ctx.translate(viewport.offsetX, viewport.offsetY);
+    this.ctx.translate(Math.round(viewport.offsetX), Math.round(viewport.offsetY));
     if (viewport.rotation) {
       this.ctx.rotate(viewport.rotation);
     }
