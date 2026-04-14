@@ -103,6 +103,14 @@ export class QuadTree {
   }
 
   /**
+   * Query all entries whose bounds overlap with the given bounding box.
+   * Alias for query() with a more descriptive name for viewport culling use cases.
+   */
+  queryBounds(bounds: ShapeBounds): QuadTreeEntry[] {
+    return this.query(bounds);
+  }
+
+  /**
    * Query all entries intersecting a rectangular area.
    */
   query(area: ShapeBounds): QuadTreeEntry[] {
