@@ -18,6 +18,7 @@ import { regenerateGridDimensions } from '../../utils/gridDimensionUtils';
 import { resolveGridlineExtension } from '../../types/hatch';
 import { ShortcutHUD } from './ShortcutHUD';
 import { formatSectionPeilLabel } from '../../services/section/sectionReferenceService';
+import { FrameBudget } from '../../engine/renderer/FrameBudget';
 
 function GridlineLabelInput({ shape, bubbleEnd, viewport, onSave, onCancel, drawingScale }: {
   shape: GridlineShape;
@@ -700,6 +701,13 @@ export function Canvas() {
 
     let renderErrorLogged = false;
 
+    // Frame budget tracker for performance monitoring
+    const frameBudget = new FrameBudget();
+
+    // Last-rendered snapshots for smart dirty-check (skip identical frames)
+    let lastRenderedShapeCount = -1;
+    let lastRenderedViewportKey = '';
+
     const tick = () => {
       if (dirty) {
         // Skip rendering if a transaction is suppressing renders
@@ -713,6 +721,20 @@ export function Canvas() {
 
         try {
         const s = useAppStore.getState();
+
+        // Smart dirty-check: skip the render if nothing visible has changed.
+        // We compare shape count (cheap proxy) and a serialised viewport key.
+        const activeShapeCount = s.shapes.filter(sh => sh.drawingId === s.activeDrawingId).length;
+        const vp = s.viewport;
+        const viewportKey = `${s.editorMode}|${vp.offsetX.toFixed(2)}|${vp.offsetY.toFixed(2)}|${vp.zoom}|${s.activeDrawingId}|${s.activeSheetId}`;
+        if (activeShapeCount === lastRenderedShapeCount && viewportKey === lastRenderedViewportKey) {
+          rafId = requestAnimationFrame(tick);
+          return;
+        }
+        lastRenderedShapeCount = activeShapeCount;
+        lastRenderedViewportKey = viewportKey;
+
+        const frameStart = frameBudget.startFrame();
 
         if (s.editorMode === 'sheet') {
           const activeSheet = s.sheets.find(sh => sh.id === s.activeSheetId) || null;
@@ -831,6 +853,8 @@ export function Canvas() {
             slabInnerContourPoints: s.slabInnerContourPoints,
           });
         }
+
+        frameBudget.endFrame(frameStart);
         } catch (err) {
           if (!renderErrorLogged) {
             console.error('[Canvas] Render error:', err);
