@@ -24,6 +24,7 @@ import {
   GitBranch,
   ChevronDown,
   Check,
+  Pencil,
 } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
 import { getActiveDocumentStore } from '../../../state/documentStore';
@@ -187,10 +188,9 @@ function renderLinePreview(
   lineStyle: LineStyle,
 ) {
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#1e1e2e';
-  ctx.fillRect(0, 0, w, h);
+  // Transparent background — no fillRect so the canvas CSS background shows through
 
-  ctx.strokeStyle = '#cccccc';
+  ctx.strokeStyle = '#ffffff';
   ctx.lineWidth = 1.5;
   if (lineStyle === 'dashed') ctx.setLineDash([4, 3]);
   else if (lineStyle === 'dotted') ctx.setLineDash([1, 3]);
@@ -340,16 +340,20 @@ interface TypeDropdownProps {
   value: string;
   onChange: (id: string) => void;
   placeholder?: string;
+  /** Called when the edit (pencil) button is clicked for a type. Passes the type id. */
+  onEditOption?: (id: string) => void;
 }
 
 function TypeDropdownItem({
   option,
   selected,
   onClick,
+  onEdit,
 }: {
   option: TypeOption;
   selected: boolean;
   onClick: () => void;
+  onEdit?: () => void;
 }) {
   return (
     <div
@@ -365,11 +369,24 @@ function TypeDropdownItem({
       <MiniPreview render={option.renderPreview} deps={[option.id]} />
       <span className="flex-1 text-xs text-cad-text truncate">{option.label}</span>
       {selected && <Check className="w-3 h-3 text-cad-accent flex-shrink-0" />}
+      {onEdit && (
+        <button
+          className="p-0.5 rounded hover:bg-cad-accent/20 text-cad-text-dim hover:text-cad-text flex-shrink-0"
+          title="Edit type"
+          onMouseDown={e => {
+            e.preventDefault();
+            e.stopPropagation();
+            onEdit();
+          }}
+        >
+          <Pencil className="w-3 h-3" />
+        </button>
+      )}
     </div>
   );
 }
 
-function TypeDropdown({ options, value, onChange, placeholder }: TypeDropdownProps) {
+function TypeDropdown({ options, value, onChange, placeholder, onEditOption }: TypeDropdownProps) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -448,6 +465,7 @@ function TypeDropdown({ options, value, onChange, placeholder }: TypeDropdownPro
                   setOpen(false);
                   setSearch('');
                 }}
+                onEdit={onEditOption && option.id ? () => { onEditOption(option.id); setOpen(false); setSearch(''); } : undefined}
               />
             ))}
             {filteredOptions.length === 0 && (
@@ -655,6 +673,11 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
   const filledRegionMode = useAppStore(s => s.filledRegionMode);
   const selectedFilledRegionTypeId = useAppStore(s => s.selectedFilledRegionTypeId);
   const setSelectedFilledRegionTypeId = useAppStore(s => s.setSelectedFilledRegionTypeId);
+  const activeTool = useAppStore(s => s.activeTool);
+  const currentStyle = useAppStore(s => s.currentStyle);
+  const setCurrentStyle = useAppStore(s => s.setCurrentStyle);
+  const setRegionTypeManagerOpen = useAppStore(s => s.setRegionTypeManagerOpen);
+  const openWallTypesDialog = useAppStore(s => s.openWallTypesDialog);
 
   // ── Filled Region sketch mode: show Filled Region type selector ──
   if (filledRegionMode) {
@@ -678,8 +701,67 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
     );
   }
 
-  // ── No selection ──
+  // ── No selection — show contextual type for active drawing tool ──
   if (selectedShapes.length === 0) {
+    // Line tool: show line style selector (affects currentStyle)
+    const LINE_TOOLS = ['line', 'polyline', 'arc', 'circle', 'rectangle', 'ellipse', 'spline'];
+    if (LINE_TOOLS.includes(activeTool)) {
+      const currentLineStyle: LineStyle = currentStyle?.lineStyle ?? 'solid';
+      const handleLineStyleChange = (newStyle: string) => {
+        setCurrentStyle({ lineStyle: newStyle as LineStyle });
+      };
+      const lineOptions = buildLineStyleOptions();
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
+          <ShapeTypeIcon type={activeTool as any} />
+          <TypeDropdown
+            options={lineOptions}
+            value={currentLineStyle}
+            onChange={handleLineStyleChange}
+          />
+        </div>
+      );
+    }
+
+    // Hatch tool: show filled region type selector
+    if (activeTool === 'hatch') {
+      const currentTypeId = selectedFilledRegionTypeId ?? '';
+      const hatchOptions = buildHatchOptions(filledRegionTypes, getPatternById, !currentTypeId);
+      const handleTypeChange = (newTypeId: string) => {
+        setSelectedFilledRegionTypeId(newTypeId || null);
+      };
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
+          <Layers className="w-3.5 h-3.5 text-cad-accent flex-shrink-0" />
+          <TypeDropdown
+            options={hatchOptions}
+            value={currentTypeId}
+            onChange={handleTypeChange}
+            placeholder="Filled Region"
+            onEditOption={() => setRegionTypeManagerOpen(true)}
+          />
+        </div>
+      );
+    }
+
+    // Wall tool: show wall type selector
+    if (activeTool === 'wall') {
+      const wallOptions = buildWallOptions(wallTypes);
+      const currentWallTypeId = '';
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
+          <Box className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
+          <TypeDropdown
+            options={wallOptions}
+            value={currentWallTypeId}
+            onChange={() => {}}
+            placeholder="Wall Type"
+            onEditOption={() => openWallTypesDialog()}
+          />
+        </div>
+      );
+    }
+
     return (
       <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
         <span className="text-xs text-cad-text-dim italic">No Selection</span>
@@ -738,6 +820,7 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
           options={hatchOptions}
           value={currentTypeId}
           onChange={handleTypeChange}
+          onEditOption={() => setRegionTypeManagerOpen(true)}
         />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
@@ -774,6 +857,7 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
           options={wallOptions}
           value={currentTypeId}
           onChange={handleWallTypeChange}
+          onEditOption={() => openWallTypesDialog()}
         />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
