@@ -379,7 +379,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
   if (hidden) return null;
 
   return (
-    <div className="ribbon-container">
+    <div className={`ribbon-container${filledRegionMode ? ' pointer-events-none opacity-50' : ''}`}>
       {/* Ribbon Tabs */}
       <div className="ribbon-tabs">
         <button

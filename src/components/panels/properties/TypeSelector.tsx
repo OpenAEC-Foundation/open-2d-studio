@@ -622,6 +622,31 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
   const wallTypes = useAppStore(s => s.wallTypes);
   const pileTypes = useAppStore(s => s.pileTypes);
   const textStyles = useAppStore(s => s.textStyles);
+  const filledRegionMode = useAppStore(s => s.filledRegionMode);
+  const selectedFilledRegionTypeId = useAppStore(s => s.selectedFilledRegionTypeId);
+  const setSelectedFilledRegionTypeId = useAppStore(s => s.setSelectedFilledRegionTypeId);
+
+  // ── Filled Region sketch mode: show Filled Region type selector ──
+  if (filledRegionMode) {
+    const currentTypeId = selectedFilledRegionTypeId ?? '';
+    const hatchOptions = buildHatchOptions(filledRegionTypes, getPatternById, !currentTypeId);
+
+    const handleTypeChange = (newTypeId: string) => {
+      setSelectedFilledRegionTypeId(newTypeId || null);
+    };
+
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
+        <Layers className="w-3.5 h-3.5 text-cad-accent flex-shrink-0" />
+        <TypeDropdown
+          options={hatchOptions}
+          value={currentTypeId}
+          onChange={handleTypeChange}
+          placeholder="Filled Region"
+        />
+      </div>
+    );
+  }
 
   // ── No selection ──
   if (selectedShapes.length === 0) {

@@ -916,8 +916,9 @@ function FilledRegionSketchOptions() {
   const currentSegment = polylineArcMode ? 'arc' : 'line';
 
   const finishFilledRegion = () => {
-    if (drawingPoints.length < 3) return;
     const s = useAppStore.getState();
+    const points = s.drawingPoints;
+    if (points.length < 3) return;
     const frt = s.selectedFilledRegionTypeId ? s.getFilledRegionTypeById(s.selectedFilledRegionTypeId) : undefined;
     const hatchShape = {
       id: `hatch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
@@ -927,7 +928,7 @@ function FilledRegionSketchOptions() {
       style: { ...s.currentStyle },
       visible: true,
       locked: false,
-      points: [...drawingPoints],
+      points: [...points],
       bulge: s.drawingBulges?.some((b: number) => b !== 0) ? [...s.drawingBulges] : undefined,
       patternType: frt ? frt.fgPatternType : s.hatchPatternType,
       patternAngle: frt ? frt.fgPatternAngle : s.hatchPatternAngle,
