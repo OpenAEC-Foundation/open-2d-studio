@@ -5,6 +5,7 @@ import { DrawingPropertiesPanel } from './DrawingPropertiesPanel';
 import { PropertyGroup, ColorPalette, LineweightInput } from './properties/PropertyFields';
 import { ShapeProperties, MultiSelectShapeProperties, ParametricShapeProperties } from './properties/ShapeProperties';
 import { ActiveToolProperties } from './properties/ToolProperties';
+import { TypeSelector } from './properties/TypeSelector';
 
 export const PropertiesPanel = memo(function PropertiesPanel() {
   const selectedShapeIds = useAppStore(s => s.selectedShapeIds);
@@ -84,6 +85,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
   if (selectedParametricShapes.length > 0 && selectedShapes.length === 0) {
     return (
       <div className="flex-1 overflow-auto">
+        <TypeSelector selectedShapes={[]} />
         <div className="p-3">
           {/* Selection info */}
           <div className="text-xs text-cad-text-dim mb-4">
@@ -108,6 +110,7 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
   return (
     <div className="flex-1 overflow-auto">
       {isToolWithProperties && <ActiveToolProperties activeTool={activeTool} />}
+      <TypeSelector selectedShapes={selectedShapes} />
       <div>
         {/* Hide Style section for IFC/AEC object types (only show for basic 2D shapes) */}
         {!(selectedShapes.length > 0 && selectedShapes.every(s => ['wall', 'beam', 'column', 'slab', 'pile', 'gridline', 'level', 'section-callout', 'space', 'puntniveau', 'cpt', 'wall-opening', 'slab-opening', 'rebar', 'slab-label', 'spot-elevation', 'plate-system'].includes(s.type))) && <PropertyGroup label="Style">
