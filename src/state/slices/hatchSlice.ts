@@ -82,6 +82,9 @@ export interface HatchState extends HatchPatternsState {
 
   // Live preview: when hovering a pattern in the picker, temporarily show it on selected hatches
   previewPatternId: string | null;
+
+  // Selected filled region type for new hatches
+  selectedFilledRegionTypeId: string | null;
 }
 
 // ============================================================================
@@ -129,6 +132,9 @@ export interface HatchActions {
   // Live preview
   setPreviewPatternId: (id: string | null) => void;
 
+  // Selected filled region type for sketch mode
+  setSelectedFilledRegionTypeId: (id: string | null) => void;
+
   // Bulk operations for save/load
   setUserPatterns: (patterns: CustomHatchPattern[]) => void;
   setProjectPatterns: (patterns: CustomHatchPattern[]) => void;
@@ -150,6 +156,7 @@ export const initialHatchState: HatchState = {
   recentPatternIds: loadStringArray(LS_KEY_RECENT),
   filledRegionTypes: [...BUILTIN_FILLED_REGION_TYPES, ...loadFilledRegionTypes()],
   previewPatternId: null,
+  selectedFilledRegionTypeId: null,
 };
 
 // ============================================================================
@@ -505,6 +512,12 @@ export const createHatchSlice = (
   setPreviewPatternId: (id) => {
     set((state) => {
       state.previewPatternId = id;
+    });
+  },
+
+  setSelectedFilledRegionTypeId: (id) => {
+    set((state) => {
+      state.selectedFilledRegionTypeId = id;
     });
   },
 

@@ -911,6 +911,9 @@ function FilledRegionSketchOptions() {
   const polylineArcMode = useAppStore((s) => s.polylineArcMode);
   const drawingPoints = useAppStore((s) => s.drawingPoints);
   const cancelFilledRegionMode = useAppStore((s) => s.cancelFilledRegionMode);
+  const filledRegionTypes = useAppStore((s) => s.filledRegionTypes);
+  const selectedFilledRegionTypeId = useAppStore((s) => s.selectedFilledRegionTypeId);
+  const setSelectedFilledRegionTypeId = useAppStore((s) => s.setSelectedFilledRegionTypeId);
 
   // Sync draw tool with polylineArcMode if needed
   const currentSegment = polylineArcMode ? 'arc' : 'line';
@@ -918,6 +921,20 @@ function FilledRegionSketchOptions() {
   return (
     <>
       <span className="text-cad-accent font-semibold text-xs mr-1">Sketch Boundary:</span>
+      {Separator()}
+      <label className="flex items-center gap-1">
+        <span className="text-cad-text-dim">Type:</span>
+        <select
+          value={selectedFilledRegionTypeId || ''}
+          onChange={(e) => setSelectedFilledRegionTypeId(e.target.value || null)}
+          className="bg-cad-bg border border-cad-border text-cad-text text-xs px-1 py-0.5 rounded max-w-[160px]"
+        >
+          <option value="">-- Kies type --</option>
+          {filledRegionTypes.map((t) => (
+            <option key={t.id} value={t.id}>{t.name}</option>
+          ))}
+        </select>
+      </label>
       {Separator()}
       <label className="flex items-center gap-1">
         <span className="text-cad-text-dim">Segment:</span>
