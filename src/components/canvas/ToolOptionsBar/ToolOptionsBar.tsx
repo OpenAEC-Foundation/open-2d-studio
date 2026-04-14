@@ -1161,9 +1161,11 @@ function FilledRegionSketchOptions() {
 export const ToolOptionsBar = memo(function ToolOptionsBar() {
   const activeTool = useAppStore((s) => s.activeTool);
   const filledRegionMode = useAppStore((s) => s.filledRegionMode);
+  const activeRibbonTab = useAppStore((s) => s.activeRibbonTab);
 
-  // When in filled region sketch mode, show sketch options instead of regular tool options
-  if (filledRegionMode) {
+  // When in filled region sketch mode and NOT using the Sketch ribbon tab, show the sketch options bar
+  // (When the Sketch ribbon tab is active, tools are in the ribbon itself — avoid duplication)
+  if (filledRegionMode && activeRibbonTab !== 'sketch') {
     return (
       <div className="h-7 bg-cad-surface border-b border-cad-border border-l-2 border-l-cad-accent flex items-center px-3 gap-4 text-xs font-mono">
         <FilledRegionSketchOptions />
