@@ -32,6 +32,8 @@ export function useDrawingKeyboard() {
     setLinearDimensionDirection,
     filledRegionMode,
     cancelFilledRegionMode,
+    selectedFilledRegionTypeId,
+    getFilledRegionTypeById,
     // Snap and tracking toggles
     toggleSnap,
     toggleOrthoMode,
@@ -197,6 +199,8 @@ export function useDrawingKeyboard() {
               drawingBulges,
               cancelFilledRegionMode: cancelFR,
             } = useAppStore.getState();
+            // Resolve selected filled region type properties (if any)
+            const frt = selectedFilledRegionTypeId ? getFilledRegionTypeById(selectedFilledRegionTypeId) : undefined;
             const hatchShape: HatchShape = {
               id: generateId(),
               type: 'hatch',
@@ -207,12 +211,19 @@ export function useDrawingKeyboard() {
               locked: false,
               points: [...drawingPoints],
               bulge: drawingBulges && drawingBulges.some((b: number) => b !== 0) ? [...drawingBulges] : undefined,
-              patternType: hatchPatternType,
-              patternAngle: hatchPatternAngle,
-              patternScale: hatchPatternScale,
-              fillColor: hatchFillColor,
-              backgroundColor: hatchBackgroundColor ?? undefined,
-              customPatternId: hatchCustomPatternId ?? undefined,
+              patternType: frt ? frt.fgPatternType : hatchPatternType,
+              patternAngle: frt ? frt.fgPatternAngle : hatchPatternAngle,
+              patternScale: frt ? frt.fgPatternScale : hatchPatternScale,
+              fillColor: frt ? frt.fgColor : hatchFillColor,
+              backgroundColor: frt ? (frt.backgroundColor ?? undefined) : (hatchBackgroundColor ?? undefined),
+              customPatternId: frt ? (frt.fgCustomPatternId ?? undefined) : (hatchCustomPatternId ?? undefined),
+              bgPatternType: frt ? frt.bgPatternType : undefined,
+              bgPatternAngle: frt ? frt.bgPatternAngle : undefined,
+              bgPatternScale: frt ? frt.bgPatternScale : undefined,
+              bgFillColor: frt ? frt.bgColor : undefined,
+              bgCustomPatternId: frt ? frt.bgCustomPatternId : undefined,
+              masking: frt ? frt.masking : undefined,
+              filledRegionTypeId: frt ? frt.id : undefined,
             };
             addShape(hatchShape);
             cancelFR();
@@ -323,6 +334,8 @@ export function useDrawingKeyboard() {
                 drawingBulges,
                 cancelFilledRegionMode: cancelFR2,
               } = useAppStore.getState();
+              // Resolve selected filled region type properties (if any)
+              const frt2 = selectedFilledRegionTypeId ? getFilledRegionTypeById(selectedFilledRegionTypeId) : undefined;
               const hatchShape: HatchShape = {
                 id: generateId(),
                 type: 'hatch',
@@ -333,12 +346,19 @@ export function useDrawingKeyboard() {
                 locked: false,
                 points: [...drawingPoints],
                 bulge: drawingBulges && drawingBulges.some((b: number) => b !== 0) ? [...drawingBulges] : undefined,
-                patternType: hatchPatternType,
-                patternAngle: hatchPatternAngle,
-                patternScale: hatchPatternScale,
-                fillColor: hatchFillColor,
-                backgroundColor: hatchBackgroundColor ?? undefined,
-                customPatternId: hatchCustomPatternId ?? undefined,
+                patternType: frt2 ? frt2.fgPatternType : hatchPatternType,
+                patternAngle: frt2 ? frt2.fgPatternAngle : hatchPatternAngle,
+                patternScale: frt2 ? frt2.fgPatternScale : hatchPatternScale,
+                fillColor: frt2 ? frt2.fgColor : hatchFillColor,
+                backgroundColor: frt2 ? (frt2.backgroundColor ?? undefined) : (hatchBackgroundColor ?? undefined),
+                customPatternId: frt2 ? (frt2.fgCustomPatternId ?? undefined) : (hatchCustomPatternId ?? undefined),
+                bgPatternType: frt2 ? frt2.bgPatternType : undefined,
+                bgPatternAngle: frt2 ? frt2.bgPatternAngle : undefined,
+                bgPatternScale: frt2 ? frt2.bgPatternScale : undefined,
+                bgFillColor: frt2 ? frt2.bgColor : undefined,
+                bgCustomPatternId: frt2 ? frt2.bgCustomPatternId : undefined,
+                masking: frt2 ? frt2.masking : undefined,
+                filledRegionTypeId: frt2 ? frt2.id : undefined,
               };
               addShape(hatchShape);
               cancelFR2();
@@ -481,6 +501,8 @@ export function useDrawingKeyboard() {
     setLinearDimensionDirection,
     filledRegionMode,
     cancelFilledRegionMode,
+    selectedFilledRegionTypeId,
+    getFilledRegionTypeById,
     toggleSnap,
     toggleOrthoMode,
     togglePolarTracking,

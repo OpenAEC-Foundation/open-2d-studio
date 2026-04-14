@@ -122,15 +122,13 @@ function renderWallPreview(
   color?: string,
 ) {
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#1e1e2e';
-  ctx.fillRect(0, 0, w, h);
 
-  const wallH = Math.min(h * 0.55, Math.max(4, thickness / 30));
+  const wallH = Math.min(h * 0.55, Math.max(6, thickness / 15));
   const cy = h / 2;
-  ctx.fillStyle = color || '#808080';
+  ctx.fillStyle = color || '#c0c0c0';
   ctx.fillRect(2, cy - wallH / 2, w - 4, wallH);
-  ctx.strokeStyle = '#cccccc';
-  ctx.lineWidth = 0.5;
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth = 0.8;
   ctx.strokeRect(2, cy - wallH / 2, w - 4, wallH);
 }
 
@@ -293,8 +291,8 @@ interface MiniPreviewProps {
 
 function MiniPreview({ render, deps = [] }: MiniPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const W = 24;
-  const H = 24;
+  const W = 48;
+  const H = 48;
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -311,7 +309,7 @@ function MiniPreview({ render, deps = [] }: MiniPreviewProps) {
       width={W}
       height={H}
       className="border border-cad-border rounded flex-shrink-0"
-      style={{ imageRendering: 'crisp-edges' }}
+      style={{ imageRendering: 'crisp-edges', width: '48px', height: '48px' }}
     />
   );
 }
@@ -342,7 +340,7 @@ function TypeDropdownItem({
 }) {
   return (
     <div
-      className={`flex items-center gap-2 px-2 py-1 cursor-pointer hover:bg-cad-hover ${
+      className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-cad-hover ${
         selected ? 'bg-cad-accent/20' : ''
       }`}
       onMouseDown={e => {
@@ -384,13 +382,13 @@ function TypeDropdown({ options, value, onChange, placeholder }: TypeDropdownPro
       {/* Trigger button */}
       <button
         type="button"
-        className="w-full flex items-center gap-2 bg-cad-bg border border-cad-border rounded px-2 py-1 text-xs text-cad-text hover:bg-cad-hover"
+        className="w-full flex items-center gap-2 bg-cad-bg border border-cad-border rounded px-2 py-1.5 text-xs text-cad-text hover:bg-cad-hover"
         onClick={() => setOpen(prev => !prev)}
       >
         {currentOption ? (
           <MiniPreview render={currentOption.renderPreview} deps={[currentOption.id]} />
         ) : (
-          <div className="w-6 h-6 border border-cad-border rounded flex-shrink-0 bg-cad-bg" />
+          <div className="w-12 h-12 border border-cad-border rounded flex-shrink-0 bg-cad-bg" />
         )}
         <span className="flex-1 text-left truncate">
           {currentOption?.label ?? placeholder ?? '— No type —'}
