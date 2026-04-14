@@ -915,37 +915,33 @@ function FilledRegionSketchOptions() {
   // Sync draw tool with polylineArcMode if needed
   const currentSegment = polylineArcMode ? 'arc' : 'line';
 
-  const finishFilledRegion = () => {
+  const handleFinish = () => {
     const s = useAppStore.getState();
-    const points = s.drawingPoints;
-    if (points.length < 3) return;
-    const frt = s.selectedFilledRegionTypeId ? s.getFilledRegionTypeById(s.selectedFilledRegionTypeId) : undefined;
-    const hatchShape = {
+    if (s.drawingPoints.length < 3) return;
+
+    const frtId = s.selectedFilledRegionTypeId;
+    const frt = frtId ? (s as any).filledRegionTypes?.find((t: any) => t.id === frtId) : undefined;
+
+    s.addShape({
       id: `hatch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-      type: 'hatch' as const,
+      type: 'hatch',
       layerId: s.activeLayerId,
       drawingId: s.activeDrawingId,
       style: { ...s.currentStyle },
       visible: true,
       locked: false,
-      points: [...points],
+      points: [...s.drawingPoints],
       bulge: s.drawingBulges?.some((b: number) => b !== 0) ? [...s.drawingBulges] : undefined,
       patternType: frt ? frt.fgPatternType : s.hatchPatternType,
       patternAngle: frt ? frt.fgPatternAngle : s.hatchPatternAngle,
       patternScale: frt ? frt.fgPatternScale : s.hatchPatternScale,
       fillColor: frt ? frt.fgColor : s.hatchFillColor,
-      backgroundColor: frt ? (frt.backgroundColor ?? undefined) : (s.hatchBackgroundColor ?? undefined),
-      customPatternId: frt ? (frt.fgCustomPatternId ?? undefined) : (s.hatchCustomPatternId ?? undefined),
-      bgPatternType: frt?.bgPatternType,
-      bgPatternAngle: frt?.bgPatternAngle,
-      bgPatternScale: frt?.bgPatternScale,
-      bgFillColor: frt?.bgColor,
-      bgCustomPatternId: frt?.bgCustomPatternId,
-      masking: frt?.masking,
+      backgroundColor: frt?.backgroundColor ?? s.hatchBackgroundColor ?? undefined,
+      customPatternId: frt?.fgCustomPatternId ?? s.hatchCustomPatternId ?? undefined,
       filledRegionTypeId: frt?.id,
-    };
-    s.addShape(hatchShape);
-    cancelFilledRegionMode();
+    } as any);
+
+    s.finishFilledRegion();
   };
 
   return (
@@ -983,8 +979,8 @@ function FilledRegionSketchOptions() {
       </span>
       {Separator()}
       <button
-        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); }}
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); finishFilledRegion(); }}
+        onMouseDown={(e) => e.preventDefault()}
+        onClick={() => handleFinish()}
         disabled={drawingPoints.length < 3}
         className={`px-3 py-0.5 text-xs border rounded font-medium ${
           drawingPoints.length >= 3

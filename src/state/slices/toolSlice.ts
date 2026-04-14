@@ -724,8 +724,6 @@ export const createToolSlice = (
 
   finishFilledRegion: () =>
     set((state) => {
-      // The actual hatch creation is handled by the component
-      // This just exits the mode
       state.filledRegionMode = false;
       state.activeTool = 'select';
       state.drawingPoints = [];
