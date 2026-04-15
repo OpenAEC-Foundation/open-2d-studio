@@ -2165,33 +2165,8 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
 
       return (
         <>
-          <PropertyGroup label="Detail Line Type">
-            <SelectField
-              label="Type"
-              value={dl.detailLineTypeId ?? ''}
-              options={allTypes.map(t => ({ value: t.id, label: t.name }))}
-              onChange={(v) => {
-                const t = allTypes.find(x => x.id === v);
-                if (t) {
-                  update({
-                    detailLineTypeId: t.id,
-                    patternType: t.patternType,
-                    patternAngle: t.patternAngle,
-                    patternScale: t.patternScale,
-                    patternColor: t.patternColor,
-                    backgroundColor: t.backgroundColor,
-                    thickness: t.thickness,
-                  });
-                }
-              }}
-            />
-            {currentType && (
-              <div className="text-xs text-cad-text-dim mt-1">
-                {currentType.name} — {dl.thickness}mm thick
-              </div>
-            )}
-          </PropertyGroup>
-          <PropertyGroup label="Geometry">
+          {/* Type is in the TypeSelector at top — only instance properties here */}
+          <PropertyGroup label="Instance">
             <NumberField label="Thickness (mm)" value={dl.thickness} onChange={(v) => update({ thickness: v })} step={5} min={1} />
           </PropertyGroup>
         </>
