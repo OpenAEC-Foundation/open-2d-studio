@@ -3820,7 +3820,9 @@ export class ShapeRenderer extends BaseRenderer {
     // Draw pattern within the band
     const lineColor = shape.patternColor || ctx.strokeStyle as string;
     const scale = shape.patternScale ?? 1;
-    const spacing = 8 * scale; // Base pattern spacing in world units
+    // NEN47 isolatie: spacing adapts to thickness so pattern fills the band properly
+    // The zig-zag lines should go from edge to edge of the band
+    const spacing = thickness * 0.6 * scale; // Proportional to thickness
 
     ctx.strokeStyle = lineColor;
     ctx.fillStyle = lineColor;
@@ -3839,9 +3841,9 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.closePath();
       ctx.fill();
     } else if (patternType === 'insulation-nen47') {
-      // NEN 47: 60° crosshatch lines along the band
-      this.drawDetailLineHatchPattern(start, end, halfT, ux, uy, px, py, len, spacing, 60, lineColor);
-      this.drawDetailLineHatchPattern(start, end, halfT, ux, uy, px, py, len, spacing, -60, lineColor);
+      // NEN 47 isolatie: zig-zag lines from edge to edge of the band
+      // Each zig-zag goes from +halfT to -halfT (full width of insulation)
+      this.drawDetailLineNEN47Insulation(start, halfT, ux, uy, px, py, len, lineColor);
     } else if (patternType === 'insulation-us') {
       // US: sinusoidal wave curves along the band centerline
       this.drawDetailLineSineWave(start, end, halfT, ux, uy, px, py, len, spacing, lineColor);
@@ -3936,6 +3938,65 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.lineTo(lx + hx * diagLen, ly + hy * diagLen);
     }
 
+    ctx.stroke();
+  }
+
+  /**
+   * Draw NEN47 insulation zig-zag pattern within the detail line band.
+   * Lines go from edge to edge (top to bottom of the band thickness)
+   * creating a zig-zag that adapts to the insulation thickness.
+   */
+  private drawDetailLineNEN47Insulation(
+    start: { x: number; y: number },
+    halfT: number,
+    ux: number, uy: number,
+    px: number, py: number,
+    len: number,
+    color: string,
+  ): void {
+    const ctx = this.ctx;
+    // Zig-zag step along the line direction — proportional to thickness
+    // Each "V" shape spans about 1× the thickness along the line
+    const step = halfT * 2 * 0.7; // Width of each zig-zag segment
+    const numSteps = Math.ceil(len / step);
+
+    ctx.strokeStyle = color;
+    ctx.lineWidth = Math.max(0.3, ctx.lineWidth);
+    ctx.beginPath();
+
+    for (let i = 0; i <= numSteps; i++) {
+      const t = i * step;
+      if (t > len) break;
+
+      // Alternate between top edge (+halfT) and bottom edge (-halfT)
+      const side = (i % 2 === 0) ? halfT : -halfT;
+      const x = start.x + ux * t + px * side;
+      const y = start.y + uy * t + py * side;
+
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+    ctx.stroke();
+
+    // Draw a second zig-zag offset by half a step for the classic NEN47 look
+    ctx.beginPath();
+    for (let i = 0; i <= numSteps; i++) {
+      const t = i * step + step / 2;
+      if (t > len) break;
+
+      const side = (i % 2 === 0) ? -halfT : halfT; // Opposite phase
+      const x = start.x + ux * t + px * side;
+      const y = start.y + uy * t + py * side;
+
+      if (i === 0) {
+        ctx.moveTo(x, y);
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
     ctx.stroke();
   }
 
