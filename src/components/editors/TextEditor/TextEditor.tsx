@@ -20,7 +20,7 @@ interface TextEditorProps {
 }
 
 export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
-  const { viewport, drawings, activeDrawingId, updateShape } = useAppStore();
+  const { viewport, drawings, activeDrawingId, updateShape, whiteBackground } = useAppStore();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [text, setText] = useState(shape.text);
@@ -167,10 +167,10 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
           marginBottom: '4px',
           display: 'flex',
           gap: '2px',
-          backgroundColor: 'rgba(30, 30, 30, 0.95)',
+          backgroundColor: whiteBackground ? 'rgba(240, 240, 240, 0.97)' : 'rgba(30, 30, 30, 0.95)',
           padding: '3px 4px',
           borderRadius: '4px',
-          border: '1px solid #444',
+          border: whiteBackground ? '1px solid #ccc' : '1px solid #444',
           alignItems: 'center',
         }}
       >
@@ -182,9 +182,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
             padding: '2px 6px',
             fontSize: '12px',
             fontWeight: 'bold',
-            backgroundColor: bold ? '#0066ff' : '#333',
-            color: '#fff',
-            border: '1px solid #555',
+            backgroundColor: bold ? '#0066ff' : (whiteBackground ? '#e0e0e0' : '#333'),
+            color: bold ? '#fff' : (whiteBackground ? '#222' : '#fff'),
+            border: whiteBackground ? '1px solid #bbb' : '1px solid #555',
             borderRadius: '3px',
             cursor: 'pointer',
             minWidth: 24,
@@ -200,9 +200,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
             padding: '2px 6px',
             fontSize: '12px',
             fontStyle: 'italic',
-            backgroundColor: italic ? '#0066ff' : '#333',
-            color: '#fff',
-            border: '1px solid #555',
+            backgroundColor: italic ? '#0066ff' : (whiteBackground ? '#e0e0e0' : '#333'),
+            color: italic ? '#fff' : (whiteBackground ? '#222' : '#fff'),
+            border: whiteBackground ? '1px solid #bbb' : '1px solid #555',
             borderRadius: '3px',
             cursor: 'pointer',
             minWidth: 24,
@@ -218,9 +218,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
             padding: '2px 6px',
             fontSize: '12px',
             textDecoration: 'underline',
-            backgroundColor: underline ? '#0066ff' : '#333',
-            color: '#fff',
-            border: '1px solid #555',
+            backgroundColor: underline ? '#0066ff' : (whiteBackground ? '#e0e0e0' : '#333'),
+            color: underline ? '#fff' : (whiteBackground ? '#222' : '#fff'),
+            border: whiteBackground ? '1px solid #bbb' : '1px solid #555',
             borderRadius: '3px',
             cursor: 'pointer',
             minWidth: 24,
@@ -236,9 +236,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
             padding: '2px 6px',
             fontSize: '12px',
             textDecoration: 'line-through',
-            backgroundColor: strikethrough ? '#0066ff' : '#333',
-            color: '#fff',
-            border: '1px solid #555',
+            backgroundColor: strikethrough ? '#0066ff' : (whiteBackground ? '#e0e0e0' : '#333'),
+            color: strikethrough ? '#fff' : (whiteBackground ? '#222' : '#fff'),
+            border: whiteBackground ? '1px solid #bbb' : '1px solid #555',
             borderRadius: '3px',
             cursor: 'pointer',
             minWidth: 24,
@@ -248,7 +248,7 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
         </button>
 
         {/* Separator */}
-        <div style={{ width: 1, height: 18, backgroundColor: '#555', margin: '0 2px' }} />
+        <div style={{ width: 1, height: 18, backgroundColor: whiteBackground ? '#bbb' : '#555', margin: '0 2px' }} />
 
         {/* Alignment buttons */}
         <button
@@ -257,9 +257,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
           style={{
             padding: '2px 5px',
             fontSize: '11px',
-            backgroundColor: alignment === 'left' ? '#0066ff' : '#333',
+            backgroundColor: alignment === 'left' ? '#0066ff' : (whiteBackground ? '#e0e0e0' : '#333'),
             color: '#fff',
-            border: '1px solid #555',
+            border: whiteBackground ? '1px solid #bbb' : '1px solid #555',
             borderRadius: '3px',
             cursor: 'pointer',
             minWidth: 22,
@@ -270,9 +270,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
             lineHeight: 1,
           }}
         >
-          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: '#fff' }} />
-          <span style={{ display: 'block', width: 7, height: 1.5, backgroundColor: '#fff' }} />
-          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: '#fff' }} />
+          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: whiteBackground ? '#333' : '#fff' }} />
+          <span style={{ display: 'block', width: 7, height: 1.5, backgroundColor: whiteBackground ? '#333' : '#fff' }} />
+          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: whiteBackground ? '#333' : '#fff' }} />
         </button>
         <button
           onClick={() => setAlignmentValue('center')}
@@ -280,9 +280,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
           style={{
             padding: '2px 5px',
             fontSize: '11px',
-            backgroundColor: alignment === 'center' ? '#0066ff' : '#333',
+            backgroundColor: alignment === 'center' ? '#0066ff' : (whiteBackground ? '#e0e0e0' : '#333'),
             color: '#fff',
-            border: '1px solid #555',
+            border: whiteBackground ? '1px solid #bbb' : '1px solid #555',
             borderRadius: '3px',
             cursor: 'pointer',
             minWidth: 22,
@@ -293,9 +293,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
             lineHeight: 1,
           }}
         >
-          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: '#fff' }} />
-          <span style={{ display: 'block', width: 7, height: 1.5, backgroundColor: '#fff' }} />
-          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: '#fff' }} />
+          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: whiteBackground ? '#333' : '#fff' }} />
+          <span style={{ display: 'block', width: 7, height: 1.5, backgroundColor: whiteBackground ? '#333' : '#fff' }} />
+          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: whiteBackground ? '#333' : '#fff' }} />
         </button>
         <button
           onClick={() => setAlignmentValue('right')}
@@ -303,9 +303,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
           style={{
             padding: '2px 5px',
             fontSize: '11px',
-            backgroundColor: alignment === 'right' ? '#0066ff' : '#333',
+            backgroundColor: alignment === 'right' ? '#0066ff' : (whiteBackground ? '#e0e0e0' : '#333'),
             color: '#fff',
-            border: '1px solid #555',
+            border: whiteBackground ? '1px solid #bbb' : '1px solid #555',
             borderRadius: '3px',
             cursor: 'pointer',
             minWidth: 22,
@@ -316,13 +316,13 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
             lineHeight: 1,
           }}
         >
-          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: '#fff' }} />
-          <span style={{ display: 'block', width: 7, height: 1.5, backgroundColor: '#fff' }} />
-          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: '#fff' }} />
+          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: whiteBackground ? '#333' : '#fff' }} />
+          <span style={{ display: 'block', width: 7, height: 1.5, backgroundColor: whiteBackground ? '#333' : '#fff' }} />
+          <span style={{ display: 'block', width: 10, height: 1.5, backgroundColor: whiteBackground ? '#333' : '#fff' }} />
         </button>
 
         {/* Separator */}
-        <div style={{ width: 1, height: 18, backgroundColor: '#555', margin: '0 2px' }} />
+        <div style={{ width: 1, height: 18, backgroundColor: whiteBackground ? '#bbb' : '#555', margin: '0 2px' }} />
 
         {/* Symbol palette button */}
         <button
@@ -331,9 +331,9 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
           style={{
             padding: '2px 8px',
             fontSize: '14px',
-            backgroundColor: showSymbolPalette ? '#0066ff' : '#333',
-            color: '#fff',
-            border: '1px solid #555',
+            backgroundColor: showSymbolPalette ? '#0066ff' : (whiteBackground ? '#e0e0e0' : '#333'),
+            color: showSymbolPalette ? '#fff' : (whiteBackground ? '#222' : '#fff'),
+            border: whiteBackground ? '1px solid #bbb' : '1px solid #555',
             borderRadius: '3px',
             cursor: 'pointer',
           }}
@@ -361,8 +361,8 @@ export function TextEditor({ shape, onSave, onCancel }: TextEditorProps) {
         onBlur={handleBlur}
         style={{
           font: `${fontStyle}${fontSize}px ${shape.fontFamily}`,
-          color: shape.color || '#ffffff',
-          backgroundColor: 'rgba(30, 30, 30, 0.9)',
+          color: whiteBackground ? (shape.color === '#ffffff' ? '#000000' : shape.color || '#000000') : (shape.color || '#ffffff'),
+          backgroundColor: whiteBackground ? 'rgba(255, 255, 255, 0.95)' : 'rgba(30, 30, 30, 0.9)',
           border: '1px solid #0066ff',
           outline: 'none',
           resize: 'none',
