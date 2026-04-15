@@ -270,7 +270,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
   const filledRegionDrawTool = useAppStore(s => s.filledRegionDrawTool);
   const setFilledRegionDrawTool = useAppStore(s => s.setFilledRegionDrawTool);
   const sketchShapeIds = useAppStore(s => s.sketchShapeIds);
-  const sketchInnerLoopShapeIds = useAppStore(s => s.sketchInnerLoopShapeIds);
   const editingHatchId = useAppStore(s => s.editingHatchId);
 
   const {
@@ -479,12 +478,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
 
   const handleSketchCancel = useCallback(() => {
     cancelSketch();
-  }, []);
-
-  const handleAddInnerLoop = useCallback(() => {
-    const s = useAppStore.getState();
-    // Commit the current outer/previous boundary as a completed loop and start fresh
-    s.commitOuterLoopAndStartInner();
   }, []);
 
   const tabs = [...builtInTabs, ...extTabs, ifcTab];
@@ -1374,15 +1367,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   onClick={() => { setFilledRegionDrawTool('pickLines'); }}
                   active={filledRegionDrawTool === 'pickLines'}
                   tooltip="Click existing shapes to copy them as sketch boundary edges"
-                />
-              </RibbonGroup>
-              <RibbonGroup label="Loops">
-                <RibbonButton
-                  icon={<FilledRegionIcon size={24} />}
-                  label="Add Inner Loop"
-                  onClick={handleAddInnerLoop}
-                  tooltip={`Start drawing an inner loop (hole). Current: ${sketchInnerLoopShapeIds.length} inner loop(s)`}
-                  active={false}
                 />
               </RibbonGroup>
               <RibbonGroup label="Finish">
