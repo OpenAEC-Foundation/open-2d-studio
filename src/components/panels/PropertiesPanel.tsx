@@ -106,8 +106,8 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
       {isToolWithProperties && <ActiveToolProperties activeTool={activeTool} />}
       <TypeSelector selectedShapes={selectedShapes} />
       <div>
-        {/* Hide Style section for IFC/AEC object types (only show for basic 2D shapes) */}
-        {!(selectedShapes.length > 0 && selectedShapes.every(s => ['wall', 'beam', 'column', 'slab', 'pile', 'gridline', 'level', 'section-callout', 'space', 'puntniveau', 'cpt', 'wall-opening', 'slab-opening', 'rebar', 'slab-label', 'spot-elevation', 'spot-coordinate', 'plate-system'].includes(s.type))) && <PropertyGroup label="Style">
+        {/* Hide Style section for IFC/AEC object types and annotation types (only show for basic 2D shapes) */}
+        {!(selectedShapes.length > 0 && selectedShapes.every(s => ['wall', 'beam', 'column', 'slab', 'pile', 'gridline', 'level', 'section-callout', 'space', 'puntniveau', 'cpt', 'wall-opening', 'slab-opening', 'rebar', 'slab-label', 'spot-elevation', 'spot-coordinate', 'plate-system', 'dimension', 'label'].includes(s.type))) && <PropertyGroup label="Style">
           <ColorPalette label="Color" value={displayStyle.strokeColor} onChange={handleColorChange} />
           <LineweightInput value={displayStyle.strokeWidth} onChange={handleWidthChange} />
           {/* Line Style is handled by the TypeSelector above — no duplicate dropdown */}
