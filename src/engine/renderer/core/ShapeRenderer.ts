@@ -394,6 +394,7 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawText(shape, isSelected, invertColors);
         break;
       case 'dimension':
+        this.dimensionRenderer.setInvertColors(invertColors);
         this.dimensionRenderer.drawDimension(shape as DimensionShape, isSelected, isHovered);
         break;
       case 'hatch':
@@ -473,6 +474,7 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawText(shape, false, invertColors);
         break;
       case 'dimension':
+        this.dimensionRenderer.setInvertColors(invertColors);
         this.dimensionRenderer.drawDimension(shape as DimensionShape, false);
         break;
       case 'hatch':
@@ -3465,7 +3467,7 @@ export class ShapeRenderer extends BaseRenderer {
    */
   private drawSpotCoordinate(shape: import('../../../types/geometry').SpotCoordinateShape, isSelected: boolean, invertColors: boolean = false): void {
     const ctx = this.ctx;
-    const { position, displayX, displayY, unit, textHeight, leaderLength, leaderAngle, showLeader, decimalPlaces, prefix } = shape;
+    const { position, displayX, displayY, textHeight, leaderLength, leaderAngle, showLeader, decimalPlaces, prefix } = shape;
 
     const sf = this.drawingScale ? (0.01 / this.drawingScale) : 1;
     const th = textHeight * sf;
@@ -3503,9 +3505,14 @@ export class ShapeRenderer extends BaseRenderer {
     const labelX = position.x + ll * Math.cos(leaderAngle);
     const labelY = position.y + ll * Math.sin(leaderAngle);
 
+    // Bend point for L-shaped leader: drop vertically from position to label Y, then go horizontal
+    const bendX = position.x;
+    const bendY = labelY;
+
     if (showLeader && ll > 0.001) {
       ctx.beginPath();
       ctx.moveTo(position.x, position.y);
+      ctx.lineTo(bendX, bendY);
       ctx.lineTo(labelX, labelY);
       ctx.stroke();
 
@@ -3549,13 +3556,12 @@ export class ShapeRenderer extends BaseRenderer {
       }
     }
 
-    // Format coordinates
+    // Format coordinates (no unit suffix — numbers only)
     const xVal = displayX.toFixed(decimalPlaces);
     const yVal = displayY.toFixed(decimalPlaces);
-    const unitLabel = unit;
     const pre = prefix || '';
-    const xText = `X: ${pre}${xVal} ${unitLabel}`;
-    const yText = `Y: ${pre}${yVal} ${unitLabel}`;
+    const xText = `X: ${pre}${xVal}`;
+    const yText = `Y: ${pre}${yVal}`;
 
     // Draw text label (two lines)
     ctx.font = `${th}px ${CAD_DEFAULT_FONT}`;

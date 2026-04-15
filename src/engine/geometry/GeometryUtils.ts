@@ -650,13 +650,26 @@ export function isPointNearShape(point: Point, shape: Shape, tolerance: number =
       const sc = shape as SpotCoordinateShape;
       const sf = drawingScale ? (0.01 / drawingScale) : 1;
       const th = (sc.textHeight || 200) * sf;
+      // Check hit near the annotated point (cross marker)
       const dist = Math.sqrt((point.x - sc.position.x) ** 2 + (point.y - sc.position.y) ** 2);
-      if (dist < th + tolerance) return true;
+      if (dist < th * 2 + tolerance) return true;
       if (sc.showLeader) {
         const lx = sc.position.x + sc.leaderLength * sf * Math.cos(sc.leaderAngle);
         const ly = sc.position.y + sc.leaderLength * sf * Math.sin(sc.leaderAngle);
+        // Check hit near the text label area (generous box around it)
         const labelDist = Math.sqrt((point.x - lx) ** 2 + (point.y - ly) ** 2);
-        if (labelDist < th * 4 + tolerance) return true;
+        if (labelDist < th * 6 + tolerance) return true;
+        // Check hit along the vertical leg of the L-shaped leader (position.x, position.y → position.x, ly)
+        const bendX = sc.position.x;
+        const bendY = ly;
+        const dxV = point.x - bendX;
+        const dyV = point.y - (sc.position.y + ly) / 2;
+        const halfH = Math.abs(ly - sc.position.y) / 2 + tolerance;
+        if (Math.abs(dxV) < th + tolerance && Math.abs(dyV) < halfH) return true;
+        // Check hit along the horizontal leg of the L-shaped leader (position.x, ly → lx, ly)
+        const minHX = Math.min(bendX, lx) - tolerance;
+        const maxHX = Math.max(bendX, lx) + tolerance;
+        if (point.x >= minHX && point.x <= maxHX && Math.abs(point.y - bendY) < th + tolerance) return true;
       }
       return false;
     }
@@ -1886,11 +1899,11 @@ export function getShapeBounds(shape: Shape, drawingScale?: number, _gridlineExt
       const th = (sc.textHeight || 200) * sf;
       const lx = sc.position.x + (sc.leaderLength || 0) * sf * Math.cos(sc.leaderAngle || 0);
       const ly = sc.position.y + (sc.leaderLength || 0) * sf * Math.sin(sc.leaderAngle || 0);
-      // Label is approximately 5 text-heights wide, 2 text-heights tall
-      const minX = Math.min(sc.position.x, lx) - th;
-      const minY = Math.min(sc.position.y, ly) - th;
-      const maxX = Math.max(sc.position.x, lx) + th * 5;
-      const maxY = Math.max(sc.position.y, ly) + th * 2;
+      // Bounds cover position point, full L-shaped leader path, and text label area (~8 text-heights wide)
+      const minX = Math.min(sc.position.x, lx) - th * 2;
+      const minY = Math.min(sc.position.y, ly) - th * 2;
+      const maxX = Math.max(sc.position.x, lx) + th * 8;
+      const maxY = Math.max(sc.position.y, ly) + th * 3;
       return { minX, minY, maxX, maxY };
     }
     case 'detail-line': {
