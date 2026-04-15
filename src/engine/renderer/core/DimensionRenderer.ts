@@ -23,6 +23,14 @@ const ASSOCIATION_HIGHLIGHT_COLOR = '#00B400';
 export class DimensionRenderer extends BaseRenderer {
   private drawingScale: number = 0.02;
   private selectedShapeIds: Set<string> = new Set();
+  private invertColors: boolean = false;
+
+  /**
+   * Set the color-inversion flag so dimensions adapt to white/dark background.
+   */
+  setInvertColors(invert: boolean): void {
+    this.invertColors = invert;
+  }
 
   /**
    * Set the drawing scale for dimension text/arrow scaling
@@ -110,10 +118,17 @@ export class DimensionRenderer extends BaseRenderer {
     // Determine if linked element is selected (for green text highlight)
     const linkedSelected = !isSelected && !isHovered && this.isLinkedElementSelected(dimension);
 
-    // Set drawing style
+    // Set drawing style — adapt colors for background mode
+    const invertColors = this.invertColors;
+    const adaptedLineColor = invertColors
+      ? (style.lineColor === '#000000' || style.lineColor === '#000' ? '#ffffff' : style.lineColor === '#ffffff' || style.lineColor === '#fff' ? '#000000' : style.lineColor)
+      : style.lineColor;
+    const adaptedTextColor = invertColors
+      ? (style.textColor === '#000000' || style.textColor === '#000' ? '#ffffff' : style.textColor === '#ffffff' || style.textColor === '#fff' ? '#000000' : style.textColor)
+      : style.textColor;
     const highlightColor = isSelected ? COLORS.selection : isHovered ? COLORS.hover : null;
-    ctx.strokeStyle = highlightColor || style.lineColor;
-    ctx.fillStyle = highlightColor || style.textColor;
+    ctx.strokeStyle = highlightColor || adaptedLineColor;
+    ctx.fillStyle = highlightColor || adaptedTextColor;
     // Use style strokeWidth if specified, otherwise default (2.5 when selected, 1 otherwise)
     const baseLineWidth = style.strokeWidth != null ? style.strokeWidth : 1;
     ctx.lineWidth = isSelected ? Math.max(2.5, baseLineWidth) : baseLineWidth;
@@ -568,18 +583,7 @@ export class DimensionRenderer extends BaseRenderer {
       ctx.textBaseline = 'middle';
     }
 
-    // Draw background for readability (only for above/below placement)
-    const metrics = ctx.measureText(displayText);
-    if (style?.textPlacement !== 'centered') {
-      const padding = textHeight * 0.2;
-      ctx.fillStyle = '#1a1a2e'; // Match canvas background
-      ctx.fillRect(
-        -metrics.width / 2 - padding,
-        yOffset - textHeight / 2 - padding,
-        metrics.width + padding * 2,
-        textHeight + padding * 2
-      );
-    }
+    // Background removed — dimension text renders directly on canvas without background box
 
     // Draw text - use override color (green) when linked element is selected
     ctx.fillStyle = textColorOverride || style?.textColor || '#00ffff';
