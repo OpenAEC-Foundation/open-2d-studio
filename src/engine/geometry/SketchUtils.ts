@@ -5,6 +5,8 @@
 
 import type { Point } from '../../types/geometry';
 import { useAppStore } from '../../state/appStore';
+import { computePolygonArea } from './SpaceDetector';
+import { isPointInPolygon } from './GeometryUtils';
 
 export type SkPt = { x: number; y: number };
 export interface SkEdge { p1: SkPt; p2: SkPt; bulge?: number; }
@@ -66,6 +68,62 @@ export function chainSkEdges(edges: SkEdge[], tol: number): { points: SkPt[]; bu
 const SKETCH_TOL = 5;
 
 /**
+ * Extract ALL separate closed loops from a set of edges.
+ * Each loop uses the same chaining logic as chainSkEdges, but the process
+ * repeats until no more unused edges remain, producing multiple loops.
+ */
+function extractAllLoops(edges: SkEdge[], tol: number): Array<{ points: SkPt[]; bulges: number[] }> {
+  const used = new Array(edges.length).fill(false);
+  const loops: Array<{ points: SkPt[]; bulges: number[] }> = [];
+
+  const ptClose = (a: SkPt, b: SkPt) => {
+    const dx = a.x - b.x;
+    const dy = a.y - b.y;
+    return dx * dx + dy * dy <= tol * tol;
+  };
+
+  for (let startIdx = 0; startIdx < edges.length; startIdx++) {
+    if (used[startIdx]) continue;
+
+    // Begin a new loop from this edge
+    used[startIdx] = true;
+    const pts: SkPt[] = [{ ...edges[startIdx].p1 }, { ...edges[startIdx].p2 }];
+    const bulges: number[] = [edges[startIdx].bulge ?? 0];
+
+    // Chain until we can't extend
+    let extended = true;
+    while (extended) {
+      extended = false;
+      const last = pts[pts.length - 1];
+      for (let i = 0; i < edges.length; i++) {
+        if (used[i]) continue;
+        if (ptClose(last, edges[i].p1)) {
+          pts.push({ ...edges[i].p2 });
+          bulges.push(edges[i].bulge ?? 0);
+          used[i] = true;
+          extended = true;
+          break;
+        } else if (ptClose(last, edges[i].p2)) {
+          pts.push({ ...edges[i].p1 });
+          bulges.push(-(edges[i].bulge ?? 0));
+          used[i] = true;
+          extended = true;
+          break;
+        }
+      }
+    }
+
+    // Check if loop is closed and has enough points
+    if (pts.length >= 4 && ptClose(pts[0], pts[pts.length - 1])) {
+      pts.pop(); // Remove duplicate closing point
+      loops.push({ points: pts, bulges });
+    }
+  }
+
+  return loops;
+}
+
+/**
  * Finish the filled region sketch — creates or updates a hatch from the sketch shapes.
  * Returns true if successful, false if the boundary is not closed.
  */
@@ -74,16 +132,47 @@ export function finishSketch(): boolean {
   const outerIds = s.sketchShapeIds;
   if (outerIds.length < 3) return false;
 
-  // Chain outer boundary
+  // Extract all edges from outer sketch shape IDs
   const outerEdges = extractSkEdges(outerIds, s.shapes);
-  const outerLoop = chainSkEdges(outerEdges, SKETCH_TOL);
+
+  // Try to detect multiple separate closed loops within the outer sketch IDs
+  const allLoops = extractAllLoops(outerEdges, SKETCH_TOL);
+
+  let outerLoop: { points: SkPt[]; bulges: number[] } | null = null;
+  const autoDetectedInnerLoops: SkPt[][] = [];
+
+  if (allLoops.length > 1) {
+    // Multiple loops detected — largest area is the outer boundary
+    const loopsWithArea = allLoops.map(loop => ({
+      loop,
+      area: computePolygonArea(loop.points as Point[]),
+    }));
+    loopsWithArea.sort((a, b) => b.area - a.area);
+
+    outerLoop = loopsWithArea[0].loop;
+
+    // Smaller loops that are fully inside the outer loop become inner loops (holes)
+    for (let i = 1; i < loopsWithArea.length; i++) {
+      const candidate = loopsWithArea[i].loop;
+      // Test one point of candidate against the outer loop
+      const testPoint = candidate.points[0] as Point;
+      if (isPointInPolygon(testPoint, outerLoop.points as Point[])) {
+        autoDetectedInnerLoops.push(candidate.points);
+      }
+      // If it's NOT inside, it's another outer region — skip for now
+    }
+  } else {
+    // Single loop or fallback to chainSkEdges
+    outerLoop = chainSkEdges(outerEdges, SKETCH_TOL);
+  }
+
   if (!outerLoop) {
     alert('Cannot finish: the outer boundary is not a closed loop. Make sure all segments connect end-to-end.');
     return false;
   }
 
-  // Chain inner loops
-  const innerLoops: SkPt[][] = [];
+  // Chain explicitly-defined inner loops (from sketchInnerLoopShapeIds)
+  const innerLoops: SkPt[][] = [...autoDetectedInnerLoops];
   for (const innerIds of s.sketchInnerLoopShapeIds) {
     if (innerIds.length >= 3) {
       const innerEdges = extractSkEdges(innerIds, s.shapes);
