@@ -365,62 +365,13 @@ export function MultiSelectShapeProperties({
 
     case 'hatch': {
       const hatchShapes = shapes as Extract<Shape, { type: 'hatch' }>[];
-      const commonPatternType = getCommonValue(s => (s as typeof hatchShapes[0]).patternType);
-      const commonCustomPatternId = getCommonValue(s => (s as typeof hatchShapes[0]).customPatternId);
-      const commonPatternAngle = getCommonValue(s => (s as typeof hatchShapes[0]).patternAngle);
-      const commonPatternScale = getCommonValue(s => (s as typeof hatchShapes[0]).patternScale);
-      const commonFillColor = getCommonValue(s => (s as typeof hatchShapes[0]).fillColor);
-      const commonBgPatternType = getCommonValue(s => (s as typeof hatchShapes[0]).bgPatternType);
-      const commonBgCustomPatternId = getCommonValue(s => (s as typeof hatchShapes[0]).bgCustomPatternId);
-      const commonBgPatternAngle = getCommonValue(s => (s as typeof hatchShapes[0]).bgPatternAngle);
-      const commonBgPatternScale = getCommonValue(s => (s as typeof hatchShapes[0]).bgPatternScale);
-      const commonBgFillColor = getCommonValue(s => (s as typeof hatchShapes[0]).bgFillColor);
-      const commonBackgroundColor = getCommonValue(s => (s as typeof hatchShapes[0]).backgroundColor);
-      const commonMasking = getCommonValue(s => (s as typeof hatchShapes[0]).masking ?? true);
       const commonBoundaryVisible = getCommonValue(s => (s as typeof hatchShapes[0]).boundaryVisible ?? true);
-      // commonTypeId removed — Region Type selector is now handled by TypeSelector at top of Properties Panel
       return (
         <>
-          {/* Region Type selector removed — use the TypeSelector at the top of Properties Panel */}
-
-          <PropertyGroup label="Foreground Pattern">
-            <PatternPickerPanel
-              value={commonPatternType ?? 'solid'}
-              customPatternId={commonCustomPatternId}
-              onChange={(type, customId) => updateAll({ patternType: type, customPatternId: customId, filledRegionTypeId: undefined })}
-            />
-            <NumberField label="Angle (deg)" value={commonPatternAngle ?? 0} onChange={(v) => updateAll({ patternAngle: v, filledRegionTypeId: undefined })} step={15} />
-            <NumberField label="Scale" value={commonPatternScale ?? 1} onChange={(v) => updateAll({ patternScale: v, filledRegionTypeId: undefined })} step={0.1} min={0.1} />
-            <ColorPalette label="Color" value={commonFillColor ?? hatchShapes[0].fillColor} onChange={(v) => updateAll({ fillColor: v, filledRegionTypeId: undefined })} />
-          </PropertyGroup>
-
-          <PropertyGroup label="Background Pattern" defaultOpen={!!commonBgPatternType}>
-            <PatternPickerPanel
-              value={commonBgPatternType ?? 'solid'}
-              customPatternId={commonBgCustomPatternId}
-              onChange={(type, customId) => updateAll({ bgPatternType: type, bgCustomPatternId: customId, filledRegionTypeId: undefined })}
-            />
-            {commonBgPatternType && (
-              <>
-                <NumberField label="Angle (deg)" value={commonBgPatternAngle ?? 0} onChange={(v) => updateAll({ bgPatternAngle: v, filledRegionTypeId: undefined })} step={15} />
-                <NumberField label="Scale" value={commonBgPatternScale ?? 1} onChange={(v) => updateAll({ bgPatternScale: v, filledRegionTypeId: undefined })} step={0.1} min={0.1} />
-                <ColorPalette label="Color" value={commonBgFillColor ?? '#808080'} onChange={(v) => updateAll({ bgFillColor: v, filledRegionTypeId: undefined })} />
-                <button
-                  onClick={() => updateAll({ bgPatternType: undefined, bgPatternAngle: undefined, bgPatternScale: undefined, bgFillColor: undefined, bgCustomPatternId: undefined, filledRegionTypeId: undefined })}
-                  className="text-xs text-cad-accent hover:underline mb-2">
-                  Remove background pattern
-                </button>
-              </>
-            )}
-          </PropertyGroup>
+          {/* All pattern properties are controlled by the FilledRegionType (via TypeSelector at top).
+              Only per-instance display options remain here. */}
 
           <PropertyGroup label="Display">
-            <ColorPalette label="Background Color" value={commonBackgroundColor ?? 'transparent'} onChange={(v) => updateAll({ backgroundColor: v, filledRegionTypeId: undefined })} />
-            <CheckboxField
-              label="Opaque (hides elements behind)"
-              value={commonMasking ?? true}
-              onChange={(v) => updateAll({ masking: v, filledRegionTypeId: undefined })}
-            />
             <CheckboxField
               label="Show boundary outline"
               value={commonBoundaryVisible ?? true}
