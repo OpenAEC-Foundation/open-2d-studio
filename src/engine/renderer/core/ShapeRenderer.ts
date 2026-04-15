@@ -3916,7 +3916,8 @@ export class ShapeRenderer extends BaseRenderer {
     const rawContourColor = shape.style.strokeColor || '#000000';
     const contourColor = adaptColorForBackground(rawContourColor, invertColors);
     ctx.strokeStyle = isSelected ? COLORS.selection : contourColor;
-    ctx.lineWidth = isSelected ? 2 : 1;
+    // Always use 2 screen-pixels so the outline is visible regardless of zoom.
+    ctx.lineWidth = (isSelected ? 3 : 2) / this._currentZoom;
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);

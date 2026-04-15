@@ -42,6 +42,8 @@ import {
   Crosshair,
   List,
   Ruler,
+  Package,
+  Ungroup,
 } from 'lucide-react';
 import type { UITheme } from '../../../state/slices/snapSlice';
 import { UI_THEMES } from '../../../state/slices/snapSlice';
@@ -302,6 +304,8 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     deselectAll,
     setFindReplaceDialogOpen,
     editorMode,
+    groupSelectedShapes,
+    ungroupSelectedShapes,
     setPatternManagerOpen,
     setRegionTypeManagerOpen,
     setTextStyleManagerOpen,
@@ -973,8 +977,10 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 <RibbonSmallButton
                   icon={<JoinIcon size={14} />}
                   label="Join"
-                  onClick={() => {}}
-                  disabled={true}
+                  onClick={() => switchToolAndCancelCommand('join')}
+                  active={activeTool === 'join'}
+                  disabled={isSheetMode}
+                  shortcut="JO"
                 />
                 <RibbonSmallButton
                   icon={<LengthenIcon size={14} />}
@@ -1015,6 +1021,27 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   onClick={deleteSelectedShapes}
                   disabled={isSheetMode || selectedShapeIds.length === 0}
                   shortcut="Del"
+                />
+              </RibbonButtonStack>
+            </RibbonGroup>
+
+            {/* Collection Group */}
+            <RibbonGroup label="Collection">
+              <RibbonButton
+                icon={<Package size={24} />}
+                label="Create"
+                onClick={groupSelectedShapes}
+                disabled={isSheetMode || selectedShapeIds.length < 2}
+                tooltip="Group selected shapes into a Collection"
+                shortcut="Ctrl+G"
+              />
+              <RibbonButtonStack>
+                <RibbonSmallButton
+                  icon={<Ungroup size={14} />}
+                  label="Explode"
+                  onClick={ungroupSelectedShapes}
+                  disabled={isSheetMode || selectedShapeIds.length === 0}
+                  tooltip="Explode Collection into individual shapes"
                 />
               </RibbonButtonStack>
             </RibbonGroup>

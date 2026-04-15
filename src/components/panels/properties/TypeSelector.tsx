@@ -28,7 +28,7 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
 import { getActiveDocumentStore } from '../../../state/documentStore';
-import type { Shape, HatchShape, ShapeType, WallShape, PileShape, LineStyle, SpotCoordinateShape, DetailLineShape, DetailLineType, LabelShape, LabelType } from '../../../types/geometry';
+import type { Shape, HatchShape, ShapeType, WallShape, PileShape, LineStyle, SpotCoordinateShape, DetailLineShape, DetailLineType, DetailLinePatternType, LabelShape, LabelType } from '../../../types/geometry';
 import { SPOT_COORDINATE_TYPE_PRESETS, BUILT_IN_DETAIL_LINE_TYPES, DEFAULT_LABEL_TYPES } from '../../../types/geometry';
 import type { FilledRegionType } from '../../../types/filledRegion';
 import type { CustomHatchPattern } from '../../../types/hatch';
@@ -592,6 +592,113 @@ function SpotCoordinateStyleEditor({ typeName, style, onChange, onClose }: SpotC
           value={local.prefix ?? ''}
           onChange={e => set({ prefix: e.target.value })}
         />
+      </div>
+    </div>
+  );
+}
+
+// ─── DetailLineType inline editor ─────────────────────────────────────────────
+
+interface DetailLineTypeEditorProps {
+  typeDef: DetailLineType;
+  onChange: (updated: DetailLineType) => void;
+  onClose: () => void;
+}
+
+function DetailLineTypeEditor({ typeDef, onChange, onClose }: DetailLineTypeEditorProps) {
+  const [local, setLocal] = useState<DetailLineType>({ ...typeDef });
+
+  const set = (patch: Partial<DetailLineType>) => {
+    const next = { ...local, ...patch };
+    setLocal(next);
+    onChange(next);
+  };
+
+  return (
+    <div className="mt-1 px-3 py-2 bg-cad-bg border border-cad-border rounded space-y-1.5">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-semibold text-cad-text">{local.name}</span>
+        <button className="text-cad-text-dim hover:text-cad-text text-xs px-1" onClick={onClose}>✕</button>
+      </div>
+
+      {/* Name */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Name</label>
+        <input
+          type="text"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.name}
+          onChange={e => set({ name: e.target.value })}
+        />
+      </div>
+
+      {/* Pattern type */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Pattern</label>
+        <select
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.patternType}
+          onChange={e => set({ patternType: e.target.value as DetailLinePatternType })}
+        >
+          <option value="insulation-nen47">NEN47 Insulation</option>
+          <option value="insulation-us">US Insulation</option>
+          <option value="diagonal">Diagonal Hatch</option>
+          <option value="crosshatch">Crosshatch</option>
+          <option value="solid">Solid Fill</option>
+        </select>
+      </div>
+
+      {/* Thickness */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Thickness (mm)</label>
+        <input
+          type="number" min="5" max="500" step="5"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.thickness}
+          onChange={e => set({ thickness: parseFloat(e.target.value) || local.thickness })}
+        />
+      </div>
+
+      {/* Pattern angle */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Angle (°)</label>
+        <input
+          type="number" min="0" max="180" step="5"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.patternAngle ?? 45}
+          onChange={e => set({ patternAngle: parseFloat(e.target.value) })}
+        />
+      </div>
+
+      {/* Pattern color */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Pattern color</label>
+        <input
+          type="color"
+          className="w-8 h-5 border-0 p-0 cursor-pointer"
+          value={local.patternColor ?? '#000000'}
+          onChange={e => set({ patternColor: e.target.value })}
+        />
+        <span className="text-[10px] text-cad-text-dim">{local.patternColor ?? '#000000'}</span>
+      </div>
+
+      {/* Background color */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Background</label>
+        <input
+          type="color"
+          className="w-8 h-5 border-0 p-0 cursor-pointer"
+          value={local.backgroundColor ?? '#ffffff'}
+          onChange={e => set({ backgroundColor: e.target.value === '#ffffff' ? undefined : e.target.value })}
+        />
+        <label className="text-[10px] text-cad-text-dim flex items-center gap-1">
+          <input
+            type="checkbox"
+            checked={!!local.backgroundColor}
+            onChange={e => set({ backgroundColor: e.target.checked ? (local.backgroundColor ?? '#ffffff') : undefined })}
+          />
+          enabled
+        </label>
       </div>
     </div>
   );
@@ -1169,6 +1276,9 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
   // Editor open state for dimension and spot-coordinate type inline editors
   const [dimEditorOpen, setDimEditorOpen] = useState<string | null>(null);
   const [scEditorOpen, setScEditorOpen] = useState<string | null>(null);
+  // Inline editor for detail-line types (stores edited overrides per type id)
+  const [dlEditorOpen, setDlEditorOpen] = useState<string | null>(null);
+  const [dlEditorOverrides, setDlEditorOverrides] = useState<Record<string, Partial<DetailLineType>>>({});
 
   // Detail line type state
   const selectedDetailLineTypeId = useAppStore(s => s.selectedDetailLineTypeId);
@@ -1264,15 +1374,34 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       const handleDetailLineTypeChange = (newTypeId: string) => {
         setSelectedDetailLineTypeId(newTypeId);
       };
+      const handleDlToolEditOption = (typeId: string) => {
+        setDlEditorOpen(prev => prev === typeId ? null : typeId);
+      };
+      const activeDlToolType = (() => {
+        if (!dlEditorOpen) return null;
+        const base = BUILT_IN_DETAIL_LINE_TYPES.find(t => t.id === dlEditorOpen);
+        if (!base) return null;
+        return { ...base, ...(dlEditorOverrides[dlEditorOpen] ?? {}) } as DetailLineType;
+      })();
       return (
-        <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
-          <Minus className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
-          <TypeDropdown
-            options={dlOptions}
-            value={currentTypeId}
-            onChange={handleDetailLineTypeChange}
-            placeholder="Line Component Type"
-          />
+        <div className="px-3 py-2 bg-cad-surface border-b border-cad-border">
+          <div className="flex items-center gap-2">
+            <Minus className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
+            <TypeDropdown
+              options={dlOptions}
+              value={currentTypeId}
+              onChange={handleDetailLineTypeChange}
+              placeholder="Line Component Type"
+              onEditOption={handleDlToolEditOption}
+            />
+          </div>
+          {dlEditorOpen && activeDlToolType && (
+            <DetailLineTypeEditor
+              typeDef={activeDlToolType}
+              onChange={updated => setDlEditorOverrides(prev => ({ ...prev, [dlEditorOpen]: updated }))}
+              onClose={() => setDlEditorOpen(null)}
+            />
+          )}
         </div>
       );
     }
@@ -1675,8 +1804,10 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
     const dlOptions = buildDetailLineOptions(BUILT_IN_DETAIL_LINE_TYPES, []);
 
     const handleDetailLineTypeChange = (newTypeId: string) => {
-      const lt = BUILT_IN_DETAIL_LINE_TYPES.find(t => t.id === newTypeId);
-      if (!lt) return;
+      const base = BUILT_IN_DETAIL_LINE_TYPES.find(t => t.id === newTypeId);
+      if (!base) return;
+      const overrides = dlEditorOverrides[newTypeId] ?? {};
+      const lt = { ...base, ...overrides };
       selectedShapes.forEach(shape => {
         updateShape(shape.id, {
           detailLineTypeId: newTypeId,
@@ -1690,16 +1821,54 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       });
     };
 
+    const handleDlEditOption = (typeId: string) => {
+      setDlEditorOpen(prev => prev === typeId ? null : typeId);
+    };
+
+    const handleDlEditorChange = (typeId: string, updated: DetailLineType) => {
+      setDlEditorOverrides(prev => ({ ...prev, [typeId]: updated }));
+      // Apply changes immediately to selected shapes if this type is active
+      if (currentTypeId === typeId) {
+        selectedShapes.forEach(shape => {
+          updateShape(shape.id, {
+            thickness: updated.thickness,
+            patternType: updated.patternType,
+            patternAngle: updated.patternAngle,
+            patternScale: updated.patternScale,
+            patternColor: updated.patternColor,
+            backgroundColor: updated.backgroundColor,
+          } as Partial<DetailLineShape>);
+        });
+      }
+    };
+
+    const activeDlType = (() => {
+      if (!dlEditorOpen) return null;
+      const base = BUILT_IN_DETAIL_LINE_TYPES.find(t => t.id === dlEditorOpen);
+      if (!base) return null;
+      return { ...base, ...(dlEditorOverrides[dlEditorOpen] ?? {}) } as DetailLineType;
+    })();
+
     return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
-        <TypeDropdown
-          options={dlOptions}
-          value={currentTypeId}
-          onChange={handleDetailLineTypeChange}
-          placeholder="Line Component Type"
-        />
-        {selectedShapes.length > 1 && (
-          <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
+      <div className="px-3 py-2 bg-cad-surface border-b border-cad-border">
+        <div className="flex items-center gap-2">
+          <TypeDropdown
+            options={dlOptions}
+            value={currentTypeId}
+            onChange={handleDetailLineTypeChange}
+            placeholder="Line Component Type"
+            onEditOption={handleDlEditOption}
+          />
+          {selectedShapes.length > 1 && (
+            <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
+          )}
+        </div>
+        {dlEditorOpen && activeDlType && (
+          <DetailLineTypeEditor
+            typeDef={activeDlType}
+            onChange={updated => handleDlEditorChange(dlEditorOpen, updated)}
+            onClose={() => setDlEditorOpen(null)}
+          />
         )}
       </div>
     );
