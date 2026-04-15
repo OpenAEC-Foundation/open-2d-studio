@@ -1564,6 +1564,7 @@ export type ToolType =
   | 'align'
   | 'split'
   | 'trim-walls'
+  | 'join'
   // Sheet annotation tools
   | 'sheet-text'
   | 'sheet-leader'

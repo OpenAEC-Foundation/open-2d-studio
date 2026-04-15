@@ -67,6 +67,7 @@ const TOOL_DISPLAY_NAMES: Record<ToolType, string> = {
   'align': 'Align',
   'split': 'Split',
   'trim-walls': 'Wall/Beam/Duct Join',
+  'join': 'Join',
   'sheet-text': 'Sheet Text',
   'sheet-leader': 'Sheet Leader',
   'sheet-dimension': 'Sheet Dimension',

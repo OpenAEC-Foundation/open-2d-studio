@@ -2,7 +2,7 @@
  * Modify geometry utilities - pure functions for transform operations
  */
 
-import type { Point, Shape, LineShape, ArcShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, CPTShape, WallShape, BeamShape, SlabShape, SpaceShape, PlateSystemShape, ColumnShape, SlabOpeningShape, SlabLabelShape, SectionCalloutShape, SpotElevationShape, SpotCoordinateShape, FoundationZoneShape, RebarShape } from '../../types/geometry';
+import type { Point, Shape, LineShape, ArcShape, GridlineShape, LevelShape, PuntniveauShape, PileShape, CPTShape, WallShape, BeamShape, SlabShape, SpaceShape, PlateSystemShape, ColumnShape, SlabOpeningShape, SlabLabelShape, SectionCalloutShape, SpotElevationShape, SpotCoordinateShape, FoundationZoneShape, RebarShape, DetailLineShape } from '../../types/geometry';
 import { generateId } from '../../state/slices/types';
 import { formatPeilLabel, calculatePeilFromY } from '../../hooks/drawing/useLevelDrawing';
 import { bulgeToArc } from './GeometryUtils';
@@ -66,6 +66,10 @@ export function transformShape(shape: Shape, transform: PointTransform, newId?: 
     case 'line':
       cloned.start = transform(cloned.start);
       cloned.end = transform(cloned.end);
+      break;
+    case 'detail-line':
+      (cloned as unknown as DetailLineShape).start = transform((cloned as unknown as DetailLineShape).start);
+      (cloned as unknown as DetailLineShape).end = transform((cloned as unknown as DetailLineShape).end);
       break;
     case 'beam':
       cloned.start = transform(cloned.start);
@@ -372,7 +376,7 @@ function lineLineIntersection(
 }
 
 /** Shape types that have start/end points (line-like) */
-const LINE_LIKE_TYPES = ['line', 'gridline', 'beam', 'wall', 'level'];
+const LINE_LIKE_TYPES = ['line', 'gridline', 'beam', 'wall', 'level', 'detail-line'];
 
 /** Extract start/end from a line-like shape */
 function getLineEndpoints(shape: Shape): { start: Point; end: Point } | null {
@@ -1018,20 +1022,21 @@ export function offsetShape(shape: Shape, distance: number, cursorPos: Point, fl
   (cloned as any).id = generateId();
 
   switch (cloned.type) {
-    case 'line': {
-      const dx = cloned.end.x - cloned.start.x;
-      const dy = cloned.end.y - cloned.start.y;
+    case 'line':
+    case 'detail-line': {
+      const dx = (cloned as any).end.x - (cloned as any).start.x;
+      const dy = (cloned as any).end.y - (cloned as any).start.y;
       const len = Math.hypot(dx, dy);
       if (len < 1e-10) return null;
       const nx = -dy / len;
       const ny = dx / len;
       // Determine side from cursor
-      const midX = (cloned.start.x + cloned.end.x) / 2;
-      const midY = (cloned.start.y + cloned.end.y) / 2;
+      const midX = ((cloned as any).start.x + (cloned as any).end.x) / 2;
+      const midY = ((cloned as any).start.y + (cloned as any).end.y) / 2;
       const dotSide = (cursorPos.x - midX) * nx + (cursorPos.y - midY) * ny;
       const sign = (dotSide >= 0 ? 1 : -1) * (flip ? -1 : 1);
-      cloned.start = { x: cloned.start.x + nx * distance * sign, y: cloned.start.y + ny * distance * sign };
-      cloned.end = { x: cloned.end.x + nx * distance * sign, y: cloned.end.y + ny * distance * sign };
+      (cloned as any).start = { x: (cloned as any).start.x + nx * distance * sign, y: (cloned as any).start.y + ny * distance * sign };
+      (cloned as any).end = { x: (cloned as any).end.x + nx * distance * sign, y: (cloned as any).end.y + ny * distance * sign };
       return cloned;
     }
     case 'circle': {

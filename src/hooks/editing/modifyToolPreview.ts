@@ -145,7 +145,7 @@ export function parametricShapesToGhosts(parametrics: ParametricShape[]): Shape[
 
 const MODIFY_TOOLS: ToolType[] = [
   'move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array',
-  'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'align', 'trim-walls',
+  'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'align', 'trim-walls', 'join',
 ];
 
 export function updateModifyPreview(ctx: ModifyPreviewContext, worldPos: Point): void {

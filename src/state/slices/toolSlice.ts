@@ -444,7 +444,7 @@ export const createToolSlice = (
         'line', 'rectangle', 'circle', 'arc', 'polyline', 'ellipse', 'spline',
         'text', 'leader', 'label', 'dimension', 'beam', 'hatch', 'filled-region', 'slab',
         'move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'trim', 'extend',
-        'fillet', 'chamfer', 'offset', 'array', 'elastic', 'align', 'trim-walls'
+        'fillet', 'chamfer', 'offset', 'array', 'elastic', 'align', 'trim-walls', 'join'
       ];
       if (repeatableTools.includes(state.activeTool) && state.activeTool !== tool) {
         state.lastTool = state.activeTool;

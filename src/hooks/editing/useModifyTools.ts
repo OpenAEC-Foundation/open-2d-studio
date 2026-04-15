@@ -871,7 +871,7 @@ export function useModifyTools() {
             if (targetId && targetId !== modifyRefShapeId) {
               const target = shapes.find((s) => s.id === targetId);
               const cutter = shapes.find((s) => s.id === modifyRefShapeId);
-              const lineLikeTypes = ['line', 'gridline', 'beam', 'wall', 'level'];
+              const lineLikeTypes = ['line', 'gridline', 'beam', 'wall', 'level', 'detail-line'];
               if (target && cutter && lineLikeTypes.includes(target.type) && lineLikeTypes.includes(cutter.type)) {
                 // Extend/trim the target (line #2) to meet the cutter (line #1)
                 const targetResult = trimLineAtIntersection(target as any, cutter, worldPos);
@@ -932,13 +932,13 @@ export function useModifyTools() {
             }
             return true;
           }
-          // Click element to extend (supports line, gridline, beam, wall)
+          // Click element to extend (supports line, gridline, beam, wall, detail-line)
           if (findShapeAtPoint && modifyRefShapeId) {
             const targetId = findShapeAtPoint(worldPos);
             if (targetId) {
               const target = shapes.find((s) => s.id === targetId);
               const boundary = shapes.find((s) => s.id === modifyRefShapeId);
-              const lineLikeTypes = ['line', 'gridline', 'beam', 'wall'];
+              const lineLikeTypes = ['line', 'gridline', 'beam', 'wall', 'detail-line'];
               if (target && boundary && lineLikeTypes.includes(target.type)) {
                 const result = extendLineToBoundary(target as any, boundary);
                 if (result) {
@@ -1626,6 +1626,80 @@ export function useModifyTools() {
             }
           }
           // Reset state for next pair but keep tool active (don't switch to 'select')
+          clearDrawingPoints();
+          setModifyRefShapeId(null);
+          return true;
+        }
+
+        // ==================================================================
+        // JOIN — merge two collinear detail-lines that share an endpoint
+        // ==================================================================
+        case 'join': {
+          if (numPts === 0) {
+            // First click: select first detail-line
+            if (findShapeAtPoint) {
+              const id = findShapeAtPoint(worldPos);
+              if (id) {
+                const shape = shapes.find((s) => s.id === id);
+                if (shape && shape.type === 'detail-line') {
+                  setModifyRefShapeId(id);
+                  addDrawingPoint(worldPos);
+                }
+              }
+            }
+            return true;
+          }
+          // Second click: select second detail-line and merge
+          if (findShapeAtPoint && modifyRefShapeId) {
+            const secondId = findShapeAtPoint(worldPos);
+            if (secondId && secondId !== modifyRefShapeId) {
+              const shape1 = shapes.find((s) => s.id === modifyRefShapeId);
+              const shape2 = shapes.find((s) => s.id === secondId);
+              if (shape1 && shape2 && shape1.type === 'detail-line' && shape2.type === 'detail-line') {
+                const dl1 = shape1 as any;
+                const dl2 = shape2 as any;
+                const EPS = 1.0; // mm tolerance for shared endpoint detection
+                const dist = (a: {x:number;y:number}, b: {x:number;y:number}) => Math.hypot(a.x - b.x, a.y - b.y);
+
+                // Find which endpoints are shared (within tolerance)
+                // Pairs: (dl1.end, dl2.start) → new line: dl1.start → dl2.end
+                //        (dl1.start, dl2.end) → new line: dl2.start → dl1.end
+                //        (dl1.end, dl2.end)   → new line: dl1.start → dl2.start
+                //        (dl1.start, dl2.start) → new line: dl1.end → dl2.end
+                let newStart: {x:number;y:number} | null = null;
+                let newEnd: {x:number;y:number} | null = null;
+
+                if (dist(dl1.end, dl2.start) <= EPS) {
+                  newStart = dl1.start;
+                  newEnd = dl2.end;
+                } else if (dist(dl1.start, dl2.end) <= EPS) {
+                  newStart = dl2.start;
+                  newEnd = dl1.end;
+                } else if (dist(dl1.end, dl2.end) <= EPS) {
+                  newStart = dl1.start;
+                  newEnd = dl2.start;
+                } else if (dist(dl1.start, dl2.start) <= EPS) {
+                  newStart = dl1.end;
+                  newEnd = dl2.end;
+                }
+
+                if (newStart && newEnd) {
+                  // Create merged detail-line (inherit properties from shape1)
+                  const merged: Shape = {
+                    ...JSON.parse(JSON.stringify(shape1)),
+                    id: generateId(),
+                    start: { ...newStart },
+                    end: { ...newEnd },
+                  } as Shape;
+                  // Delete originals and add merged
+                  const deleteShape1 = useAppStore.getState().deleteShape;
+                  deleteShape1(shape1.id);
+                  deleteShape1(shape2.id);
+                  addShapes([merged]);
+                }
+              }
+            }
+          }
           clearDrawingPoints();
           setModifyRefShapeId(null);
           return true;

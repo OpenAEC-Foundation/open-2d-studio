@@ -14,7 +14,7 @@ import {
 import { findLinkedLabels, computeLinkedLabelPosition } from '../../engine/geometry/LabelUtils';
 import type { PointTransform } from '../../engine/geometry/Modify';
 
-export const MODIFY_TOOLS: ToolType[] = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'align', 'trim-walls'];
+export const MODIFY_TOOLS: ToolType[] = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'align', 'trim-walls', 'join'];
 
 /**
  * Collect transform updates for all linked labels of the given shapes.

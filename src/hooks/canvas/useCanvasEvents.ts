@@ -411,7 +411,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Drawing mode: grip (handle) dragging on selected shapes
       // Skip grip editing when a modify tool or a drawing tool with pending state is active —
       // clicks should go to the tool handler, not start a grip drag
-      const modifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'split', 'trim-walls'].includes(activeTool);
+      const modifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'split', 'trim-walls', 'join'].includes(activeTool);
       const drawingTools = [...aecTools.getToolNames(), ...drawingToolRegistry.getToolNames()];
       const isDrawingToolActive = drawingTools.includes(activeTool) || !!pendingSection;
       const drawingToolWithPending = isDrawingToolActive && !!(
@@ -1228,7 +1228,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Modify tools - update preview
-      const isModifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'split', 'trim-walls'].includes(activeTool);
+      const isModifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'split', 'trim-walls', 'join'].includes(activeTool);
       if (isModifyToolActive && editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
 
@@ -1521,7 +1521,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Modify tools: right-click finishes / cancels
-      const modifyToolsList = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'split', 'trim-walls'];
+      const modifyToolsList = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'split', 'trim-walls', 'join'];
       if (modifyToolsList.includes(activeTool)) {
         if (activeTool !== 'split') {
           modifyTools.finishModify();

@@ -1,15 +1,16 @@
 /**
  * useSplitTool - Split tool hook
  *
- * Splits a line, polyline, or arc at the clicked point:
+ * Splits a line, polyline, arc, or detail-line at the clicked point:
  * - Line: split into two lines at the nearest point on the segment
  * - Polyline: split into two polylines at the nearest segment point
  * - Arc: split into two arcs at the nearest angle
+ * - Detail-line: split into two detail-lines (same thickness/pattern) at the nearest point
  */
 
 import { useCallback } from 'react';
 import { useAppStore } from '../../state/appStore';
-import type { LineShape, PolylineShape, ArcShape, Shape, BaseShape } from '../../types/geometry';
+import type { LineShape, PolylineShape, ArcShape, Shape, BaseShape, DetailLineShape } from '../../types/geometry';
 import { generateId } from '../../state/slices/types';
 import { LineUtils } from '../../engine/geometry/Line';
 
@@ -40,6 +41,8 @@ export function useSplitTool() {
         splitPolyline(shape as PolylineShape, worldPos);
       } else if (shape.type === 'arc') {
         splitArc(shape as ArcShape, worldPos);
+      } else if (shape.type === 'detail-line') {
+        splitDetailLine(shape as DetailLineShape, worldPos);
       }
       // After split, return to select
       setActiveTool('select');
@@ -96,6 +99,60 @@ export function useSplitTool() {
 
     deleteShape(shape.id);
     addShapes([line1, line2]);
+  }
+
+  function splitDetailLine(shape: DetailLineShape, click: { x: number; y: number }) {
+    // Find closest point on the centerline segment
+    const splitPt = LineUtils.closestPointOnSegment(
+      { start: shape.start, end: shape.end },
+      click
+    );
+
+    // Don't split if the split point is at or very near an endpoint
+    const dx1 = splitPt.x - shape.start.x;
+    const dy1 = splitPt.y - shape.start.y;
+    const dx2 = splitPt.x - shape.end.x;
+    const dy2 = splitPt.y - shape.end.y;
+    const minDist = 0.001;
+    if (
+      Math.sqrt(dx1 * dx1 + dy1 * dy1) < minDist ||
+      Math.sqrt(dx2 * dx2 + dy2 * dy2) < minDist
+    ) {
+      return;
+    }
+
+    const base = baseProps(shape);
+    const dl1: DetailLineShape = {
+      id: generateId(),
+      type: 'detail-line',
+      start: { ...shape.start },
+      end: { ...splitPt },
+      thickness: shape.thickness,
+      patternType: shape.patternType,
+      patternAngle: shape.patternAngle,
+      patternScale: shape.patternScale,
+      patternColor: shape.patternColor,
+      backgroundColor: shape.backgroundColor,
+      detailLineTypeId: shape.detailLineTypeId,
+      ...base,
+    };
+    const dl2: DetailLineShape = {
+      id: generateId(),
+      type: 'detail-line',
+      start: { ...splitPt },
+      end: { ...shape.end },
+      thickness: shape.thickness,
+      patternType: shape.patternType,
+      patternAngle: shape.patternAngle,
+      patternScale: shape.patternScale,
+      patternColor: shape.patternColor,
+      backgroundColor: shape.backgroundColor,
+      detailLineTypeId: shape.detailLineTypeId,
+      ...base,
+    };
+
+    deleteShape(shape.id);
+    addShapes([dl1, dl2]);
   }
 
   function splitPolyline(shape: PolylineShape, click: { x: number; y: number }) {
