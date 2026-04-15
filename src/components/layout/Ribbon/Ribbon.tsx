@@ -38,6 +38,8 @@ import {
   ClipboardCopy,
   Info,
   Crosshair,
+  List,
+  Ruler,
 } from 'lucide-react';
 import type { UITheme } from '../../../state/slices/snapSlice';
 import { UI_THEMES } from '../../../state/slices/snapSlice';
@@ -148,6 +150,101 @@ function ThemeSelector({ currentTheme, onThemeChange }: ThemeSelectorProps) {
           </div>
         )}
       </div>
+    </div>
+  );
+}
+
+// ============================================================================
+// TypeManagerDropdown — single dropdown button for all type/style managers
+// ============================================================================
+
+interface TypeManagerDropdownProps {
+  setPatternManagerOpen: (open: boolean) => void;
+  setRegionTypeManagerOpen: (open: boolean) => void;
+  setTextStyleManagerOpen: (open: boolean) => void;
+  disabled?: boolean;
+}
+
+function DropdownMenuItem({ label, icon, onClick, disabled }: { label: string; icon: React.ReactNode; onClick: () => void; disabled?: boolean }) {
+  return (
+    <button
+      onClick={onClick}
+      disabled={disabled}
+      className={`w-full flex items-center gap-2 px-3 py-2 text-xs text-left whitespace-nowrap ${
+        disabled
+          ? 'text-cad-text-muted opacity-50 cursor-not-allowed'
+          : 'text-cad-text hover:bg-cad-hover cursor-pointer'
+      }`}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+function TypeManagerDropdown({ setPatternManagerOpen, setRegionTypeManagerOpen, setTextStyleManagerOpen, disabled }: TypeManagerDropdownProps) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [open]);
+
+  return (
+    <div ref={ref} className="relative">
+      <button
+        className={`ribbon-btn ${disabled ? 'disabled' : ''}`}
+        onClick={() => !disabled && setOpen(v => !v)}
+        disabled={disabled}
+        title="Type Managers"
+      >
+        <span className="ribbon-btn-icon"><List size={24} /></span>
+        <span className="ribbon-btn-label">Types</span>
+      </button>
+      {open && (
+        <div
+          className="absolute top-full left-0 z-50 mt-1 rounded shadow-lg border border-cad-border bg-cad-surface"
+          style={{ minWidth: 200 }}
+        >
+          <DropdownMenuItem
+            label="Hatch Patterns"
+            icon={<HatchIcon size={14} />}
+            onClick={() => { setPatternManagerOpen(true); setOpen(false); }}
+          />
+          <DropdownMenuItem
+            label="Filled Region Types"
+            icon={<FilledRegionIcon size={14} />}
+            onClick={() => { setRegionTypeManagerOpen(true); setOpen(false); }}
+          />
+          <DropdownMenuItem
+            label="Text Styles"
+            icon={<Type size={14} />}
+            onClick={() => { setTextStyleManagerOpen(true); setOpen(false); }}
+          />
+          <DropdownMenuItem
+            label="Dimension Styles"
+            icon={<Ruler size={14} />}
+            onClick={() => { alert('Dimension Styles — coming soon'); setOpen(false); }}
+          />
+          <DropdownMenuItem
+            label="Spot Coordinate Styles"
+            icon={<Crosshair size={14} />}
+            onClick={() => { alert('Spot Coordinate Styles — coming soon'); setOpen(false); }}
+          />
+          <div className="border-t border-cad-border my-1" />
+          <DropdownMenuItem
+            label="Line Types"
+            icon={<List size={14} />}
+            onClick={() => {}}
+            disabled
+          />
+        </div>
+      )}
     </div>
   );
 }
@@ -925,19 +1022,11 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 onClick={() => setSettingsDialogOpen(true)}
                 tooltip="Open application settings"
               />
-              <RibbonButton
-                icon={<HatchIcon size={24} />}
-                label="Pattern Manager"
-                onClick={() => setPatternManagerOpen(true)}
+              <TypeManagerDropdown
+                setPatternManagerOpen={setPatternManagerOpen}
+                setRegionTypeManagerOpen={setRegionTypeManagerOpen}
+                setTextStyleManagerOpen={setTextStyleManagerOpen}
                 disabled={isSheetMode}
-                tooltip="Manage hatch patterns"
-              />
-              <RibbonButton
-                icon={<FilledRegionIcon size={24} />}
-                label="Filled Region Types"
-                onClick={() => setRegionTypeManagerOpen(true)}
-                disabled={isSheetMode}
-                tooltip="Manage filled region types"
               />
               <RibbonButton
                 icon={<DetailComponentIcon size={24} />}
