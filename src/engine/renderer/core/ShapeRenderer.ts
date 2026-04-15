@@ -3,7 +3,7 @@
  */
 
 import type { Shape, DrawingPreview, CurrentStyle, Viewport } from '../types';
-import type { HatchShape, HatchPatternType, ImageShape, WallType, WallSystemType } from '../../../types/geometry';
+import type { HatchShape, HatchPatternType, ImageShape, WallType, WallSystemType, DetailLineShape } from '../../../types/geometry';
 import type { CustomHatchPattern, LineFamily, SvgHatchPattern, MaterialHatchSettings } from '../../../types/hatch';
 import { BUILTIN_PATTERNS, isSvgHatchPattern, DEFAULT_MATERIAL_HATCH_SETTINGS } from '../../../types/hatch';
 import { BaseRenderer } from './BaseRenderer';
@@ -407,6 +407,9 @@ export class ShapeRenderer extends BaseRenderer {
       case 'spot-coordinate':
         this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, isSelected);
         break;
+      case 'detail-line':
+        this.drawDetailLine(shape as DetailLineShape, isSelected);
+        break;
       default: {
         const extRenderer = shapeRendererRegistry.get(shape.type);
         if (extRenderer) {
@@ -484,6 +487,9 @@ export class ShapeRenderer extends BaseRenderer {
         break;
       case 'spot-coordinate':
         this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, false);
+        break;
+      case 'detail-line':
+        this.drawDetailLine(shape as DetailLineShape, false);
         break;
       default: {
         const extSimpleRenderer = shapeRendererRegistry.getSimple(shape.type);
@@ -3593,5 +3599,228 @@ export class ShapeRenderer extends BaseRenderer {
         ctx.fill();
       }
     }
+  }
+
+  // ============================================================================
+  // Detail Line Renderer
+  // ============================================================================
+
+  /**
+   * Draw a detail line — a line segment with a filled band perpendicular to it.
+   * The band is filled with the configured pattern (insulation-nen47, insulation-us,
+   * diagonal, crosshatch, or solid).
+   */
+  private drawDetailLine(shape: DetailLineShape, isSelected: boolean): void {
+    const ctx = this.ctx;
+    const { start, end, thickness } = shape;
+
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const len = Math.sqrt(dx * dx + dy * dy);
+    if (len < 0.001) return;
+
+    // Unit vectors along and perpendicular to the line
+    const ux = dx / len;
+    const uy = dy / len;
+    const px = -uy; // perpendicular
+    const py = ux;
+
+    const halfT = thickness / 2;
+
+    // The 4 corners of the band rectangle
+    const p0 = { x: start.x + px * halfT,  y: start.y + py * halfT  };
+    const p1 = { x: end.x   + px * halfT,  y: end.y   + py * halfT  };
+    const p2 = { x: end.x   - px * halfT,  y: end.y   - py * halfT  };
+    const p3 = { x: start.x - px * halfT,  y: start.y - py * halfT  };
+
+    ctx.save();
+
+    // Clip to the band rectangle so patterns don't bleed out
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.closePath();
+    ctx.clip();
+
+    // Draw background fill
+    if (shape.backgroundColor) {
+      ctx.fillStyle = shape.backgroundColor;
+      ctx.fill();
+    }
+
+    // Draw pattern within the band
+    const lineColor = shape.patternColor || ctx.strokeStyle as string;
+    const scale = shape.patternScale ?? 1;
+    const spacing = 8 * scale; // Base pattern spacing in world units
+
+    ctx.strokeStyle = lineColor;
+    ctx.fillStyle = lineColor;
+    ctx.lineWidth = 0.5;
+    ctx.setLineDash([]);
+
+    const patternType = shape.patternType;
+
+    if (patternType === 'solid') {
+      ctx.fillStyle = lineColor;
+      ctx.beginPath();
+      ctx.moveTo(p0.x, p0.y);
+      ctx.lineTo(p1.x, p1.y);
+      ctx.lineTo(p2.x, p2.y);
+      ctx.lineTo(p3.x, p3.y);
+      ctx.closePath();
+      ctx.fill();
+    } else if (patternType === 'insulation-nen47') {
+      // NEN 47: 60° crosshatch lines along the band
+      this.drawDetailLineHatchPattern(start, end, halfT, ux, uy, px, py, len, spacing, 60, lineColor);
+      this.drawDetailLineHatchPattern(start, end, halfT, ux, uy, px, py, len, spacing, -60, lineColor);
+    } else if (patternType === 'insulation-us') {
+      // US: sinusoidal wave curves along the band centerline
+      this.drawDetailLineSineWave(start, end, halfT, ux, uy, px, py, len, spacing, lineColor);
+    } else if (patternType === 'diagonal') {
+      const angle = (shape.patternAngle ?? 45) * Math.PI / 180;
+      this.drawDetailLineHatchPattern(start, end, halfT, ux, uy, px, py, len, spacing, angle * 180 / Math.PI, lineColor);
+    } else if (patternType === 'crosshatch') {
+      const angle = (shape.patternAngle ?? 45) * Math.PI / 180;
+      this.drawDetailLineHatchPattern(start, end, halfT, ux, uy, px, py, len, spacing, angle * 180 / Math.PI, lineColor);
+      this.drawDetailLineHatchPattern(start, end, halfT, ux, uy, px, py, len, spacing, -angle * 180 / Math.PI, lineColor);
+    }
+
+    ctx.restore();
+
+    // Draw outline border of the band
+    ctx.save();
+    ctx.strokeStyle = isSelected ? COLORS.selection : (shape.style.strokeColor || lineColor);
+    ctx.lineWidth = isSelected ? 1.5 : 0.5;
+    ctx.setLineDash([]);
+    ctx.beginPath();
+    ctx.moveTo(p0.x, p0.y);
+    ctx.lineTo(p1.x, p1.y);
+    ctx.lineTo(p2.x, p2.y);
+    ctx.lineTo(p3.x, p3.y);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.restore();
+
+    // Draw grip handles when selected
+    if (isSelected) {
+      const handleSize = 5;
+      ctx.save();
+      ctx.fillStyle = COLORS.selectionHandle;
+      ctx.strokeStyle = COLORS.selectionHandleStroke;
+      ctx.lineWidth = 1;
+      for (const pt of [start, end]) {
+        ctx.fillRect(pt.x - handleSize / 2, pt.y - handleSize / 2, handleSize, handleSize);
+        ctx.strokeRect(pt.x - handleSize / 2, pt.y - handleSize / 2, handleSize, handleSize);
+      }
+      // Midpoint
+      const mid = { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 };
+      ctx.fillRect(mid.x - handleSize / 2, mid.y - handleSize / 2, handleSize, handleSize);
+      ctx.strokeRect(mid.x - handleSize / 2, mid.y - handleSize / 2, handleSize, handleSize);
+      ctx.restore();
+    }
+  }
+
+  /**
+   * Draw hatch lines within the detail line band at a given angle.
+   * Lines are drawn clipped to the band (clipping is already active when called).
+   */
+  private drawDetailLineHatchPattern(
+    start: { x: number; y: number },
+    end: { x: number; y: number },
+    halfT: number,
+    _ux: number, _uy: number,
+    _px: number, _py: number,
+    len: number,
+    spacing: number,
+    angleDeg: number,
+    color: string
+  ): void {
+    const ctx = this.ctx;
+    const angleRad = angleDeg * Math.PI / 180;
+
+    // Hatch line direction in world space
+    const hx = Math.cos(angleRad);
+    const hy = Math.sin(angleRad);
+
+    // Draw lines perpendicular to hatch direction that sweep across the band
+    const perpHx = -hy;
+    const perpHy = hx;
+
+    // Center of band
+    const cx = (start.x + end.x) / 2;
+    const cy = (start.y + end.y) / 2;
+
+    // Number of hatch lines needed to cover the band + line length
+    const diagLen = Math.sqrt(len * len + (halfT * 2) * (halfT * 2)) + spacing * 2;
+    const count = Math.ceil(diagLen / spacing) + 2;
+
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+
+    for (let i = -count; i <= count; i++) {
+      const offset = i * spacing;
+      const lx = cx + perpHx * offset;
+      const ly = cy + perpHy * offset;
+
+      // Extend the line far enough to cross the entire band
+      ctx.moveTo(lx - hx * diagLen, ly - hy * diagLen);
+      ctx.lineTo(lx + hx * diagLen, ly + hy * diagLen);
+    }
+
+    ctx.stroke();
+  }
+
+  /**
+   * Draw a sinusoidal wave pattern along the detail line band (US insulation style).
+   */
+  private drawDetailLineSineWave(
+    start: { x: number; y: number },
+    _end: { x: number; y: number },
+    halfT: number,
+    ux: number, uy: number,
+    px: number, py: number,
+    len: number,
+    spacing: number,
+    color: string
+  ): void {
+    const ctx = this.ctx;
+    const amplitude = halfT * 0.7;  // Wave amplitude (fraction of half-thickness)
+    const wavelength = spacing * 2; // Wavelength along the line
+
+    ctx.strokeStyle = color;
+    ctx.beginPath();
+
+    const steps = Math.ceil(len / (wavelength / 20));
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const along = t * len;
+      const perp = amplitude * Math.sin((along / wavelength) * Math.PI * 2);
+
+      const wx = start.x + ux * along + px * perp;
+      const wy = start.y + uy * along + py * perp;
+
+      if (i === 0) ctx.moveTo(wx, wy);
+      else ctx.lineTo(wx, wy);
+    }
+
+    ctx.stroke();
+
+    // Draw a second wave offset by half wavelength for a fuller look
+    ctx.beginPath();
+    for (let i = 0; i <= steps; i++) {
+      const t = i / steps;
+      const along = t * len;
+      const perp = amplitude * Math.sin((along / wavelength) * Math.PI * 2 + Math.PI);
+
+      const wx = start.x + ux * along + px * perp;
+      const wy = start.y + uy * along + py * perp;
+
+      if (i === 0) ctx.moveTo(wx, wy);
+      else ctx.lineTo(wx, wy);
+    }
+
+    ctx.stroke();
   }
 }

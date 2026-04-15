@@ -45,6 +45,7 @@ const CATEGORY_LABELS: Record<ShapeType, string> = {
   'block-instance': 'Block Instances',
   rebar: 'Rebar',
   'component-instance': 'Components',
+  'detail-line': 'Detail Lines',
 };
 
 // Singular labels for count = 1
@@ -82,6 +83,7 @@ const CATEGORY_LABELS_SINGULAR: Record<ShapeType, string> = {
   'block-instance': 'Block Instance',
   rebar: 'Rebar',
   'component-instance': 'Component',
+  'detail-line': 'Detail Line',
 };
 
 // Preferred display order for categories

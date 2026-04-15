@@ -3,7 +3,7 @@
  */
 
 import type { ToolType, ShapeStyle, Point, DrawingPreview, DefaultTextStyle } from './types';
-import type { DimensionType } from '../../types/dimension';
+import type { DimensionType, DimensionArrowType } from '../../types/dimension';
 import type { LeaderConfig } from '../../types/geometry';
 import { defaultStyle } from './types';
 import { DIMENSION_STYLE_PRESETS } from '../../constants/cadDefaults';
@@ -44,7 +44,7 @@ export interface ToolState {
 
   // Phase 5: Dimension enhancements
   dimensionPrecision: number;
-  dimensionArrowStyle: 'filled' | 'open' | 'dot' | 'tick' | 'none';
+  dimensionArrowStyle: DimensionArrowType;
   linearDimensionDirection: 'auto' | 'horizontal' | 'vertical';
   /** Active dimension style preset name (e.g., 'Default', 'DimAssociate') */
   dimensionStylePreset: string;

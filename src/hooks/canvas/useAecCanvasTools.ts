@@ -26,11 +26,12 @@ import { usePlateSystemDrawing } from '../drawing/usePlateSystemDrawing';
 import { useSlabOpeningDrawing } from '../drawing/useSlabOpeningDrawing';
 import { useColumnDrawing } from '../drawing/useColumnDrawing';
 import { useSpotCoordinateDrawing } from '../drawing/useSpotCoordinateDrawing';
+import { useDetailLineDrawing } from '../drawing/useDetailLineDrawing';
 
 const AEC_TOOL_NAMES = [
   'beam', 'gridline', 'level', 'pile', 'column', 'cpt',
   'wall', 'slab', 'slab-opening', 'slab-label', 'puntniveau', 'section-callout', 'space', 'plate-system',
-  'spot-coordinate',
+  'spot-coordinate', 'detail-line',
 ] as const;
 
 export function useAecCanvasTools() {
@@ -50,6 +51,7 @@ export function useAecCanvasTools() {
   const slabOpeningDrawing = useSlabOpeningDrawing();
   const columnDrawing = useColumnDrawing();
   const spotCoordinateDrawing = useSpotCoordinateDrawing();
+  const detailLineDrawing = useDetailLineDrawing();
 
   // Read pending states from store
   const {
@@ -230,6 +232,8 @@ export function useAecCanvasTools() {
       case 'spot-coordinate':
         spotCoordinateDrawing.handleSpotCoordinateClick(snappedPos);
         return true;
+      case 'detail-line':
+        return detailLineDrawing.handleDetailLineClick(snappedPos);
       default:
         return false;
     }
@@ -321,6 +325,9 @@ export function useAecCanvasTools() {
       case 'spot-coordinate':
         spotCoordinateDrawing.updateSpotCoordinatePreview(snappedPos);
         return true;
+      case 'detail-line':
+        detailLineDrawing.updateDetailLinePreview(snappedPos);
+        return true;
       default:
         return false;
     }
@@ -396,6 +403,10 @@ export function useAecCanvasTools() {
         return true;
       case 'spot-coordinate':
         spotCoordinateDrawing.cancelSpotCoordinateDrawing();
+        setActiveTool('select');
+        return true;
+      case 'detail-line':
+        detailLineDrawing.cancelDetailLineDrawing();
         setActiveTool('select');
         return true;
       default:

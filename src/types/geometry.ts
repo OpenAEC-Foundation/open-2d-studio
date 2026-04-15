@@ -43,7 +43,7 @@ export interface ShapeGroup {
 /** @deprecated Use drawingId instead */
 export type BaseShapeWithDraftId = BaseShape & { draftId?: string };
 
-export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'puntniveau' | 'pile' | 'column' | 'wall' | 'wall-opening' | 'slab' | 'slab-opening' | 'slab-label' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation' | 'spot-coordinate' | 'block-instance' | 'rebar' | 'component-instance';
+export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'puntniveau' | 'pile' | 'column' | 'wall' | 'wall-opening' | 'slab' | 'slab-opening' | 'slab-label' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation' | 'spot-coordinate' | 'block-instance' | 'rebar' | 'component-instance' | 'detail-line';
 
 export type HatchPatternType = 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots' | 'custom';
 
@@ -1076,6 +1076,112 @@ export interface BlockInstanceShape extends BaseShape {
   scaleY: number;
 }
 
+// ============================================================================
+// Detail Line — line-based component with a perpendicular-filled band
+// ============================================================================
+
+/** Pattern types for detail line components */
+export type DetailLinePatternType =
+  | 'insulation-nen47'  // NEN 47 crosshatch insulation (60° pattern, yellow bg)
+  | 'insulation-us'     // US sinusoidal wave insulation (pink bg)
+  | 'diagonal'          // 45° diagonal hatch lines
+  | 'crosshatch'        // 45° + 135° crosshatch
+  | 'solid'             // Solid filled rectangle
+  | 'custom';           // Custom pattern (not yet implemented)
+
+/**
+ * Detail Line Type — reusable definition for line-based components.
+ * Analogous to FilledRegionType but for linear elements.
+ */
+export interface DetailLineType {
+  id: string;
+  name: string;
+  isBuiltIn: boolean;
+  /** Width of the filled band perpendicular to the line, in mm */
+  thickness: number;
+  patternType: DetailLinePatternType;
+  /** Pattern rotation in degrees */
+  patternAngle?: number;
+  /** Pattern line spacing multiplier */
+  patternScale?: number;
+  /** Pattern line/fill color */
+  patternColor?: string;
+  /** Solid background fill color (behind the pattern) */
+  backgroundColor?: string;
+}
+
+/** Built-in Detail Line Types */
+export const BUILT_IN_DETAIL_LINE_TYPES: DetailLineType[] = [
+  {
+    id: 'builtin-insulation-nen47',
+    name: 'NEN47 Isolatie',
+    isBuiltIn: true,
+    thickness: 50,
+    patternType: 'insulation-nen47',
+    patternAngle: 60,
+    patternScale: 1,
+    patternColor: '#888800',
+    backgroundColor: '#FFFDE0',
+  },
+  {
+    id: 'builtin-insulation-us',
+    name: 'US Insulation',
+    isBuiltIn: true,
+    thickness: 50,
+    patternType: 'insulation-us',
+    patternAngle: 0,
+    patternScale: 1,
+    patternColor: '#cc6688',
+    backgroundColor: '#FFE0EC',
+  },
+  {
+    id: 'builtin-diagonal',
+    name: 'Diagonal Hatch',
+    isBuiltIn: true,
+    thickness: 25,
+    patternType: 'diagonal',
+    patternAngle: 45,
+    patternScale: 1,
+    patternColor: '#666666',
+    backgroundColor: undefined,
+  },
+  {
+    id: 'builtin-solid',
+    name: 'Solid Fill',
+    isBuiltIn: true,
+    thickness: 20,
+    patternType: 'solid',
+    patternAngle: 0,
+    patternScale: 1,
+    patternColor: '#333333',
+    backgroundColor: '#333333',
+  },
+];
+
+/**
+ * Detail Line Shape — a line segment with a filled band of constant thickness.
+ * The band is rendered perpendicular to the line direction.
+ */
+export interface DetailLineShape extends BaseShape {
+  type: 'detail-line';
+  start: Point;
+  end: Point;
+  /** Width of the filled band perpendicular to the line, in mm */
+  thickness: number;
+  /** Reference to a DetailLineType (when set, pattern properties are resolved from the type) */
+  detailLineTypeId?: string;
+  /** Pattern fill type (resolved from type or set directly) */
+  patternType: DetailLinePatternType;
+  /** Pattern rotation in degrees */
+  patternAngle?: number;
+  /** Pattern line spacing multiplier */
+  patternScale?: number;
+  /** Pattern line/fill color */
+  patternColor?: string;
+  /** Solid background fill color */
+  backgroundColor?: string;
+}
+
 // Forward declaration for DimensionShape (defined in dimension.ts)
 import type { DimensionShape } from './dimension';
 
@@ -1112,7 +1218,8 @@ export type Shape =
   | CPTShape
   | FoundationZoneShape
   | BlockInstanceShape
-  | RebarShape;
+  | RebarShape
+  | DetailLineShape;
 
 // Layer type
 export interface Layer {
@@ -1181,6 +1288,7 @@ export type ToolType =
   | 'insulation'
   | 'hatch'
   | 'detail-component'
+  | 'detail-line'
   // Structural tools
   | 'beam'
   | 'gridline'

@@ -1893,6 +1893,16 @@ export function getShapeBounds(shape: Shape, drawingScale?: number, _gridlineExt
       const maxY = Math.max(sc.position.y, ly) + th * 2;
       return { minX, minY, maxX, maxY };
     }
+    case 'detail-line': {
+      const dl = shape as import('../../types/geometry').DetailLineShape;
+      const halfT = dl.thickness / 2;
+      return {
+        minX: Math.min(dl.start.x, dl.end.x) - halfT,
+        minY: Math.min(dl.start.y, dl.end.y) - halfT,
+        maxX: Math.max(dl.start.x, dl.end.x) + halfT,
+        maxY: Math.max(dl.start.y, dl.end.y) + halfT,
+      };
+    }
     default: {
       const extBounds = boundsRegistry.get((shape as any).type);
       return extBounds ? extBounds(shape, drawingScale) : null;

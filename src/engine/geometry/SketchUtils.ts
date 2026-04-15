@@ -20,12 +20,25 @@ export function extractSkEdges(shapeIds: string[], allShapes: any[]): SkEdge[] {
       edges.push({ p1: shape.start, p2: shape.end });
     } else if (shape.type === 'arc') {
       const { center, radius, startAngle, endAngle } = shape;
-      const p1 = { x: center.x + radius * Math.cos(startAngle), y: center.y + radius * Math.sin(startAngle) };
-      const p2 = { x: center.x + radius * Math.cos(endAngle), y: center.y + radius * Math.sin(endAngle) };
-      let theta = endAngle - startAngle;
+      // ArcShape angles are in DEGREES — convert to radians for Math.cos/sin
+      const sa = startAngle * Math.PI / 180;
+      const ea = endAngle * Math.PI / 180;
+      const p1 = { x: center.x + radius * Math.cos(sa), y: center.y + radius * Math.sin(sa) };
+      const p2 = { x: center.x + radius * Math.cos(ea), y: center.y + radius * Math.sin(ea) };
+      let theta = ea - sa;
       while (theta > Math.PI * 2) theta -= Math.PI * 2;
       while (theta < -Math.PI * 2) theta += Math.PI * 2;
       edges.push({ p1, p2, bulge: Math.tan(theta / 4) });
+    } else if (shape.type === 'polyline' && shape.points?.length >= 2) {
+      // Support polyline sketch shapes
+      const pts = shape.points;
+      const shapeBulges = shape.bulge || [];
+      for (let i = 0; i < pts.length - 1; i++) {
+        edges.push({ p1: pts[i], p2: pts[i + 1], bulge: shapeBulges[i] ?? 0 });
+      }
+      if (shape.closed && pts.length >= 3) {
+        edges.push({ p1: pts[pts.length - 1], p2: pts[0], bulge: shapeBulges[pts.length - 1] ?? 0 });
+      }
     }
   }
   return edges;
@@ -65,7 +78,7 @@ export function chainSkEdges(edges: SkEdge[], tol: number): { points: SkPt[]; bu
   return { points: pts, bulges };
 }
 
-const SKETCH_TOL = 5;
+const SKETCH_TOL = 10; // tolerance in mm for endpoint matching
 
 /**
  * Extract ALL separate closed loops from a set of edges.
@@ -167,7 +180,14 @@ export function finishSketch(): boolean {
   }
 
   if (!outerLoop) {
-    alert('Cannot finish: the outer boundary is not a closed loop. Make sure all segments connect end-to-end.');
+    // Debug: show what we have
+    const firstPt = outerEdges[0]?.p1;
+    const lastEdge = outerEdges[outerEdges.length - 1];
+    const lastPt = lastEdge?.p2;
+    const gap = firstPt && lastPt ? Math.sqrt((firstPt.x - lastPt.x) ** 2 + (firstPt.y - lastPt.y) ** 2).toFixed(1) : '?';
+    console.warn(`[Sketch] Cannot close boundary: ${outerEdges.length} edges, gap=${gap}mm, tol=${SKETCH_TOL}mm`);
+    outerEdges.forEach((e, i) => console.warn(`  edge ${i}: (${e.p1.x.toFixed(1)},${e.p1.y.toFixed(1)}) → (${e.p2.x.toFixed(1)},${e.p2.y.toFixed(1)}) bulge=${e.bulge?.toFixed(3) ?? 0}`));
+    alert(`Cannot finish: boundary not closed (${outerEdges.length} edges, gap=${gap}mm). Tip: zoom in and connect the last segment to the first point.`);
     return false;
   }
 

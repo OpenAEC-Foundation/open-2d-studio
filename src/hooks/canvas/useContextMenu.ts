@@ -29,6 +29,7 @@ const TOOL_DISPLAY_NAMES: Record<ToolType, string> = {
   'insulation': 'Insulation',
   'hatch': 'Hatch',
   'detail-component': 'Detail Component',
+  'detail-line': 'Detail Line',
   'beam': 'Beam',
   'gridline': 'Grid Line',
   'level': 'Level',

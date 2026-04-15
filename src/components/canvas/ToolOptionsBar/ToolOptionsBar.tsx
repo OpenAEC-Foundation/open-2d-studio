@@ -350,17 +350,19 @@ function DimensionOptions() {
         onChange={(v) => setDimensionPrecision(Number(v))}
       />
       <Separator />
-      <OptionSelect
+      <OptionSelect<'filled' | 'open' | 'dot' | 'tick' | 'circle' | 'slash' | 'none'>
         label="Arrows"
-        value={dimensionArrowStyle}
+        value={dimensionArrowStyle as 'filled' | 'open' | 'dot' | 'tick' | 'circle' | 'slash' | 'none'}
         options={[
           { value: 'filled', label: 'Filled' },
           { value: 'open', label: 'Open' },
           { value: 'dot', label: 'Dot' },
           { value: 'tick', label: 'Tick' },
+          { value: 'circle', label: 'Circle' },
+          { value: 'slash', label: 'Slash' },
           { value: 'none', label: 'None' },
         ]}
-        onChange={setDimensionArrowStyle}
+        onChange={(v) => setDimensionArrowStyle(v as any)}
       />
     </>
   );
