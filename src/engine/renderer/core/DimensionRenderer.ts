@@ -23,13 +23,14 @@ const ASSOCIATION_HIGHLIGHT_COLOR = '#00B400';
 export class DimensionRenderer extends BaseRenderer {
   private drawingScale: number = 0.02;
   private selectedShapeIds: Set<string> = new Set();
-  private invertColors: boolean = false;
 
   /**
-   * Set the color-inversion flag so dimensions adapt to white/dark background.
+   * No-op: dimension colors are used as-is from the style (no automatic inversion).
+   * Kept for API compatibility — callers may still call this method.
    */
-  setInvertColors(invert: boolean): void {
-    this.invertColors = invert;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  setInvertColors(_invert: boolean): void {
+    // intentionally left blank — colors are no longer inverted
   }
 
   /**
@@ -118,17 +119,10 @@ export class DimensionRenderer extends BaseRenderer {
     // Determine if linked element is selected (for green text highlight)
     const linkedSelected = !isSelected && !isHovered && this.isLinkedElementSelected(dimension);
 
-    // Set drawing style — adapt colors for background mode
-    const invertColors = this.invertColors;
-    const adaptedLineColor = invertColors
-      ? (style.lineColor === '#000000' || style.lineColor === '#000' ? '#ffffff' : style.lineColor === '#ffffff' || style.lineColor === '#fff' ? '#000000' : style.lineColor)
-      : style.lineColor;
-    const adaptedTextColor = invertColors
-      ? (style.textColor === '#000000' || style.textColor === '#000' ? '#ffffff' : style.textColor === '#ffffff' || style.textColor === '#fff' ? '#000000' : style.textColor)
-      : style.textColor;
+    // Set drawing style — use style colors directly (no automatic inversion)
     const highlightColor = isSelected ? COLORS.selection : isHovered ? COLORS.hover : null;
-    ctx.strokeStyle = highlightColor || adaptedLineColor;
-    ctx.fillStyle = highlightColor || adaptedTextColor;
+    ctx.strokeStyle = highlightColor || style.lineColor;
+    ctx.fillStyle = highlightColor || style.textColor;
     // Use style strokeWidth if specified, otherwise default (2.5 when selected, 1 otherwise)
     const baseLineWidth = style.strokeWidth != null ? style.strokeWidth : 1;
     ctx.lineWidth = isSelected ? Math.max(2.5, baseLineWidth) : baseLineWidth;
@@ -493,14 +487,18 @@ export class DimensionRenderer extends BaseRenderer {
         break;
       }
       case 'circle': {
-        // Filled circle — used in NEN/Dutch standard
+        // Circle terminal — filled only when dotFilled is true (NEN/Dutch standard)
         const radius = size / 2;
         ctx.beginPath();
         ctx.arc(tip.x, tip.y, radius, 0, Math.PI * 2);
-        const prevFill = ctx.fillStyle;
-        ctx.fillStyle = ctx.strokeStyle;
-        ctx.fill();
-        ctx.fillStyle = prevFill;
+        if (style.dotFilled) {
+          const prevFill = ctx.fillStyle;
+          ctx.fillStyle = ctx.strokeStyle;
+          ctx.fill();
+          ctx.fillStyle = prevFill;
+        } else {
+          ctx.stroke();
+        }
         break;
       }
       case 'slash': {
@@ -585,17 +583,8 @@ export class DimensionRenderer extends BaseRenderer {
 
     // Background removed — dimension text renders directly on canvas without background box
 
-    // Compute adapted text color (invert black↔white for dark/light background mode)
-    const isInverted = this.invertColors;
-    const rawTextColor = style?.textColor ?? '#000000';
-    const adaptedTextColor = isInverted
-      ? (rawTextColor === '#000000' || rawTextColor === '#000' ? '#ffffff'
-        : rawTextColor === '#ffffff' || rawTextColor === '#fff' ? '#000000'
-        : rawTextColor)
-      : rawTextColor;
-
-    // Draw text - use override color (selection/link highlight) when present, else adapted style color
-    ctx.fillStyle = textColorOverride || adaptedTextColor;
+    // Draw text — use override color (selection/link highlight) when present, else style color as-is
+    ctx.fillStyle = textColorOverride || style?.textColor || '#000000';
     ctx.fillText(displayText, 0, yOffset);
 
     ctx.restore();
