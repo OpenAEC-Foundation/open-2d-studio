@@ -4,6 +4,8 @@ import type { UnitSettings } from '../../../units/types';
 import { formatLength, parseLength } from '../../../units';
 import type { SurfaceExposureClasses } from '../../../types/geometry';
 import { EXPOSURE_CLASSES, EXPOSURE_CLASS_MIN_COVER, getMinCoverFromExposureClasses } from '../../../types/geometry';
+import { DIMENSION_STYLE_PRESETS } from '../../../constants/cadDefaults';
+import type { DimensionStyle } from '../../../types/dimension';
 
 export const RAD2DEG = 180 / Math.PI;
 export const DEG2RAD = Math.PI / 180;
@@ -157,6 +159,36 @@ export function TextStyleSelector({ currentStyleId, onApplyStyle }: {
       <div className="text-xs text-cad-text-dim mt-1">
         Select a style to apply its formatting
       </div>
+    </div>
+  );
+}
+
+// Dimension Style Selector — select from named dimension style presets
+export function DimensionStyleSelector({ currentStyleName, onApplyStyle }: {
+  currentStyleName?: string;
+  onApplyStyle: (styleName: string, style: DimensionStyle) => void;
+}) {
+  const presetNames = Object.keys(DIMENSION_STYLE_PRESETS);
+  return (
+    <div className="mb-3">
+      <label className={labelClass}>Dimension Style</label>
+      <select
+        value={currentStyleName || ''}
+        onChange={(e) => {
+          const name = e.target.value;
+          if (name && DIMENSION_STYLE_PRESETS[name]) {
+            onApplyStyle(name, DIMENSION_STYLE_PRESETS[name]);
+          } else {
+            onApplyStyle('', DIMENSION_STYLE_PRESETS['Default']);
+          }
+        }}
+        className={inputClass}
+      >
+        <option value="">(Custom)</option>
+        {presetNames.map(name => (
+          <option key={name} value={name}>{name}</option>
+        ))}
+      </select>
     </div>
   );
 }

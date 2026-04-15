@@ -15,6 +15,7 @@ import type {
   PlateSystemShape,
   CPTShape, PileShape, PileTypeDefinition,
   RebarShape,
+  SpotCoordinateShape,
   PileContourType,
 } from '../../../types/geometry';
 import { REBAR_DIAMETERS } from '../../../types/geometry';
@@ -37,6 +38,7 @@ import {
   ExposureClassSection,
   TextStyleSelector,
   RegionTypeSelector,
+  DimensionStyleSelector,
   NumberField,
   TextField,
   CheckboxField,
@@ -1011,6 +1013,12 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
 
       return (
         <>
+          <PropertyGroup label="Style">
+            <DimensionStyleSelector
+              currentStyleName={dim.dimensionStyleName}
+              onApplyStyle={(name, style) => update({ dimensionStyleName: name || undefined, dimensionStyle: { ...style } })}
+            />
+          </PropertyGroup>
           <PropertyGroup label="Properties">
             <div className="text-xs text-cad-text-dim mb-2">
               Type: {dim.dimensionType.charAt(0).toUpperCase() + dim.dimensionType.slice(1)}
@@ -2315,6 +2323,46 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
           <PropertyGroup label="Position">
             <NumberField label="Position X" value={rebar.position.x} onChange={(v) => update({ position: { ...rebar.position, x: v } })} step={1} />
             <NumberField label="Position Y" value={-rebar.position.y} onChange={(v) => update({ position: { ...rebar.position, y: -v } })} step={1} />
+          </PropertyGroup>
+        </>
+      );
+    }
+
+    case 'spot-coordinate': {
+      const sc = shape as SpotCoordinateShape;
+      return (
+        <>
+          <PropertyGroup label="Coordinates">
+            <div className="mb-2 p-2 bg-cad-bg rounded border border-cad-border">
+              <div className="text-xs text-cad-text-dim mb-1">Point Position</div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                <div className="text-cad-text-dim">X:</div>
+                <div className="text-cad-text">{sc.displayX.toFixed(sc.decimalPlaces)} {sc.unit}</div>
+                <div className="text-cad-text-dim">Y:</div>
+                <div className="text-cad-text">{sc.displayY.toFixed(sc.decimalPlaces)} {sc.unit}</div>
+              </div>
+            </div>
+            <SelectField
+              label="Unit"
+              value={sc.unit}
+              options={[
+                { value: 'mm', label: 'mm' },
+                { value: 'm', label: 'm' },
+              ]}
+              onChange={(v) => update({ unit: v })}
+            />
+            <NumberField label="Decimal Places" value={sc.decimalPlaces} onChange={(v) => update({ decimalPlaces: Math.round(v) })} step={1} min={0} max={6} />
+            <TextField label="Prefix" value={sc.prefix || ''} onChange={(v) => update({ prefix: v || undefined })} />
+          </PropertyGroup>
+          <PropertyGroup label="Appearance">
+            <NumberField label="Text Height" value={sc.textHeight} onChange={(v) => update({ textHeight: v })} step={10} min={10} />
+            <CheckboxField label="Show Leader" value={sc.showLeader} onChange={(v) => update({ showLeader: v })} />
+            {sc.showLeader && (
+              <>
+                <NumberField label="Leader Length" value={sc.leaderLength} onChange={(v) => update({ leaderLength: v })} step={50} min={0} />
+                <NumberField label="Leader Angle (°)" value={sc.leaderAngle * (180 / Math.PI)} onChange={(v) => update({ leaderAngle: v * (Math.PI / 180) })} step={15} />
+              </>
+            )}
           </PropertyGroup>
         </>
       );
