@@ -719,39 +719,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
             </RibbonGroup>
 
             {/* Annotate Group */}
-            <RibbonGroup label="Annotate" expandContent={
-              <>
-                <RibbonButtonStack>
-                  <RibbonSmallButton
-                    icon={<LeaderIcon size={14} />}
-                    label="Leader"
-                    onClick={() => switchToDrawingTool('leader')}
-                    active={activeTool === 'leader'}
-                    disabled={isSheetMode}
-                    shortcut="LE"
-                  />
-                  <RibbonSmallButton
-                    icon={<TableIcon size={14} />}
-                    label="Table"
-                    onClick={() => {}}
-                    disabled={true}
-                  />
-                  <RibbonSmallButton
-                    icon={<CloudIcon size={14} />}
-                    label="Cloud"
-                    onClick={() => {}}
-                    disabled={true}
-                  />
-                </RibbonButtonStack>
-                <RibbonButton
-                  icon={<Type size={24} />}
-                  label="Text Styles"
-                  onClick={() => setTextStyleManagerOpen(true)}
-                  disabled={isSheetMode}
-                  tooltip="Manage text styles"
-                />
-              </>
-            }>
+            <RibbonGroup label="Annotate">
               <RibbonButton
                 icon={<AlignedDimensionIcon size={24} />}
                 label="Aligned"
@@ -786,6 +754,15 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   disabled={isSheetMode}
                   shortcut="DA"
                 />
+                <RibbonSmallButton
+                  icon={<SpotCoordinateIcon size={14} />}
+                  label="Spot Coord."
+                  onClick={() => switchToDrawingTool('spot-coordinate')}
+                  active={activeTool === 'spot-coordinate'}
+                  disabled={isSheetMode}
+                  tooltip="Place X/Y coordinate annotation at a point"
+                  shortcut="SC"
+                />
               </RibbonButtonStack>
               <RibbonButtonStack>
                 <RibbonSmallButton
@@ -810,21 +787,18 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   disabled={isSheetMode}
                   shortcut="DD"
                 />
+                <RibbonSmallButton
+                  icon={<LeaderIcon size={14} />}
+                  label="Leader"
+                  onClick={() => switchToDrawingTool('leader')}
+                  active={activeTool === 'leader'}
+                  disabled={isSheetMode}
+                  shortcut="LE"
+                />
               </RibbonButtonStack>
               <RibbonButtonStack>
                 <RibbonSmallButton
-                  icon={<SpotCoordinateIcon size={14} />}
-                  label="Spot Coord."
-                  onClick={() => switchToDrawingTool('spot-coordinate')}
-                  active={activeTool === 'spot-coordinate'}
-                  disabled={isSheetMode}
-                  tooltip="Place X/Y coordinate annotation at a point"
-                  shortcut="SC"
-                />
-              </RibbonButtonStack>
-              <RibbonMediumButtonStack>
-                <RibbonMediumButton
-                  icon={<Tag size={18} />}
+                  icon={<Tag size={14} />}
                   label="Label"
                   onClick={() => switchToDrawingTool('label')}
                   active={activeTool === 'label'}
@@ -832,7 +806,19 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   tooltip="Place a smart label that reads properties from a shape (length, area, type, …)"
                   shortcut="LB"
                 />
-              </RibbonMediumButtonStack>
+                <RibbonSmallButton
+                  icon={<TableIcon size={14} />}
+                  label="Table"
+                  onClick={() => {}}
+                  disabled={true}
+                />
+                <RibbonSmallButton
+                  icon={<CloudIcon size={14} />}
+                  label="Cloud"
+                  onClick={() => {}}
+                  disabled={true}
+                />
+              </RibbonButtonStack>
             </RibbonGroup>
 
             {/* Modify Group */}
@@ -891,54 +877,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
             </RibbonGroup>
 
             {/* Edit Group */}
-            <RibbonGroup label="Edit" expandContent={
-              <>
-                <RibbonButtonStack>
-                  <RibbonSmallButton
-                    icon={<SplitIcon size={14} />}
-                    label="Split"
-                    onClick={() => switchToolAndCancelCommand('split')}
-                    active={activeTool === 'split'}
-                    disabled={isSheetMode}
-                    shortcut="SP"
-                  />
-                  <RibbonSmallButton
-                    icon={<BreakIcon size={14} />}
-                    label="Break"
-                    onClick={() => {}}
-                    disabled={true}
-                  />
-                  <RibbonSmallButton
-                    icon={<JoinIcon size={14} />}
-                    label="Join"
-                    onClick={() => {}}
-                    disabled={true}
-                  />
-                </RibbonButtonStack>
-                <RibbonButtonStack>
-                  <RibbonSmallButton
-                    icon={<ExplodeIcon size={14} />}
-                    label="Explode"
-                    onClick={() => {}}
-                    disabled={true}
-                  />
-                  <RibbonSmallButton
-                    icon={<LengthenIcon size={14} />}
-                    label="Lengthen"
-                    onClick={() => {}}
-                    disabled={true}
-                  />
-                  <RibbonSmallButton
-                    icon={<AlignIcon size={14} />}
-                    label="Align"
-                    onClick={() => switchToolAndCancelCommand('align')}
-                    active={activeTool === 'align'}
-                    disabled={isSheetMode}
-                    shortcut="AL"
-                  />
-                </RibbonButtonStack>
-              </>
-            }>
+            <RibbonGroup label="Edit">
               <RibbonButtonStack>
                 <RibbonSmallButton
                   icon={<Scissors size={14} />}
@@ -988,6 +927,50 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   active={activeTool === 'elastic'}
                   disabled={isSheetMode}
                   shortcut="E"
+                />
+              </RibbonButtonStack>
+              <RibbonButtonStack>
+                <RibbonSmallButton
+                  icon={<SplitIcon size={14} />}
+                  label="Split"
+                  onClick={() => switchToolAndCancelCommand('split')}
+                  active={activeTool === 'split'}
+                  disabled={isSheetMode}
+                  shortcut="SP"
+                />
+                <RibbonSmallButton
+                  icon={<AlignIcon size={14} />}
+                  label="Align"
+                  onClick={() => switchToolAndCancelCommand('align')}
+                  active={activeTool === 'align'}
+                  disabled={isSheetMode}
+                  shortcut="AL"
+                />
+                <RibbonSmallButton
+                  icon={<ExplodeIcon size={14} />}
+                  label="Explode"
+                  onClick={() => {}}
+                  disabled={true}
+                />
+              </RibbonButtonStack>
+              <RibbonButtonStack>
+                <RibbonSmallButton
+                  icon={<BreakIcon size={14} />}
+                  label="Break"
+                  onClick={() => {}}
+                  disabled={true}
+                />
+                <RibbonSmallButton
+                  icon={<JoinIcon size={14} />}
+                  label="Join"
+                  onClick={() => {}}
+                  disabled={true}
+                />
+                <RibbonSmallButton
+                  icon={<LengthenIcon size={14} />}
+                  label="Lengthen"
+                  onClick={() => {}}
+                  disabled={true}
                 />
               </RibbonButtonStack>
             </RibbonGroup>
