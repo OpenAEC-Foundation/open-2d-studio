@@ -170,10 +170,20 @@ function extractAllLoops(edges: SkEdge[], tol: number): Array<{ points: SkPt[]; 
 export function finishSketch(): boolean {
   const s = useAppStore.getState();
   const outerIds = s.sketchShapeIds;
-  if (outerIds.length < 3) return false;
+  console.log(`[Sketch] finishSketch called: ${outerIds.length} sketch shapes, filledRegionMode=${s.filledRegionMode}`);
+  if (outerIds.length === 0) {
+    console.warn('[Sketch] No sketch shapes — nothing to finish');
+    return false;
+  }
 
   // Extract all edges from outer sketch shape IDs
   const outerEdges = extractSkEdges(outerIds, s.shapes);
+  console.log(`[Sketch] Extracted ${outerEdges.length} edges from ${outerIds.length} sketch shapes`);
+  if (outerEdges.length === 0) {
+    console.warn('[Sketch] No edges extracted — sketch shapes may have been deleted');
+    alert('Cannot finish: no boundary segments found. Draw at least 3 connected lines.');
+    return false;
+  }
 
   // Try to detect multiple separate closed loops within the outer sketch IDs
   const allLoops = extractAllLoops(outerEdges, SKETCH_TOL);
