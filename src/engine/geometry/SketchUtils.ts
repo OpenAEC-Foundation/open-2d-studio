@@ -14,6 +14,10 @@ export interface SkEdge { p1: SkPt; p2: SkPt; bulge?: number; }
 /** Extract edges (with bulge) from sketch shape IDs. */
 export function extractSkEdges(shapeIds: string[], allShapes: any[]): SkEdge[] {
   const sketchShapes = allShapes.filter((sh: any) => shapeIds.includes(sh.id));
+  console.log(`[Sketch] extractSkEdges: ${shapeIds.length} IDs, found ${sketchShapes.length} shapes`);
+  for (const shape of sketchShapes) {
+    console.log(`  shape ${shape.id}: type=${shape.type}`);
+  }
   const edges: SkEdge[] = [];
   for (const shape of sketchShapes) {
     if (shape.type === 'line') {
@@ -39,6 +43,36 @@ export function extractSkEdges(shapeIds: string[], allShapes: any[]): SkEdge[] {
       if (shape.closed && pts.length >= 3) {
         edges.push({ p1: pts[pts.length - 1], p2: pts[0], bulge: shapeBulges[pts.length - 1] ?? 0 });
       }
+    } else if (shape.type === 'rectangle') {
+      // Rectangle: extract 4 edges from corner points
+      // RectangleShape has x, y, width, height (or point1/point2 depending on creation mode)
+      let x1: number, y1: number, x2: number, y2: number;
+      if (shape.x !== undefined && shape.width !== undefined) {
+        x1 = shape.x; y1 = shape.y; x2 = shape.x + shape.width; y2 = shape.y + shape.height;
+      } else if (shape.point1 && shape.point2) {
+        x1 = Math.min(shape.point1.x, shape.point2.x);
+        y1 = Math.min(shape.point1.y, shape.point2.y);
+        x2 = Math.max(shape.point1.x, shape.point2.x);
+        y2 = Math.max(shape.point1.y, shape.point2.y);
+      } else if (shape.start && shape.end) {
+        x1 = Math.min(shape.start.x, shape.end.x);
+        y1 = Math.min(shape.start.y, shape.end.y);
+        x2 = Math.max(shape.start.x, shape.end.x);
+        y2 = Math.max(shape.start.y, shape.end.y);
+      } else {
+        console.warn(`[Sketch] Rectangle shape ${shape.id} has unknown corner format, skipping`);
+        continue;
+      }
+      const tl = { x: x1, y: y1 };
+      const tr = { x: x2, y: y1 };
+      const br = { x: x2, y: y2 };
+      const bl = { x: x1, y: y2 };
+      edges.push({ p1: tl, p2: tr });
+      edges.push({ p1: tr, p2: br });
+      edges.push({ p1: br, p2: bl });
+      edges.push({ p1: bl, p2: tl });
+    } else {
+      console.warn(`[Sketch] Unhandled shape type "${shape.type}" for shape ${shape.id} — skipping`);
     }
   }
   return edges;
@@ -81,9 +115,9 @@ export function chainSkEdges(edges: SkEdge[], tol: number): { points: SkPt[]; bu
     return { points: pts, bulges };
   }
 
-  // Fallback: if the gap is small enough (< 100mm), force-close by snapping last point to first
+  // Fallback: if the gap is small enough (< 200mm) AND we have >= 3 edges, force-close
   const gap = Math.sqrt(dist2(pts[0], pts[pts.length - 1]));
-  const FORCE_CLOSE_THRESHOLD = 100; // mm
+  const FORCE_CLOSE_THRESHOLD = 200; // mm — aggressive force-close for visually-closed boundaries
   if (gap < FORCE_CLOSE_THRESHOLD && pts.length >= 3) {
     console.info(`[Sketch] Force-closing boundary: gap=${gap.toFixed(1)}mm (< ${FORCE_CLOSE_THRESHOLD}mm threshold)`);
     // Replace last point with first point to close cleanly
@@ -95,7 +129,7 @@ export function chainSkEdges(edges: SkEdge[], tol: number): { points: SkPt[]; bu
   return null;
 }
 
-const SKETCH_TOL = 20; // tolerance in mm for endpoint matching
+const SKETCH_TOL = 50; // tolerance in mm for endpoint matching
 
 /**
  * Extract ALL separate closed loops from a set of edges.
@@ -152,7 +186,7 @@ function extractAllLoops(edges: SkEdge[], tol: number): Array<{ points: SkPt[]; 
       const dx = pts[0].x - pts[pts.length - 1].x;
       const dy = pts[0].y - pts[pts.length - 1].y;
       const gap = Math.sqrt(dx * dx + dy * dy);
-      if (gap < 100) {
+      if (gap < 200) {
         pts[pts.length - 1] = { ...pts[0] };
         pts.pop();
         loops.push({ points: pts, bulges });
