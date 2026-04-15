@@ -157,7 +157,7 @@ function renderPilePreview(
 ) {
   ctx.clearRect(0, 0, w, h);
 
-  ctx.strokeStyle = '#cccccc';
+  ctx.strokeStyle = '#aaaaaa';
   ctx.lineWidth = 1;
   const isRound = shape === 'round' || shape === 'circle' || shape === 'bored';
   if (isRound) {
@@ -817,9 +817,11 @@ function buildHatchOptions(
       renderPreview: (ctx, w, h) => {
         // Reuse the HatchTypePreview drawing logic inline
         ctx.clearRect(0, 0, w, h);
-        const bg = capturedFrt.backgroundColor ?? '#1e1e2e';
-        ctx.fillStyle = bg;
-        ctx.fillRect(0, 0, w, h);
+        // Only fill background if explicitly set (not transparent)
+        if (capturedFrt.backgroundColor) {
+          ctx.fillStyle = capturedFrt.backgroundColor;
+          ctx.fillRect(0, 0, w, h);
+        }
         const pattern = resolvePatternForType(capturedFrt, getPatternById);
         const color = capturedFrt.fgColor;
         if (pattern.id === 'solid' || !('lineFamilies' in pattern) || pattern.lineFamilies.length === 0) {
