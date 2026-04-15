@@ -41,6 +41,7 @@ import {
 import type { UITheme } from '../../../state/slices/snapSlice';
 import { UI_THEMES } from '../../../state/slices/snapSlice';
 import { useAppStore } from '../../../state/appStore';
+import { finishSketch, cancelSketch } from '../../../engine/geometry/SketchUtils';
 import {
   LineIcon,
   ArcIcon,
@@ -197,6 +198,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     setFindReplaceDialogOpen,
     editorMode,
     setPatternManagerOpen,
+    setRegionTypeManagerOpen,
     setTextStyleManagerOpen,
 
     // Theme
@@ -365,157 +367,13 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     .sort((a, b) => a.order - b.order)
     .map((t) => ({ id: t.id as RibbonTab, label: t.label, render: t.render }));
 
-  // Sketch tab handlers (inline so they can call setActiveTab)
-
-  /** Helper: extract edges from sketch shapes */
-  type SkPt = { x: number; y: number };
-  interface SkEdge { p1: SkPt; p2: SkPt; bulge?: number; }
-
-  const extractSkEdges = useCallback((shapeIds: string[], allShapes: any[]): SkEdge[] => {
-    const sketchShapes = allShapes.filter((sh: any) => shapeIds.includes(sh.id));
-    const edges: SkEdge[] = [];
-    for (const shape of sketchShapes) {
-      if (shape.type === 'line') {
-        edges.push({ p1: shape.start, p2: shape.end });
-      } else if (shape.type === 'arc') {
-        const { center, radius, startAngle, endAngle } = shape;
-        const p1 = { x: center.x + radius * Math.cos(startAngle), y: center.y + radius * Math.sin(startAngle) };
-        const p2 = { x: center.x + radius * Math.cos(endAngle), y: center.y + radius * Math.sin(endAngle) };
-        let theta = endAngle - startAngle;
-        while (theta > Math.PI * 2) theta -= Math.PI * 2;
-        while (theta < -Math.PI * 2) theta += Math.PI * 2;
-        edges.push({ p1, p2, bulge: Math.tan(theta / 4) });
-      }
-    }
-    return edges;
-  }, []);
-
-  /** Helper: chain edges into a closed loop. Returns null if not closed. */
-  const chainSkEdges = useCallback((edges: SkEdge[], tol: number): { points: SkPt[]; bulges: number[] } | null => {
-    if (edges.length === 0) return null;
-    const ptClose = (a: SkPt, b: SkPt) => { const dx = a.x - b.x; const dy = a.y - b.y; return dx * dx + dy * dy <= tol * tol; };
-    const used = new Array(edges.length).fill(false);
-    const pts: SkPt[] = [];
-    const bulges: number[] = [];
-    used[0] = true;
-    pts.push({ ...edges[0].p1 }, { ...edges[0].p2 });
-    bulges.push(edges[0].bulge ?? 0);
-    let attached = 0;
-    while (attached < edges.length - 1) {
-      const last = pts[pts.length - 1];
-      let found = false;
-      for (let i = 0; i < edges.length; i++) {
-        if (used[i]) continue;
-        if (ptClose(last, edges[i].p1)) {
-          pts.push({ ...edges[i].p2 }); bulges.push(edges[i].bulge ?? 0); used[i] = true; found = true; attached++; break;
-        } else if (ptClose(last, edges[i].p2)) {
-          pts.push({ ...edges[i].p1 }); bulges.push(-(edges[i].bulge ?? 0)); used[i] = true; found = true; attached++; break;
-        }
-      }
-      if (!found) break;
-    }
-    if (!ptClose(pts[0], pts[pts.length - 1])) return null;
-    pts.pop();
-    if (pts.length < 3) return null;
-    return { points: pts, bulges };
-  }, []);
-
+  // Sketch tab handlers
   const handleSketchFinish = useCallback(() => {
-    const s = useAppStore.getState();
-    const outerIds = s.sketchShapeIds;
-    if (outerIds.length < 3) return;
-
-    const SKETCH_TOL = 5;
-
-    // Chain outer boundary
-    const outerEdges = extractSkEdges(outerIds, s.shapes);
-    const outerLoop = chainSkEdges(outerEdges, SKETCH_TOL);
-    if (!outerLoop) {
-      alert('Cannot finish: the outer boundary is not a closed loop. Make sure all segments connect end-to-end.');
-      return;
-    }
-
-    // Chain inner loops
-    const innerLoops: SkPt[][] = [];
-    for (const innerIds of s.sketchInnerLoopShapeIds) {
-      if (innerIds.length >= 3) {
-        const innerEdges = extractSkEdges(innerIds, s.shapes);
-        const innerLoop = chainSkEdges(innerEdges, SKETCH_TOL);
-        if (innerLoop) {
-          innerLoops.push(innerLoop.points);
-        }
-      }
-    }
-
-    const hasBulge = outerLoop.bulges.some((b) => b !== 0);
-    const frtId = s.selectedFilledRegionTypeId;
-    const frt = frtId ? (s as any).filledRegionTypes?.find((t: any) => t.id === frtId) : undefined;
-
-    const editingHatchId = s.editingHatchId;
-
-    if (editingHatchId) {
-      // Update existing hatch
-      s.updateShape(editingHatchId, {
-        visible: true,
-        points: outerLoop.points,
-        bulge: hasBulge ? outerLoop.bulges : undefined,
-        innerLoops: innerLoops.length > 0 ? innerLoops : undefined,
-      } as any);
-    } else {
-      // Create new hatch
-      s.addShape({
-        id: `hatch_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
-        type: 'hatch',
-        layerId: s.activeLayerId,
-        drawingId: s.activeDrawingId,
-        style: { ...s.currentStyle },
-        visible: true,
-        locked: false,
-        points: outerLoop.points,
-        bulge: hasBulge ? outerLoop.bulges : undefined,
-        innerLoops: innerLoops.length > 0 ? innerLoops : undefined,
-        patternType: frt ? frt.fgPatternType : s.hatchPatternType,
-        patternAngle: frt ? frt.fgPatternAngle : s.hatchPatternAngle,
-        patternScale: frt ? frt.fgPatternScale : s.hatchPatternScale,
-        fillColor: frt ? frt.fgColor : s.hatchFillColor,
-        backgroundColor: frt?.backgroundColor ?? s.hatchBackgroundColor ?? undefined,
-        customPatternId: frt?.fgCustomPatternId ?? s.hatchCustomPatternId ?? undefined,
-        bgPatternType: frt ? frt.bgPatternType : undefined,
-        bgPatternAngle: frt ? frt.bgPatternAngle : undefined,
-        bgPatternScale: frt ? frt.bgPatternScale : undefined,
-        bgFillColor: frt ? frt.bgColor : undefined,
-        bgCustomPatternId: frt ? frt.bgCustomPatternId : undefined,
-        masking: frt ? frt.masking : undefined,
-        filledRegionTypeId: frt?.id,
-      } as any);
-    }
-
-    // Delete all sketch shapes (outer + all inner loops)
-    const allSketchIds = [
-      ...outerIds,
-      ...s.sketchInnerLoopShapeIds.flat(),
-    ];
-    s.deleteShapes(allSketchIds);
-    s.clearSketchShapeIds();
-    s.clearSketchInnerLoops();
-    s.finishFilledRegion();
-  }, [extractSkEdges, chainSkEdges]);
+    finishSketch();
+  }, []);
 
   const handleSketchCancel = useCallback(() => {
-    const s = useAppStore.getState();
-    const outerIds = s.sketchShapeIds;
-    const innerIds = s.sketchInnerLoopShapeIds.flat();
-    const allIds = [...outerIds, ...innerIds];
-    if (allIds.length > 0) s.deleteShapes(allIds);
-
-    // If editing an existing hatch, restore its visibility
-    if (s.editingHatchId) {
-      s.updateShape(s.editingHatchId, { visible: true } as any);
-    }
-
-    s.clearSketchShapeIds();
-    s.clearSketchInnerLoops();
-    s.cancelFilledRegionMode();
+    cancelSketch();
   }, []);
 
   const handleAddInnerLoop = useCallback(() => {
@@ -1051,6 +909,13 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 onClick={() => setPatternManagerOpen(true)}
                 disabled={isSheetMode}
                 tooltip="Manage hatch patterns"
+              />
+              <RibbonButton
+                icon={<FilledRegionIcon size={24} />}
+                label="Filled Region Types"
+                onClick={() => setRegionTypeManagerOpen(true)}
+                disabled={isSheetMode}
+                tooltip="Manage filled region types"
               />
               <RibbonButton
                 icon={<DetailComponentIcon size={24} />}

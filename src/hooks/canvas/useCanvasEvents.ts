@@ -36,6 +36,7 @@ import { useAecCanvasTools } from './useAecCanvasTools';
 import { showImportImageDialog } from '../../services/file/fileService';
 import { importImage } from '../../services/file/imageImportService';
 import type { ImageShape } from '../../types/geometry';
+import { enterHatchEditMode } from '../../engine/geometry/SketchUtils';
 
 export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
   // Compose specialized hooks
@@ -1464,6 +1465,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
             textDrawing.handleTextDoubleClick(linkedLabel.id);
             return;
           }
+        }
+        // Double-click on a hatch: enter sketch edit mode
+        if (shape && shape.type === 'hatch') {
+          enterHatchEditMode(shape.id);
+          return;
         }
       }
     },
