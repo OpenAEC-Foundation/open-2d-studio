@@ -2166,6 +2166,16 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
           {/* Type is in the TypeSelector at top — only instance properties here */}
           <PropertyGroup label="Instance">
             <NumberField label="Thickness (mm)" value={dl.thickness} onChange={(v) => update({ thickness: v })} step={5} min={1} />
+            <SelectField<'center' | 'left' | 'right'>
+              label="Justification"
+              value={dl.justification ?? 'center'}
+              options={[
+                { value: 'center', label: 'Center' },
+                { value: 'left', label: 'Left' },
+                { value: 'right', label: 'Right' },
+              ]}
+              onChange={(v) => update({ justification: v })}
+            />
           </PropertyGroup>
         </>
       );

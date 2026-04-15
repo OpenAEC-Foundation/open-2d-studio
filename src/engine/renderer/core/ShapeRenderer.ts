@@ -2416,7 +2416,7 @@ export class ShapeRenderer extends BaseRenderer {
       if (!(shape.type === 'arc' && i === 3) && !(shape.type === 'image' && i !== 8)) {
         // For line/beam midpoint (index 2), align axes along/perpendicular to the shape
         let angle = 0;
-        if (i === 2 && (shape.type === 'line' || shape.type === 'beam' || shape.type === 'gridline' || shape.type === 'wall')) {
+        if (i === 2 && (shape.type === 'line' || shape.type === 'beam' || shape.type === 'gridline' || shape.type === 'wall' || shape.type === 'detail-line')) {
           angle = Math.atan2(shape.end.y - shape.start.y, shape.end.x - shape.start.x);
         }
         // Determine which axis is hovered for highlighting
@@ -2836,6 +2836,14 @@ export class ShapeRenderer extends BaseRenderer {
           toWorld(w / 2, h),
           toWorld(0, h / 2),
           toWorld(w / 2, h / 2),
+        ];
+      }
+      case 'detail-line': {
+        const dl = shape as import('../../../types/geometry').DetailLineShape;
+        return [
+          dl.start,
+          dl.end,
+          { x: (dl.start.x + dl.end.x) / 2, y: (dl.start.y + dl.end.y) / 2 },
         ];
       }
       case 'dimension': {
