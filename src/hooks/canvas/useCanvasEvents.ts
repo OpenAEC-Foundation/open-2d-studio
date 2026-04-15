@@ -31,6 +31,7 @@ import { useAnnotationEditing } from '../editing/useAnnotationEditing';
 import { useTitleBlockEditing } from '../editing/useTitleBlockEditing';
 import { useGripEditing } from '../editing/useGripEditing';
 import { useModifyTools } from '../editing/useModifyTools';
+import { useSplitTool } from '../editing/useSplitTool';
 import { useLeaderDrawing } from '../drawing/useLeaderDrawing';
 import { useAecCanvasTools } from './useAecCanvasTools';
 import { showImportImageDialog } from '../../services/file/fileService';
@@ -51,6 +52,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
   const titleBlockEditing = useTitleBlockEditing();
   const gripEditing = useGripEditing();
   const modifyTools = useModifyTools();
+  const splitTool = useSplitTool();
   const leaderDrawing = useLeaderDrawing();
   const aecTools = useAecCanvasTools();
 
@@ -269,7 +271,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Drawing mode: grip (handle) dragging on selected shapes
       // Skip grip editing when a modify tool or a drawing tool with pending state is active —
       // clicks should go to the tool handler, not start a grip drag
-      const modifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'trim-walls'].includes(activeTool);
+      const modifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'split', 'trim-walls'].includes(activeTool);
       const drawingTools = [...aecTools.getToolNames(), ...drawingToolRegistry.getToolNames()];
       const isDrawingToolActive = drawingTools.includes(activeTool) || !!pendingSection;
       const drawingToolWithPending = isDrawingToolActive && !!(
@@ -848,6 +850,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
           // Pan tool doesn't use click
           break;
 
+        case 'split': {
+          splitTool.handleSplitClick(worldPos, findShapeAtPoint);
+          break;
+        }
+
         case 'move':
         case 'copy':
         case 'copy2':
@@ -892,6 +899,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       selectShape,
       deselectAll,
       modifyTools,
+      splitTool,
       aecTools,
       leaderDrawing,
       modifyOrtho,
@@ -1045,7 +1053,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Modify tools - update preview
-      const isModifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'trim-walls'].includes(activeTool);
+      const isModifyToolActive = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'split', 'trim-walls'].includes(activeTool);
       if (isModifyToolActive && editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
 
@@ -1063,8 +1071,8 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         const modifyPos = (modifyOrtho && basePoint) ? snapToAngle(basePoint, snapResult.point) : snapResult.point;
         modifyTools.updateModifyPreview(modifyPos);
 
-        // Hover highlight for trim/extend/fillet/offset
-        if (['extend', 'fillet', 'chamfer', 'offset'].includes(activeTool)) {
+        // Hover highlight for trim/extend/fillet/offset/split
+        if (['extend', 'fillet', 'chamfer', 'offset', 'split'].includes(activeTool)) {
           const hoveredShape = findShapeAtPoint(worldPos);
           setHoveredShapeId(hoveredShape);
         } else {
@@ -1330,9 +1338,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Modify tools: right-click finishes / cancels
-      const modifyToolsList = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'trim-walls'];
+      const modifyToolsList = ['move', 'copy', 'copy2', 'rotate', 'scale', 'mirror', 'array', 'trim', 'extend', 'fillet', 'chamfer', 'offset', 'elastic', 'split', 'trim-walls'];
       if (modifyToolsList.includes(activeTool)) {
-        modifyTools.finishModify();
+        if (activeTool !== 'split') {
+          modifyTools.finishModify();
+        }
         setActiveTool('select');
         snapDetection.clearTracking();
         return;

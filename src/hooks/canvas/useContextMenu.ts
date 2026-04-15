@@ -64,6 +64,7 @@ const TOOL_DISPLAY_NAMES: Record<ToolType, string> = {
   'spot-coordinate': 'Spot Coordinate',
   'rebar': 'Rebar',
   'align': 'Align',
+  'split': 'Split',
   'trim-walls': 'Wall/Beam/Duct Join',
   'sheet-text': 'Sheet Text',
   'sheet-leader': 'Sheet Leader',

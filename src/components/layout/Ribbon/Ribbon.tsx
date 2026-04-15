@@ -778,8 +778,10 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   <RibbonSmallButton
                     icon={<SplitIcon size={14} />}
                     label="Split"
-                    onClick={() => {}}
-                    disabled={true}
+                    onClick={() => switchToolAndCancelCommand('split')}
+                    active={activeTool === 'split'}
+                    disabled={isSheetMode}
+                    shortcut="SP"
                   />
                   <RibbonSmallButton
                     icon={<BreakIcon size={14} />}

@@ -6,7 +6,6 @@ import type {
   BeamShape, BeamMaterial, BeamJustification, BeamViewMode,
   ColumnShape, ColumnMaterial,
   LeaderArrowType, LeaderAttachment, LeaderConfig,
-  TextCase,
   GridlineShape, GridlineBubblePosition,
   LevelShape, PuntniveauShape,
   WallShape, WallOpeningShape, WallJustification, WallEndCap,

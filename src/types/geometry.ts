@@ -1423,6 +1423,7 @@ export type ToolType =
   | 'array'
   | 'elastic'
   | 'align'
+  | 'split'
   | 'trim-walls'
   // Sheet annotation tools
   | 'sheet-text'
