@@ -20,7 +20,7 @@ import type {
 } from '../../../types/geometry';
 import { REBAR_DIAMETERS } from '../../../types/geometry';
 import type { ParametricShape, ProfileParametricShape, ProfileType, ParameterValues } from '../../../types/parametric';
-import type { DimensionShape, DimensionArrowType, DimensionTextPlacement } from '../../../types/dimension';
+import type { DimensionShape } from '../../../types/dimension';
 import { PROFILE_TEMPLATES } from '../../../services/parametric/profileTemplates';
 import { getPresetById } from '../../../services/parametric/profileLibrary';
 import { SectionDialog } from '../../dialogs/SectionDialog/SectionDialog';
@@ -1007,19 +1007,16 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
 
     case 'dimension': {
       const dim = shape as DimensionShape;
-      const updateDimStyle = (styleUpdates: Partial<typeof dim.dimensionStyle>) => {
-        update({ dimensionStyle: { ...dim.dimensionStyle, ...styleUpdates } });
-      };
 
       return (
         <>
-          <PropertyGroup label="Style">
+          <PropertyGroup label="Dimension Type">
             <DimensionStyleSelector
               currentStyleName={dim.dimensionStyleName}
               onApplyStyle={(name, style) => update({ dimensionStyleName: name || undefined, dimensionStyle: { ...style } })}
             />
           </PropertyGroup>
-          <PropertyGroup label="Properties">
+          <PropertyGroup label="Instance">
             <div className="text-xs text-cad-text-dim mb-2">
               Type: {dim.dimensionType.charAt(0).toUpperCase() + dim.dimensionType.slice(1)}
             </div>
@@ -1030,61 +1027,6 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
             <TextField label="Prefix" value={dim.prefix || ''} onChange={(v) => update({ prefix: v || undefined })} />
             <TextField label="Suffix" value={dim.suffix || ''} onChange={(v) => update({ suffix: v || undefined })} />
             <NumberField label="Offset Distance" value={dim.dimensionLineOffset} onChange={(v) => update({ dimensionLineOffset: v })} step={1} />
-
-            <SelectField<DimensionArrowType>
-              label="Arrow Type"
-              value={dim.dimensionStyle.arrowType}
-              options={[
-                { value: 'tick', label: 'Tick Mark' },
-                { value: 'filled', label: 'Filled Arrow' },
-                { value: 'open', label: 'Open Arrow' },
-                { value: 'dot', label: 'Dot' },
-                { value: 'none', label: 'None' },
-              ]}
-              onChange={(v) => updateDimStyle({ arrowType: v })}
-            />
-            <NumberField label="Arrow Size" value={dim.dimensionStyle.arrowSize} onChange={(v) => updateDimStyle({ arrowSize: v })} step={0.5} min={0.5} />
-            <NumberField label="Text Height" value={dim.dimensionStyle.textHeight} onChange={(v) => updateDimStyle({ textHeight: v })} step={0.5} min={1} />
-
-            <SelectField<DimensionTextPlacement>
-              label="Text Placement"
-              value={dim.dimensionStyle.textPlacement}
-              options={[
-                { value: 'centered', label: 'Centered (break line)' },
-                { value: 'above', label: 'Above Line' },
-                { value: 'below', label: 'Below Line' },
-              ]}
-              onChange={(v) => updateDimStyle({ textPlacement: v })}
-            />
-
-            <NumberField label="Precision" value={dim.dimensionStyle.precision} onChange={(v) => updateDimStyle({ precision: Math.round(v) })} step={1} min={0} max={6} />
-            <NumberField label="Extension Gap" value={dim.dimensionStyle.extensionLineGap} onChange={(v) => updateDimStyle({ extensionLineGap: v })} step={0.5} min={0} />
-            <NumberField label="Extension Overshoot" value={dim.dimensionStyle.extensionLineOvershoot} onChange={(v) => updateDimStyle({ extensionLineOvershoot: v })} step={0.5} min={0} />
-
-            <div className="mb-2">
-              <label className={labelClass}>Line Color</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={dim.dimensionStyle.lineColor}
-                  onChange={(e) => updateDimStyle({ lineColor: e.target.value })}
-                  className="w-8 h-8 rounded border border-cad-border cursor-pointer" />
-                <input type="text" value={dim.dimensionStyle.lineColor}
-                  onChange={(e) => updateDimStyle({ lineColor: e.target.value })}
-                  className="flex-1 bg-cad-bg border border-cad-border rounded px-2 py-1 text-xs text-cad-text font-mono" />
-              </div>
-            </div>
-
-            <div className="mb-2">
-              <label className={labelClass}>Text Color</label>
-              <div className="flex items-center gap-2">
-                <input type="color" value={dim.dimensionStyle.textColor}
-                  onChange={(e) => updateDimStyle({ textColor: e.target.value })}
-                  className="w-8 h-8 rounded border border-cad-border cursor-pointer" />
-                <input type="text" value={dim.dimensionStyle.textColor}
-                  onChange={(e) => updateDimStyle({ textColor: e.target.value })}
-                  className="flex-1 bg-cad-bg border border-cad-border rounded px-2 py-1 text-xs text-cad-text font-mono" />
-              </div>
-            </div>
-
             {dim.textOffset && (
               <button
                 onClick={() => update({ textOffset: undefined })}
