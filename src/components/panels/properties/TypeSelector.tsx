@@ -7,7 +7,7 @@
  * WallType for walls, PileTypeDefinition for piles, TextStyle for text, etc.).
  */
 
-import { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useRef, useState, useCallback } from 'react';
 import {
   Minus,
   Pentagon,
@@ -650,14 +650,17 @@ function TypeDropdownItem({
   selected,
   onClick,
   onEdit,
+  itemRef,
 }: {
   option: TypeOption;
   selected: boolean;
   onClick: () => void;
   onEdit?: () => void;
+  itemRef?: React.Ref<HTMLDivElement>;
 }) {
   return (
     <div
+      ref={itemRef}
       className={`flex items-center gap-2 px-2 py-1.5 cursor-pointer hover:bg-cad-hover ${
         selected ? 'bg-cad-accent/20' : ''
       }`}
@@ -692,6 +695,13 @@ function TypeDropdown({ options, value, onChange, placeholder, onEditOption }: T
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const selectedRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (open && selectedRef.current) {
+      selectedRef.current.scrollIntoView({ block: 'nearest' });
+    }
+  }, [open]);
 
   const currentOption = options.find(o => o.id === value);
 
@@ -736,7 +746,7 @@ function TypeDropdown({ options, value, onChange, placeholder, onEditOption }: T
 
       {/* Dropdown list with search */}
       {open && (
-        <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-cad-surface border border-cad-border rounded shadow-lg max-h-64 flex flex-col">
+        <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-cad-surface border border-cad-border rounded shadow-lg max-h-[50vh] flex flex-col">
           {/* Search input */}
           {options.length > 5 && (
             <div className="p-1.5 border-b border-cad-border">
@@ -761,6 +771,7 @@ function TypeDropdown({ options, value, onChange, placeholder, onEditOption }: T
                 key={option.id}
                 option={option}
                 selected={option.id === value}
+                itemRef={option.id === value ? selectedRef : undefined}
                 onClick={() => {
                   onChange(option.id);
                   setOpen(false);
