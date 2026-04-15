@@ -1690,6 +1690,17 @@ export function useGripEditing() {
               initialRotationAngle,
               rotationCenter,
             };
+
+            // Expose dimension grip state so DynamicInput can show a distance field
+            if (shape.type === 'dimension' && i >= 2) {
+              useAppStore.setState((s) => {
+                s.activeDimensionGripEdit = {
+                  shapeId,
+                  gripIndex: i,
+                  originalShape: JSON.parse(JSON.stringify(shape)) as import('../../types/dimension').DimensionShape,
+                };
+              });
+            }
           }
           return true;
         }
@@ -2223,6 +2234,8 @@ export function useGripEditing() {
     setActiveRotation(null);
     // Clear gizmo rotation input state
     useAppStore.setState((s) => { s.activeGizmoRotation = null; });
+    // Clear dimension grip edit input state
+    useAppStore.setState((s) => { s.activeDimensionGripEdit = null; });
 
     // Check parametric shape drag first
     const parametricDrag = parametricDragRef.current;

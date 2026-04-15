@@ -147,6 +147,14 @@ export interface ToolState {
     center: Point;
     originalShape: import('../../types/geometry').Shape;
   } | null;
+
+  // Dimension grip edit state
+  // Set when the user starts dragging a dimension point grip so DynamicInput can show a distance field.
+  activeDimensionGripEdit: {
+    shapeId: string;
+    gripIndex: number; // 2 or 3 = witness line grips; 4+ = reference points
+    originalShape: import('../../types/dimension').DimensionShape;
+  } | null;
 }
 
 // ============================================================================
@@ -273,6 +281,9 @@ export interface ToolActions {
 
   // Rotation gizmo numeric input
   setActiveGizmoRotation: (state: ToolState['activeGizmoRotation']) => void;
+
+  // Dimension grip edit
+  setActiveDimensionGripEdit: (state: ToolState['activeDimensionGripEdit']) => void;
 }
 
 export type ToolSlice = ToolState & ToolActions;
@@ -409,6 +420,9 @@ export const initialToolState: ToolState = {
 
   // Rotation gizmo numeric input
   activeGizmoRotation: null,
+
+  // Dimension grip edit
+  activeDimensionGripEdit: null,
 };
 
 // ============================================================================
@@ -996,5 +1010,11 @@ export const createToolSlice = (
   setActiveGizmoRotation: (rotState) =>
     set((state) => {
       state.activeGizmoRotation = rotState;
+    }),
+
+  // Dimension grip edit
+  setActiveDimensionGripEdit: (editState) =>
+    set((state) => {
+      state.activeDimensionGripEdit = editState;
     }),
 });

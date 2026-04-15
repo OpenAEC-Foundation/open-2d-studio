@@ -16,6 +16,8 @@ import {
   getNextGridlineLabel,
   getNextIncrementedLabel,
 } from '../../../utils/gridlineUtils';
+import { calculateDimensionValue, formatDimensionValue } from '../../../engine/geometry/DimensionUtils';
+import type { DimensionShape } from '../../../types/dimension';
 
 /**
  * Snap an angle (in radians) to the nearest 45-degree increment.
@@ -79,6 +81,9 @@ export function DynamicInput() {
     // Rotation gizmo numeric input
     activeGizmoRotation,
     setActiveGizmoRotation,
+    // Dimension grip edit
+    activeDimensionGripEdit,
+    setActiveDimensionGripEdit,
   } = useAppStore();
 
   const [focusedField, setFocusedField] = useState<0 | 1 | -1>(-1); // -1 = none, 0 = field1, 1 = field2
@@ -102,6 +107,9 @@ export function DynamicInput() {
   // Rotation gizmo mode: active when the user drags the rotation gizmo handle
   const isGizmoRotateMode = !!activeGizmoRotation;
 
+  // Dimension grip edit mode: active when user is dragging a dimension measurement point
+  const isDimensionGripMode = !!activeDimensionGripEdit;
+
   // Structural tools: wall, gridline, beam - active when pending state is set and first point is placed
   const isStructuralMode =
     (activeTool === 'wall' && !!pendingWall && drawingPoints.length >= 1) ||
@@ -109,7 +117,7 @@ export function DynamicInput() {
     (activeTool === 'beam' && !!pendingBeam && drawingPoints.length >= 1);
 
   // Only show when enabled and drawing with supported tools OR during move/copy/rotate with points set
-  const showDynamicInput = dynamicInputEnabled && (isDrawingMode || isModifyMode || isRotateMode || isStructuralMode || isArrayMode || isGizmoRotateMode);
+  const showDynamicInput = dynamicInputEnabled && (isDrawingMode || isModifyMode || isRotateMode || isStructuralMode || isArrayMode || isGizmoRotateMode || isDimensionGripMode);
 
   // Reset when drawing ends or tool changes
   useEffect(() => {
@@ -375,6 +383,73 @@ export function DynamicInput() {
     setFocusedField(-1);
     setField1Text('');
   }, [activeGizmoRotation, setActiveGizmoRotation]);
+
+  // Execute dimension grip entry: set an exact measurement distance by moving the reference point
+  // The typed value is converted to drawing units and applied to the dimension's measurement points.
+  const executeDimensionGripEntry = useCallback((targetDistance: number) => {
+    if (!activeDimensionGripEdit) return;
+    const { shapeId, gripIndex, originalShape } = activeDimensionGripEdit;
+    const state = useAppStore.getState();
+    const shape = state.shapes.find(s => s.id === shapeId) as DimensionShape | undefined;
+    if (!shape || shape.type !== 'dimension') return;
+
+    // Only handle aligned/linear dimensions with reference-point grips (4+) or witness grips (2/3)
+    if (shape.dimensionType !== 'aligned' && shape.dimensionType !== 'linear') return;
+    if (shape.points.length < 2) return;
+
+    const newPoints = [...shape.points];
+
+    // Grip 2 = move points[0], Grip 3 = move points[1], Grip 4+ = move points[gripIndex-4]
+    let pointIndex: number;
+    if (gripIndex === 2) pointIndex = 0;
+    else if (gripIndex === 3) pointIndex = 1;
+    else if (gripIndex >= 4) pointIndex = gripIndex - 4;
+    else return; // grips 0 and 1 are text/offset grips, not measurement points
+
+    const fixedPointIndex = pointIndex === 0 ? 1 : 0;
+    const fixedPoint = newPoints[fixedPointIndex];
+    const movingPoint = originalShape.points[pointIndex];
+
+    // Determine direction: from fixed point toward original moving point
+    const dx = movingPoint.x - fixedPoint.x;
+    const dy = movingPoint.y - fixedPoint.y;
+    const currentDist = Math.sqrt(dx * dx + dy * dy);
+
+    if (currentDist < 0.001) return; // Points are coincident — can't determine direction
+
+    // For linear dimensions, constrain to horizontal or vertical
+    let newPoint: { x: number; y: number };
+    if (shape.linearDirection === 'horizontal') {
+      // Horizontal: only X matters; preserve sign of dx
+      const sign = dx >= 0 ? 1 : -1;
+      newPoint = { x: fixedPoint.x + sign * targetDistance, y: movingPoint.y };
+    } else if (shape.linearDirection === 'vertical') {
+      // Vertical: only Y matters; preserve sign of dy
+      const sign = dy >= 0 ? 1 : -1;
+      newPoint = { x: movingPoint.x, y: fixedPoint.y + sign * targetDistance };
+    } else {
+      // Aligned: move along direction from fixed to moving point
+      const unitX = dx / currentDist;
+      const unitY = dy / currentDist;
+      newPoint = {
+        x: fixedPoint.x + unitX * targetDistance,
+        y: fixedPoint.y + unitY * targetDistance,
+      };
+    }
+
+    newPoints[pointIndex] = newPoint;
+
+    // Recalculate dimension text value
+    const newValue = calculateDimensionValue(newPoints, shape.dimensionType, shape.linearDirection);
+    const formattedValue = formatDimensionValue(newValue, shape.dimensionType, shape.dimensionStyle.precision, state.unitSettings);
+
+    state.updateShapes([{ id: shapeId, updates: { points: newPoints, value: formattedValue, valueOverridden: false } }]);
+
+    // Clear dimension grip state
+    setActiveDimensionGripEdit(null);
+    setFocusedField(-1);
+    setField1Text('');
+  }, [activeDimensionGripEdit, setActiveDimensionGripEdit]);
 
   // Execute direct distance entry for line/polyline drawing
   // Places a point at the typed distance in the current tracking direction (or mouse direction)
@@ -778,6 +853,17 @@ export function DynamicInput() {
   // Apply values and notify store
   // shiftKey indicates whether Shift was held when Enter was pressed (for ortho snapping)
   const applyValues = useCallback((shiftKey: boolean = false) => {
+    // Dimension grip edit: type an exact measurement distance
+    if (isDimensionGripMode) {
+      const v1 = field1Text !== '' ? evaluateExpression(field1Text) : null;
+      if (v1 !== null && v1 > 0) {
+        executeDimensionGripEntry(v1);
+      }
+      setFocusedField(-1);
+      setField1Text('');
+      return;
+    }
+
     // Rotation gizmo: type an exact angle in degrees
     if (isGizmoRotateMode) {
       const v1 = field1Text !== '' ? evaluateExpression(field1Text) : null;
@@ -948,7 +1034,7 @@ export function DynamicInput() {
     }
 
     setFocusedField(-1);
-  }, [isGizmoRotateMode, isRotateMode, isModifyMode, isArrayMode, field1Text, field2Text, activeTool, drawingPoints, setLockedDistance, setLockedAngle, setArrayCount, executeGizmoRotateWithAngle, executeModifyWithDistance, executeRotateWithAngle, executeDirectDistanceEntry, executeStructuralDistanceEntry, executeRectangleEntry, executeCircleEntry, executeEllipseEntry]);
+  }, [isDimensionGripMode, isGizmoRotateMode, isRotateMode, isModifyMode, isArrayMode, field1Text, field2Text, activeTool, drawingPoints, setLockedDistance, setLockedAngle, setArrayCount, executeDimensionGripEntry, executeGizmoRotateWithAngle, executeModifyWithDistance, executeRotateWithAngle, executeDirectDistanceEntry, executeStructuralDistanceEntry, executeRectangleEntry, executeCircleEntry, executeEllipseEntry]);
 
   // Global keyboard handler for Tab, Enter, and numeric input
   useEffect(() => {
@@ -961,8 +1047,8 @@ export function DynamicInput() {
         if (focusedField === -1) {
           setFocusedField(0);
         } else if (focusedField === 0) {
-          if (isGizmoRotateMode || isModifyMode || isRotateMode) {
-            // For gizmo/modify/rotate tools, Tab applies the value
+          if (isDimensionGripMode || isGizmoRotateMode || isModifyMode || isRotateMode) {
+            // For dimension grip/gizmo/modify/rotate tools, Tab applies the value
             applyValues(e.shiftKey);
             return;
           }
@@ -1014,18 +1100,18 @@ export function DynamicInput() {
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showDynamicInput, focusedField, field1Text, field2Text, activeTool, applyValues, setLockedDistance, setLockedAngle]);
+  }, [showDynamicInput, focusedField, field1Text, field2Text, activeTool, isDimensionGripMode, applyValues, setLockedDistance, setLockedAngle]);
 
   if (!showDynamicInput) return null;
 
-  const config = TOOL_FIELDS[activeTool] ?? (isGizmoRotateMode ? { field1Label: 'Angle', field2Label: '' } : isRotateMode ? { field1Label: 'Angle', field2Label: '' } : isModifyMode ? { field1Label: 'Distance', field2Label: '' } : isArrayMode ? { field1Label: 'Count', field2Label: 'Distance' } : isStructuralMode ? { field1Label: 'Distance', field2Label: 'Angle' } : null);
+  const config = TOOL_FIELDS[activeTool] ?? (isDimensionGripMode ? { field1Label: 'Distance', field2Label: '' } : isGizmoRotateMode ? { field1Label: 'Angle', field2Label: '' } : isRotateMode ? { field1Label: 'Angle', field2Label: '' } : isModifyMode ? { field1Label: 'Distance', field2Label: '' } : isArrayMode ? { field1Label: 'Count', field2Label: 'Distance' } : isStructuralMode ? { field1Label: 'Distance', field2Label: 'Angle' } : null);
   if (!config) return null;
 
   // Convert screen position to world coordinates
   const worldX = (mousePosition.x - viewport.offsetX) / viewport.zoom;
   const worldY = (mousePosition.y - viewport.offsetY) / viewport.zoom;
 
-  // Get last point for relative calculations (may be undefined in gizmo rotate mode)
+  // Get last point for relative calculations (may be undefined in gizmo/dimension grip mode)
   const lastPoint = drawingPoints[drawingPoints.length - 1] ?? (isGizmoRotateMode && activeGizmoRotation ? activeGizmoRotation.center : { x: 0, y: 0 });
 
   // Use tracking point if available (constrained/snapped position)
@@ -1076,8 +1162,20 @@ export function DynamicInput() {
       })()
     : 0;
 
+  // Compute live dimension measurement value for dimension grip mode
+  const liveDimensionDistance = isDimensionGripMode && activeDimensionGripEdit
+    ? (() => {
+        const state = useAppStore.getState();
+        const shape = state.shapes.find(s => s.id === activeDimensionGripEdit.shapeId) as DimensionShape | undefined;
+        if (!shape || shape.type !== 'dimension' || shape.points.length < 2) return 0;
+        return calculateDimensionValue(shape.points, shape.dimensionType, shape.linearDirection);
+      })()
+    : 0;
+
   // Display values: use locked if set, otherwise live
-  const displayVal1 = isGizmoRotateMode
+  const displayVal1 = isDimensionGripMode
+    ? formatLength(liveDimensionDistance, unitSettings)
+    : isGizmoRotateMode
     ? String(liveGizmoDeltaDeg)
     : isArrayMode
     ? String(arrayCount)
