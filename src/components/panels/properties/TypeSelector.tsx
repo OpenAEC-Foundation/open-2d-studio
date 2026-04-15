@@ -973,7 +973,8 @@ function buildSpotCoordinateOptions(): TypeOption[] {
     label: preset.name,
     renderPreview: (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       ctx.clearRect(0, 0, w, h);
-      const lc = preset.style.lineColor || '#ffffff';
+      // Previews are on the panel (light) background — always use black lines
+      const lc = '#000000';
       ctx.strokeStyle = lc;
       ctx.fillStyle = lc;
       ctx.lineWidth = 0.8;
@@ -999,7 +1000,7 @@ function buildSpotCoordinateOptions(): TypeOption[] {
       ctx.closePath();
       ctx.fill();
       // text label
-      ctx.fillStyle = preset.style.textColor || '#ffffff';
+      ctx.fillStyle = '#000000';
       ctx.font = '5px sans-serif';
       ctx.textAlign = 'left';
       ctx.textBaseline = 'bottom';
