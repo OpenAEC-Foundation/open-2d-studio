@@ -1028,6 +1028,7 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
   const currentStyle = useAppStore(s => s.currentStyle);
   const setCurrentStyle = useAppStore(s => s.setCurrentStyle);
   const setRegionTypeManagerOpen = useAppStore(s => s.setRegionTypeManagerOpen);
+  const openRegionTypeManagerFocused = useAppStore(s => s.openRegionTypeManagerFocused);
   const openWallTypesDialog = useAppStore(s => s.openWallTypesDialog);
 
   // Editor open state for dimension and spot-coordinate type inline editors
@@ -1093,7 +1094,7 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
             value={currentTypeId}
             onChange={handleTypeChange}
             placeholder="Filled Region"
-            onEditOption={() => setRegionTypeManagerOpen(true)}
+            onEditOption={(id) => id ? openRegionTypeManagerFocused(id) : setRegionTypeManagerOpen(true)}
           />
         </div>
       );
@@ -1175,7 +1176,7 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
           options={hatchOptions}
           value={currentTypeId}
           onChange={handleTypeChange}
-          onEditOption={() => setRegionTypeManagerOpen(true)}
+          onEditOption={(id) => id ? openRegionTypeManagerFocused(id) : setRegionTypeManagerOpen(true)}
         />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>

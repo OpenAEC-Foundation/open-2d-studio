@@ -99,6 +99,7 @@ export interface HatchState extends HatchPatternsState {
   patternManagerOpen: boolean;
   editingPatternId: string | null;
   regionTypeManagerOpen: boolean;
+  regionTypeManagerFocusId: string | null;
 
   // Favorites & Recently Used
   favoritePatternIds: string[];
@@ -142,6 +143,7 @@ export interface HatchActions {
   setPatternManagerOpen: (open: boolean) => void;
   setEditingPatternId: (id: string | null) => void;
   setRegionTypeManagerOpen: (open: boolean) => void;
+  openRegionTypeManagerFocused: (typeId: string) => void;
 
   // Favorites & Recently Used
   toggleFavoritePattern: (id: string) => void;
@@ -179,6 +181,7 @@ export const initialHatchState: HatchState = {
   patternManagerOpen: false,
   editingPatternId: null,
   regionTypeManagerOpen: false,
+  regionTypeManagerFocusId: null,
   favoritePatternIds: loadStringArray(LS_KEY_FAVORITES),
   recentPatternIds: loadStringArray(LS_KEY_RECENT),
   filledRegionTypes: migrateBuiltinsToUserStorage(),
@@ -422,6 +425,14 @@ export const createHatchSlice = (
   setRegionTypeManagerOpen: (open) => {
     set((state) => {
       state.regionTypeManagerOpen = open;
+      if (!open) state.regionTypeManagerFocusId = null;
+    });
+  },
+
+  openRegionTypeManagerFocused: (typeId) => {
+    set((state) => {
+      state.regionTypeManagerOpen = true;
+      state.regionTypeManagerFocusId = typeId;
     });
   },
 

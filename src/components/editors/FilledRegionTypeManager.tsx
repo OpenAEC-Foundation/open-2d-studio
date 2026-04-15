@@ -3,7 +3,7 @@
  * filled region types (named, reusable hatch pattern configurations).
  */
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Plus, Copy, Trash2, Edit, Layers } from 'lucide-react';
 import { useAppStore } from '../../state/appStore';
 import { DraggableModal } from '../shared/DraggableModal';
@@ -37,12 +37,14 @@ function resolvePattern(
 interface FilledRegionTypeManagerProps {
   isOpen: boolean;
   onClose: () => void;
+  /** When set, the manager will auto-select and open this type for editing on open. */
+  focusId?: string | null;
 }
 
 const inputClass = 'w-full bg-cad-bg border border-cad-border rounded px-2 py-1 text-xs text-cad-text';
 const labelClass = 'block text-xs text-cad-text-dim mb-1';
 
-export function FilledRegionTypeManager({ isOpen, onClose }: FilledRegionTypeManagerProps) {
+export function FilledRegionTypeManager({ isOpen, onClose, focusId }: FilledRegionTypeManagerProps) {
   const {
     filledRegionTypes,
     addFilledRegionType,
@@ -54,6 +56,23 @@ export function FilledRegionTypeManager({ isOpen, onClose }: FilledRegionTypeMan
   const [selectedTypeId, setSelectedTypeId] = useState<string | null>(null);
   const [editingType, setEditingType] = useState<Partial<FilledRegionType> | null>(null);
   const [isCreating, setIsCreating] = useState(false);
+
+  // Auto-select and open the focused type when dialog opens
+  useEffect(() => {
+    if (isOpen && focusId) {
+      const type = filledRegionTypes.find(t => t.id === focusId);
+      if (type) {
+        setSelectedTypeId(type.id);
+        setEditingType({ ...type });
+        setIsCreating(false);
+      }
+    } else if (!isOpen) {
+      // Reset editor state when dialog closes
+      setEditingType(null);
+      setIsCreating(false);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen, focusId]);
 
   const selectedType = selectedTypeId ? filledRegionTypes.find(t => t.id === selectedTypeId) : null;
 

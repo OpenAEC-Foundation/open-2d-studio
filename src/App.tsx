@@ -430,6 +430,7 @@ function App() {
     setPatternManagerOpen,
     regionTypeManagerOpen,
     setRegionTypeManagerOpen,
+    regionTypeManagerFocusId,
     findReplaceDialogOpen,
     setFindReplaceDialogOpen,
     feedbackDialogOpen,
@@ -636,6 +637,7 @@ function App() {
       <FilledRegionTypeManager
         isOpen={regionTypeManagerOpen}
         onClose={() => setRegionTypeManagerOpen(false)}
+        focusId={regionTypeManagerFocusId}
       />
 
       {/* Text Style Manager Dialog */}
