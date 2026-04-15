@@ -3861,7 +3861,7 @@ export class ShapeRenderer extends BaseRenderer {
     // Draw outline border of the band
     ctx.save();
     ctx.strokeStyle = isSelected ? COLORS.selection : (shape.style.strokeColor || lineColor);
-    ctx.lineWidth = isSelected ? 1.5 : 0.5;
+    ctx.lineWidth = isSelected ? 2 : 1;
     ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(p0.x, p0.y);
@@ -3981,23 +3981,7 @@ export class ShapeRenderer extends BaseRenderer {
     }
     ctx.stroke();
 
-    // Draw a second zig-zag offset by half a step for the classic NEN47 look
-    ctx.beginPath();
-    for (let i = 0; i <= numSteps; i++) {
-      const t = i * step + step / 2;
-      if (t > len) break;
-
-      const side = (i % 2 === 0) ? -halfT : halfT; // Opposite phase
-      const x = start.x + ux * t + px * side;
-      const y = start.y + uy * t + py * side;
-
-      if (i === 0) {
-        ctx.moveTo(x, y);
-      } else {
-        ctx.lineTo(x, y);
-      }
-    }
-    ctx.stroke();
+    // Single zig-zag — no second line needed
   }
 
   /**
