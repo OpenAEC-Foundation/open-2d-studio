@@ -220,13 +220,18 @@ export function calculateAlignedDimensionGeometry(
   const gap = style.extensionLineGap;
   const overshoot = style.extensionLineOvershoot;
 
-  // Extension line 1: from p1 towards dimStart
-  const ext1Angle = angleBetweenPoints(p1, dimStart);
+  // The extension lines are always perpendicular to the dimension line direction.
+  // Use angleBetweenPoints(p1, dimStart) when the two are distinct; fall back to
+  // angle + PI/2 (the perpendicular) when offset is zero (p1 ≈ dimStart).
+  const perpAngle = angle + Math.PI / 2;
+  const dist1 = Math.hypot(dimStart.x - p1.x, dimStart.y - p1.y);
+  const dist2 = Math.hypot(dimEnd.x - p2.x, dimEnd.y - p2.y);
+
+  const ext1Angle = dist1 > 0.001 ? angleBetweenPoints(p1, dimStart) : perpAngle;
   const ext1Start = pointAtAngle(p1, ext1Angle, gap);
   const ext1End = pointAtAngle(dimStart, ext1Angle, overshoot);
 
-  // Extension line 2: from p2 towards dimEnd
-  const ext2Angle = angleBetweenPoints(p2, dimEnd);
+  const ext2Angle = dist2 > 0.001 ? angleBetweenPoints(p2, dimEnd) : perpAngle;
   const ext2Start = pointAtAngle(p2, ext2Angle, gap);
   const ext2End = pointAtAngle(dimEnd, ext2Angle, overshoot);
 
