@@ -406,7 +406,7 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawImage(shape as ImageShape);
         break;
       case 'spot-coordinate':
-        this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, isSelected);
+        this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, isSelected, invertColors);
         break;
       case 'detail-line':
         this.drawDetailLine(shape as DetailLineShape, isSelected);
@@ -490,7 +490,7 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawImage(shape as ImageShape);
         break;
       case 'spot-coordinate':
-        this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, false);
+        this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, false, invertColors);
         break;
       case 'detail-line':
         this.drawDetailLine(shape as DetailLineShape, false);
@@ -3486,7 +3486,7 @@ export class ShapeRenderer extends BaseRenderer {
    * Draw a spot coordinate annotation.
    * Shows X/Y coordinates at a point with an optional leader line.
    */
-  private drawSpotCoordinate(shape: import('../../../types/geometry').SpotCoordinateShape, isSelected: boolean): void {
+  private drawSpotCoordinate(shape: import('../../../types/geometry').SpotCoordinateShape, isSelected: boolean, invertColors: boolean = false): void {
     const ctx = this.ctx;
     const { position, displayX, displayY, unit, textHeight, leaderLength, leaderAngle, showLeader, decimalPlaces, prefix } = shape;
 
@@ -3494,9 +3494,11 @@ export class ShapeRenderer extends BaseRenderer {
     const th = textHeight * sf;
     const ll = leaderLength * sf;
 
-    // Resolve colors: shape override > style
-    const lineColor = shape.lineColor || shape.style.strokeColor || '#ffffff';
-    const textColor = shape.textColor || shape.style.strokeColor || '#ffffff';
+    // Resolve colors: shape override > style, then invert white→black on white background
+    const rawLineColor = shape.lineColor || shape.style.strokeColor || '#ffffff';
+    const rawTextColor = shape.textColor || shape.style.strokeColor || '#ffffff';
+    const lineColor = invertColors ? (rawLineColor === '#ffffff' ? '#000000' : rawLineColor) : rawLineColor;
+    const textColor = invertColors ? (rawTextColor === '#ffffff' ? '#000000' : rawTextColor) : rawTextColor;
     const arrowType = shape.arrowType ?? 'filled';
     const arrowSize = (shape.arrowSize ?? 120) * sf;
 
@@ -3515,9 +3517,9 @@ export class ShapeRenderer extends BaseRenderer {
     ctx.lineTo(position.x, position.y + ms);
     ctx.stroke();
 
-    // Draw small circle at marker
+    // Draw small circle at marker (2px equivalent radius)
     ctx.beginPath();
-    ctx.arc(position.x, position.y, ms * 0.4, 0, Math.PI * 2);
+    ctx.arc(position.x, position.y, ms * 0.25, 0, Math.PI * 2);
     ctx.stroke();
 
     // Leader line with arrowhead
