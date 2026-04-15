@@ -56,8 +56,6 @@ export function FilledRegionTypeManager({ isOpen, onClose }: FilledRegionTypeMan
   const [isCreating, setIsCreating] = useState(false);
 
   const selectedType = selectedTypeId ? filledRegionTypes.find(t => t.id === selectedTypeId) : null;
-  const builtInTypes = filledRegionTypes.filter(t => t.isBuiltIn);
-  const customTypes = filledRegionTypes.filter(t => !t.isBuiltIn);
 
   const handleCreate = () => {
     setIsCreating(true);
@@ -74,7 +72,6 @@ export function FilledRegionTypeManager({ isOpen, onClose }: FilledRegionTypeMan
   };
 
   const handleEdit = (type: FilledRegionType) => {
-    if (type.isBuiltIn) return;
     setIsCreating(false);
     setEditingType({ ...type });
     setSelectedTypeId(type.id);
@@ -167,39 +164,17 @@ export function FilledRegionTypeManager({ isOpen, onClose }: FilledRegionTypeMan
           </div>
 
           <div className="flex-1 overflow-y-auto space-y-1">
-            {builtInTypes.length > 0 && (
-              <>
-                <div className="text-[10px] uppercase tracking-wider text-cad-text-dim font-semibold px-1 mt-1">Built-in</div>
-                {builtInTypes.map(type => (
-                  <TypeListItem
-                    key={type.id}
-                    type={type}
-                    isSelected={selectedTypeId === type.id}
-                    onClick={() => { setSelectedTypeId(type.id); setEditingType(null); setIsCreating(false); }}
-                    onEdit={() => {}}
-                    onDuplicate={() => handleDuplicate(type.id)}
-                    onDelete={() => {}}
-                    readOnly
-                  />
-                ))}
-              </>
-            )}
-            {customTypes.length > 0 && (
-              <>
-                <div className="text-[10px] uppercase tracking-wider text-cad-text-dim font-semibold px-1 mt-2">Custom</div>
-                {customTypes.map(type => (
-                  <TypeListItem
-                    key={type.id}
-                    type={type}
-                    isSelected={selectedTypeId === type.id}
-                    onClick={() => { setSelectedTypeId(type.id); setEditingType(null); setIsCreating(false); }}
-                    onEdit={() => handleEdit(type)}
-                    onDuplicate={() => handleDuplicate(type.id)}
-                    onDelete={() => handleDelete(type.id)}
-                  />
-                ))}
-              </>
-            )}
+            {filledRegionTypes.map(type => (
+              <TypeListItem
+                key={type.id}
+                type={type}
+                isSelected={selectedTypeId === type.id}
+                onClick={() => { setSelectedTypeId(type.id); setEditingType(null); setIsCreating(false); }}
+                onEdit={() => handleEdit(type)}
+                onDuplicate={() => handleDuplicate(type.id)}
+                onDelete={() => handleDelete(type.id)}
+              />
+            ))}
           </div>
         </div>
 
@@ -235,7 +210,6 @@ function TypeListItem({
   onEdit,
   onDuplicate,
   onDelete,
-  readOnly,
 }: {
   type: FilledRegionType;
   isSelected: boolean;
@@ -243,7 +217,6 @@ function TypeListItem({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  readOnly?: boolean;
 }) {
   return (
     <div
@@ -260,19 +233,15 @@ function TypeListItem({
       />
       <span className="flex-1 truncate">{type.name}</span>
       <div className="hidden group-hover:flex items-center gap-0.5">
-        {!readOnly && (
-          <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-0.5 hover:text-cad-accent" title="Edit">
-            <Edit className="w-3 h-3" />
-          </button>
-        )}
+        <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-0.5 hover:text-cad-accent" title="Edit">
+          <Edit className="w-3 h-3" />
+        </button>
         <button onClick={(e) => { e.stopPropagation(); onDuplicate(); }} className="p-0.5 hover:text-cad-accent" title="Duplicate">
           <Copy className="w-3 h-3" />
         </button>
-        {!readOnly && (
-          <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-0.5 hover:text-red-400" title="Delete">
-            <Trash2 className="w-3 h-3" />
-          </button>
-        )}
+        <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-0.5 hover:text-red-400" title="Delete">
+          <Trash2 className="w-3 h-3" />
+        </button>
       </div>
     </div>
   );
@@ -283,14 +252,12 @@ function TypeDetails({ type, onEdit }: { type: FilledRegionType; onEdit: () => v
     <div className="space-y-3 p-2">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-cad-text">{type.name}</h3>
-        {!type.isBuiltIn && (
-          <button
-            onClick={onEdit}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-cad-hover text-cad-text rounded hover:bg-cad-accent/20"
-          >
-            <Edit className="w-3 h-3" /> Edit
-          </button>
-        )}
+        <button
+          onClick={onEdit}
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-cad-hover text-cad-text rounded hover:bg-cad-accent/20"
+        >
+          <Edit className="w-3 h-3" /> Edit
+        </button>
       </div>
 
       <div className="flex gap-4">
@@ -316,7 +283,6 @@ function TypeDetails({ type, onEdit }: { type: FilledRegionType; onEdit: () => v
         {type.backgroundColor && <div>Background Color: {type.backgroundColor}</div>}
         <div>Masking: {type.masking ? 'Opaque' : 'Transparent'}</div>
         <div>Line Weight: {type.lineWeight}</div>
-        <div className="text-[10px]">{type.isBuiltIn ? 'Built-in (read only)' : 'Custom'}</div>
       </div>
     </div>
   );

@@ -14,7 +14,6 @@ import {
 import type { FilledRegionType } from '../../types/filledRegion';
 import {
   BUILTIN_FILLED_REGION_TYPES,
-  isBuiltinFilledRegionTypeId,
 } from '../../types/filledRegion';
 import { generateId } from './types';
 
@@ -25,6 +24,7 @@ import { generateId } from './types';
 const LS_KEY_FAVORITES = 'open2dstudio_favorite_patterns';
 const LS_KEY_RECENT = 'open2dstudio_recent_patterns';
 const LS_KEY_CUSTOM_REGION_TYPES = 'open2dstudio_custom_region_types';
+const LS_KEY_REGION_TYPES_MIGRATED = 'open2dstudio_region_types_migrated_v1';
 const MAX_RECENT_PATTERNS = 10;
 
 function loadStringArray(key: string): string[] {
@@ -57,10 +57,37 @@ function loadFilledRegionTypes(): FilledRegionType[] {
 
 function saveFilledRegionTypes(types: FilledRegionType[]): void {
   try {
-    // Only save non-built-in types
-    const custom = types.filter(t => !t.isBuiltIn);
-    localStorage.setItem(LS_KEY_CUSTOM_REGION_TYPES, JSON.stringify(custom));
+    localStorage.setItem(LS_KEY_CUSTOM_REGION_TYPES, JSON.stringify(types));
   } catch { /* ignore quota errors */ }
+}
+
+/**
+ * Migration: on first run copy all built-in types into user storage so they
+ * become fully editable / deletable. After this the built-in list is no longer
+ * the authoritative source for the UI — user storage is.
+ */
+function migrateBuiltinsToUserStorage(): FilledRegionType[] {
+  const alreadyMigrated = localStorage.getItem(LS_KEY_REGION_TYPES_MIGRATED);
+  const stored = loadFilledRegionTypes();
+
+  if (!alreadyMigrated) {
+    // First run: build a merged list (stored types take precedence by id)
+    const storedIds = new Set(stored.map(t => t.id));
+    const merged: FilledRegionType[] = [
+      // Built-ins that are not yet in stored
+      ...BUILTIN_FILLED_REGION_TYPES
+        .filter(t => !storedIds.has(t.id))
+        .map(t => ({ ...t, isBuiltIn: false })),
+      // Whatever the user already had
+      ...stored.map(t => ({ ...t, isBuiltIn: false })),
+    ];
+    saveFilledRegionTypes(merged);
+    localStorage.setItem(LS_KEY_REGION_TYPES_MIGRATED, '1');
+    return merged;
+  }
+
+  // Already migrated — just return stored (strip any lingering isBuiltIn flags)
+  return stored.map(t => ({ ...t, isBuiltIn: false }));
 }
 
 // ============================================================================
@@ -154,7 +181,7 @@ export const initialHatchState: HatchState = {
   regionTypeManagerOpen: false,
   favoritePatternIds: loadStringArray(LS_KEY_FAVORITES),
   recentPatternIds: loadStringArray(LS_KEY_RECENT),
-  filledRegionTypes: [...BUILTIN_FILLED_REGION_TYPES, ...loadFilledRegionTypes()],
+  filledRegionTypes: migrateBuiltinsToUserStorage(),
   previewPatternId: null,
   selectedFilledRegionTypeId: null,
 };
@@ -446,7 +473,6 @@ export const createHatchSlice = (
   },
 
   updateFilledRegionType: (id, updates) => {
-    if (isBuiltinFilledRegionTypeId(id)) return; // Cannot edit built-in types
     set((state) => {
       const index = state.filledRegionTypes.findIndex(t => t.id === id);
       if (index !== -1) {
@@ -460,7 +486,6 @@ export const createHatchSlice = (
   },
 
   deleteFilledRegionType: (id) => {
-    if (isBuiltinFilledRegionTypeId(id)) return; // Cannot delete built-in types
     set((state) => {
       state.filledRegionTypes = state.filledRegionTypes.filter(t => t.id !== id);
       saveFilledRegionTypes(state.filledRegionTypes);
@@ -497,11 +522,10 @@ export const createHatchSlice = (
 
   setProjectFilledRegionTypes: (types) => {
     set((state) => {
-      // Merge: keep built-in + user custom, add project types
-      const builtInAndUser = state.filledRegionTypes.filter(
-        t => t.isBuiltIn || !types.some(pt => pt.id === t.id)
-      );
-      state.filledRegionTypes = [...builtInAndUser, ...types];
+      // Merge: keep existing user types that are not overridden by project types, then add project types
+      const projectIds = new Set(types.map(t => t.id));
+      const userTypes = state.filledRegionTypes.filter(t => !projectIds.has(t.id));
+      state.filledRegionTypes = [...userTypes, ...types];
     });
   },
 
