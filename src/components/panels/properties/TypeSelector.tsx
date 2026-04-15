@@ -28,8 +28,8 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
 import { getActiveDocumentStore } from '../../../state/documentStore';
-import type { Shape, HatchShape, ShapeType, WallShape, PileShape, LineStyle, SpotCoordinateShape } from '../../../types/geometry';
-import { SPOT_COORDINATE_TYPE_PRESETS } from '../../../types/geometry';
+import type { Shape, HatchShape, ShapeType, WallShape, PileShape, LineStyle, SpotCoordinateShape, DetailLineShape, DetailLineType } from '../../../types/geometry';
+import { SPOT_COORDINATE_TYPE_PRESETS, BUILT_IN_DETAIL_LINE_TYPES } from '../../../types/geometry';
 import type { FilledRegionType } from '../../../types/filledRegion';
 import type { CustomHatchPattern } from '../../../types/hatch';
 import { BUILTIN_PATTERNS } from '../../../types/hatch';
@@ -1009,6 +1009,96 @@ function buildSpotCoordinateOptions(): TypeOption[] {
   }));
 }
 
+function renderDetailLinePreview(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  lineType: DetailLineType,
+) {
+  ctx.clearRect(0, 0, w, h);
+  const bandH = Math.min(h * 0.5, 18);
+  const y0 = (h - bandH) / 2;
+  const bg = lineType.backgroundColor;
+  if (bg) {
+    ctx.fillStyle = bg;
+    ctx.fillRect(2, y0, w - 4, bandH);
+  }
+  const color = lineType.patternColor ?? '#888888';
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 0.8;
+  const pt = lineType.patternType;
+  if (pt === 'solid') {
+    ctx.fillStyle = lineType.patternColor ?? '#333333';
+    ctx.fillRect(2, y0, w - 4, bandH);
+  } else if (pt === 'diagonal' || pt === 'insulation-nen47') {
+    const spacing = 5;
+    const angleRad = ((lineType.patternAngle ?? 45) * Math.PI) / 180;
+    const dx = Math.cos(angleRad);
+    const dy = Math.sin(angleRad);
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(2, y0, w - 4, bandH);
+    ctx.clip();
+    for (let i = -w; i < w * 2; i += spacing) {
+      ctx.beginPath();
+      ctx.moveTo(i - h, y0 - 2);
+      ctx.lineTo(i + h * dx / dy + h, y0 + bandH + 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  } else if (pt === 'crosshatch') {
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(2, y0, w - 4, bandH);
+    ctx.clip();
+    const spacing = 5;
+    for (let i = -w; i < w * 2; i += spacing) {
+      ctx.beginPath();
+      ctx.moveTo(i, y0); ctx.lineTo(i + bandH, y0 + bandH); ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(i + bandH, y0); ctx.lineTo(i, y0 + bandH); ctx.stroke();
+    }
+    ctx.restore();
+  } else if (pt === 'insulation-us') {
+    // Sine wave
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(2, y0, w - 4, bandH);
+    ctx.clip();
+    const cy = y0 + bandH / 2;
+    const amp = bandH * 0.35;
+    ctx.beginPath();
+    ctx.moveTo(2, cy);
+    for (let x = 2; x < w - 2; x++) {
+      ctx.lineTo(x, cy + Math.sin(((x - 2) / (w - 4)) * Math.PI * 4) * amp);
+    }
+    ctx.stroke();
+    ctx.restore();
+  }
+  // Border lines at top and bottom of band
+  ctx.strokeStyle = '#666666';
+  ctx.lineWidth = 0.6;
+  ctx.beginPath();
+  ctx.moveTo(2, y0); ctx.lineTo(w - 2, y0);
+  ctx.moveTo(2, y0 + bandH); ctx.lineTo(w - 2, y0 + bandH);
+  ctx.stroke();
+}
+
+function buildDetailLineOptions(
+  builtInTypes: DetailLineType[],
+  customTypes: DetailLineType[],
+): TypeOption[] {
+  return [...builtInTypes, ...customTypes].map(lt => {
+    const captured = lt;
+    return {
+      id: lt.id,
+      label: lt.name,
+      renderPreview: (ctx: CanvasRenderingContext2D, w: number, h: number) =>
+        renderDetailLinePreview(ctx, w, h, captured),
+    };
+  });
+}
+
 // ─── main component ──────────────────────────────────────────────────────────
 
 interface TypeSelectorProps {
@@ -1035,6 +1125,10 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
   // Editor open state for dimension and spot-coordinate type inline editors
   const [dimEditorOpen, setDimEditorOpen] = useState<string | null>(null);
   const [scEditorOpen, setScEditorOpen] = useState<string | null>(null);
+
+  // Detail line type state
+  const selectedDetailLineTypeId = useAppStore(s => s.selectedDetailLineTypeId);
+  const setSelectedDetailLineTypeId = useAppStore(s => s.setSelectedDetailLineTypeId);
 
   // ── Filled Region sketch mode: show Filled Region type selector ──
   if (filledRegionMode) {
@@ -1114,6 +1208,26 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
             onChange={() => {}}
             placeholder="Wall Type"
             onEditOption={() => openWallTypesDialog()}
+          />
+        </div>
+      );
+    }
+
+    // Detail Line tool: show detail line type selector
+    if (activeTool === 'detail-line') {
+      const currentTypeId = selectedDetailLineTypeId ?? BUILT_IN_DETAIL_LINE_TYPES[0].id;
+      const dlOptions = buildDetailLineOptions(BUILT_IN_DETAIL_LINE_TYPES, []);
+      const handleDetailLineTypeChange = (newTypeId: string) => {
+        setSelectedDetailLineTypeId(newTypeId);
+      };
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
+          <Minus className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
+          <TypeDropdown
+            options={dlOptions}
+            value={currentTypeId}
+            onChange={handleDetailLineTypeChange}
+            placeholder="Detail Line Type"
           />
         </div>
       );
@@ -1489,6 +1603,43 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
             onChange={updated => handleScStyleEditorChange(scEditorOpen, updated)}
             onClose={() => setScEditorOpen(null)}
           />
+        )}
+      </div>
+    );
+  }
+
+  // ── Detail Line: detail line type dropdown ──
+  if (firstType === 'detail-line') {
+    const dl = selectedShapes[0] as DetailLineShape;
+    const currentTypeId = dl.detailLineTypeId ?? BUILT_IN_DETAIL_LINE_TYPES[0].id;
+    const dlOptions = buildDetailLineOptions(BUILT_IN_DETAIL_LINE_TYPES, []);
+
+    const handleDetailLineTypeChange = (newTypeId: string) => {
+      const lt = BUILT_IN_DETAIL_LINE_TYPES.find(t => t.id === newTypeId);
+      if (!lt) return;
+      selectedShapes.forEach(shape => {
+        updateShape(shape.id, {
+          detailLineTypeId: newTypeId,
+          thickness: lt.thickness,
+          patternType: lt.patternType,
+          patternAngle: lt.patternAngle,
+          patternScale: lt.patternScale,
+          patternColor: lt.patternColor,
+          backgroundColor: lt.backgroundColor,
+        } as Partial<DetailLineShape>);
+      });
+    };
+
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
+        <TypeDropdown
+          options={dlOptions}
+          value={currentTypeId}
+          onChange={handleDetailLineTypeChange}
+          placeholder="Detail Line Type"
+        />
+        {selectedShapes.length > 1 && (
+          <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
         )}
       </div>
     );

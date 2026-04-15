@@ -136,6 +136,9 @@ export interface ToolState {
   slabEditMode: boolean;
   editingSlabId: string | null;
   slabInnerContourPoints: import('../../types/geometry').Point[];  // Points for the contour currently being drawn
+
+  // Detail Line tool: selected type id
+  selectedDetailLineTypeId: string;
 }
 
 // ============================================================================
@@ -256,6 +259,9 @@ export interface ToolActions {
   finishSlabInnerContour: () => void;
   cancelSlabInnerContour: () => void;
   deleteSlabInnerContour: (contourIndex: number) => void;
+
+  // Detail Line tool
+  setSelectedDetailLineTypeId: (id: string) => void;
 }
 
 export type ToolSlice = ToolState & ToolActions;
@@ -386,6 +392,9 @@ export const initialToolState: ToolState = {
   slabEditMode: false,
   editingSlabId: null,
   slabInnerContourPoints: [],
+
+  // Detail Line tool
+  selectedDetailLineTypeId: 'builtin-insulation-nen47',
 };
 
 // ============================================================================
@@ -960,5 +969,11 @@ export const createToolSlice = (
           delete slab.innerContours;
         }
       }
+    }),
+
+  // Detail Line tool
+  setSelectedDetailLineTypeId: (id) =>
+    set((state) => {
+      state.selectedDetailLineTypeId = id;
     }),
 });

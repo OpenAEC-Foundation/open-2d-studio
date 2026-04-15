@@ -585,8 +585,17 @@ export class DimensionRenderer extends BaseRenderer {
 
     // Background removed — dimension text renders directly on canvas without background box
 
-    // Draw text - use override color (green) when linked element is selected
-    ctx.fillStyle = textColorOverride || style?.textColor || '#00ffff';
+    // Compute adapted text color (invert black↔white for dark/light background mode)
+    const isInverted = this.invertColors;
+    const rawTextColor = style?.textColor ?? '#000000';
+    const adaptedTextColor = isInverted
+      ? (rawTextColor === '#000000' || rawTextColor === '#000' ? '#ffffff'
+        : rawTextColor === '#ffffff' || rawTextColor === '#fff' ? '#000000'
+        : rawTextColor)
+      : rawTextColor;
+
+    // Draw text - use override color (selection/link highlight) when present, else adapted style color
+    ctx.fillStyle = textColorOverride || adaptedTextColor;
     ctx.fillText(displayText, 0, yOffset);
 
     ctx.restore();

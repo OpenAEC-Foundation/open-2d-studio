@@ -36,11 +36,8 @@ export function useDetailLineDrawing() {
     (start: Point, end: Point) => {
       const state = useAppStore.getState();
       // Resolve selected detail line type (if any)
-      const typeId: string | undefined = (state as any).selectedDetailLineTypeId;
-      const allTypes = [
-        ...BUILT_IN_DETAIL_LINE_TYPES,
-        ...((state as any).detailLineTypes ?? []),
-      ];
+      const typeId: string | undefined = state.selectedDetailLineTypeId;
+      const allTypes = BUILT_IN_DETAIL_LINE_TYPES;
       const lineType = typeId ? allTypes.find(t => t.id === typeId) : BUILT_IN_DETAIL_LINE_TYPES[0];
 
       const shape: DetailLineShape = {
