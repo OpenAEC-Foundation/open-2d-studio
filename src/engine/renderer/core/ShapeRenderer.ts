@@ -7,7 +7,7 @@ import type { HatchShape, HatchPatternType, ImageShape, WallType, WallSystemType
 import { resolveLabel } from '../../geometry/LabelUtils';
 import type { CustomHatchPattern, LineFamily, SvgHatchPattern, MaterialHatchSettings } from '../../../types/hatch';
 import { BUILTIN_PATTERNS, isSvgHatchPattern, DEFAULT_MATERIAL_HATCH_SETTINGS } from '../../../types/hatch';
-import { BaseRenderer } from './BaseRenderer';
+import { BaseRenderer, adaptColorForBackground } from './BaseRenderer';
 import { COLORS, LINE_DASH_PATTERNS, LINE_DASH_REFERENCE_SCALE } from '../types';
 import { DimensionRenderer } from './DimensionRenderer';
 import type { DimensionShape } from '../../../types/dimension';
@@ -359,10 +359,7 @@ export class ShapeRenderer extends BaseRenderer {
     const { style } = shape;
 
     // Set line style
-    let strokeColor = style.strokeColor;
-    if (invertColors && strokeColor === '#ffffff') {
-      strokeColor = '#000000';
-    }
+    const strokeColor = adaptColorForBackground(style.strokeColor, invertColors);
     ctx.strokeStyle = isSelected ? COLORS.selection : isHovered ? COLORS.hover : strokeColor;
     ctx.lineWidth = this.getLineWidth(style.strokeWidth);
     ctx.setLineDash(this.getLineDash(style.lineStyle));
@@ -441,12 +438,7 @@ export class ShapeRenderer extends BaseRenderer {
     const ctx = this.ctx;
     const { style } = shape;
 
-    // Use black stroke for sheet view (paper is white) if color is white
-    let strokeColor = style.strokeColor;
-    if (invertColors && style.strokeColor === '#ffffff') {
-      strokeColor = '#000000';
-    }
-
+    const strokeColor = adaptColorForBackground(style.strokeColor, invertColors);
     ctx.strokeStyle = strokeColor;
     ctx.lineWidth = this.getLineWidth(style.strokeWidth);
     ctx.setLineDash(this.getLineDash(style.lineStyle));
@@ -519,10 +511,7 @@ export class ShapeRenderer extends BaseRenderer {
     const ctx = this.ctx;
 
     // Set preview style - solid lines matching final appearance
-    let strokeColor = style?.strokeColor || '#ffffff';
-    if (invertColors && strokeColor === '#ffffff') {
-      strokeColor = '#000000';
-    }
+    const strokeColor = adaptColorForBackground(style?.strokeColor || '#ffffff', invertColors);
     ctx.strokeStyle = strokeColor;
     ctx.lineWidth = this.getLineWidth(style?.strokeWidth || 1);
     ctx.setLineDash([]);
@@ -1462,11 +1451,8 @@ export class ShapeRenderer extends BaseRenderer {
     const fontStyle = `${italic ? 'italic ' : ''}${bold ? 'bold ' : ''}`;
     ctx.font = `${fontStyle}${effectiveFontSize}px ${fontFamily}`;
 
-    // Set text color - invert white to black for sheet mode
-    let textColor = color || shape.style.strokeColor;
-    if (invertColors && textColor === '#ffffff') {
-      textColor = '#000000';
-    }
+    // Set text color - adapt to background mode
+    const textColor = adaptColorForBackground(color || shape.style.strokeColor, invertColors);
     ctx.fillStyle = textColor;
 
     // Set alignment
@@ -1604,10 +1590,7 @@ export class ShapeRenderer extends BaseRenderer {
 
       // Draw border if showBorder is enabled
       if (shape.showBorder) {
-        let borderStroke = shape.borderColor || textColor;
-        if (invertColors && borderStroke === '#ffffff') {
-          borderStroke = '#000000';
-        }
+        const borderStroke = adaptColorForBackground(shape.borderColor || textColor, invertColors);
         ctx.strokeStyle = borderStroke;
         ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth) * 0.8;
         ctx.setLineDash([]);
@@ -1750,10 +1733,7 @@ export class ShapeRenderer extends BaseRenderer {
          (shape.leaders && shape.leaders.length > 0))) {
       ctx.save();
       const leaderConfig = shape.leaderConfig;
-      let leaderColor = leaderConfig?.color || color || shape.style.strokeColor;
-      if (invertColors && leaderColor === '#ffffff') {
-        leaderColor = '#000000';
-      }
+      const leaderColor = adaptColorForBackground(leaderConfig?.color || color || shape.style.strokeColor, invertColors);
       ctx.strokeStyle = leaderColor;
       ctx.fillStyle = leaderColor;
       // Leader line and arrow sizes are proportional to effective font size
@@ -1920,10 +1900,7 @@ export class ShapeRenderer extends BaseRenderer {
       : fontSize / this.drawingScale;
 
     // Resolve text color
-    let textColor = color || shape.style.strokeColor;
-    if (invertColors && textColor === '#ffffff') {
-      textColor = '#000000';
-    }
+    const textColor = adaptColorForBackground(color || shape.style.strokeColor, invertColors);
 
     // Apply text case
     let displayText = text;

@@ -5,6 +5,30 @@
 import type { RenderContext, Viewport } from '../types';
 import { LINE_DASH_PATTERNS } from '../types';
 
+/**
+ * Adapt a color for the current background mode.
+ *
+ * When `invertColors` is true the canvas uses a light (paper/print) background,
+ * so pure-black strokes stay black and pure-white strokes are converted to black
+ * (they would be invisible on a white background).
+ * When `invertColors` is false the canvas uses a dark background, so pure-white
+ * strokes stay white and pure-black strokes are converted to white
+ * (they would be invisible on a black background).
+ *
+ * All other colors are returned unchanged.
+ */
+export function adaptColorForBackground(color: string, invertColors: boolean): string {
+  const lower = color.toLowerCase();
+  if (invertColors) {
+    // Light background: white → black
+    if (lower === '#ffffff' || lower === '#fff' || lower === 'white') return '#000000';
+  } else {
+    // Dark background: black → white
+    if (lower === '#000000' || lower === '#000' || lower === 'black') return '#ffffff';
+  }
+  return color;
+}
+
 export class BaseRenderer {
   protected ctx: CanvasRenderingContext2D;
   protected width: number;
