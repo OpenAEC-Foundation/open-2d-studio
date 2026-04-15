@@ -139,6 +139,14 @@ export interface ToolState {
 
   // Detail Line tool: selected type id
   selectedDetailLineTypeId: string;
+
+  // Rotation gizmo numeric input state
+  // Set when the user starts dragging the rotation gizmo so DynamicInput can show an angle field.
+  activeGizmoRotation: {
+    shapeId: string;
+    center: Point;
+    originalShape: import('../../types/geometry').Shape;
+  } | null;
 }
 
 // ============================================================================
@@ -262,6 +270,9 @@ export interface ToolActions {
 
   // Detail Line tool
   setSelectedDetailLineTypeId: (id: string) => void;
+
+  // Rotation gizmo numeric input
+  setActiveGizmoRotation: (state: ToolState['activeGizmoRotation']) => void;
 }
 
 export type ToolSlice = ToolState & ToolActions;
@@ -395,6 +406,9 @@ export const initialToolState: ToolState = {
 
   // Detail Line tool
   selectedDetailLineTypeId: 'builtin-insulation-nen47',
+
+  // Rotation gizmo numeric input
+  activeGizmoRotation: null,
 };
 
 // ============================================================================
@@ -976,5 +990,11 @@ export const createToolSlice = (
   setSelectedDetailLineTypeId: (id) =>
     set((state) => {
       state.selectedDetailLineTypeId = id;
+    }),
+
+  // Rotation gizmo numeric input
+  setActiveGizmoRotation: (rotState) =>
+    set((state) => {
+      state.activeGizmoRotation = rotState;
     }),
 });

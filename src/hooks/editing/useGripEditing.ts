@@ -1520,16 +1520,25 @@ export function useGripEditing() {
           setCurrentSnapPoint(null);
           const rotCenter = { x: cx, y: cy };
           const initAngle = Math.atan2(worldPos.x - rotCenter.x, -(worldPos.y - rotCenter.y));
+          const originalShapeCopy = JSON.parse(JSON.stringify(shape));
           dragRef.current = {
             shapeId,
             gripIndex: -2, // Special index: rotation gizmo
-            originalShape: JSON.parse(JSON.stringify(shape)),
+            originalShape: originalShapeCopy,
             convertedToPolyline: false,
             originalRectGripIndex: -2,
             axisConstraint: null,
             initialRotationAngle: initAngle,
             rotationCenter: rotCenter,
           };
+          // Expose gizmo rotation state so DynamicInput can show an angle field
+          useAppStore.setState((s) => {
+            s.activeGizmoRotation = {
+              shapeId,
+              center: rotCenter,
+              originalShape: originalShapeCopy,
+            };
+          });
           return true;
         }
       }
@@ -2212,6 +2221,8 @@ export function useGripEditing() {
     setTrackingPoint(null);
     // Clear active rotation feedback
     setActiveRotation(null);
+    // Clear gizmo rotation input state
+    useAppStore.setState((s) => { s.activeGizmoRotation = null; });
 
     // Check parametric shape drag first
     const parametricDrag = parametricDragRef.current;

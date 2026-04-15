@@ -2,6 +2,7 @@ import { useState, useEffect, useRef, useCallback } from 'react';
 import { useAppStore } from '../../../state/appStore';
 import { formatLength, formatAngle } from '../../../units';
 import { getDistance, getAngle } from '../../../engine/geometry/CoordinateParser';
+import { getActiveRotation } from '../../../engine/renderer/rotationGizmoState';
 import {
   transformShape,
   translateTransform,
@@ -75,6 +76,9 @@ export function DynamicInput() {
     // Array tool state
     arrayCount,
     setArrayCount,
+    // Rotation gizmo numeric input
+    activeGizmoRotation,
+    setActiveGizmoRotation,
   } = useAppStore();
 
   const [focusedField, setFocusedField] = useState<0 | 1 | -1>(-1); // -1 = none, 0 = field1, 1 = field2
@@ -95,6 +99,8 @@ export function DynamicInput() {
   const isRotateMode = activeTool === 'rotate' && drawingPoints.length >= 2;
   const isDrawingMode = isDrawing && drawingPoints.length > 0 && supportedDrawingTools.includes(activeTool);
   const isArrayMode = activeTool === 'array' && drawingPoints.length >= 1;
+  // Rotation gizmo mode: active when the user drags the rotation gizmo handle
+  const isGizmoRotateMode = !!activeGizmoRotation;
 
   // Structural tools: wall, gridline, beam - active when pending state is set and first point is placed
   const isStructuralMode =
@@ -103,7 +109,7 @@ export function DynamicInput() {
     (activeTool === 'beam' && !!pendingBeam && drawingPoints.length >= 1);
 
   // Only show when enabled and drawing with supported tools OR during move/copy/rotate with points set
-  const showDynamicInput = dynamicInputEnabled && (isDrawingMode || isModifyMode || isRotateMode || isStructuralMode || isArrayMode);
+  const showDynamicInput = dynamicInputEnabled && (isDrawingMode || isModifyMode || isRotateMode || isStructuralMode || isArrayMode || isGizmoRotateMode);
 
   // Reset when drawing ends or tool changes
   useEffect(() => {
@@ -298,6 +304,77 @@ export function DynamicInput() {
     state.clearDrawingPoints();
     state.setDrawingPreview(null);
   }, [isRotateMode, drawingPoints, mousePosition, viewport]);
+
+  // Execute rotation gizmo with typed absolute angle (in degrees)
+  // Applies a clean rotation from the original shape state to avoid drift
+  const executeGizmoRotateWithAngle = useCallback((angleDeg: number) => {
+    if (!activeGizmoRotation) return;
+    const { shapeId, center, originalShape } = activeGizmoRotation;
+    const angleRad = angleDeg * (Math.PI / 180);
+
+    // Compute updates by rotating the ORIGINAL shape (not the live-dragged one)
+    const cos = Math.cos(angleRad);
+    const sin = Math.sin(angleRad);
+    const rotPt = (p: { x: number; y: number }) => ({
+      x: center.x + (p.x - center.x) * cos - (p.y - center.y) * sin,
+      y: center.y + (p.x - center.x) * sin + (p.y - center.y) * cos,
+    });
+
+    // Build updates based on shape type (mirrors computeRotationUpdates in useGripEditing)
+    let updates: Record<string, unknown> | null = null;
+    const s = originalShape as any;
+    switch (s.type) {
+      case 'line':
+      case 'beam':
+        updates = { start: rotPt(s.start), end: rotPt(s.end) };
+        break;
+      case 'gridline':
+      case 'wall':
+      case 'section-callout':
+        updates = { start: rotPt(s.start), end: rotPt(s.end) };
+        break;
+      case 'slab':
+      case 'polyline':
+      case 'spline':
+      case 'hatch':
+      case 'puntniveau':
+        updates = { points: s.points.map(rotPt) };
+        break;
+      case 'plate-system':
+        updates = { contourPoints: s.contourPoints.map(rotPt) };
+        break;
+      case 'rectangle':
+        updates = { topLeft: rotPt(s.topLeft) };
+        break;
+      case 'circle':
+        updates = { center: rotPt(s.center) };
+        break;
+      case 'ellipse':
+        updates = { center: rotPt(s.center), rotation: (s.rotation || 0) + angleRad };
+        break;
+      case 'arc':
+        updates = { center: rotPt(s.center), startAngle: s.startAngle + angleRad, endAngle: s.endAngle + angleRad };
+        break;
+      case 'image':
+        updates = { position: rotPt(s.position), rotation: (s.rotation || 0) + angleRad };
+        break;
+      case 'pile':
+        updates = { position: rotPt(s.position) };
+        break;
+      default:
+        break;
+    }
+
+    if (updates) {
+      const state = useAppStore.getState();
+      state.updateShapes([{ id: shapeId, updates }]);
+    }
+
+    // Clear the gizmo rotation state
+    setActiveGizmoRotation(null);
+    setFocusedField(-1);
+    setField1Text('');
+  }, [activeGizmoRotation, setActiveGizmoRotation]);
 
   // Execute direct distance entry for line/polyline drawing
   // Places a point at the typed distance in the current tracking direction (or mouse direction)
@@ -701,6 +778,17 @@ export function DynamicInput() {
   // Apply values and notify store
   // shiftKey indicates whether Shift was held when Enter was pressed (for ortho snapping)
   const applyValues = useCallback((shiftKey: boolean = false) => {
+    // Rotation gizmo: type an exact angle in degrees
+    if (isGizmoRotateMode) {
+      const v1 = field1Text !== '' ? evaluateExpression(field1Text) : null;
+      if (v1 !== null) {
+        executeGizmoRotateWithAngle(v1);
+      }
+      setFocusedField(-1);
+      setField1Text('');
+      return;
+    }
+
     if (isRotateMode) {
       const v1 = field1Text !== '' ? evaluateExpression(field1Text) : null;
       if (v1 !== null) {
@@ -860,7 +948,7 @@ export function DynamicInput() {
     }
 
     setFocusedField(-1);
-  }, [isRotateMode, isModifyMode, isArrayMode, field1Text, field2Text, activeTool, drawingPoints, setLockedDistance, setLockedAngle, setArrayCount, executeModifyWithDistance, executeRotateWithAngle, executeDirectDistanceEntry, executeStructuralDistanceEntry, executeRectangleEntry, executeCircleEntry, executeEllipseEntry]);
+  }, [isGizmoRotateMode, isRotateMode, isModifyMode, isArrayMode, field1Text, field2Text, activeTool, drawingPoints, setLockedDistance, setLockedAngle, setArrayCount, executeGizmoRotateWithAngle, executeModifyWithDistance, executeRotateWithAngle, executeDirectDistanceEntry, executeStructuralDistanceEntry, executeRectangleEntry, executeCircleEntry, executeEllipseEntry]);
 
   // Global keyboard handler for Tab, Enter, and numeric input
   useEffect(() => {
@@ -873,8 +961,8 @@ export function DynamicInput() {
         if (focusedField === -1) {
           setFocusedField(0);
         } else if (focusedField === 0) {
-          if (isModifyMode || isRotateMode) {
-            // For modify/rotate tools, Tab applies the value
+          if (isGizmoRotateMode || isModifyMode || isRotateMode) {
+            // For gizmo/modify/rotate tools, Tab applies the value
             applyValues(e.shiftKey);
             return;
           }
@@ -930,15 +1018,15 @@ export function DynamicInput() {
 
   if (!showDynamicInput) return null;
 
-  const config = TOOL_FIELDS[activeTool] ?? (isRotateMode ? { field1Label: 'Angle', field2Label: '' } : isModifyMode ? { field1Label: 'Distance', field2Label: '' } : isArrayMode ? { field1Label: 'Count', field2Label: 'Distance' } : isStructuralMode ? { field1Label: 'Distance', field2Label: 'Angle' } : null);
+  const config = TOOL_FIELDS[activeTool] ?? (isGizmoRotateMode ? { field1Label: 'Angle', field2Label: '' } : isRotateMode ? { field1Label: 'Angle', field2Label: '' } : isModifyMode ? { field1Label: 'Distance', field2Label: '' } : isArrayMode ? { field1Label: 'Count', field2Label: 'Distance' } : isStructuralMode ? { field1Label: 'Distance', field2Label: 'Angle' } : null);
   if (!config) return null;
 
   // Convert screen position to world coordinates
   const worldX = (mousePosition.x - viewport.offsetX) / viewport.zoom;
   const worldY = (mousePosition.y - viewport.offsetY) / viewport.zoom;
 
-  // Get last point for relative calculations
-  const lastPoint = drawingPoints[drawingPoints.length - 1];
+  // Get last point for relative calculations (may be undefined in gizmo rotate mode)
+  const lastPoint = drawingPoints[drawingPoints.length - 1] ?? (isGizmoRotateMode && activeGizmoRotation ? activeGizmoRotation.center : { x: 0, y: 0 });
 
   // Use tracking point if available (constrained/snapped position)
   // This ensures the display shows the actual values the user will get
@@ -980,8 +1068,18 @@ export function DynamicInput() {
   const tooltipX = Math.min(mousePosition.x + 20, canvasSize.width - 250);
   const tooltipY = Math.min(mousePosition.y + 20, canvasSize.height - 100);
 
+  // For rotation gizmo mode, display the live delta angle from the active rotation state
+  const liveGizmoDeltaDeg = isGizmoRotateMode
+    ? (() => {
+        const rot = getActiveRotation();
+        return rot ? +(rot.deltaAngle * (180 / Math.PI)).toFixed(2) : 0;
+      })()
+    : 0;
+
   // Display values: use locked if set, otherwise live
-  const displayVal1 = isArrayMode
+  const displayVal1 = isGizmoRotateMode
+    ? String(liveGizmoDeltaDeg)
+    : isArrayMode
     ? String(arrayCount)
     : formatLength(lockedDistance !== null ? lockedDistance : distance, unitSettings);
   const displayVal2 = isArrayMode
@@ -1086,7 +1184,9 @@ export function DynamicInput() {
         {/* Hint */}
         {focusedField === -1 && (
           <div className="border-t border-cad-border mt-1.5 pt-1 text-cad-text-dim text-[9px]">
-            {activeTool === 'array'
+            {isGizmoRotateMode
+              ? 'Type angle + Enter to set exact rotation'
+              : activeTool === 'array'
               ? 'Type count + Enter, click end point'
               : activeTool === 'rectangle'
               ? 'Type W,H or W Tab H + Enter'
