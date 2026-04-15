@@ -28,7 +28,8 @@ import { SectionDialog } from '../../dialogs/SectionDialog/SectionDialog';
 import { formatPeilLabel, calculatePeilFromY } from '../../../hooks/drawing/useLevelDrawing';
 import { regeneratePlateSystemBeams } from '../../../hooks/drawing/usePlateSystemDrawing';
 import { getElementLabelText, resolveTemplate, getDefaultLabelTemplate } from '../../../engine/geometry/LabelUtils';
-import { PatternPickerPanel } from '../../editors/PatternManager/PatternPickerPanel';
+// PatternPickerPanel removed — hatch pattern editing now done via FilledRegionType
+// import { PatternPickerPanel } from '../../editors/PatternManager/PatternPickerPanel';
 import { parseSpacingPattern, createGridlinesFromPattern } from '../../../utils/gridlineUtils';
 import { regenerateGridDimensions } from '../../../utils/gridDimensionUtils';
 import { showCPTFileDialog, parseCPTFile } from '../../../services/file/cptFileService';
@@ -38,7 +39,7 @@ import {
   PropertyGroup,
   ExposureClassSection,
   TextStyleSelector,
-  RegionTypeSelector,
+  // RegionTypeSelector removed — now in TypeSelector
   DimensionStyleSelector,
   NumberField,
   TextField,
@@ -932,64 +933,10 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
     case 'hatch': {
       return (
         <>
-          <PropertyGroup label="Region Type">
-            <RegionTypeSelector
-              currentTypeId={shape.filledRegionTypeId}
-              onApplyType={(typeId, props) => update({ filledRegionTypeId: typeId, ...props })}
-            />
-          </PropertyGroup>
-
-          <PropertyGroup label="Foreground Pattern">
-            <PatternPickerPanel
-              value={shape.patternType}
-              customPatternId={shape.customPatternId}
-              onChange={(type, customId) => update({ patternType: type, customPatternId: customId, filledRegionTypeId: undefined })}
-            />
-            <NumberField label="Angle (deg)" value={shape.patternAngle} onChange={(v) => update({ patternAngle: v, filledRegionTypeId: undefined })} step={1} />
-            <NumberField label="Scale" value={shape.patternScale} onChange={(v) => update({ patternScale: v, filledRegionTypeId: undefined })} step={0.1} min={0.1} />
-            <ColorPalette label="Color" value={shape.fillColor} onChange={(v) => update({ fillColor: v, filledRegionTypeId: undefined })} />
-          </PropertyGroup>
-
-          <PropertyGroup label="Background Pattern" defaultOpen={!!shape.bgPatternType}>
-            <PatternPickerPanel
-              value={shape.bgPatternType ?? 'solid'}
-              customPatternId={shape.bgCustomPatternId}
-              onChange={(type, customId) => {
-                if (type === 'solid' && !shape.bgPatternType) {
-                  update({ bgPatternType: type, bgCustomPatternId: customId, filledRegionTypeId: undefined });
-                } else {
-                  update({ bgPatternType: type, bgCustomPatternId: customId, filledRegionTypeId: undefined });
-                }
-              }}
-            />
-            {shape.bgPatternType && (
-              <>
-                <NumberField label="Angle (deg)" value={shape.bgPatternAngle ?? 0} onChange={(v) => update({ bgPatternAngle: v, filledRegionTypeId: undefined })} step={1} />
-                <NumberField label="Scale" value={shape.bgPatternScale ?? 1} onChange={(v) => update({ bgPatternScale: v, filledRegionTypeId: undefined })} step={0.1} min={0.1} />
-                <ColorPalette label="Color" value={shape.bgFillColor ?? '#808080'} onChange={(v) => update({ bgFillColor: v, filledRegionTypeId: undefined })} />
-                <button
-                  onClick={() => update({ bgPatternType: undefined, bgPatternAngle: undefined, bgPatternScale: undefined, bgFillColor: undefined, bgCustomPatternId: undefined, filledRegionTypeId: undefined })}
-                  className="text-xs text-cad-accent hover:underline mb-2">
-                  Remove background pattern
-                </button>
-              </>
-            )}
-          </PropertyGroup>
-
+          {/* All pattern/color/display properties are controlled by the FilledRegionType
+              (selected via the TypeSelector at the top of the Properties Panel).
+              Only per-instance display options remain here. */}
           <PropertyGroup label="Display">
-            <ColorPalette label="Background Color" value={shape.backgroundColor || '#000000'} onChange={(v) => update({ backgroundColor: v, filledRegionTypeId: undefined })} />
-            {shape.backgroundColor && (
-              <button
-                onClick={() => update({ backgroundColor: undefined, filledRegionTypeId: undefined })}
-                className="text-xs text-cad-accent hover:underline -mt-1 mb-2">
-                Clear background color
-              </button>
-            )}
-            <CheckboxField
-              label="Opaque (hides elements behind)"
-              value={shape.masking ?? true}
-              onChange={(v) => update({ masking: v, filledRegionTypeId: undefined })}
-            />
             <CheckboxField
               label="Show boundary outline"
               value={shape.boundaryVisible ?? true}
