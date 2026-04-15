@@ -18,7 +18,7 @@ import type {
   DetailLineShape,
   PileContourType,
 } from '../../../types/geometry';
-import { REBAR_DIAMETERS, BUILT_IN_DETAIL_LINE_TYPES } from '../../../types/geometry';
+import { REBAR_DIAMETERS } from '../../../types/geometry';
 import type { ParametricShape, ProfileParametricShape, ProfileType, ParameterValues } from '../../../types/parametric';
 import type { DimensionShape } from '../../../types/dimension';
 import { PROFILE_TEMPLATES } from '../../../services/parametric/profileTemplates';
