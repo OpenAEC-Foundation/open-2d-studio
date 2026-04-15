@@ -410,7 +410,7 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawDetailLine(shape as DetailLineShape, isSelected);
         break;
       case 'label':
-        this.drawLabel(shape as LabelShape, isSelected);
+        this.drawLabel(shape as LabelShape, isSelected, invertColors);
         break;
       default: {
         const extRenderer = shapeRendererRegistry.get(shape.type);
@@ -490,7 +490,7 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawDetailLine(shape as DetailLineShape, false);
         break;
       case 'label':
-        this.drawLabel(shape as LabelShape, false);
+        this.drawLabel(shape as LabelShape, false, invertColors);
         break;
       default: {
         const extSimpleRenderer = shapeRendererRegistry.getSimple(shape.type);
@@ -3904,15 +3904,17 @@ export class ShapeRenderer extends BaseRenderer {
    *  - Arrowhead at the target end of the leader (if arrowType set)
    *  - Label text at position (resolved from template + target shape each frame)
    */
-  private drawLabel(shape: LabelShape, isSelected: boolean): void {
+  private drawLabel(shape: LabelShape, isSelected: boolean, invertColors: boolean = false): void {
     const ctx = this.ctx;
     const { position, template, unit, decimalPlaces, showLeader, leaderPoints, arrowType, rotation } = shape;
 
     const sf = this.drawingScale ? (0.01 / this.drawingScale) : 1;
     const th = shape.textHeight * sf;
 
-    const lineColor = shape.lineColor || shape.style.strokeColor || '#ffffff';
-    const textColor = shape.textColor || shape.style.strokeColor || '#ffffff';
+    const rawLineColor = shape.lineColor || shape.style.strokeColor || '#000000';
+    const rawTextColor = shape.textColor || shape.style.strokeColor || '#000000';
+    const lineColor = adaptColorForBackground(rawLineColor, invertColors);
+    const textColor = adaptColorForBackground(rawTextColor, invertColors);
     const arrowSize = (shape.arrowSize ?? 120) * sf;
     const effectiveArrowType = arrowType ?? 'filled';
 

@@ -78,6 +78,7 @@ import {
   DiameterDimensionIcon,
   SpotCoordinateIcon,
   DetailLineIcon,
+  LShapeIcon,
 } from '../../shared/CadIcons';
 import { useFileOperations } from '../../../hooks/file/useFileOperations';
 import { showPdfFileDialog } from '../../../services/file/pdfUnderlayService';
@@ -680,7 +681,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   shortcut="DL"
                 />
                 <RibbonMediumButton
-                  icon={<Square size={18} />}
+                  icon={<LShapeIcon size={18} />}
                   label="L-Shape"
                   onClick={() => switchToDrawingTool('l-shape')}
                   active={activeTool === 'l-shape'}

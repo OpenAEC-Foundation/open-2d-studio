@@ -193,41 +193,57 @@ export class DimensionRenderer extends BaseRenderer {
     const textMetrics = ctx.measureText(displayText);
     const textGap = textMetrics.width + textHeight * 0.8; // Gap for text plus padding
 
+    // Extension of the dimension line past the arrow/marker (in mm, scaled)
+    // Only extend for marker types that benefit from an overshoot (circle, dot, tick, slash)
+    const needsLineExtension = style.arrowType === 'circle' || style.arrowType === 'dot' ||
+      style.arrowType === 'tick' || style.arrowType === 'slash' || style.arrowType === 'none';
+    const lineExtension = needsLineExtension ? style.arrowSize * 0.6 : 0;
+
+    // Compute extended endpoints
+    const extStart = lineExtension > 0 ? {
+      x: geometry.start.x - Math.cos(angle) * lineExtension,
+      y: geometry.start.y - Math.sin(angle) * lineExtension,
+    } : geometry.start;
+    const extEnd = lineExtension > 0 ? {
+      x: geometry.end.x + Math.cos(angle) * lineExtension,
+      y: geometry.end.y + Math.sin(angle) * lineExtension,
+    } : geometry.end;
+
     // Draw dimension line (break it if text is centered)
     if (style.textPlacement === 'centered') {
-      // Calculate gap positions
-      const totalLength = Math.sqrt(
+      // Text gap is relative to the original (non-extended) portion
+      const extensionOffset = lineExtension;
+      const gapStart = extensionOffset + (Math.sqrt(
         Math.pow(geometry.end.x - geometry.start.x, 2) +
         Math.pow(geometry.end.y - geometry.start.y, 2)
-      );
-      const gapStart = (totalLength - textGap) / 2;
-      const gapEnd = (totalLength + textGap) / 2;
+      ) - textGap) / 2;
+      const gapEnd = gapStart + textGap;
 
-      // Draw first segment (start to gap)
+      // Draw first segment (extStart to gap)
       const gapStartPoint = {
-        x: geometry.start.x + Math.cos(angle) * gapStart,
-        y: geometry.start.y + Math.sin(angle) * gapStart,
+        x: extStart.x + Math.cos(angle) * gapStart,
+        y: extStart.y + Math.sin(angle) * gapStart,
       };
       const gapEndPoint = {
-        x: geometry.start.x + Math.cos(angle) * gapEnd,
-        y: geometry.start.y + Math.sin(angle) * gapEnd,
+        x: extStart.x + Math.cos(angle) * gapEnd,
+        y: extStart.y + Math.sin(angle) * gapEnd,
       };
 
       ctx.beginPath();
-      ctx.moveTo(geometry.start.x, geometry.start.y);
+      ctx.moveTo(extStart.x, extStart.y);
       ctx.lineTo(gapStartPoint.x, gapStartPoint.y);
       ctx.stroke();
 
-      // Draw second segment (gap to end)
+      // Draw second segment (gap to extEnd)
       ctx.beginPath();
       ctx.moveTo(gapEndPoint.x, gapEndPoint.y);
-      ctx.lineTo(geometry.end.x, geometry.end.y);
+      ctx.lineTo(extEnd.x, extEnd.y);
       ctx.stroke();
     } else {
-      // Draw continuous dimension line
+      // Draw continuous dimension line (extended)
       ctx.beginPath();
-      ctx.moveTo(geometry.start.x, geometry.start.y);
-      ctx.lineTo(geometry.end.x, geometry.end.y);
+      ctx.moveTo(extStart.x, extStart.y);
+      ctx.lineTo(extEnd.x, extEnd.y);
       ctx.stroke();
     }
 

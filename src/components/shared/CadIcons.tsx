@@ -1412,3 +1412,24 @@ export function DetailLineIcon({ size = 24, className }: IconProps) {
     </svg>
   );
 }
+
+/** LShapeIcon — L-shaped closed polyline */
+export function LShapeIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg
+      width={size}
+      height={size}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className}
+    >
+      {/* L-shape: 6 vertices, bottom-left origin
+          (2,20) → (22,20) → (22,14) → (10,14) → (10,4) → (2,4) → close */}
+      <polygon points="2,20 22,20 22,14 10,14 10,4 2,4" />
+    </svg>
+  );
+}

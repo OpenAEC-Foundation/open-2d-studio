@@ -28,8 +28,8 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
 import { getActiveDocumentStore } from '../../../state/documentStore';
-import type { Shape, HatchShape, ShapeType, WallShape, PileShape, LineStyle, SpotCoordinateShape, DetailLineShape, DetailLineType } from '../../../types/geometry';
-import { SPOT_COORDINATE_TYPE_PRESETS, BUILT_IN_DETAIL_LINE_TYPES } from '../../../types/geometry';
+import type { Shape, HatchShape, ShapeType, WallShape, PileShape, LineStyle, SpotCoordinateShape, DetailLineShape, DetailLineType, LabelShape, LabelType } from '../../../types/geometry';
+import { SPOT_COORDINATE_TYPE_PRESETS, BUILT_IN_DETAIL_LINE_TYPES, DEFAULT_LABEL_TYPES } from '../../../types/geometry';
 import type { FilledRegionType } from '../../../types/filledRegion';
 import type { CustomHatchPattern } from '../../../types/hatch';
 import { BUILTIN_PATTERNS } from '../../../types/hatch';
@@ -75,6 +75,7 @@ function getShapeTypeLabel(type: ShapeType): string {
     rebar: 'Rebar',
     'component-instance': 'Component',
     'detail-line': 'Detail Line',
+    'label': 'Label',
   };
   return labels[type] ?? type;
 }
@@ -1084,6 +1085,49 @@ function renderDetailLinePreview(
   ctx.stroke();
 }
 
+function renderLabelTypePreview(
+  ctx: CanvasRenderingContext2D,
+  w: number,
+  h: number,
+  labelType: LabelType,
+) {
+  ctx.clearRect(0, 0, w, h);
+  const cx = w / 2;
+  const cy = h / 2;
+  // Leader line from bottom-left to center
+  const lx1 = 6, ly1 = h - 8;
+  ctx.strokeStyle = '#000000';
+  ctx.lineWidth = 0.8;
+  ctx.beginPath();
+  ctx.moveTo(lx1, ly1);
+  ctx.lineTo(cx, cy + 4);
+  ctx.stroke();
+  // Arrow dot
+  ctx.beginPath();
+  ctx.arc(lx1, ly1, 2, 0, Math.PI * 2);
+  ctx.fillStyle = '#000000';
+  ctx.fill();
+  // Label text
+  ctx.fillStyle = '#000000';
+  ctx.font = '6px sans-serif';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const preview = labelType.prefix + (labelType.template.replace('{length}', '1.5m').replace('{area}', '6m²').replace('{type}', 'Wall')) + labelType.suffix;
+  ctx.fillText(preview.slice(0, 8), cx, cy);
+}
+
+function buildLabelTypeOptions(labelTypes: LabelType[]): TypeOption[] {
+  return labelTypes.map(lt => {
+    const captured = lt;
+    return {
+      id: lt.id,
+      label: lt.name,
+      renderPreview: (ctx: CanvasRenderingContext2D, w: number, h: number) =>
+        renderLabelTypePreview(ctx, w, h, captured),
+    };
+  });
+}
+
 function buildDetailLineOptions(
   builtInTypes: DetailLineType[],
   customTypes: DetailLineType[],
@@ -1228,6 +1272,22 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
             value={currentTypeId}
             onChange={handleDetailLineTypeChange}
             placeholder="Detail Line Type"
+          />
+        </div>
+      );
+    }
+
+    // Label tool: show label type selector
+    if (activeTool === 'label') {
+      const labelOptions = buildLabelTypeOptions(DEFAULT_LABEL_TYPES);
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
+          <Type className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
+          <TypeDropdown
+            options={labelOptions}
+            value={DEFAULT_LABEL_TYPES[0].id}
+            onChange={() => {}}
+            placeholder="Label Type"
           />
         </div>
       );
@@ -1637,6 +1697,49 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
           value={currentTypeId}
           onChange={handleDetailLineTypeChange}
           placeholder="Detail Line Type"
+        />
+        {selectedShapes.length > 1 && (
+          <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
+        )}
+      </div>
+    );
+  }
+
+  // ── Label: label type preset dropdown ──
+  if (firstType === 'label') {
+    const labelShape = selectedShapes[0] as LabelShape;
+    const currentTypeId = labelShape.labelTypeId ?? DEFAULT_LABEL_TYPES[0].id;
+    const labelOptions = buildLabelTypeOptions(DEFAULT_LABEL_TYPES);
+
+    const handleLabelTypeChange = (newTypeId: string) => {
+      const lt = DEFAULT_LABEL_TYPES.find(t => t.id === newTypeId);
+      if (!lt) return;
+      selectedShapes.forEach(shape => {
+        updateShape(shape.id, {
+          labelTypeId: newTypeId,
+          template: lt.template,
+          textHeight: lt.textHeight,
+          unit: lt.unit,
+          decimalPlaces: lt.decimalPlaces,
+          showLeader: lt.showLeader,
+          arrowType: lt.arrowType,
+          arrowSize: lt.arrowSize,
+          lineColor: lt.lineColor,
+          textColor: lt.textColor,
+          prefix: lt.prefix,
+          suffix: lt.suffix,
+        } as Partial<LabelShape>);
+      });
+    };
+
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
+        <Type className="w-3.5 h-3.5 text-cad-text-dim flex-shrink-0" />
+        <TypeDropdown
+          options={labelOptions}
+          value={currentTypeId}
+          onChange={handleLabelTypeChange}
+          placeholder="Label Type"
         />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
