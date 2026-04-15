@@ -70,7 +70,6 @@ import {
   LengthenIcon,
   ExplodeIcon,
   FilledRegionIcon,
-  DetailComponentIcon,
   AlignedDimensionIcon,
   LinearDimensionIcon,
   AngularDimensionIcon,
@@ -1037,12 +1036,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 setRegionTypeManagerOpen={setRegionTypeManagerOpen}
                 setTextStyleManagerOpen={setTextStyleManagerOpen}
                 disabled={isSheetMode}
-              />
-              <RibbonButton
-                icon={<DetailComponentIcon size={24} />}
-                label="Detail Component"
-                onClick={() => {}}
-                disabled={true}
               />
             </RibbonGroup>
 
