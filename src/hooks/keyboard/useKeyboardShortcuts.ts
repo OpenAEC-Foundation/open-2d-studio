@@ -508,8 +508,9 @@ export function useKeyboardShortcuts() {
                     }
                   }
                 } else if (st.cursor2DPlaced && st.selectedShapeIds.length > 0) {
-                  // Use 2D cursor position as the base/displacement point for move
+                  // Use 2D cursor position as the base/displacement point for move, then clear it
                   st.addDrawingPoint({ x: st.cursor2D.x, y: st.cursor2D.y });
+                  st.resetCursor2D();
                 }
               }
               // If activating 'rotate' with shapes selected, auto-set rotation
@@ -991,6 +992,7 @@ export function useKeyboardShortcuts() {
             // If 2D cursor has been explicitly placed, use it as the base/displacement point
             if (s.cursor2DPlaced) {
               s.addDrawingPoint({ x: s.cursor2D.x, y: s.cursor2D.y });
+              s.resetCursor2D();
               break;
             }
             // Default: use center of selected shapes
