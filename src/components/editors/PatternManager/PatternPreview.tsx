@@ -11,6 +11,7 @@ interface PatternPreviewProps {
   pattern: CustomHatchPattern;
   width?: number;
   height?: number;
+  /** Background fill color. Omit (or pass undefined) for transparent background. */
   backgroundColor?: string;
   lineColor?: string;
   scale?: number;
@@ -125,8 +126,8 @@ export function PatternPreview({
   pattern,
   width = 120,
   height = 80,
-  backgroundColor = '#1a1a2e',
-  lineColor = '#ffffff',
+  backgroundColor,
+  lineColor = '#888888',
   scale = 1,
 }: PatternPreviewProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -138,10 +139,12 @@ export function PatternPreview({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    // Clear canvas
+    // Clear canvas — transparent by default (no dark background)
     ctx.clearRect(0, 0, width, height);
-    ctx.fillStyle = backgroundColor;
-    ctx.fillRect(0, 0, width, height);
+    if (backgroundColor) {
+      ctx.fillStyle = backgroundColor;
+      ctx.fillRect(0, 0, width, height);
+    }
 
     // Handle SVG-based patterns
     if (isSvgHatchPattern(pattern)) {
@@ -160,8 +163,10 @@ export function PatternPreview({
         tileCtx.drawImage(img, 0, 0, tileW, tileH);
         const canvasPattern = ctx.createPattern(tileCanvas, 'repeat');
         if (canvasPattern) {
-          ctx.fillStyle = '#ffffff';
-          ctx.fillRect(0, 0, width, height);
+          if (backgroundColor) {
+            ctx.fillStyle = backgroundColor;
+            ctx.fillRect(0, 0, width, height);
+          }
           ctx.fillStyle = canvasPattern;
           ctx.fillRect(0, 0, width, height);
         }

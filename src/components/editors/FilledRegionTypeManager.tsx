@@ -227,9 +227,10 @@ function TypeListItem({
     >
       <PatternPreview
         pattern={resolvePattern(type.fgPatternType, type.fgCustomPatternId, useAppStore.getState().getPatternById)}
-        lineColor={type.fgColor}
-        width={24}
-        height={18}
+        lineColor={type.fgColor || '#888888'}
+        backgroundColor={type.backgroundColor}
+        width={32}
+        height={24}
       />
       <span className="flex-1 truncate">{type.name}</span>
       <div className="hidden group-hover:flex items-center gap-0.5">
@@ -263,7 +264,7 @@ function TypeDetails({ type, onEdit }: { type: FilledRegionType; onEdit: () => v
       <div className="flex gap-4">
         <div>
           <div className="text-[10px] text-cad-text-dim mb-1">Foreground Pattern</div>
-          <PatternPreview pattern={resolvePattern(type.fgPatternType, type.fgCustomPatternId, useAppStore.getState().getPatternById)} lineColor={type.fgColor} width={64} height={48} />
+          <PatternPreview pattern={resolvePattern(type.fgPatternType, type.fgCustomPatternId, useAppStore.getState().getPatternById)} lineColor={type.fgColor || '#888888'} backgroundColor={type.backgroundColor} width={80} height={80} />
           <div className="text-[10px] text-cad-text-dim mt-1">
             {type.fgPatternType} | {type.fgPatternAngle}&deg; | &times;{type.fgPatternScale}
           </div>
@@ -271,7 +272,7 @@ function TypeDetails({ type, onEdit }: { type: FilledRegionType; onEdit: () => v
         {type.bgPatternType && (
           <div>
             <div className="text-[10px] text-cad-text-dim mb-1">Background Pattern</div>
-            <PatternPreview pattern={resolvePattern(type.bgPatternType, type.bgCustomPatternId, useAppStore.getState().getPatternById)} lineColor={type.bgColor || '#808080'} width={64} height={48} />
+            <PatternPreview pattern={resolvePattern(type.bgPatternType, type.bgCustomPatternId, useAppStore.getState().getPatternById)} lineColor={type.bgColor || '#888888'} backgroundColor={type.backgroundColor} width={80} height={80} />
             <div className="text-[10px] text-cad-text-dim mt-1">
               {type.bgPatternType} | {type.bgPatternAngle ?? 0}&deg; | &times;{type.bgPatternScale ?? 1}
             </div>

@@ -57,7 +57,7 @@ export function PatternEditorDialog({
         setCategory('custom');
       }
       setPreviewScale(1);
-      setPreviewBg('dark');
+      setPreviewBg('light');
     }
   }, [isOpen, pattern]);
 
@@ -146,8 +146,8 @@ export function PatternEditorDialog({
     }
   };
 
-  const previewBgColor = previewBg === 'dark' ? '#1a1a2e' : previewBg === 'light' ? '#ffffff' : undefined;
-  const previewLineColor = previewBg === 'light' ? '#333333' : '#ffffff';
+  const previewBgColor = previewBg === 'dark' ? '#1a1a2e' : previewBg === 'light' ? '#f8f8f8' : undefined;
+  const previewLineColor = previewBg === 'dark' ? '#ffffff' : '#333333';
 
   return (
     <DraggableModal
