@@ -503,8 +503,8 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Handle AEC drawing tools
-      // Some tools (like spot-coordinate, label) are stateless and don't need a pending state
-      const isStatelessAecTool = activeTool === 'spot-coordinate' || activeTool === 'label';
+      // Some tools (like spot-coordinate, label, detail-line, l-shape) are stateless and don't need a pending state
+      const isStatelessAecTool = activeTool === 'spot-coordinate' || activeTool === 'label' || activeTool === 'detail-line' || activeTool === 'l-shape';
       if (aecTools.isAecTool(activeTool) && (aecTools.hasPendingState(activeTool) || isStatelessAecTool)) {
         deselectAll();
         if (aecTools.handleToolClick(activeTool, snappedPos, orthoMode, snapResult, findShapeAtPoint)) {
@@ -1195,7 +1195,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // AEC drawing tool preview
-      const isStatelessAecMove = activeTool === 'spot-coordinate' || activeTool === 'label';
+      const isStatelessAecMove = activeTool === 'spot-coordinate' || activeTool === 'label' || activeTool === 'detail-line' || activeTool === 'l-shape';
       if (aecTools.isAecTool(activeTool) && (aecTools.hasPendingState(activeTool) || isStatelessAecMove) && editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
         const basePoint = aecTools.getToolBasePoint(activeTool);
@@ -1419,7 +1419,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Cancel AEC drawing tools
-      const isStatelessAecCancel = activeTool === 'spot-coordinate' || activeTool === 'label';
+      const isStatelessAecCancel = activeTool === 'spot-coordinate' || activeTool === 'label' || activeTool === 'detail-line' || activeTool === 'l-shape';
       if (aecTools.isAecTool(activeTool) && (aecTools.hasPendingState(activeTool) || isStatelessAecCancel)) {
         if (aecTools.handleToolCancel(activeTool, setActiveTool, snapDetection.clearTracking)) {
           return;

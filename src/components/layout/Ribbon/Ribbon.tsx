@@ -731,15 +731,6 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                     shortcut="LE"
                   />
                   <RibbonSmallButton
-                    icon={<Tag size={14} />}
-                    label="Label"
-                    onClick={() => switchToDrawingTool('label')}
-                    active={activeTool === 'label'}
-                    disabled={isSheetMode}
-                    tooltip="Place a smart label that reads properties from a shape (length, area, type, …)"
-                    shortcut="LB"
-                  />
-                  <RibbonSmallButton
                     icon={<TableIcon size={14} />}
                     label="Table"
                     onClick={() => {}}
@@ -831,6 +822,17 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   shortcut="SC"
                 />
               </RibbonButtonStack>
+              <RibbonMediumButtonStack>
+                <RibbonMediumButton
+                  icon={<Tag size={18} />}
+                  label="Label"
+                  onClick={() => switchToDrawingTool('label')}
+                  active={activeTool === 'label'}
+                  disabled={isSheetMode}
+                  tooltip="Place a smart label that reads properties from a shape (length, area, type, …)"
+                  shortcut="LB"
+                />
+              </RibbonMediumButtonStack>
             </RibbonGroup>
 
             {/* Modify Group */}

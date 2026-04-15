@@ -1217,7 +1217,7 @@ export const BUILT_IN_DETAIL_LINE_TYPES: DetailLineType[] = [
     patternType: 'insulation-nen47',
     patternAngle: 60,
     patternScale: 1,
-    patternColor: '#888800',
+    patternColor: '#000000',
     backgroundColor: '#FFFDE0',
   },
   {
