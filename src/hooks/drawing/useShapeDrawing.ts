@@ -135,16 +135,12 @@ export function useShapeDrawing() {
   const createLine = useCallback(
     (start: Point, end: Point) => {
       const id = generateId();
-      // Apply sketch style (cyan, thicker) when in filled region mode
-      const style = filledRegionMode
-        ? { ...currentStyle, color: '#00e5ff', strokeWidth: Math.max(currentStyle.strokeWidth ?? 1, 2) }
-        : { ...currentStyle };
       const lineShape: LineShape = {
         id,
         type: 'line',
         layerId: activeLayerId,
         drawingId: activeDrawingId,
-        style,
+        style: { ...currentStyle },
         visible: true,
         locked: false,
         start,
@@ -255,16 +251,12 @@ export function useShapeDrawing() {
   const createArc = useCallback(
     (center: Point, radius: number, startAngle: number, endAngle: number) => {
       const id = generateId();
-      // Apply sketch style (cyan, thicker) when in filled region mode
-      const style = filledRegionMode
-        ? { ...currentStyle, color: '#00e5ff', strokeWidth: Math.max(currentStyle.strokeWidth ?? 1, 2) }
-        : { ...currentStyle };
       const arcShape: ArcShape = {
         id,
         type: 'arc',
         layerId: activeLayerId,
         drawingId: activeDrawingId,
-        style,
+        style: { ...currentStyle },
         visible: true,
         locked: false,
         center,
