@@ -21,8 +21,15 @@ export type DimensionType = 'linear' | 'aligned' | 'angular' | 'radius' | 'diame
 
 /**
  * Arrow/tick mark types for dimension terminators
+ * - filled: solid filled arrowhead
+ * - open: open arrowhead (stroke only)
+ * - dot: small circle (open or filled via dotFilled)
+ * - tick: diagonal tick mark
+ * - none: no terminator
+ * - circle: filled circle (NEN convention)
+ * - slash: 45° slash line
  */
-export type DimensionArrowType = 'filled' | 'open' | 'dot' | 'tick' | 'none';
+export type DimensionArrowType = 'filled' | 'open' | 'dot' | 'tick' | 'none' | 'circle' | 'slash';
 
 /**
  * Text placement relative to dimension line
@@ -56,13 +63,13 @@ export interface DimensionReference {
 export interface DimensionStyle {
   /** Type of arrow/terminator at dimension line ends */
   arrowType: DimensionArrowType;
-  /** Size of arrows in drawing units */
+  /** Size of arrows in paper mm */
   arrowSize: number;
-  /** Gap between geometry and extension line start */
+  /** Gap between geometry and extension line start (paper mm) */
   extensionLineGap: number;
-  /** How far extension lines extend past the dimension line */
+  /** How far extension lines extend past the dimension line (paper mm) */
   extensionLineOvershoot: number;
-  /** Text height in drawing units */
+  /** Text height in paper mm */
   textHeight: number;
   /** Where to place text relative to dimension line */
   textPlacement: DimensionTextPlacement;
@@ -78,6 +85,26 @@ export interface DimensionStyle {
   dotFilled?: boolean;
   /** Whether to suppress thousands separators in dimension text */
   noThousandsSeparator?: boolean;
+  /**
+   * Alias for arrowType — preferred name for the tick mark style selector.
+   * When set, overrides arrowType for rendering.
+   */
+  tickMarkType?: DimensionArrowType;
+  /**
+   * Length of extension lines (paper mm). When set, overrides extensionLineOvershoot.
+   * Default 2mm.
+   */
+  extensionLineLength?: number;
+  /**
+   * Offset from measured geometry to start of extension line (paper mm).
+   * When set, overrides extensionLineGap. Default 1mm.
+   */
+  extensionLineOffset?: number;
+  /**
+   * Text position relative to dimension line.
+   * 'above' | 'center' | 'below'. 'center' maps to the existing 'centered' placement.
+   */
+  textPosition?: 'above' | 'center' | 'below';
 }
 
 // Re-export dimension style constants from single source of truth

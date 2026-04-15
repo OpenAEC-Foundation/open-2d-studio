@@ -66,16 +66,46 @@ export class DimensionRenderer extends BaseRenderer {
   /**
    * Draw a dimension shape
    */
+  /**
+   * Resolve the effective DimensionStyle by merging alias properties:
+   * - tickMarkType overrides arrowType when present
+   * - extensionLineOffset overrides extensionLineGap when present
+   * - extensionLineLength overrides extensionLineOvershoot when present
+   * - textPosition maps 'center' → 'centered', overrides textPlacement when present
+   * All values are scaled from paper mm to drawing units via scaleFactor.
+   */
+  private resolveStyle(raw: DimensionStyle, scaleFactor: number): DimensionStyle {
+    const resolved: DimensionStyle = { ...raw };
+    // Alias: tickMarkType overrides arrowType
+    if (raw.tickMarkType) {
+      resolved.arrowType = raw.tickMarkType;
+    }
+    // Alias: extensionLineOffset overrides extensionLineGap
+    if (raw.extensionLineOffset != null) {
+      resolved.extensionLineGap = raw.extensionLineOffset;
+    }
+    // Alias: extensionLineLength overrides extensionLineOvershoot
+    if (raw.extensionLineLength != null) {
+      resolved.extensionLineOvershoot = raw.extensionLineLength;
+    }
+    // Alias: textPosition overrides textPlacement
+    if (raw.textPosition != null) {
+      resolved.textPlacement = raw.textPosition === 'center' ? 'centered' : raw.textPosition;
+    }
+    // Scale paper-mm values to drawing units
+    return {
+      ...resolved,
+      textHeight: resolved.textHeight * scaleFactor,
+      arrowSize: resolved.arrowSize * scaleFactor,
+      extensionLineGap: resolved.extensionLineGap * scaleFactor,
+      extensionLineOvershoot: resolved.extensionLineOvershoot * scaleFactor,
+    };
+  }
+
   drawDimension(dimension: DimensionShape, isSelected: boolean, isHovered: boolean = false): void {
     const ctx = this.ctx;
     const scaleFactor = 1 / this.drawingScale;
-    const style: DimensionStyle = {
-      ...dimension.dimensionStyle,
-      textHeight: dimension.dimensionStyle.textHeight * scaleFactor,
-      arrowSize: dimension.dimensionStyle.arrowSize * scaleFactor,
-      extensionLineGap: dimension.dimensionStyle.extensionLineGap * scaleFactor,
-      extensionLineOvershoot: dimension.dimensionStyle.extensionLineOvershoot * scaleFactor,
-    };
+    const style: DimensionStyle = this.resolveStyle(dimension.dimensionStyle, scaleFactor);
 
     // Determine if linked element is selected (for green text highlight)
     const linkedSelected = !isSelected && !isHovered && this.isLinkedElementSelected(dimension);
@@ -443,6 +473,33 @@ export class DimensionRenderer extends BaseRenderer {
         ctx.lineTo(
           tip.x + Math.cos(tickAngle) * halfSize,
           tip.y + Math.sin(tickAngle) * halfSize
+        );
+        ctx.stroke();
+        break;
+      }
+      case 'circle': {
+        // Filled circle — used in NEN/Dutch standard
+        const radius = size / 2;
+        ctx.beginPath();
+        ctx.arc(tip.x, tip.y, radius, 0, Math.PI * 2);
+        const prevFill = ctx.fillStyle;
+        ctx.fillStyle = ctx.strokeStyle;
+        ctx.fill();
+        ctx.fillStyle = prevFill;
+        break;
+      }
+      case 'slash': {
+        // 45° slash line through the dimension line endpoint
+        const slashAngle = angle + Math.PI / 4;
+        const halfSize = size * 0.7;
+        ctx.beginPath();
+        ctx.moveTo(
+          tip.x - Math.cos(slashAngle) * halfSize,
+          tip.y - Math.sin(slashAngle) * halfSize
+        );
+        ctx.lineTo(
+          tip.x + Math.cos(slashAngle) * halfSize,
+          tip.y + Math.sin(slashAngle) * halfSize
         );
         ctx.stroke();
         break;

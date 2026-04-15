@@ -49,10 +49,32 @@ export const DIM_ASSOCIATE_STYLE: DimensionStyle = {
 };
 
 /**
+ * NEN (Dutch standard) dimension style.
+ * Uses filled dot terminators, black text, 2.5mm text height, 1.5mm dot size.
+ */
+export const DIM_NEN_STYLE: DimensionStyle = {
+  arrowType: 'circle',
+  tickMarkType: 'circle',
+  arrowSize: 1.5,
+  extensionLineGap: 1.0,
+  extensionLineOvershoot: 2.0,
+  extensionLineOffset: 1.0,
+  extensionLineLength: 2.0,
+  textHeight: 2.5,
+  textPlacement: 'above',
+  textPosition: 'above',
+  lineColor: '#000000',
+  textColor: '#000000',
+  precision: 0,
+  dotFilled: true,
+};
+
+/**
  * Named dimension style presets.
  * Maps preset name to its DimensionStyle.
  */
 export const DIMENSION_STYLE_PRESETS: Record<string, DimensionStyle> = {
   Default: DEFAULT_DIMENSION_STYLE,
   DimAssociate: DIM_ASSOCIATE_STYLE,
+  NEN: DIM_NEN_STYLE,
 };
