@@ -195,9 +195,9 @@ export class DimensionRenderer extends BaseRenderer {
 
     // Extension of the dimension line past the arrow/marker (in mm, scaled)
     // Only extend for marker types that benefit from an overshoot (circle, dot, tick, slash)
-    const needsLineExtension = style.arrowType === 'circle' || style.arrowType === 'dot' ||
-      style.arrowType === 'tick' || style.arrowType === 'slash' || style.arrowType === 'none';
-    const lineExtension = needsLineExtension ? style.arrowSize * 0.6 : 0;
+    // Line extension past the markers — ALWAYS extend for ALL arrow types
+    // Extension = at least 2mm (paper) past the marker, or arrowSize × 2 for larger markers
+    const lineExtension = Math.max(2, (style.arrowSize || 1) * 2);
 
     // Compute extended endpoints
     const extStart = lineExtension > 0 ? {
