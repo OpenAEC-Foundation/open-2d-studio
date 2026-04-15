@@ -98,7 +98,7 @@ export interface ToolState {
 
   // Filled Region mode (sketch-based boundary drawing)
   filledRegionMode: boolean;
-  filledRegionDrawTool: 'line' | 'rectangle' | 'polygon' | 'circle' | 'arc' | 'spline' | 'pickLines';
+  filledRegionDrawTool: 'line' | 'rectangle' | 'polygon' | 'circle' | 'arc' | 'spline' | 'pickLines' | 'pickRegion';
   sketchShapeIds: string[];    // IDs of shapes created during filled region sketch (outer boundary)
   editingHatchId: string | null;  // ID of hatch being edited via sketch (null = new hatch)
   sketchInnerLoopShapeIds: string[][];  // Completed inner loops (each is array of shape IDs)
@@ -223,7 +223,7 @@ export interface ToolActions {
   startFilledRegionMode: () => void;
   cancelFilledRegionMode: () => void;
   finishFilledRegion: () => void;
-  setFilledRegionDrawTool: (tool: 'line' | 'rectangle' | 'polygon' | 'circle' | 'arc' | 'spline' | 'pickLines') => void;
+  setFilledRegionDrawTool: (tool: 'line' | 'rectangle' | 'polygon' | 'circle' | 'arc' | 'spline' | 'pickLines' | 'pickRegion') => void;
   addSketchShapeId: (id: string) => void;
   clearSketchShapeIds: () => void;
   setEditingHatchId: (id: string | null) => void;
@@ -829,6 +829,7 @@ export const createToolSlice = (
         'circle': 'circle',
         'spline': 'spline',
         'pickLines': 'select',
+        'pickRegion': 'select',
       };
       state.activeTool = (toolMap[tool] || 'line') as any;
       state.drawingPoints = [];

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, memo, useCallback, useMemo } from 'react';
 import {
   MousePointer2,
+  MousePointerClick,
   Hand,
   Square,
   Circle,
@@ -1360,6 +1361,13 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   onClick={() => { setFilledRegionDrawTool('pickLines'); }}
                   active={filledRegionDrawTool === 'pickLines'}
                   tooltip="Click existing shapes to copy them as sketch boundary edges"
+                />
+                <RibbonButton
+                  icon={<MousePointerClick size={24} />}
+                  label="Pick Region"
+                  onClick={() => { setFilledRegionDrawTool('pickRegion'); }}
+                  active={filledRegionDrawTool === 'pickRegion'}
+                  tooltip="Click inside a closed area to auto-detect and create its boundary as sketch edges"
                 />
               </RibbonGroup>
               <RibbonGroup label="Finish">

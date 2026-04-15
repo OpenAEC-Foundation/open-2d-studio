@@ -13,7 +13,7 @@
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
 import type { Point, Shape, GridlineShape, BeamShape, PlateSystemShape, PlateSystemOpening, WallShape, LineShape, ArcShape, CircleShape, RectangleShape, PolylineShape, ImageShape } from '../../types/geometry';
-import { screenToWorld, isPointNearShape, isPointNearParametricShape, snapToAngle, bulgeToArc, calculateBulgeFrom3Points } from '../../engine/geometry/GeometryUtils';
+import { screenToWorld, isPointNearShape, isPointNearParametricShape, snapToAngle, bulgeToArc, calculateBulgeFrom3Points, detectBoundaryAtPoint } from '../../engine/geometry/GeometryUtils';
 import { regeneratePlateSystemBeams } from '../drawing/usePlateSystemDrawing';
 import { QuadTree } from '../../engine/spatial/QuadTree';
 import { isShapeInHiddenCategory } from '../../utils/ifcCategoryUtils';
@@ -540,6 +540,38 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
                   }
                   setHoveredShapeId(null);
                 }
+              }
+            }
+            break;
+          }
+
+          // Filled region Pick Region mode: click inside a closed area to auto-detect boundary
+          if (filledRegionMode && filledRegionDrawTool === 'pickRegion') {
+            // Only search non-sketch shapes so we detect surrounding geometry, not existing sketch edges
+            const nonSketchShapes = shapes.filter(s => !sketchShapeIds.includes(s.id));
+            const boundaryPoints = detectBoundaryAtPoint(worldPos, nonSketchShapes);
+            if (boundaryPoints && boundaryPoints.length >= 3) {
+              // Create one line segment per consecutive boundary point pair (closed polygon)
+              const newShapes: Shape[] = [];
+              for (let i = 0; i < boundaryPoints.length; i++) {
+                const p1 = boundaryPoints[i];
+                const p2 = boundaryPoints[(i + 1) % boundaryPoints.length];
+                const seg: LineShape = {
+                  id: generateId(),
+                  type: 'line' as const,
+                  layerId: activeLayerId,
+                  drawingId: activeDrawingId,
+                  style: { strokeColor: '#00aaff', strokeWidth: 0.18, lineStyle: 'dashed' as const },
+                  visible: true,
+                  locked: false,
+                  start: { ...p1 },
+                  end: { ...p2 },
+                };
+                newShapes.push(seg);
+              }
+              addShapes(newShapes);
+              for (const ns of newShapes) {
+                addSketchShapeId(ns.id);
               }
             }
             break;
@@ -1256,6 +1288,9 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
           const hoveredShape = findShapeAtPoint(worldPos);
           // Only highlight shapes that are not already sketch shapes
           setHoveredShapeId(hoveredShape && !sketchShapeIds.includes(hoveredShape) ? hoveredShape : null);
+        } else if (filledRegionMode && filledRegionDrawTool === 'pickRegion') {
+          // Pick Region mode: no per-shape hover needed (click detects full boundary)
+          setHoveredShapeId(null);
         } else {
           setHoveredShapeId(null);
         }
