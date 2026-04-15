@@ -820,6 +820,15 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   disabled={true}
                 />
               </RibbonButtonStack>
+              <RibbonButton
+                icon={<Ruler size={24} />}
+                label="Measure"
+                onClick={() => switchToDrawingTool('measure')}
+                active={activeTool === 'measure'}
+                disabled={isSheetMode}
+                tooltip="Measure distance between two points (no shape created)"
+                shortcut="ME"
+              />
             </RibbonGroup>
 
             {/* Modify Group */}

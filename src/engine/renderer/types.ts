@@ -202,6 +202,7 @@ export const COLORS = {
   titleBlockBorder: '#000000',
   titleBlockLabel: '#666666',
   titleBlockValue: '#000000',
+  titleBlockEditableValue: '#1565C0',  // Blue for editable field values
   windowSelection: 'rgba(0, 120, 215, 0.15)',
   windowSelectionBorder: 'rgba(0, 120, 215, 0.8)',
   crossingSelection: 'rgba(0, 180, 0, 0.15)',

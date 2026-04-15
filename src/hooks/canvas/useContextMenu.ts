@@ -31,6 +31,7 @@ const TOOL_DISPLAY_NAMES: Record<ToolType, string> = {
   'detail-component': 'Detail Component',
   'detail-line': 'Line Component',
   'l-shape': 'L-Shape',
+  'measure': 'Measure',
   'beam': 'Beam',
   'gridline': 'Grid Line',
   'level': 'Level',

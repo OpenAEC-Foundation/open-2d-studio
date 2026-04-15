@@ -293,9 +293,11 @@ export class TitleBlockRenderer extends BaseRenderer {
     // Draw value (larger, below label) — skip if field is being edited
     if (field.id !== this._editingFieldId) {
       const valueFontSize = fontSize;
-      ctx.fillStyle = COLORS.titleBlockValue;
+      // Editable fields render in blue; empty fields show "?" as placeholder
+      const hasValue = !!(field.value && field.value.trim());
+      ctx.fillStyle = hasValue ? COLORS.titleBlockEditableValue : '#9E9E9E';
       ctx.font = `${isBold ? 'bold ' : ''}${valueFontSize}px ${CAD_DEFAULT_FONT}`;
-      const value = field.value || '';
+      const value = hasValue ? field.value : '?';
       ctx.fillText(value, textX, y + padding + labelFontSize + 2);
     }
 
@@ -533,11 +535,13 @@ export class TitleBlockRenderer extends BaseRenderer {
       ctx.font = `${Math.max(7, (field.fontSize || 8) - 2)}px ${field.fontFamily || CAD_DEFAULT_FONT}`;
       ctx.fillText(field.label, fieldX, fieldY);
 
-      // Draw value (larger, black, below label) — skip if field is being edited
+      // Draw value (larger, blue for editable, below label) — skip if field is being edited
       if (field.id !== this._editingFieldId) {
-        ctx.fillStyle = COLORS.titleBlockValue;
+        const hasValue = !!(field.value && field.value.trim());
+        // Editable fields are shown in blue; empty fields display "?" in gray as placeholder
+        ctx.fillStyle = hasValue ? COLORS.titleBlockEditableValue : '#9E9E9E';
         ctx.font = `bold ${field.fontSize || 10}px ${field.fontFamily || CAD_DEFAULT_FONT}`;
-        const value = field.value || '';
+        const value = hasValue ? field.value : '?';
         ctx.fillText(value, fieldX, fieldY + 10);
       }
     }

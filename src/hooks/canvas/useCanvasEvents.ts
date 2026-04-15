@@ -12,6 +12,7 @@
 
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
+import { formatLength } from '../../units';
 import type { Point, Shape, GridlineShape, BeamShape, PlateSystemShape, PlateSystemOpening, WallShape, LineShape, ArcShape, CircleShape, RectangleShape, PolylineShape, ImageShape } from '../../types/geometry';
 import { screenToWorld, isPointNearShape, isPointNearParametricShape, snapToAngle, bulgeToArc, calculateBulgeFrom3Points, detectBoundaryAtPoint } from '../../engine/geometry/GeometryUtils';
 import { regeneratePlateSystemBeams } from '../drawing/usePlateSystemDrawing';
@@ -990,6 +991,26 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
           snapDetection.clearTracking();
           break;
 
+        case 'measure': {
+          // Measure tool: first click sets start point, second click shows distance.
+          // No shapes are created — purely informational.
+          deselectAll();
+          const { drawingPoints, addDrawingPoint, clearDrawingPoints, unitSettings } = useAppStore.getState();
+          if (drawingPoints.length === 0) {
+            addDrawingPoint(snappedPos);
+          } else {
+            const start = drawingPoints[0];
+            const dx = snappedPos.x - start.x;
+            const dy = snappedPos.y - start.y;
+            const dist = Math.sqrt(dx * dx + dy * dy);
+            const distStr = formatLength(dist, unitSettings);
+            alert(`Afstand: ${distStr}`);
+            clearDrawingPoints();
+          }
+          snapDetection.clearTracking();
+          break;
+        }
+
         case 'image': {
           deselectAll();
           // Open file dialog, import image, place at click point
@@ -1527,6 +1548,13 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
           modifyTools.finishModify();
         }
         setActiveTool('select');
+        snapDetection.clearTracking();
+        return;
+      }
+
+      // Cancel measure tool on right-click
+      if (activeTool === 'measure') {
+        useAppStore.getState().clearDrawingPoints();
         snapDetection.clearTracking();
         return;
       }

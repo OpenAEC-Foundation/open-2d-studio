@@ -348,6 +348,9 @@ function StatusMessage() {
         else if (pts === 0) msg = 'Click source point (point to align from)';
         else msg = 'Click destination point (point to align to)';
         break;
+      case 'measure':
+        msg = pts === 0 ? 'Click first point to measure from' : 'Click second point to measure distance';
+        break;
     }
   }
 

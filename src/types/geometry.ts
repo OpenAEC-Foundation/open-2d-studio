@@ -1545,6 +1545,7 @@ export type ToolType =
   | 'label'
   | 'rebar'
   | 'l-shape'
+  | 'measure'
   // Image tools
   | 'image'
   // Modify tools (legacy - now commands)
