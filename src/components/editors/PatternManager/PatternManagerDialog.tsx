@@ -90,6 +90,12 @@ export function PatternManagerDialog({
   // Preview expand/collapse on double-click
   const [previewExpanded, setPreviewExpanded] = useState(false);
 
+  // Details tab: 'info' | 'svg'
+  const [detailsTab, setDetailsTab] = useState<'info' | 'svg'>('info');
+
+  // SVG code copy state
+  const [svgCopied, setSvgCopied] = useState(false);
+
   const rightPanelRef = useRef<HTMLDivElement>(null);
   const detailsRef = useRef<HTMLDivElement>(null);
 
@@ -135,6 +141,25 @@ export function PatternManagerDialog({
   }, [selectedPatternId, userPatterns, projectPatterns]);
 
   const isFavorite = (id: string) => favoritePatternIds.includes(id);
+
+  // Generate SVG code for the selected pattern
+  const svgCode = useMemo((): string => {
+    if (!selectedPattern) return '';
+    if (isSvgHatchPattern(selectedPattern)) {
+      return selectedPattern.svgTile;
+    }
+    return generateSVGFromLinePattern(selectedPattern, 100);
+  }, [selectedPattern]);
+
+  const handleCopySvg = () => {
+    if (!svgCode) return;
+    navigator.clipboard.writeText(svgCode).then(() => {
+      setSvgCopied(true);
+      setTimeout(() => setSvgCopied(false), 2000);
+    }).catch(() => {
+      // Fallback: select the textarea content
+    });
+  };
 
   const toggleCategory = (category: PatternCategory) => {
     setExpandedCategories(prev => ({
@@ -473,10 +498,11 @@ export function PatternManagerDialog({
           >
             <PatternPreview
               pattern={pattern}
-              width={28}
-              height={20}
-              scale={0.5}
-              lineColor={pattern.lineFamilies[0]?.strokeColor ?? '#ffffff'}
+              width={48}
+              height={36}
+              scale={0.8}
+              lineColor={pattern.lineFamilies[0]?.strokeColor ?? '#888888'}
+              backgroundColor="#f0f0f0"
             />
             <span className="text-xs truncate flex-1">{pattern.name}</span>
             {/* Star icon for toggling favorite */}
@@ -703,48 +729,93 @@ export function PatternManagerDialog({
                 />
               </div>
 
-              {/* Pattern details - fixed height at bottom, hidden when expanded */}
-              <div ref={detailsRef} className={`flex-shrink-0 h-[200px] space-y-3 pt-4 overflow-y-auto ${previewExpanded ? 'hidden' : ''}`}>
-                <div>
-                  <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Name</label>
-                  <div className="text-sm font-medium">{selectedPattern.name}</div>
+              {/* Pattern details — tabs: Info | SVG Code */}
+              <div ref={detailsRef} className={`flex-shrink-0 h-[220px] flex flex-col pt-3 ${previewExpanded ? 'hidden' : ''}`}>
+                {/* Tab bar */}
+                <div className="flex gap-1 border-b border-cad-border mb-2 flex-shrink-0">
+                  <button
+                    onClick={() => setDetailsTab('info')}
+                    className={`px-3 py-1 text-[10px] uppercase tracking-wide border-b-2 transition-colors ${
+                      detailsTab === 'info' ? 'border-cad-accent text-cad-accent' : 'border-transparent text-cad-text-dim hover:text-cad-text'
+                    }`}
+                  >
+                    Info
+                  </button>
+                  <button
+                    onClick={() => setDetailsTab('svg')}
+                    className={`px-3 py-1 text-[10px] uppercase tracking-wide border-b-2 transition-colors ${
+                      detailsTab === 'svg' ? 'border-cad-accent text-cad-accent' : 'border-transparent text-cad-text-dim hover:text-cad-text'
+                    }`}
+                  >
+                    SVG Code
+                  </button>
                 </div>
 
-                {selectedPattern.description && (
-                  <div>
-                    <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Description</label>
-                    <div className="text-xs text-cad-text-dim">{selectedPattern.description}</div>
-                  </div>
-                )}
-
-                <div className="flex gap-4">
-                  <div>
-                    <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Type</label>
-                    <div className="text-xs capitalize">{selectedPattern.scaleType}</div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Source</label>
-                    <div className="text-xs capitalize">{selectedPattern.source}</div>
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Line Families</label>
-                    <div className="text-xs">{selectedPattern.lineFamilies.length}</div>
-                  </div>
-                </div>
-
-                {/* Line family details */}
-                {selectedPattern.lineFamilies.length > 0 && (
-                  <div>
-                    <label className="text-[10px] text-cad-text-dim uppercase tracking-wide mb-1 block">
-                      Line Definitions
-                    </label>
-                    <div className="bg-cad-bg rounded p-2 max-h-[100px] overflow-y-auto">
-                      {selectedPattern.lineFamilies.map((family, i) => (
-                        <div key={i} className="text-[10px] font-mono text-cad-text-dim">
-                          {`${family.angle}°, spacing: ${family.deltaY}${family.dashPattern?.length ? `, dash: [${family.dashPattern.join(',')}]` : ''}`}
-                        </div>
-                      ))}
+                {detailsTab === 'info' ? (
+                  <div className="flex-1 overflow-y-auto space-y-2">
+                    <div>
+                      <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Name</label>
+                      <div className="text-sm font-medium">{selectedPattern.name}</div>
                     </div>
+
+                    {selectedPattern.description && (
+                      <div>
+                        <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Description</label>
+                        <div className="text-xs text-cad-text-dim">{selectedPattern.description}</div>
+                      </div>
+                    )}
+
+                    <div className="flex gap-4">
+                      <div>
+                        <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Type</label>
+                        <div className="text-xs capitalize">{selectedPattern.scaleType}</div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Source</label>
+                        <div className="text-xs capitalize">{selectedPattern.source}</div>
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-cad-text-dim uppercase tracking-wide">Families</label>
+                        <div className="text-xs">{selectedPattern.lineFamilies.length}</div>
+                      </div>
+                    </div>
+
+                    {/* Line family details */}
+                    {selectedPattern.lineFamilies.length > 0 && (
+                      <div>
+                        <label className="text-[10px] text-cad-text-dim uppercase tracking-wide mb-1 block">
+                          Line Definitions
+                        </label>
+                        <div className="bg-cad-bg rounded p-2 max-h-[80px] overflow-y-auto">
+                          {selectedPattern.lineFamilies.map((family, i) => (
+                            <div key={i} className="text-[10px] font-mono text-cad-text-dim">
+                              {`${family.angle}°, spacing: ${family.deltaY}${family.dashPattern?.length ? `, dash: [${family.dashPattern.join(',')}]` : ''}`}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex-1 flex flex-col gap-1 min-h-0">
+                    <div className="flex items-center justify-between flex-shrink-0">
+                      <span className="text-[10px] text-cad-text-dim uppercase tracking-wide">SVG Definition</span>
+                      <button
+                        onClick={handleCopySvg}
+                        className="flex items-center gap-1 px-2 py-0.5 text-[10px] bg-cad-hover rounded hover:bg-cad-border transition-colors"
+                        title="Copy SVG code to clipboard"
+                      >
+                        {svgCopied ? <CheckCircle size={10} className="text-green-400" /> : <Copy size={10} />}
+                        {svgCopied ? 'Copied!' : 'Copy'}
+                      </button>
+                    </div>
+                    <textarea
+                      readOnly
+                      value={svgCode}
+                      className="flex-1 font-mono text-[9px] bg-cad-bg border border-cad-border rounded p-2 resize-none text-cad-text-dim leading-relaxed outline-none"
+                      onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                      title="Click to select all"
+                    />
                   </div>
                 )}
               </div>
