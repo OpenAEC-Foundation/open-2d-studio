@@ -1406,6 +1406,7 @@ export type ToolType =
   | 'puntniveau'
   | 'label'
   | 'rebar'
+  | 'l-shape'
   // Image tools
   | 'image'
   // Modify tools (legacy - now commands)

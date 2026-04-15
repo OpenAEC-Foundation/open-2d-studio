@@ -27,11 +27,12 @@ import { useSlabOpeningDrawing } from '../drawing/useSlabOpeningDrawing';
 import { useColumnDrawing } from '../drawing/useColumnDrawing';
 import { useSpotCoordinateDrawing } from '../drawing/useSpotCoordinateDrawing';
 import { useDetailLineDrawing } from '../drawing/useDetailLineDrawing';
+import { useLShapeDrawing } from '../drawing/useLShapeDrawing';
 
 const AEC_TOOL_NAMES = [
   'beam', 'gridline', 'level', 'pile', 'column', 'cpt',
   'wall', 'slab', 'slab-opening', 'slab-label', 'puntniveau', 'section-callout', 'space', 'plate-system',
-  'spot-coordinate', 'detail-line',
+  'spot-coordinate', 'detail-line', 'l-shape',
 ] as const;
 
 export function useAecCanvasTools() {
@@ -52,6 +53,7 @@ export function useAecCanvasTools() {
   const columnDrawing = useColumnDrawing();
   const spotCoordinateDrawing = useSpotCoordinateDrawing();
   const detailLineDrawing = useDetailLineDrawing();
+  const lShapeDrawing = useLShapeDrawing();
 
   // Read pending states from store
   const {
@@ -234,6 +236,8 @@ export function useAecCanvasTools() {
         return true;
       case 'detail-line':
         return detailLineDrawing.handleDetailLineClick(snappedPos);
+      case 'l-shape':
+        return lShapeDrawing.handleLShapeClick(snappedPos);
       default:
         return false;
     }
@@ -328,6 +332,9 @@ export function useAecCanvasTools() {
       case 'detail-line':
         detailLineDrawing.updateDetailLinePreview(snappedPos);
         return true;
+      case 'l-shape':
+        lShapeDrawing.updateLShapePreview(snappedPos);
+        return true;
       default:
         return false;
     }
@@ -407,6 +414,10 @@ export function useAecCanvasTools() {
         return true;
       case 'detail-line':
         detailLineDrawing.cancelDetailLineDrawing();
+        setActiveTool('select');
+        return true;
+      case 'l-shape':
+        lShapeDrawing.cancelLShapeDrawing();
         setActiveTool('select');
         return true;
       default:

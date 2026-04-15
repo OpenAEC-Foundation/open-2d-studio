@@ -30,6 +30,7 @@ const TOOL_DISPLAY_NAMES: Record<ToolType, string> = {
   'hatch': 'Hatch',
   'detail-component': 'Detail Component',
   'detail-line': 'Detail Line',
+  'l-shape': 'L-Shape',
   'beam': 'Beam',
   'gridline': 'Grid Line',
   'level': 'Level',

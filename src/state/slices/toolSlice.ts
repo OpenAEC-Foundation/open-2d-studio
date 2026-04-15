@@ -34,6 +34,12 @@ export interface ToolState {
   lockedRadius: number | null;       // Circle/Arc: locked radius for single-click placement
   cornerRadius: number;              // Rectangle: corner radius
 
+  // L-Shape tool parameters
+  lShapeWidth: number;               // Total width (horizontal)
+  lShapeHeight: number;              // Total height (vertical)
+  lShapeLegWidth: number;            // Thickness of the vertical leg
+  lShapeLegHeight: number;           // Thickness of the horizontal leg
+
   // Phase 3: Polyline segment mode
   polylineArcMode: boolean;         // When true, next polyline segment is an arc
   polylineArcThroughPoint: Point | null;  // For 3-point arc: the point the arc passes through
@@ -170,6 +176,12 @@ export interface ToolActions {
   setPolylineArcMode: (enabled: boolean) => void;
   setPolylineArcThroughPoint: (point: Point | null) => void;
 
+  // L-Shape tool setters
+  setLShapeWidth: (v: number) => void;
+  setLShapeHeight: (v: number) => void;
+  setLShapeLegWidth: (v: number) => void;
+  setLShapeLegHeight: (v: number) => void;
+
   // Text editing actions
   startTextEditing: (shapeId: string) => void;
   endTextEditing: () => void;
@@ -272,6 +284,12 @@ export const initialToolState: ToolState = {
   chainMode: true,
   lockedRadius: null,
   cornerRadius: 0,
+
+  // L-Shape tool defaults (in mm)
+  lShapeWidth: 200,
+  lShapeHeight: 200,
+  lShapeLegWidth: 50,
+  lShapeLegHeight: 50,
   polylineArcMode: false,
   polylineArcThroughPoint: null,
   lockedDistance: null,
@@ -582,6 +600,11 @@ export const createToolSlice = (
     set((state) => {
       state.cornerRadius = radius;
     }),
+
+  setLShapeWidth: (v) => set((state) => { state.lShapeWidth = v; }),
+  setLShapeHeight: (v) => set((state) => { state.lShapeHeight = v; }),
+  setLShapeLegWidth: (v) => set((state) => { state.lShapeLegWidth = v; }),
+  setLShapeLegHeight: (v) => set((state) => { state.lShapeLegHeight = v; }),
 
   setLockedDistance: (dist) =>
     set((state) => {

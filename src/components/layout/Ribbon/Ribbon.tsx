@@ -581,6 +581,15 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   tooltip="Draw a line component with hatch fill (insulation, diagonal, solid, etc.)"
                   shortcut="DL"
                 />
+                <RibbonMediumButton
+                  icon={<Square size={18} />}
+                  label="L-Shape"
+                  onClick={() => switchToDrawingTool('l-shape')}
+                  active={activeTool === 'l-shape'}
+                  disabled={isSheetMode}
+                  tooltip="Place an L-shaped closed polyline. Set dimensions in the toolbar."
+                  shortcut="LS"
+                />
               </RibbonMediumButtonStack>
               <RibbonMediumButtonStack>
                 <RibbonMediumButton

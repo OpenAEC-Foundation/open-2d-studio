@@ -143,6 +143,30 @@ function LineOptions() {
 }
 
 /**
+ * L-Shape tool options
+ */
+function LShapeOptions() {
+  const lShapeWidth = useAppStore((s) => s.lShapeWidth);
+  const lShapeHeight = useAppStore((s) => s.lShapeHeight);
+  const lShapeLegWidth = useAppStore((s) => s.lShapeLegWidth);
+  const lShapeLegHeight = useAppStore((s) => s.lShapeLegHeight);
+  const setLShapeWidth = useAppStore((s) => s.setLShapeWidth);
+  const setLShapeHeight = useAppStore((s) => s.setLShapeHeight);
+  const setLShapeLegWidth = useAppStore((s) => s.setLShapeLegWidth);
+  const setLShapeLegHeight = useAppStore((s) => s.setLShapeLegHeight);
+
+  return (
+    <>
+      <OptionNumberInput label="Width" value={lShapeWidth} onChange={(v) => setLShapeWidth(v ?? 200)} min={1} step={10} />
+      <OptionNumberInput label="Height" value={lShapeHeight} onChange={(v) => setLShapeHeight(v ?? 200)} min={1} step={10} />
+      <Separator />
+      <OptionNumberInput label="Leg W" value={lShapeLegWidth} onChange={(v) => setLShapeLegWidth(v ?? 50)} min={1} step={5} />
+      <OptionNumberInput label="Leg H" value={lShapeLegHeight} onChange={(v) => setLShapeLegHeight(v ?? 50)} min={1} step={5} />
+    </>
+  );
+}
+
+/**
  * Rectangle tool options
  */
 function RectangleOptions() {
@@ -1068,6 +1092,8 @@ export const ToolOptionsBar = memo(function ToolOptionsBar() {
       case 'trim':
       case 'extend':
         return null;
+      case 'l-shape':
+        return <LShapeOptions />;
       default:
         return null;
     }
