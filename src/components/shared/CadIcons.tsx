@@ -1395,3 +1395,20 @@ export function SpotElevationIcon({ size = 24, className }: IconProps) {
     </svg>
   );
 }
+
+/** Detail Line Icon — horizontal line with a filled band (insulation/hatch component) */
+export function DetailLineIcon({ size = 24, className }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={className}>
+      {/* Top boundary line */}
+      <line x1="3" y1="9" x2="21" y2="9" />
+      {/* Bottom boundary line */}
+      <line x1="3" y1="15" x2="21" y2="15" />
+      {/* Diagonal hatch lines inside the band */}
+      <line x1="5"  y1="15" x2="9"  y2="9"  strokeWidth="1" />
+      <line x1="9"  y1="15" x2="13" y2="9"  strokeWidth="1" />
+      <line x1="13" y1="15" x2="17" y2="9"  strokeWidth="1" />
+      <line x1="17" y1="15" x2="21" y2="9"  strokeWidth="1" />
+    </svg>
+  );
+}

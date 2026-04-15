@@ -74,6 +74,7 @@ function getShapeTypeLabel(type: ShapeType): string {
     'block-instance': 'Block',
     rebar: 'Rebar',
     'component-instance': 'Component',
+    'detail-line': 'Detail Line',
   };
   return labels[type] ?? type;
 }

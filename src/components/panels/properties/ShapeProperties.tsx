@@ -16,9 +16,10 @@ import type {
   CPTShape, PileShape, PileTypeDefinition,
   RebarShape,
   SpotCoordinateShape,
+  DetailLineShape,
   PileContourType,
 } from '../../../types/geometry';
-import { REBAR_DIAMETERS } from '../../../types/geometry';
+import { REBAR_DIAMETERS, BUILT_IN_DETAIL_LINE_TYPES } from '../../../types/geometry';
 import type { ParametricShape, ProfileParametricShape, ProfileType, ParameterValues } from '../../../types/parametric';
 import type { DimensionShape } from '../../../types/dimension';
 import { PROFILE_TEMPLATES } from '../../../services/parametric/profileTemplates';
@@ -2284,6 +2285,46 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
                 <div className="text-cad-text">{sc.displayY.toFixed(sc.decimalPlaces)} {sc.unit}</div>
               </div>
             </div>
+          </PropertyGroup>
+        </>
+      );
+    }
+
+    case 'detail-line': {
+      const dl = shape as DetailLineShape;
+      const allTypes = [...BUILT_IN_DETAIL_LINE_TYPES];
+      const currentType = allTypes.find(t => t.id === dl.detailLineTypeId);
+
+      return (
+        <>
+          <PropertyGroup label="Detail Line Type">
+            <SelectField
+              label="Type"
+              value={dl.detailLineTypeId ?? ''}
+              options={allTypes.map(t => ({ value: t.id, label: t.name }))}
+              onChange={(v) => {
+                const t = allTypes.find(x => x.id === v);
+                if (t) {
+                  update({
+                    detailLineTypeId: t.id,
+                    patternType: t.patternType,
+                    patternAngle: t.patternAngle,
+                    patternScale: t.patternScale,
+                    patternColor: t.patternColor,
+                    backgroundColor: t.backgroundColor,
+                    thickness: t.thickness,
+                  });
+                }
+              }}
+            />
+            {currentType && (
+              <div className="text-xs text-cad-text-dim mt-1">
+                {currentType.name} — {dl.thickness}mm thick
+              </div>
+            )}
+          </PropertyGroup>
+          <PropertyGroup label="Geometry">
+            <NumberField label="Thickness (mm)" value={dl.thickness} onChange={(v) => update({ thickness: v })} step={5} min={1} />
           </PropertyGroup>
         </>
       );

@@ -73,6 +73,7 @@ import {
   RadiusDimensionIcon,
   DiameterDimensionIcon,
   SpotCoordinateIcon,
+  DetailLineIcon,
 } from '../../shared/CadIcons';
 import { useFileOperations } from '../../../hooks/file/useFileOperations';
 import { showPdfFileDialog } from '../../../services/file/pdfUnderlayService';
@@ -569,6 +570,15 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   onClick={() => startFilledRegionMode()}
                   active={activeTool === 'hatch' || filledRegionMode}
                   disabled={isSheetMode}
+                />
+                <RibbonMediumButton
+                  icon={<DetailLineIcon size={18} />}
+                  label="Detail Line"
+                  onClick={() => switchToDrawingTool('detail-line')}
+                  active={activeTool === 'detail-line'}
+                  disabled={isSheetMode}
+                  tooltip="Draw a line component with hatch fill (insulation, diagonal, solid, etc.)"
+                  shortcut="DL"
                 />
               </RibbonMediumButtonStack>
               <RibbonMediumButtonStack>
