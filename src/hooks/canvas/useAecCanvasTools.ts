@@ -28,11 +28,12 @@ import { useColumnDrawing } from '../drawing/useColumnDrawing';
 import { useSpotCoordinateDrawing } from '../drawing/useSpotCoordinateDrawing';
 import { useDetailLineDrawing } from '../drawing/useDetailLineDrawing';
 import { useLShapeDrawing } from '../drawing/useLShapeDrawing';
+import { useLabelDrawing } from '../drawing/useLabelDrawing';
 
 const AEC_TOOL_NAMES = [
   'beam', 'gridline', 'level', 'pile', 'column', 'cpt',
   'wall', 'slab', 'slab-opening', 'slab-label', 'puntniveau', 'section-callout', 'space', 'plate-system',
-  'spot-coordinate', 'detail-line', 'l-shape',
+  'spot-coordinate', 'detail-line', 'l-shape', 'label',
 ] as const;
 
 export function useAecCanvasTools() {
@@ -54,6 +55,7 @@ export function useAecCanvasTools() {
   const spotCoordinateDrawing = useSpotCoordinateDrawing();
   const detailLineDrawing = useDetailLineDrawing();
   const lShapeDrawing = useLShapeDrawing();
+  const labelDrawing = useLabelDrawing();
 
   // Read pending states from store
   const {
@@ -187,7 +189,7 @@ export function useAecCanvasTools() {
    * Handle click for an AEC drawing tool.
    * Returns true if the click was handled.
    */
-  function handleToolClick(toolName: string, snappedPos: Point, shiftKey: boolean, snapResult: SnapResult): boolean {
+  function handleToolClick(toolName: string, snappedPos: Point, shiftKey: boolean, snapResult: SnapResult, findShapeAtPoint?: (p: Point) => string | null): boolean {
     switch (toolName) {
       case 'beam':
         if (!pendingBeam) return false;
@@ -238,6 +240,9 @@ export function useAecCanvasTools() {
         return detailLineDrawing.handleDetailLineClick(snappedPos);
       case 'l-shape':
         return lShapeDrawing.handleLShapeClick(snappedPos);
+      case 'label':
+        labelDrawing.handleLabelClick(snappedPos, findShapeAtPoint ?? (() => null));
+        return true;
       default:
         return false;
     }
@@ -335,6 +340,9 @@ export function useAecCanvasTools() {
       case 'l-shape':
         lShapeDrawing.updateLShapePreview(snappedPos);
         return true;
+      case 'label':
+        labelDrawing.updateLabelPreview(snappedPos);
+        return true;
       default:
         return false;
     }
@@ -418,6 +426,10 @@ export function useAecCanvasTools() {
         return true;
       case 'l-shape':
         lShapeDrawing.cancelLShapeDrawing();
+        setActiveTool('select');
+        return true;
+      case 'label':
+        labelDrawing.cancelLabelDrawing();
         setActiveTool('select');
         return true;
       default:

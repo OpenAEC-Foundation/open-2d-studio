@@ -5,6 +5,7 @@ import {
   Square,
   Circle,
   Type,
+  Tag,
   RotateCw,
   FlipHorizontal,
   Scissors,
@@ -235,6 +236,11 @@ function TypeManagerDropdown({ setPatternManagerOpen, setRegionTypeManagerOpen, 
             label="Spot Coordinate Styles"
             icon={<Crosshair size={14} />}
             onClick={() => { alert('Spot Coordinate Styles — coming soon'); setOpen(false); }}
+          />
+          <DropdownMenuItem
+            label="Label Styles"
+            icon={<Tag size={14} />}
+            onClick={() => { alert('Label Styles — coming soon'); setOpen(false); }}
           />
           <div className="border-t border-cad-border my-1" />
           <DropdownMenuItem
@@ -728,6 +734,15 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                     active={activeTool === 'leader'}
                     disabled={isSheetMode}
                     shortcut="LE"
+                  />
+                  <RibbonSmallButton
+                    icon={<Tag size={14} />}
+                    label="Label"
+                    onClick={() => switchToDrawingTool('label')}
+                    active={activeTool === 'label'}
+                    disabled={isSheetMode}
+                    tooltip="Place a smart label that reads properties from a shape (length, area, type, …)"
+                    shortcut="LB"
                   />
                   <RibbonSmallButton
                     icon={<TableIcon size={14} />}

@@ -3,7 +3,8 @@
  */
 
 import type { Shape, DrawingPreview, CurrentStyle, Viewport } from '../types';
-import type { HatchShape, HatchPatternType, ImageShape, WallType, WallSystemType, DetailLineShape } from '../../../types/geometry';
+import type { HatchShape, HatchPatternType, ImageShape, WallType, WallSystemType, DetailLineShape, LabelShape } from '../../../types/geometry';
+import { resolveLabel } from '../../geometry/LabelUtils';
 import type { CustomHatchPattern, LineFamily, SvgHatchPattern, MaterialHatchSettings } from '../../../types/hatch';
 import { BUILTIN_PATTERNS, isSvgHatchPattern, DEFAULT_MATERIAL_HATCH_SETTINGS } from '../../../types/hatch';
 import { BaseRenderer } from './BaseRenderer';
@@ -410,6 +411,9 @@ export class ShapeRenderer extends BaseRenderer {
       case 'detail-line':
         this.drawDetailLine(shape as DetailLineShape, isSelected);
         break;
+      case 'label':
+        this.drawLabel(shape as LabelShape, isSelected);
+        break;
       default: {
         const extRenderer = shapeRendererRegistry.get(shape.type);
         if (extRenderer) {
@@ -490,6 +494,9 @@ export class ShapeRenderer extends BaseRenderer {
         break;
       case 'detail-line':
         this.drawDetailLine(shape as DetailLineShape, false);
+        break;
+      case 'label':
+        this.drawLabel(shape as LabelShape, false);
         break;
       default: {
         const extSimpleRenderer = shapeRendererRegistry.getSimple(shape.type);
@@ -3877,5 +3884,148 @@ export class ShapeRenderer extends BaseRenderer {
     }
 
     ctx.stroke();
+  }
+
+  // ============================================================================
+  // Label Shape Renderer
+  // ============================================================================
+
+  /**
+   * Draw a LabelShape — smart annotation tag that reads properties from a target shape.
+   *
+   * Renders:
+   *  - Leader line from the label position to the target pick point (if showLeader)
+   *  - Arrowhead at the target end of the leader (if arrowType set)
+   *  - Label text at position (resolved from template + target shape each frame)
+   */
+  private drawLabel(shape: LabelShape, isSelected: boolean): void {
+    const ctx = this.ctx;
+    const { position, template, unit, decimalPlaces, showLeader, leaderPoints, arrowType, rotation } = shape;
+
+    const sf = this.drawingScale ? (0.01 / this.drawingScale) : 1;
+    const th = shape.textHeight * sf;
+
+    const lineColor = shape.lineColor || shape.style.strokeColor || '#ffffff';
+    const textColor = shape.textColor || shape.style.strokeColor || '#ffffff';
+    const arrowSize = (shape.arrowSize ?? 120) * sf;
+    const effectiveArrowType = arrowType ?? 'filled';
+
+    // Resolve display text live from the target shape so it stays current
+    let displayText = shape.displayText || template;
+    if (shape.targetShapeId) {
+      const target = this.shapesLookup.get(shape.targetShapeId);
+      if (target) {
+        const effectiveUnit = unit ?? '';
+        const effectiveDecimals = decimalPlaces ?? 0;
+        const prefix = shape.prefix ?? '';
+        const suffix = shape.suffix ?? '';
+        const resolved = resolveLabel(template, target, effectiveUnit, effectiveDecimals);
+        displayText = prefix + resolved + suffix;
+      }
+    } else {
+      // Free-standing label: apply prefix/suffix around the stored displayText
+      const prefix = shape.prefix ?? '';
+      const suffix = shape.suffix ?? '';
+      if (prefix || suffix) {
+        displayText = prefix + displayText + suffix;
+      }
+    }
+
+    ctx.save();
+    ctx.strokeStyle = lineColor;
+    ctx.fillStyle = lineColor;
+    ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth || 0.5);
+    ctx.setLineDash([]);
+
+    // Draw leader line and arrowhead
+    if (showLeader && leaderPoints && leaderPoints.length > 0) {
+      const tip = leaderPoints[leaderPoints.length - 1];
+
+      // Draw leader line segments
+      ctx.beginPath();
+      ctx.moveTo(position.x, position.y);
+      for (const pt of leaderPoints) {
+        ctx.lineTo(pt.x, pt.y);
+      }
+      ctx.stroke();
+
+      // Arrowhead at tip (target end)
+      if (effectiveArrowType !== 'none') {
+        // Direction from label toward tip
+        const prevPt = leaderPoints.length > 1 ? leaderPoints[leaderPoints.length - 2] : position;
+        const dx = tip.x - prevPt.x;
+        const dy = tip.y - prevPt.y;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        const perp = { x: -uy, y: ux };
+        const as = arrowSize;
+        const wing = as * 0.35;
+        const tipX = tip.x;
+        const tipY = tip.y;
+
+        if (effectiveArrowType === 'filled') {
+          ctx.beginPath();
+          ctx.moveTo(tipX, tipY);
+          ctx.lineTo(tipX - ux * as + perp.x * wing, tipY - uy * as + perp.y * wing);
+          ctx.lineTo(tipX - ux * as - perp.x * wing, tipY - uy * as - perp.y * wing);
+          ctx.closePath();
+          ctx.fill();
+        } else if (effectiveArrowType === 'open') {
+          ctx.beginPath();
+          ctx.moveTo(tipX - ux * as + perp.x * wing, tipY - uy * as + perp.y * wing);
+          ctx.lineTo(tipX, tipY);
+          ctx.lineTo(tipX - ux * as - perp.x * wing, tipY - uy * as - perp.y * wing);
+          ctx.stroke();
+        } else if (effectiveArrowType === 'dot') {
+          ctx.beginPath();
+          ctx.arc(tipX, tipY, as * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (effectiveArrowType === 'tick') {
+          ctx.beginPath();
+          ctx.moveTo(tipX + perp.x * as * 0.5, tipY + perp.y * as * 0.5);
+          ctx.lineTo(tipX - perp.x * as * 0.5, tipY - perp.y * as * 0.5);
+          ctx.stroke();
+        }
+      }
+    }
+
+    // Draw text at position
+    ctx.font = `${th}px ${CAD_DEFAULT_FONT}`;
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'left';
+
+    ctx.save();
+    ctx.translate(position.x, position.y);
+    if (rotation) ctx.rotate(rotation);
+
+    // Split by newlines for multi-line support
+    const lines = displayText.split('\n');
+    const lineH = th * 1.3;
+
+    // Measure max width for selection box
+    let maxW = 0;
+    for (const line of lines) {
+      const w = ctx.measureText(line).width;
+      if (w > maxW) maxW = w;
+    }
+    const totalH = lines.length * lineH;
+
+    ctx.fillStyle = textColor;
+    lines.forEach((line, i) => {
+      ctx.fillText(line, th * 0.2, (i - (lines.length - 1) / 2) * lineH);
+    });
+
+    // Selection box
+    if (isSelected) {
+      ctx.strokeStyle = '#00aaff';
+      ctx.lineWidth = 1 / this._currentZoom;
+      ctx.setLineDash([3 / this._currentZoom, 3 / this._currentZoom]);
+      ctx.strokeRect(-th * 0.1, -totalH / 2 - th * 0.1, maxW + th * 0.4, totalH + th * 0.2);
+      ctx.setLineDash([]);
+    }
+
+    ctx.restore(); // rotation restore
+    ctx.restore(); // main restore
   }
 }

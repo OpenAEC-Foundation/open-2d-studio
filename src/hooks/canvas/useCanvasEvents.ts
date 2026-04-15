@@ -503,11 +503,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Handle AEC drawing tools
-      // Some tools (like spot-coordinate) are stateless and don't need a pending state
-      const isStatelessAecTool = activeTool === 'spot-coordinate';
+      // Some tools (like spot-coordinate, label) are stateless and don't need a pending state
+      const isStatelessAecTool = activeTool === 'spot-coordinate' || activeTool === 'label';
       if (aecTools.isAecTool(activeTool) && (aecTools.hasPendingState(activeTool) || isStatelessAecTool)) {
         deselectAll();
-        if (aecTools.handleToolClick(activeTool, snappedPos, orthoMode, snapResult)) {
+        if (aecTools.handleToolClick(activeTool, snappedPos, orthoMode, snapResult, findShapeAtPoint)) {
           snapDetection.clearTracking();
           return;
         }
@@ -958,15 +958,6 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
           snapDetection.clearTracking();
           break;
 
-        case 'label': {
-          deselectAll();
-          // Label tool: single-click on an element to auto-place label
-          // Uses raw worldPos (no snapping) for hit-testing the element
-          leaderDrawing.handleLabelClick(worldPos, findShapeAtPoint);
-          snapDetection.clearTracking();
-          break;
-        }
-
         case 'image': {
           deselectAll();
           // Open file dialog, import image, place at click point
@@ -1172,7 +1163,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // AEC drawing tool preview
-      const isStatelessAecMove = activeTool === 'spot-coordinate';
+      const isStatelessAecMove = activeTool === 'spot-coordinate' || activeTool === 'label';
       if (aecTools.isAecTool(activeTool) && (aecTools.hasPendingState(activeTool) || isStatelessAecMove) && editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
         const basePoint = aecTools.getToolBasePoint(activeTool);
@@ -1202,17 +1193,6 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
           extToolMove.handleMouseMove(snapResult.point, false);
           return;
         }
-      }
-
-      // Label tool: single-click workflow, just show hover highlight for element picking
-      if (activeTool === 'label' && editorMode === 'drawing') {
-        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
-        // Clear any lingering snap indicators -- label tool uses hit-testing, not snapping
-        snapDetection.clearTracking();
-        // Show hover highlight so user can see which element they will click on
-        const hoveredShape = findShapeAtPoint(worldPos);
-        setHoveredShapeId(hoveredShape);
-        return;
       }
 
       // Modify tools - update preview
@@ -1404,7 +1384,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       }
 
       // Cancel AEC drawing tools
-      const isStatelessAecCancel = activeTool === 'spot-coordinate';
+      const isStatelessAecCancel = activeTool === 'spot-coordinate' || activeTool === 'label';
       if (aecTools.isAecTool(activeTool) && (aecTools.hasPendingState(activeTool) || isStatelessAecCancel)) {
         if (aecTools.handleToolCancel(activeTool, setActiveTool, snapDetection.clearTracking)) {
           return;

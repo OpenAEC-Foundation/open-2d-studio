@@ -43,7 +43,7 @@ export interface ShapeGroup {
 /** @deprecated Use drawingId instead */
 export type BaseShapeWithDraftId = BaseShape & { draftId?: string };
 
-export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'puntniveau' | 'pile' | 'column' | 'wall' | 'wall-opening' | 'slab' | 'slab-opening' | 'slab-label' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation' | 'spot-coordinate' | 'block-instance' | 'rebar' | 'component-instance' | 'detail-line';
+export type ShapeType = 'line' | 'rectangle' | 'circle' | 'arc' | 'polyline' | 'ellipse' | 'spline' | 'text' | 'point' | 'dimension' | 'hatch' | 'beam' | 'image' | 'gridline' | 'level' | 'puntniveau' | 'pile' | 'column' | 'wall' | 'wall-opening' | 'slab' | 'slab-opening' | 'slab-label' | 'section-callout' | 'space' | 'plate-system' | 'cpt' | 'foundation-zone' | 'spot-elevation' | 'spot-coordinate' | 'block-instance' | 'rebar' | 'component-instance' | 'detail-line' | 'label';
 
 export type HatchPatternType = 'solid' | 'diagonal' | 'crosshatch' | 'horizontal' | 'vertical' | 'dots' | 'custom';
 
@@ -1279,6 +1279,134 @@ export interface DetailLineShape extends BaseShape {
   backgroundColor?: string;
 }
 
+// ============================================================================
+// Label Shape — smart annotation tag that reads properties from another shape
+// ============================================================================
+
+/** Arrow type used by label leader lines */
+export type LabelArrowType = 'filled' | 'open' | 'dot' | 'tick' | 'none';
+
+/** Label type preset definition */
+export interface LabelType {
+  id: string;
+  name: string;
+  /** Default template, e.g. "{length}" or "{area}" */
+  template: string;
+  textHeight: number;       // mm
+  unit: string;             // 'mm' | 'm' | 'mm2' | 'm2' | ''
+  decimalPlaces: number;
+  showLeader: boolean;
+  arrowType: LabelArrowType;
+  arrowSize: number;        // mm
+  lineColor: string;
+  textColor: string;
+  prefix: string;
+  suffix: string;
+}
+
+/** Built-in label type presets */
+export const DEFAULT_LABEL_TYPES: LabelType[] = [
+  {
+    id: 'label-length-mm',
+    name: 'Length (mm)',
+    template: '{length}',
+    textHeight: 250,
+    unit: 'mm',
+    decimalPlaces: 0,
+    showLeader: true,
+    arrowType: 'filled',
+    arrowSize: 120,
+    lineColor: '#ffffff',
+    textColor: '#ffffff',
+    prefix: '',
+    suffix: '',
+  },
+  {
+    id: 'label-length-m',
+    name: 'Length (m)',
+    template: '{length}',
+    textHeight: 250,
+    unit: 'm',
+    decimalPlaces: 2,
+    showLeader: true,
+    arrowType: 'filled',
+    arrowSize: 120,
+    lineColor: '#ffffff',
+    textColor: '#ffffff',
+    prefix: '',
+    suffix: '',
+  },
+  {
+    id: 'label-area-m2',
+    name: 'Area (m²)',
+    template: '{area}',
+    textHeight: 250,
+    unit: 'm2',
+    decimalPlaces: 2,
+    showLeader: true,
+    arrowType: 'filled',
+    arrowSize: 120,
+    lineColor: '#ffffff',
+    textColor: '#ffffff',
+    prefix: '',
+    suffix: ' m\u00B2',
+  },
+  {
+    id: 'label-type-name',
+    name: 'Type Name',
+    template: '{type}',
+    textHeight: 250,
+    unit: '',
+    decimalPlaces: 0,
+    showLeader: true,
+    arrowType: 'filled',
+    arrowSize: 120,
+    lineColor: '#ffffff',
+    textColor: '#ffffff',
+    prefix: '',
+    suffix: '',
+  },
+];
+
+/** Smart label shape that reads properties from a target shape */
+export interface LabelShape extends BaseShape {
+  type: 'label';
+  /** Where the label text is rendered */
+  position: Point;
+  /** The shape this label reads properties from (optional — free-standing if unset) */
+  targetShapeId?: string;
+  /** Template with {property} placeholders, e.g. "L = {length}" or "{area} m²" */
+  template: string;
+  /** Resolved display text (updated each render cycle from template + target) */
+  displayText: string;
+  /** Reference to a LabelType preset */
+  labelTypeId?: string;
+  /** Text height in mm */
+  textHeight: number;
+  /** Rotation in radians */
+  rotation: number;
+  /** Show a leader line from label to target */
+  showLeader: boolean;
+  /** Leader line vertices (from label toward target) */
+  leaderPoints?: Point[];
+  /** Arrow type on leader tip */
+  arrowType?: LabelArrowType;
+  /** Arrow size in mm */
+  arrowSize?: number;
+  /** Display unit: 'mm' | 'm' | 'mm2' | 'm2' | '' */
+  unit?: string;
+  /** Number of decimal places */
+  decimalPlaces: number;
+  /** Optional prefix */
+  prefix?: string;
+  /** Optional suffix */
+  suffix?: string;
+  /** Line/leader color override */
+  lineColor?: string;
+  /** Text color override */
+  textColor?: string;
+}
+
 // Forward declaration for DimensionShape (defined in dimension.ts)
 import type { DimensionShape } from './dimension';
 
@@ -1316,7 +1444,8 @@ export type Shape =
   | FoundationZoneShape
   | BlockInstanceShape
   | RebarShape
-  | DetailLineShape;
+  | DetailLineShape
+  | LabelShape;
 
 // Layer type
 export interface Layer {

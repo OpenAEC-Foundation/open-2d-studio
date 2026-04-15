@@ -18,6 +18,11 @@ import type {
   SpaceShape,
   WallType,
   BoundingBox,
+  PolylineShape,
+  LineShape,
+  CircleShape,
+  ArcShape,
+  RectangleShape,
 } from '../../types/geometry';
 import type { UnitSettings } from '../../units/types';
 import { formatNumber, formatElevation, applyNumberFormat } from '../../units/format';
@@ -529,4 +534,269 @@ export function computeSlabSpanArrow(
     spanDirection,
     spanLength,
   };
+}
+
+// ============================================================================
+// Label shape property resolution (for LabelShape smart tags)
+// ============================================================================
+
+/**
+ * Compute the length of a line segment (in mm).
+ */
+function lineLength(x1: number, y1: number, x2: number, y2: number): number {
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  return Math.sqrt(dx * dx + dy * dy);
+}
+
+/**
+ * Compute the area of a polygon defined by a list of points (mm²).
+ * Uses the Shoelace formula.
+ */
+function polygonArea(pts: Point[]): number {
+  let area = 0;
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    area += pts[i].x * pts[j].y;
+    area -= pts[j].x * pts[i].y;
+  }
+  return Math.abs(area) / 2;
+}
+
+/**
+ * Compute the perimeter of a polygon.
+ */
+function polygonPerimeter(pts: Point[]): number {
+  let p = 0;
+  const n = pts.length;
+  for (let i = 0; i < n; i++) {
+    const j = (i + 1) % n;
+    p += lineLength(pts[i].x, pts[i].y, pts[j].x, pts[j].y);
+  }
+  return p;
+}
+
+/**
+ * Convert a value from internal mm units to the requested display unit.
+ * unit: 'mm' → raw mm, 'm' → divide by 1000,
+ *       'mm2' → raw mm², 'm2' → divide by 1,000,000.
+ */
+function convertUnit(value: number, unit: string): number {
+  switch (unit) {
+    case 'm': return value / 1000;
+    case 'm2': return value / 1_000_000;
+    default: return value; // 'mm', 'mm2', or empty
+  }
+}
+
+/**
+ * Friendly type name for display in labels.
+ */
+function friendlyTypeName(shape: Shape): string {
+  switch (shape.type) {
+    case 'line': return 'Line';
+    case 'rectangle': return 'Rectangle';
+    case 'circle': return 'Circle';
+    case 'arc': return 'Arc';
+    case 'polyline': return 'Polyline';
+    case 'hatch': return 'Hatch';
+    case 'wall': return 'Wall';
+    case 'beam': return 'Beam';
+    case 'slab': return 'Slab';
+    case 'column': return 'Column';
+    case 'space': return 'Space';
+    case 'pile': return 'Pile';
+    case 'text': return 'Text';
+    default: return shape.type;
+  }
+}
+
+/**
+ * Resolve a label template string by substituting {property} placeholders
+ * with values read from the target shape.
+ *
+ * Supported placeholders:
+ *   {length}     — line/beam/wall length; polyline total length
+ *   {area}       — polygon area (hatch, slab, space, rectangle, closed polyline)
+ *   {perimeter}  — polygon perimeter
+ *   {type}       — human-readable shape type name
+ *   {layer}      — layer ID of the target shape
+ *   {width}      — rectangle/wall width; column width
+ *   {height}     — rectangle/column depth
+ *   {radius}     — circle/arc radius
+ *   {angle}      — arc sweep angle in degrees
+ *   {thickness}  — wall/slab thickness
+ *   {material}   — wall/slab material category
+ *
+ * @param template   Template string, e.g. "L = {length} mm"
+ * @param target     The shape to read properties from
+ * @param unit       Display unit ('mm' | 'm' | 'mm2' | 'm2' | '')
+ * @param decimals   Number of decimal places
+ * @returns The resolved label text
+ */
+export function resolveLabel(
+  template: string,
+  target: Shape,
+  unit: string,
+  decimals: number,
+): string {
+  const fmt = (v: number) => convertUnit(v, unit).toFixed(decimals);
+
+  return template.replace(/\{(\w+)\}/g, (_match, key: string) => {
+    switch (key) {
+      case 'length': {
+        if (target.type === 'line') {
+          const s = target as LineShape;
+          return fmt(lineLength(s.start.x, s.start.y, s.end.x, s.end.y));
+        }
+        if (target.type === 'wall' || target.type === 'beam' || target.type === 'gridline' || target.type === 'level') {
+          const s = target as any;
+          return fmt(lineLength(s.start.x, s.start.y, s.end.x, s.end.y));
+        }
+        if (target.type === 'polyline') {
+          const pl = target as PolylineShape;
+          let total = 0;
+          for (let i = 0; i + 1 < pl.points.length; i++) {
+            total += lineLength(pl.points[i].x, pl.points[i].y, pl.points[i + 1].x, pl.points[i + 1].y);
+          }
+          return fmt(total);
+        }
+        if (target.type === 'arc') {
+          const a = target as ArcShape;
+          let sweep = a.endAngle - a.startAngle;
+          if (sweep < 0) sweep += 2 * Math.PI;
+          return fmt(a.radius * sweep);
+        }
+        return '';
+      }
+      case 'area': {
+        if (target.type === 'rectangle') {
+          const r = target as RectangleShape;
+          return fmt(r.width * r.height);
+        }
+        if (target.type === 'circle') {
+          const c = target as CircleShape;
+          return fmt(Math.PI * c.radius * c.radius);
+        }
+        if (target.type === 'hatch' || target.type === 'slab') {
+          const pts: Point[] = (target as any).points;
+          if (pts && pts.length >= 3) return fmt(polygonArea(pts));
+          return '';
+        }
+        if (target.type === 'space') {
+          const sp = target as SpaceShape;
+          if (sp.area !== undefined) return fmt(sp.area * 1_000_000); // space.area is m²
+          const pts = sp.contourPoints;
+          if (pts && pts.length >= 3) return fmt(polygonArea(pts));
+          return '';
+        }
+        if (target.type === 'polyline') {
+          const pl = target as PolylineShape;
+          if (pl.closed && pl.points.length >= 3) return fmt(polygonArea(pl.points));
+          return '';
+        }
+        return '';
+      }
+      case 'perimeter': {
+        if (target.type === 'rectangle') {
+          const r = target as RectangleShape;
+          return fmt(2 * (r.width + r.height));
+        }
+        if (target.type === 'circle') {
+          const c = target as CircleShape;
+          return fmt(2 * Math.PI * c.radius);
+        }
+        if (target.type === 'hatch' || target.type === 'slab') {
+          const pts: Point[] = (target as any).points;
+          if (pts && pts.length >= 3) return fmt(polygonPerimeter(pts));
+          return '';
+        }
+        if (target.type === 'polyline') {
+          const pl = target as PolylineShape;
+          return fmt(polygonPerimeter(pl.points));
+        }
+        return '';
+      }
+      case 'type': return friendlyTypeName(target);
+      case 'layer': return target.layerId;
+      case 'width': {
+        if (target.type === 'rectangle') return fmt((target as RectangleShape).width);
+        if (target.type === 'wall') return fmt((target as any).thickness);
+        if (target.type === 'column') return fmt((target as any).width);
+        return '';
+      }
+      case 'height': {
+        if (target.type === 'rectangle') return fmt((target as RectangleShape).height);
+        if (target.type === 'column') return fmt((target as any).depth);
+        return '';
+      }
+      case 'radius': {
+        if (target.type === 'circle') return fmt((target as CircleShape).radius);
+        if (target.type === 'arc') return fmt((target as ArcShape).radius);
+        return '';
+      }
+      case 'angle': {
+        if (target.type === 'arc') {
+          const a = target as ArcShape;
+          let sweep = a.endAngle - a.startAngle;
+          if (sweep < 0) sweep += 2 * Math.PI;
+          return (sweep * 180 / Math.PI).toFixed(decimals);
+        }
+        return '';
+      }
+      case 'thickness': {
+        const s = target as any;
+        if (s.thickness !== undefined) return fmt(s.thickness);
+        return '';
+      }
+      case 'material': {
+        const s = target as any;
+        if (s.material !== undefined) return String(s.material);
+        return '';
+      }
+      default: return '';
+    }
+  });
+}
+
+/**
+ * Get the default label template for a given shape type (for LabelShape auto-fill).
+ * Different from getDefaultLabelTemplate above which handles space/wall/beam labels.
+ */
+export function getDefaultLabelTemplateForShape(shape: Shape): string {
+  switch (shape.type) {
+    case 'line':
+    case 'beam':
+    case 'wall':
+    case 'polyline':
+      return '{length}';
+    case 'hatch':
+    case 'slab':
+    case 'space':
+    case 'rectangle':
+      return '{area}';
+    default:
+      return '{type}';
+  }
+}
+
+/**
+ * Get the default unit for a shape type used in label auto-fill.
+ */
+export function getDefaultLabelUnit(shape: Shape): string {
+  switch (shape.type) {
+    case 'line':
+    case 'beam':
+    case 'wall':
+    case 'polyline':
+      return 'mm';
+    case 'hatch':
+    case 'slab':
+    case 'space':
+    case 'rectangle':
+      return 'm2';
+    default:
+      return '';
+  }
 }
