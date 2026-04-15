@@ -647,31 +647,16 @@ export function isPointNearShape(point: Point, shape: Shape, tolerance: number =
     case 'spot-elevation':
       return isPointNearSpotElevation(point, shape as SpotElevationShape, tolerance, drawingScale);
     case 'spot-coordinate': {
-      const sc = shape as SpotCoordinateShape;
-      const sf = drawingScale ? (0.01 / drawingScale) : 1;
-      const th = (sc.textHeight || 200) * sf;
-      // Check hit near the annotated point (cross marker)
-      const dist = Math.sqrt((point.x - sc.position.x) ** 2 + (point.y - sc.position.y) ** 2);
-      if (dist < th * 2 + tolerance) return true;
-      if (sc.showLeader) {
-        const lx = sc.position.x + sc.leaderLength * sf * Math.cos(sc.leaderAngle);
-        const ly = sc.position.y + sc.leaderLength * sf * Math.sin(sc.leaderAngle);
-        // Check hit near the text label area (generous box around it)
-        const labelDist = Math.sqrt((point.x - lx) ** 2 + (point.y - ly) ** 2);
-        if (labelDist < th * 6 + tolerance) return true;
-        // Check hit along the vertical leg of the L-shaped leader (position.x, position.y → position.x, ly)
-        const bendX = sc.position.x;
-        const bendY = ly;
-        const dxV = point.x - bendX;
-        const dyV = point.y - (sc.position.y + ly) / 2;
-        const halfH = Math.abs(ly - sc.position.y) / 2 + tolerance;
-        if (Math.abs(dxV) < th + tolerance && Math.abs(dyV) < halfH) return true;
-        // Check hit along the horizontal leg of the L-shaped leader (position.x, ly → lx, ly)
-        const minHX = Math.min(bendX, lx) - tolerance;
-        const maxHX = Math.max(bendX, lx) + tolerance;
-        if (point.x >= minHX && point.x <= maxHX && Math.abs(point.y - bendY) < th + tolerance) return true;
-      }
-      return false;
+      // Use bounding box hit-test matching getShapeBounds — with generous padding
+      const scBounds = getShapeBounds(shape, drawingScale);
+      if (!scBounds) return false;
+      const pad = tolerance * 2;
+      return (
+        point.x >= scBounds.minX - pad &&
+        point.x <= scBounds.maxX + pad &&
+        point.y >= scBounds.minY - pad &&
+        point.y <= scBounds.maxY + pad
+      );
     }
     case 'image':
       return isPointNearImage(point, shape, tolerance);
@@ -1895,15 +1880,24 @@ export function getShapeBounds(shape: Shape, drawingScale?: number, _gridlineExt
     }
     case 'spot-coordinate': {
       const sc = shape as SpotCoordinateShape;
-      const sf = drawingScale ? (0.01 / drawingScale) : 1;
-      const th = (sc.textHeight || 200) * sf;
-      const lx = sc.position.x + (sc.leaderLength || 0) * sf * Math.cos(sc.leaderAngle || 0);
-      const ly = sc.position.y + (sc.leaderLength || 0) * sf * Math.sin(sc.leaderAngle || 0);
-      // Bounds cover position point, full L-shaped leader path, and text label area (~8 text-heights wide)
-      const minX = Math.min(sc.position.x, lx) - th * 2;
-      const minY = Math.min(sc.position.y, ly) - th * 2;
-      const maxX = Math.max(sc.position.x, lx) + th * 8;
-      const maxY = Math.max(sc.position.y, ly) + th * 3;
+      // Use same scale factor as the renderer: 1/drawingScale
+      const sf = drawingScale ? (1 / drawingScale) : 1;
+      const th = (sc.textHeight || 2.5) * sf;
+      const ll = (sc.leaderLength || 0) * sf;
+      const lx = sc.position.x + ll * Math.cos(sc.leaderAngle || 0);
+      const ly = sc.position.y + ll * Math.sin(sc.leaderAngle || 0);
+      // Generous padding: marker cross extends ms = th*0.6 each side
+      const ms = th * 0.6;
+      // Text width estimate: ~10 chars * th * 0.6 per char = th * 6, two lines
+      const textEstW = th * 8;
+      const rightSide = Math.cos(sc.leaderAngle || 0) >= 0;
+      const textMinX = rightSide ? lx : lx - textEstW;
+      const textMaxX = rightSide ? lx + textEstW : lx;
+      // Bounds: cover marker, L-shaped leader, and text block
+      const minX = Math.min(sc.position.x - ms, lx, textMinX) - th;
+      const minY = Math.min(sc.position.y - ms, ly - th * 2.5) - th;
+      const maxX = Math.max(sc.position.x + ms, lx, textMaxX) + th;
+      const maxY = Math.max(sc.position.y + ms, ly + th * 0.5) + th;
       return { minX, minY, maxX, maxY };
     }
     case 'detail-line': {

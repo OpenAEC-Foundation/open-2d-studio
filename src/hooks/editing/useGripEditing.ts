@@ -9,7 +9,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useAppStore } from '../../state/appStore';
-import type { Point, Shape, EllipseShape, TextShape, BeamShape, LineShape, ImageShape, GridlineShape, LevelShape, PileShape, WallShape, SectionCalloutShape, PlateSystemShape, PuntniveauShape } from '../../types/geometry';
+import type { Point, Shape, EllipseShape, TextShape, BeamShape, LineShape, ImageShape, GridlineShape, LevelShape, PileShape, WallShape, SectionCalloutShape, PlateSystemShape, PuntniveauShape, SpotCoordinateShape } from '../../types/geometry';
 import type { DimensionShape } from '../../types/dimension';
 import type { ParametricShape } from '../../types/parametric';
 import { updateParametricPosition } from '../../services/parametric/parametricService';
@@ -515,6 +515,25 @@ function getGripPoints(shape: Shape, drawingScale?: number, zoom?: number): Poin
       // Fallback for other dimension types
       return dim.points;
     }
+    case 'spot-coordinate': {
+      // Grip 0: marker point (the annotated world position)
+      // Grip 1: label position (end of leader — text anchor)
+      // Grip 2: bend point (corner of the L-shaped leader)
+      const sc = shape as SpotCoordinateShape;
+      const scSf = drawingScale ? (1 / drawingScale) : 1;
+      const scLl = (sc.leaderLength || 0) * scSf;
+      const scLx = sc.position.x + scLl * Math.cos(sc.leaderAngle || 0);
+      const scLy = sc.position.y + scLl * Math.sin(sc.leaderAngle || 0);
+      const scBendX = sc.position.x;
+      const scBendY = scLy;
+      const grips: Point[] = [sc.position];
+      if (sc.showLeader && scLl > 0.001) {
+        grips.push({ x: scLx, y: scLy }); // grip 1: label
+        grips.push({ x: scBendX, y: scBendY }); // grip 2: bend
+      }
+      return grips;
+    }
+
     default: {
       const extGrip = gripProviderRegistry.get(shape.type);
       return extGrip ? extGrip.getGripPoints(shape) : [];
@@ -578,6 +597,7 @@ function getShapeReferencePoint(shape: Shape): Point {
     case 'text': return shape.position;
     case 'point': return shape.position;
     case 'image': return shape.position;
+    case 'spot-coordinate': return (shape as SpotCoordinateShape).position;
     case 'dimension': return (shape as DimensionShape).points[0] || { x: 0, y: 0 };
     default: {
       const extGrip = gripProviderRegistry.get(shape.type);
@@ -633,6 +653,12 @@ function computeBodyMoveUpdates(shape: Shape, newPos: Point): Partial<Shape> | n
       return { position: { x: shape.position.x + dx, y: shape.position.y + dy } } as Partial<Shape>;
 
     case 'image':
+      return {
+        position: { x: shape.position.x + dx, y: shape.position.y + dy },
+      } as Partial<Shape>;
+
+    case 'spot-coordinate':
+      // Move the marker — leader angle and length stay the same
       return {
         position: { x: shape.position.x + dx, y: shape.position.y + dy },
       } as Partial<Shape>;
@@ -751,7 +777,7 @@ function computeRotationUpdates(shape: Shape, center: Point, angleRad: number): 
 /**
  * edgeMidpointIndices: if set, the two polyline point indices to move together (for rect edge midpoints).
  */
-function computeGripUpdates(shape: Shape, gripIndex: number, newPos: Point, edgeMidpointIndices?: [number, number], scaleMode?: boolean): Partial<Shape> | null {
+function computeGripUpdates(shape: Shape, gripIndex: number, newPos: Point, edgeMidpointIndices?: [number, number], scaleMode?: boolean, drawingScale?: number): Partial<Shape> | null {
   // Body drag (gripIndex -1): move entire shape by delta from clickOffset
   // newPos here is the current world mouse position; clickOffset stored the original click position
   // The caller passes (currentShape, -1, constrainedPos) — we compute delta from the original shape
@@ -1392,6 +1418,41 @@ function computeGripUpdates(shape: Shape, gripIndex: number, newPos: Point, edge
         }
       }
 
+      return null;
+    }
+
+    case 'spot-coordinate': {
+      const sc = shape as SpotCoordinateShape;
+      if (gripIndex === 0) {
+        // Grip 0: move the marker point — leader angle and length remain unchanged
+        return { position: newPos } as Partial<Shape>;
+      }
+      if (gripIndex === 1) {
+        // Grip 1: move the label (end of leader) — recalculate leaderAngle and leaderLength
+        const dx = newPos.x - sc.position.x;
+        const dy = newPos.y - sc.position.y;
+        const distWorld = Math.sqrt(dx * dx + dy * dy);
+        const scSf = drawingScale ? (1 / drawingScale) : 1;
+        const newLeaderLength = distWorld / scSf;
+        const newLeaderAngle = Math.atan2(dy, dx);
+        return { leaderLength: newLeaderLength, leaderAngle: newLeaderAngle } as Partial<Shape>;
+      }
+      if (gripIndex === 2) {
+        // Grip 2: move the bend point — adjust leaderAngle while keeping leaderLength
+        const scSf = drawingScale ? (1 / drawingScale) : 1;
+        const ll = (sc.leaderLength || 0) * scSf;
+        // The bend is at (position.x, labelY). Moving it changes the vertical extent
+        // and therefore the effective leaderAngle. Recompute using the new bend Y.
+        const newBendY = newPos.y;
+        const labelX = sc.position.x + ll * Math.cos(sc.leaderAngle || 0);
+        // Keep label X the same, only update Y via bendY
+        const dx = labelX - sc.position.x;
+        const dy = newBendY - sc.position.y;
+        const newDist = Math.sqrt(dx * dx + dy * dy);
+        const newLeaderLength = newDist / scSf;
+        const newLeaderAngle = Math.atan2(dy, dx);
+        return { leaderLength: newLeaderLength, leaderAngle: newLeaderAngle } as Partial<Shape>;
+      }
       return null;
     }
 
@@ -2092,7 +2153,7 @@ export function useGripEditing() {
 
       const edgeIndices = drag.polylineMidpointIndices;
       const scaleMode = !!(shiftKey && edgeIndices);
-      const updates = computeGripUpdates(currentShape, drag.gripIndex, constrainedPos, edgeIndices, scaleMode);
+      const updates = computeGripUpdates(currentShape, drag.gripIndex, constrainedPos, edgeIndices, scaleMode, drawingScale);
       if (updates) {
         useAppStore.setState((state) => {
           const idx = state.shapes.findIndex(s => s.id === drag.shapeId);
