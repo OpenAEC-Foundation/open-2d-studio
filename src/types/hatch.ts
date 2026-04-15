@@ -531,8 +531,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 300 },
-      { angle: 45, originX: 0, originY: 0.5, deltaX: 0, deltaY: 300 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3 },
+      { angle: 45, originX: 0, originY: 0.5, deltaX: 0, deltaY: 3 },
     ],
   },
 
@@ -546,8 +546,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 200 },
-      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 200 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3 },
+      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 3 },
     ],
   },
 
@@ -561,7 +561,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 150 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3 },
     ],
   },
 
@@ -575,7 +575,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 90, originX: 0, originY: 0, deltaX: 0, deltaY: 50 },
+      { angle: 90, originX: 0, originY: 0, deltaX: 0, deltaY: 2 },
     ],
   },
 
@@ -601,7 +601,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 150 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3 },
     ],
   },
 
@@ -615,8 +615,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 300 },
-      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 300 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3 },
+      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 3 },
     ],
   },
 
@@ -630,8 +630,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 135, originX: 0, originY: 0, deltaX: 0, deltaY: 300 },
-      { angle: 135, originX: 0, originY: 1.5, deltaX: 0, deltaY: 300, dashPattern: [1.5, -1.5] },
+      { angle: 135, originX: 0, originY: 0, deltaX: 0, deltaY: 3 },
+      { angle: 135, originX: 0, originY: 1.5, deltaX: 0, deltaY: 3, dashPattern: [1.5, -1.5] },
     ],
   },
 
@@ -645,8 +645,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 135, originX: 0, originY: 0, deltaX: 0, deltaY: 150, strokeWidth: 0.15 },
-      { angle: 135, originX: 0, originY: 0.75, deltaX: 0, deltaY: 150, dashPattern: [0.75, -0.75], strokeWidth: 0.15 },
+      { angle: 135, originX: 0, originY: 0, deltaX: 0, deltaY: 3, strokeWidth: 0.15 },
+      { angle: 135, originX: 0, originY: 1.5, deltaX: 0, deltaY: 3, dashPattern: [1.5, -1.5], strokeWidth: 0.15 },
     ],
   },
 
@@ -660,8 +660,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 3, deltaY: 300, dashPattern: [4.24, -4.24] },
-      { angle: -45, originX: 3, originY: 0, deltaX: 3, deltaY: 300, dashPattern: [4.24, -4.24] },
+      { angle: 45, originX: 0, originY: 0, deltaX: 3, deltaY: 3, dashPattern: [4.24, -4.24] },
+      { angle: -45, originX: 3, originY: 0, deltaX: 3, deltaY: 3, dashPattern: [4.24, -4.24] },
     ],
   },
 
@@ -675,9 +675,9 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 3, deltaY: 300, dashPattern: [4.24, -4.24] },
-      { angle: -45, originX: 3, originY: 0, deltaX: 3, deltaY: 300, dashPattern: [4.24, -4.24] },
-      { angle: 0, originX: 0, originY: 2, deltaX: 0, deltaY: 300 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 3, deltaY: 3, dashPattern: [4.24, -4.24] },
+      { angle: -45, originX: 3, originY: 0, deltaX: 3, deltaY: 3, dashPattern: [4.24, -4.24] },
+      { angle: 0, originX: 0, originY: 2, deltaX: 0, deltaY: 3 },
     ],
   },
 
@@ -691,7 +691,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3000, strokeColor: '#000000' },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3, strokeColor: '#000000' },
     ],
   },
 
@@ -705,8 +705,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3000, strokeColor: '#000000' },
-      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 3000, strokeColor: '#000000' },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 4, strokeColor: '#000000' },
+      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 4, strokeColor: '#000000' },
     ],
   },
 
@@ -720,7 +720,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 0, originX: 0, originY: 0, deltaX: 0, deltaY: 150, strokeColor: '#000000' },
+      { angle: 0, originX: 0, originY: 0, deltaX: 0, deltaY: 3, strokeColor: '#000000' },
     ],
   },
 
@@ -734,7 +734,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 90, originX: 0, originY: 0, deltaX: 0, deltaY: 150, strokeColor: '#000000' },
+      { angle: 90, originX: 0, originY: 0, deltaX: 0, deltaY: 3, strokeColor: '#000000' },
     ],
   },
 
@@ -748,8 +748,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 60, originX: 0, originY: 0, deltaX: 0, deltaY: 150 },
-      { angle: -60, originX: 0, originY: 0, deltaX: 0, deltaY: 150 },
+      { angle: 60, originX: 0, originY: 0, deltaX: 0, deltaY: 5 },
+      { angle: -60, originX: 0, originY: 0, deltaX: 0, deltaY: 5 },
     ],
   },
 
@@ -787,7 +787,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 150 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3 },
     ],
   },
 
@@ -801,9 +801,9 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 37, originX: 0, originY: 0, deltaX: 3, deltaY: 800, dashPattern: [0] },
-      { angle: 127, originX: 5, originY: 3, deltaX: 5, deltaY: 1200, dashPattern: [0] },
-      { angle: 70, originX: 2, originY: 7, deltaX: 7, deltaY: 1000, dashPattern: [0] },
+      { angle: 37, originX: 0, originY: 0, deltaX: 3, deltaY: 4, dashPattern: [0] },
+      { angle: 127, originX: 5, originY: 3, deltaX: 5, deltaY: 6, dashPattern: [0] },
+      { angle: 70, originX: 2, originY: 7, deltaX: 7, deltaY: 5, dashPattern: [0] },
     ],
   },
 
@@ -817,8 +817,8 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 250 },
-      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 250 },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 5 },
+      { angle: -45, originX: 0, originY: 0, deltaX: 0, deltaY: 5 },
     ],
   },
 ];
