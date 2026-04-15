@@ -8,7 +8,7 @@
 import { useState, useCallback, useMemo } from 'react';
 import { useAppStore } from '../../state/appStore';
 import type { ContextMenuEntry } from '../../components/shared/ContextMenu';
-import type { Point, SectionCalloutShape } from '../../types/geometry';
+import type { Point, SectionCalloutShape, DetailLineShape, Shape } from '../../types/geometry';
 import type { ToolType } from '../../state/slices/types';
 
 // Tool display names for "Repeat [Tool]" menu item
@@ -102,6 +102,8 @@ export function useContextMenu() {
     hasClipboardContent,
     zoomToFit,
     switchToDrawing,
+    setActiveTool,
+    setSelectedDetailLineTypeId,
   } = useAppStore();
 
   const openMenu = useCallback((x: number, y: number) => {
@@ -111,6 +113,55 @@ export function useContextMenu() {
   const closeMenu = useCallback(() => {
     setMenuState(prev => ({ ...prev, isOpen: false }));
   }, []);
+
+  // Build a "Create Similar" action for the single selected shape (if applicable)
+  const createSimilarAction = useMemo(() => {
+    if (selectedShapeIds.length !== 1) return null;
+    const shape = shapes.find(s => s.id === selectedShapeIds[0]) as Shape | undefined;
+    if (!shape) return null;
+
+    // Map shape type → tool type (most are identical; list exceptions here)
+    const shapeTypeToTool: Partial<Record<string, ToolType>> = {
+      'detail-line': 'detail-line',
+      'wall': 'wall',
+      'beam': 'beam',
+      'hatch': 'hatch',
+      'filled-region': 'filled-region',
+      'line': 'line',
+      'rectangle': 'rectangle',
+      'circle': 'circle',
+      'arc': 'arc',
+      'polyline': 'polyline',
+      'ellipse': 'ellipse',
+      'spline': 'spline',
+      'text': 'text',
+      'leader': 'leader',
+      'dimension': 'dimension',
+      'insulation': 'insulation',
+      'detail-component': 'detail-component',
+      'l-shape': 'l-shape',
+      'gridline': 'gridline',
+      'level': 'level',
+      'pile': 'pile',
+      'column': 'column',
+      'rebar': 'rebar',
+      'label': 'label',
+    };
+
+    const tool = shapeTypeToTool[shape.type] as ToolType | undefined;
+    if (!tool) return null;
+
+    return () => {
+      setActiveTool(tool);
+      // For detail-line: pre-select the same type so the next draw uses same pattern
+      if (shape.type === 'detail-line') {
+        const dl = shape as DetailLineShape;
+        if (dl.detailLineTypeId) {
+          setSelectedDetailLineTypeId(dl.detailLineTypeId);
+        }
+      }
+    };
+  }, [selectedShapeIds, shapes, setActiveTool, setSelectedDetailLineTypeId]);
 
   // Detect if exactly one section-callout is selected and find its target drawing
   const sectionCalloutInfo = useMemo(() => {
@@ -157,6 +208,15 @@ export function useContextMenu() {
           id: 'open-section',
           label: `Open Section ${sectionCalloutInfo.label}`,
           action: () => switchToDrawing(sectionCalloutInfo.drawingId),
+        });
+        items.push({ type: 'divider' });
+      }
+
+      if (createSimilarAction) {
+        items.push({
+          id: 'create-similar',
+          label: 'Create Similar',
+          action: createSimilarAction,
         });
         items.push({ type: 'divider' });
       }
@@ -216,6 +276,7 @@ export function useContextMenu() {
     zoomToFit,
     sectionCalloutInfo,
     switchToDrawing,
+    createSimilarAction,
   ]);
 
   return {

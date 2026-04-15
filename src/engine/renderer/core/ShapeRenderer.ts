@@ -455,7 +455,7 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, isSelected, invertColors);
         break;
       case 'detail-line':
-        this.drawDetailLine(shape as DetailLineShape, isSelected);
+        this.drawDetailLine(shape as DetailLineShape, isSelected, invertColors);
         break;
       case 'label':
         this.drawLabel(shape as LabelShape, isSelected, invertColors);
@@ -535,7 +535,7 @@ export class ShapeRenderer extends BaseRenderer {
         this.drawSpotCoordinate(shape as import('../../../types/geometry').SpotCoordinateShape, false, invertColors);
         break;
       case 'detail-line':
-        this.drawDetailLine(shape as DetailLineShape, false);
+        this.drawDetailLine(shape as DetailLineShape, false, invertColors);
         break;
       case 'label':
         this.drawLabel(shape as LabelShape, false, invertColors);
@@ -1123,7 +1123,7 @@ export class ShapeRenderer extends BaseRenderer {
         // Draw at reduced opacity so it looks like a ghost/preview
         ctx.save();
         ctx.globalAlpha = 0.7;
-        this.drawDetailLine(ghostShape, false);
+        this.drawDetailLine(ghostShape, false, invertColors);
         ctx.restore();
         // Draw temporary dimension showing line length
         if (viewport) {
@@ -3817,7 +3817,7 @@ export class ShapeRenderer extends BaseRenderer {
    * The band is filled with the configured pattern (insulation-nen47, insulation-us,
    * diagonal, crosshatch, or solid).
    */
-  private drawDetailLine(shape: DetailLineShape, isSelected: boolean): void {
+  private drawDetailLine(shape: DetailLineShape, isSelected: boolean, invertColors: boolean = false): void {
     const ctx = this.ctx;
     const { start, end, thickness } = shape;
 
@@ -3911,8 +3911,10 @@ export class ShapeRenderer extends BaseRenderer {
 
     // Draw outline border of the band
     ctx.save();
-    // Contour always visible — use shape stroke color, fallback to black
-    const contourColor = shape.style.strokeColor || '#000000';
+    // Contour always visible — adapt for background so black is visible on dark canvas
+    // and white is visible on light (print) canvas.
+    const rawContourColor = shape.style.strokeColor || '#000000';
+    const contourColor = adaptColorForBackground(rawContourColor, invertColors);
     ctx.strokeStyle = isSelected ? COLORS.selection : contourColor;
     ctx.lineWidth = isSelected ? 2 : 1;
     ctx.setLineDash([]);
