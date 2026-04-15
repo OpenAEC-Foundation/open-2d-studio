@@ -6,7 +6,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { FileText, Layout, Grid2X2, Columns, Square, Image, Trash2 } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
 import { BUILT_IN_SHEET_TEMPLATES } from '../../../services/template/sheetTemplateService';
-import { loadCustomSVGTemplates, deleteCustomSVGTemplate } from '../../../services/export/svgTitleBlockService';
+import { loadCustomSVGTemplates, deleteCustomSVGTemplate, BUILT_IN_SVG_TEMPLATES } from '../../../services/export/svgTitleBlockService';
 import { DraggableModal, ModalButton } from '../../shared/DraggableModal';
 import type { SheetTemplate, ViewportPlaceholder, SVGTitleBlockTemplate } from '../../../types/sheet';
 
@@ -31,17 +31,29 @@ export function NewSheetDialog({ isOpen, onClose }: NewSheetDialogProps) {
 
   const { drawings, customSheetTemplates, addSheetFromTemplate, addSheet, sheets, setTitleBlockEditorOpen, switchToSheet } = useAppStore();
 
-  // Load SVG title block templates from localStorage
+  // Load SVG title block templates: built-in 3BM first, then custom from localStorage
   useEffect(() => {
     if (isOpen) {
-      const templates = loadCustomSVGTemplates();
-      setSvgTitleBlocks(templates);
-      // If no sheet templates but have title blocks, default to title blocks tab
-      if (BUILT_IN_SHEET_TEMPLATES.length === 0 && customSheetTemplates.length === 0 && templates.length > 0) {
+      const customTemplates = loadCustomSVGTemplates();
+      // Built-in 3BM templates always come first so they are visible by default
+      const allSvgTemplates = [...BUILT_IN_SVG_TEMPLATES, ...customTemplates];
+      setSvgTitleBlocks(allSvgTemplates);
+
+      // Pre-select the built-in 3BM template matching the current paper size
+      const matchingBuiltIn = BUILT_IN_SVG_TEMPLATES.find(t =>
+        t.paperSizes.includes(selectedPaperSize)
+      );
+      if (matchingBuiltIn) {
+        setSelectedTitleBlockId(matchingBuiltIn.id);
+        setActiveTab('titleblocks');
+      } else if (allSvgTemplates.length > 0) {
+        // Fallback: first available template
+        setSelectedTitleBlockId(allSvgTemplates[0].id);
         setActiveTab('titleblocks');
       }
     }
-  }, [isOpen, customSheetTemplates.length]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
 
   // Combine built-in and custom templates
   const allTemplates = useMemo(() => {
@@ -160,7 +172,11 @@ export function NewSheetDialog({ isOpen, onClose }: NewSheetDialogProps) {
                     onClick={() => {
                       setSelectedPaperSize(size);
                       setSelectedTemplateId('');
-                      setSelectedTitleBlockId('');
+                      // Auto-select the matching built-in 3BM template for the new size
+                      const matchingBuiltIn = BUILT_IN_SVG_TEMPLATES.find(t =>
+                        t.paperSizes.includes(size)
+                      );
+                      setSelectedTitleBlockId(matchingBuiltIn?.id ?? '');
                     }}
                     className={`px-3 py-1 text-xs transition-colors ${
                       selectedPaperSize === size

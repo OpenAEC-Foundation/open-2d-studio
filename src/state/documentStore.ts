@@ -86,6 +86,7 @@ import {
 
 import {
   loadCustomSVGTemplates,
+  BUILT_IN_SVG_TEMPLATES,
 } from '../services/export/svgTitleBlockService';
 
 import type { AnnotationEditState } from './slices/annotationSlice';
@@ -144,8 +145,10 @@ function populateTitleBlockFromProjectInfo(
  * Create title block with fields from SVG template
  */
 function createTitleBlockFromSVGTemplate(svgTemplateId: string): TitleBlock | null {
-  const templates = loadCustomSVGTemplates();
-  const svgTemplate = templates.find(t => t.id === svgTemplateId);
+  // Check built-in templates first, then fall back to custom (localStorage) templates
+  const customTemplates = loadCustomSVGTemplates();
+  const allTemplates = [...BUILT_IN_SVG_TEMPLATES, ...customTemplates];
+  const svgTemplate = allTemplates.find(t => t.id === svgTemplateId);
 
   if (!svgTemplate) return null;
 
