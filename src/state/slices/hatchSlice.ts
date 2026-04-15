@@ -86,8 +86,20 @@ function migrateBuiltinsToUserStorage(): FilledRegionType[] {
     return merged;
   }
 
-  // Already migrated — just return stored (strip any lingering isBuiltIn flags)
-  return stored.map(t => ({ ...t, isBuiltIn: false }));
+  // Already migrated — apply incremental fixes then return stored types.
+  // Fix: fgColor '#ffffff' on line-based builtin types was changed to '#000000'
+  // (black lines on white bg, inverted to white on dark bg by the renderer).
+  const WHITE_LINE_IDS = new Set(['frt-diagonal-hatch', 'frt-crosshatch']);
+  const fixed = stored.map(t => {
+    if (WHITE_LINE_IDS.has(t.id) && t.fgColor === '#ffffff') {
+      return { ...t, fgColor: '#000000' };
+    }
+    return t;
+  });
+  const wasFixed = fixed.some((t, i) => t !== stored[i]);
+  if (wasFixed) saveFilledRegionTypes(fixed);
+
+  return fixed.map(t => ({ ...t, isBuiltIn: false }));
 }
 
 // ============================================================================

@@ -2920,6 +2920,7 @@ export class ShapeRenderer extends BaseRenderer {
       const bgAngle = shape.bgPatternAngle ?? 0;
       let bgColor = shape.bgFillColor ?? '#808080';
       if (invertColors && bgColor === '#ffffff') bgColor = '#000000';
+      else if (!invertColors && (bgColor === '#000000' || bgColor === '#000')) bgColor = '#ffffff';
 
       ctx.save();
       buildPath();
@@ -2928,7 +2929,7 @@ export class ShapeRenderer extends BaseRenderer {
       this.renderPatternLayer(
         shape.bgPatternType, bgAngle, bgScale, bgColor,
         shape.bgCustomPatternId, shape.style.strokeWidth,
-        minX, minY, maxX, maxY
+        minX, minY, maxX, maxY, invertColors
       );
 
       ctx.restore();
@@ -2938,6 +2939,8 @@ export class ShapeRenderer extends BaseRenderer {
     let patternColor = fillColor;
     if (invertColors && patternColor === '#ffffff') {
       patternColor = '#000000';
+    } else if (!invertColors && (patternColor === '#000000' || patternColor === '#000')) {
+      patternColor = '#ffffff';
     }
 
     ctx.save();
@@ -2947,7 +2950,7 @@ export class ShapeRenderer extends BaseRenderer {
     this.renderPatternLayer(
       patternType, patternAngle, patternScale, patternColor,
       customPatternId, shape.style.strokeWidth,
-      minX, minY, maxX, maxY
+      minX, minY, maxX, maxY, invertColors
     );
 
     ctx.restore();
@@ -2984,7 +2987,8 @@ export class ShapeRenderer extends BaseRenderer {
     pColor: string,
     pCustomId: string | undefined,
     strokeWidth: number,
-    minX: number, minY: number, maxX: number, maxY: number
+    minX: number, minY: number, maxX: number, maxY: number,
+    invertColors: boolean = false
   ): void {
     const ctx = this.ctx;
 
@@ -2998,7 +3002,7 @@ export class ShapeRenderer extends BaseRenderer {
           if (pCustomId === 'nen47-isolatie' || pCustomId === 'insulation') {
             this.drawInsulationZigzag(minX, minY, maxX, maxY, pScale, pAngle, pColor, strokeWidth);
           } else {
-            this.drawCustomPatternLines(customPattern.lineFamilies, minX, minY, maxX, maxY, pScale, pAngle, pColor, strokeWidth);
+            this.drawCustomPatternLines(customPattern.lineFamilies, minX, minY, maxX, maxY, pScale, pAngle, pColor, strokeWidth, invertColors);
           }
         } else {
           ctx.fillStyle = pColor;
@@ -3363,7 +3367,8 @@ export class ShapeRenderer extends BaseRenderer {
     scale: number,
     rotationOffset: number,
     defaultColor: string,
-    defaultStrokeWidth: number
+    defaultStrokeWidth: number,
+    invertColors: boolean = false
   ): void {
     const ctx = this.ctx;
 
@@ -3375,7 +3380,16 @@ export class ShapeRenderer extends BaseRenderer {
       const originY = (family.originY || 0) * scale;
       const angleDeg = family.angle + rotationOffset;
       const strokeWidth = family.strokeWidth ?? defaultStrokeWidth * 0.5;
-      const strokeColor = family.strokeColor ?? defaultColor;
+      let strokeColor = family.strokeColor ?? defaultColor;
+      // Invert per-family explicit black/white stroke colors based on background mode
+      if (invertColors && (strokeColor === '#000000' || strokeColor === '#000')) {
+        // white background: black lines stay black (already correct)
+      } else if (!invertColors && (strokeColor === '#000000' || strokeColor === '#000')) {
+        // dark background: black lines → white so they're visible
+        strokeColor = '#ffffff';
+      } else if (invertColors && (strokeColor === '#ffffff' || strokeColor === '#fff')) {
+        strokeColor = '#000000';
+      }
 
       // Set line style
       ctx.strokeStyle = strokeColor;

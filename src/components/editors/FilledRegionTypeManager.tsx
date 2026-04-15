@@ -83,7 +83,7 @@ export function FilledRegionTypeManager({ isOpen, onClose, focusId }: FilledRegi
       fgPatternType: 'solid',
       fgPatternAngle: 0,
       fgPatternScale: 1,
-      fgColor: '#ffffff',
+      fgColor: '#000000',
       masking: true,
       lineWeight: 1,
     });
@@ -105,7 +105,7 @@ export function FilledRegionTypeManager({ isOpen, onClose, focusId }: FilledRegi
         fgPatternType: editingType.fgPatternType || 'solid',
         fgPatternAngle: editingType.fgPatternAngle || 0,
         fgPatternScale: editingType.fgPatternScale || 1,
-        fgColor: editingType.fgColor || '#ffffff',
+        fgColor: editingType.fgColor || '#000000',
         fgCustomPatternId: editingType.fgCustomPatternId,
         bgPatternType: editingType.bgPatternType,
         bgPatternAngle: editingType.bgPatternAngle,
