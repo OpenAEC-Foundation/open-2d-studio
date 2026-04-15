@@ -1246,6 +1246,14 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   tooltip="Draw polyline boundary segment"
                 />
                 <RibbonButton
+                  icon={<Square size={24} />}
+                  label="Rectangle"
+                  onClick={() => { setFilledRegionDrawTool('line'); switchToDrawingTool('rectangle'); }}
+                  active={activeTool === 'rectangle' && filledRegionMode}
+                  tooltip="Draw a rectangle — creates 4 line segments as boundary edges"
+                  shortcut="RE"
+                />
+                <RibbonButton
                   icon={<Crosshair size={24} />}
                   label="Pick Lines"
                   onClick={() => { setFilledRegionDrawTool('pickLines'); }}

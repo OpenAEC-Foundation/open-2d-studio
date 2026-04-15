@@ -155,10 +155,49 @@ export function useShapeDrawing() {
   );
 
   /**
-   * Create a rectangle shape
+   * Create a rectangle shape.
+   * In filledRegionMode, creates 4 separate line shapes (one per side) registered as sketch shapes
+   * so they work seamlessly with finishSketch boundary detection.
    */
   const createRectangle = useCallback(
     (topLeft: Point, width: number, height: number, rotation: number = 0) => {
+      if (filledRegionMode) {
+        // In sketch mode: create 4 line segments instead of a rectangle shape
+        const angleRad = rotation;
+        const cos = Math.cos(angleRad);
+        const sin = Math.sin(angleRad);
+
+        const rotate = (x: number, y: number): Point => ({
+          x: topLeft.x + x * cos - y * sin,
+          y: topLeft.y + x * sin + y * cos,
+        });
+
+        const corners: Point[] = [
+          rotate(0, 0),
+          rotate(width, 0),
+          rotate(width, height),
+          rotate(0, height),
+        ];
+
+        for (let i = 0; i < 4; i++) {
+          const id = generateId();
+          const lineShape: LineShape = {
+            id,
+            type: 'line',
+            layerId: activeLayerId,
+            drawingId: activeDrawingId,
+            style: { ...currentStyle },
+            visible: true,
+            locked: false,
+            start: corners[i],
+            end: corners[(i + 1) % 4],
+          };
+          addShape(lineShape);
+          addSketchShapeId(id);
+        }
+        return;
+      }
+
       const { cornerRadius } = useAppStore.getState();
       const rectShape: RectangleShape = {
         id: generateId(),
@@ -176,7 +215,7 @@ export function useShapeDrawing() {
       };
       addShape(rectShape);
     },
-    [activeLayerId, activeDrawingId, currentStyle, addShape]
+    [activeLayerId, activeDrawingId, currentStyle, addShape, filledRegionMode, addSketchShapeId]
   );
 
   /**
