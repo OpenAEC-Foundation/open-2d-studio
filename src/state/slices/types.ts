@@ -96,6 +96,7 @@ export type DrawingPreview =
   | { type: 'section-callout'; start: Point; end: Point; label: string; bubbleRadius: number; flipDirection: boolean; viewDepth?: number }
   | { type: 'spot-elevation'; position: Point; elevation: number; labelPosition: Point; showLeader: boolean }
   | { type: 'spot-coordinate'; position: Point }
+  | { type: 'detail-line'; start: Point; end: Point; thickness: number; patternType?: string; patternAngle?: number; patternScale?: number; patternColor?: string; backgroundColor?: string; justification?: 'center' | 'left' | 'right' }
   | { type: 'modifyPreview'; shapes: Shape[]; basePoint?: Point; currentPoint?: Point }
   | { type: 'mirrorAxis'; start: Point; end: Point; shapes: Shape[] }
   | { type: 'rotateGuide'; center: Point; startRay?: Point; endRay: Point; angle?: number; shapes: Shape[] }

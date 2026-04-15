@@ -56,7 +56,6 @@ export function TextStyleManager({ isOpen, onClose }: TextStyleManagerProps) {
   };
 
   const handleEdit = (style: TextStyle) => {
-    if (style.isBuiltIn) return;
     setIsCreating(false);
     setEditingStyle({ ...style });
     setSelectedStyleId(style.id);
@@ -172,10 +171,10 @@ export function TextStyleManager({ isOpen, onClose }: TextStyleManagerProps) {
                     style={style}
                     isSelected={selectedStyleId === style.id}
                     onClick={() => { setSelectedStyleId(style.id); setEditingStyle(null); setIsCreating(false); }}
-                    onEdit={() => {}}
+                    onEdit={() => handleEdit(style)}
                     onDuplicate={() => handleDuplicate(style.id)}
                     onDelete={() => {}}
-                    readOnly
+                    canDelete={false}
                   />
                 ))}
               </>
@@ -231,7 +230,7 @@ function StyleListItem({
   onEdit,
   onDuplicate,
   onDelete,
-  readOnly,
+  canDelete = true,
 }: {
   style: TextStyle;
   isSelected: boolean;
@@ -239,7 +238,7 @@ function StyleListItem({
   onEdit: () => void;
   onDuplicate: () => void;
   onDelete: () => void;
-  readOnly?: boolean;
+  canDelete?: boolean;
 }) {
   return (
     <div
@@ -251,15 +250,13 @@ function StyleListItem({
       <StylePreviewBadge style={style} />
       <span className="flex-1 truncate">{style.name}</span>
       <div className="hidden group-hover:flex items-center gap-0.5">
-        {!readOnly && (
-          <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-0.5 hover:text-cad-accent" title="Edit">
-            <Edit className="w-3 h-3" />
-          </button>
-        )}
+        <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="p-0.5 hover:text-cad-accent" title="Edit">
+          <Edit className="w-3 h-3" />
+        </button>
         <button onClick={(e) => { e.stopPropagation(); onDuplicate(); }} className="p-0.5 hover:text-cad-accent" title="Duplicate">
           <Copy className="w-3 h-3" />
         </button>
-        {!readOnly && (
+        {canDelete && (
           <button onClick={(e) => { e.stopPropagation(); onDelete(); }} className="p-0.5 hover:text-red-400" title="Delete">
             <Trash2 className="w-3 h-3" />
           </button>
@@ -346,14 +343,12 @@ function StyleDetails({ style, onEdit }: { style: TextStyle; onEdit: () => void 
     <div className="space-y-3 p-2">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-cad-text">{style.name}</h3>
-        {!style.isBuiltIn && (
-          <button
-            onClick={onEdit}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-cad-hover text-cad-text rounded hover:bg-cad-accent/20"
-          >
-            <Edit className="w-3 h-3" /> Edit
-          </button>
-        )}
+        <button
+          onClick={onEdit}
+          className="flex items-center gap-1 px-2 py-1 text-xs bg-cad-hover text-cad-text rounded hover:bg-cad-accent/20"
+        >
+          <Edit className="w-3 h-3" /> Edit
+        </button>
       </div>
 
       <StylePreview style={style} />
@@ -377,7 +372,7 @@ function StyleDetails({ style, onEdit }: { style: TextStyle; onEdit: () => void 
         {style.paragraphSpacing && <div>Paragraph Spacing: <span className="text-cad-text">{style.paragraphSpacing}</span></div>}
       </div>
 
-      <div className="text-[10px] text-cad-text-dim">{style.isBuiltIn ? 'Built-in (read only - duplicate to customize)' : 'Custom'}</div>
+      <div className="text-[10px] text-cad-text-dim">{style.isBuiltIn ? 'Default style (cannot be deleted)' : 'Custom'}</div>
     </div>
   );
 }

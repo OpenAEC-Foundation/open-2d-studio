@@ -1093,6 +1093,45 @@ export class ShapeRenderer extends BaseRenderer {
         ctx.restore();
         break;
       }
+
+      case 'detail-line': {
+        // Draw detail line preview as a ghost of the final shape (thickness band + outline)
+        const dlp = preview as Extract<typeof preview, { type: 'detail-line' }>;
+        // Build a minimal DetailLineShape to reuse the full draw logic
+        const ghostShape: DetailLineShape = {
+          id: '__preview__',
+          type: 'detail-line',
+          layerId: '',
+          drawingId: '',
+          style: {
+            strokeColor: style?.strokeColor ?? '#ffffff',
+            strokeWidth: style?.strokeWidth ?? 0.18,
+            lineStyle: 'solid' as const,
+          },
+          visible: true,
+          locked: false,
+          start: dlp.start,
+          end: dlp.end,
+          thickness: dlp.thickness,
+          patternType: (dlp.patternType ?? 'insulation-nen47') as DetailLineShape['patternType'],
+          patternAngle: dlp.patternAngle,
+          patternScale: dlp.patternScale,
+          patternColor: dlp.patternColor,
+          backgroundColor: dlp.backgroundColor,
+          justification: dlp.justification ?? 'center',
+        };
+        // Draw at reduced opacity so it looks like a ghost/preview
+        ctx.save();
+        ctx.globalAlpha = 0.7;
+        this.drawDetailLine(ghostShape, false);
+        ctx.restore();
+        // Draw temporary dimension showing line length
+        if (viewport) {
+          this.drawPreviewDimension(dlp.start, dlp.end, viewport);
+        }
+        break;
+      }
+
       default: {
         const extPreviewRenderer = shapePreviewRegistry.get((preview as any).type);
         if (extPreviewRenderer) {

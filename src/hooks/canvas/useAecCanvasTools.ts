@@ -237,7 +237,7 @@ export function useAecCanvasTools() {
         spotCoordinateDrawing.handleSpotCoordinateClick(snappedPos);
         return true;
       case 'detail-line':
-        return detailLineDrawing.handleDetailLineClick(snappedPos);
+        return detailLineDrawing.handleDetailLineClick(snappedPos, shiftKey);
       case 'l-shape':
         return lShapeDrawing.handleLShapeClick(snappedPos);
       case 'label':
@@ -263,6 +263,7 @@ export function useAecCanvasTools() {
       case 'puntniveau': return puntniveauDrawing.getPuntniveauBasePoint() ?? undefined;
       case 'plate-system': return plateSystemDrawing.getPlateSystemBasePoint() ?? undefined;
       case 'section-callout': return sectionCalloutDrawing.getSectionCalloutBasePoint() ?? undefined;
+      case 'detail-line': return detailLineDrawing.getDetailLineBasePoint() ?? undefined;
       default: return undefined;
     }
   }
@@ -335,7 +336,7 @@ export function useAecCanvasTools() {
         spotCoordinateDrawing.updateSpotCoordinatePreview(snappedPos);
         return true;
       case 'detail-line':
-        detailLineDrawing.updateDetailLinePreview(snappedPos);
+        detailLineDrawing.updateDetailLinePreview(snappedPos, shiftKey);
         return true;
       case 'l-shape':
         lShapeDrawing.updateLShapePreview(snappedPos);
