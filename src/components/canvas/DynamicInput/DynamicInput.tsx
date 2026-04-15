@@ -398,6 +398,37 @@ export function DynamicInput() {
       y: actualHeight > 0 ? basePoint.y : basePoint.y + actualHeight,
     };
 
+    const absWidth = Math.abs(actualWidth);
+    const absHeight = Math.abs(actualHeight);
+
+    // In filledRegionMode: create 4 line segments (sketch boundary edges) instead of a rectangle
+    if (state.filledRegionMode) {
+      const corners = [
+        topLeft,
+        { x: topLeft.x + absWidth, y: topLeft.y },
+        { x: topLeft.x + absWidth, y: topLeft.y + absHeight },
+        { x: topLeft.x, y: topLeft.y + absHeight },
+      ];
+      for (let i = 0; i < 4; i++) {
+        const lineId = crypto.randomUUID();
+        state.addShape({
+          id: lineId,
+          type: 'line' as const,
+          layerId: state.activeLayerId,
+          drawingId: state.activeDrawingId,
+          style: { ...state.currentStyle },
+          visible: true,
+          locked: false,
+          start: { ...corners[i] },
+          end: { ...corners[(i + 1) % 4] },
+        } as any);
+        state.addSketchShapeId(lineId);
+      }
+      state.clearDrawingPoints();
+      state.setDrawingPreview(null);
+      return;
+    }
+
     // Get corner radius if set
     const cornerRadius = state.cornerRadius > 0 ? state.cornerRadius : undefined;
 
@@ -411,8 +442,8 @@ export function DynamicInput() {
       visible: true,
       locked: false,
       topLeft,
-      width: Math.abs(actualWidth),
-      height: Math.abs(actualHeight),
+      width: absWidth,
+      height: absHeight,
       rotation: 0,
       ...(cornerRadius && { cornerRadius }),
     };

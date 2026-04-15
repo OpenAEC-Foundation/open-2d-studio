@@ -45,9 +45,38 @@ export function extractSkEdges(shapeIds: string[], allShapes: any[]): SkEdge[] {
       }
     } else if (shape.type === 'rectangle') {
       // Rectangle: extract 4 edges from corner points
-      // RectangleShape has x, y, width, height (or point1/point2 depending on creation mode)
+      // RectangleShape has topLeft + width + height (primary format)
+      // Legacy fallbacks: x/y/width/height, point1/point2, start/end
       let x1: number, y1: number, x2: number, y2: number;
-      if (shape.x !== undefined && shape.width !== undefined) {
+      if (shape.topLeft && shape.width !== undefined) {
+        // Primary RectangleShape format: topLeft.x/y + width + height
+        // Handle rotation: if rotation != 0, the corners are rotated
+        const tl = shape.topLeft;
+        const w = shape.width;
+        const h = shape.height;
+        const rot = shape.rotation ?? 0;
+        if (rot === 0) {
+          x1 = tl.x; y1 = tl.y; x2 = tl.x + w; y2 = tl.y + h;
+        } else {
+          // Rotated rectangle: compute all 4 corners and extract edges directly
+          const cos = Math.cos(rot);
+          const sin = Math.sin(rot);
+          const rotate = (dx: number, dy: number) => ({
+            x: tl.x + dx * cos - dy * sin,
+            y: tl.y + dx * sin + dy * cos,
+          });
+          const corners = [
+            rotate(0, 0),
+            rotate(w, 0),
+            rotate(w, h),
+            rotate(0, h),
+          ];
+          for (let i = 0; i < 4; i++) {
+            edges.push({ p1: corners[i], p2: corners[(i + 1) % 4] });
+          }
+          continue;
+        }
+      } else if (shape.x !== undefined && shape.width !== undefined) {
         x1 = shape.x; y1 = shape.y; x2 = shape.x + shape.width; y2 = shape.y + shape.height;
       } else if (shape.point1 && shape.point2) {
         x1 = Math.min(shape.point1.x, shape.point2.x);
