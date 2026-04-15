@@ -2923,20 +2923,28 @@ export class ShapeRenderer extends BaseRenderer {
 
     // Step 3: Render foreground pattern layer
     let patternColor = fillColor;
-    if (invertColors && patternColor === '#ffffff') {
-      patternColor = '#000000';
-    } else if (!invertColors && (patternColor === '#000000' || patternColor === '#000')) {
-      patternColor = '#ffffff';
+    // Only invert black/white when there is no explicit backgroundColor — if a background color
+    // is set (e.g. wood #F0DCB9 for naaldhout), the pattern lines are drawn on top of that
+    // background and should keep their authored color (black lines on wood background stay black).
+    if (!backgroundColor) {
+      if (invertColors && patternColor === '#ffffff') {
+        patternColor = '#000000';
+      } else if (!invertColors && (patternColor === '#000000' || patternColor === '#000')) {
+        patternColor = '#ffffff';
+      }
     }
 
     ctx.save();
     buildPath();
     ctx.clip('evenodd');
 
+    // When a backgroundColor is set the pattern lines render on top of that background color,
+    // so we must not invert them further — pass invertColors=false in that case.
+    const fgInvertColors = backgroundColor ? false : invertColors;
     this.renderPatternLayer(
       patternType, patternAngle, patternScale, patternColor,
       customPatternId, shape.style.strokeWidth,
-      minX, minY, maxX, maxY, invertColors
+      minX, minY, maxX, maxY, fgInvertColors
     );
 
     ctx.restore();
