@@ -335,7 +335,7 @@ function TypeEditor({
           <div className="flex-1">
             <label className={labelClass}>Scale</label>
             <input type="number" step={0.1} min={0.1} value={type.fgPatternScale ?? 1}
-              onChange={(e) => onChange({ ...type, fgPatternScale: parseFloat(e.target.value) || 1 })}
+              onChange={(e) => { const v = parseFloat(e.target.value); onChange({ ...type, fgPatternScale: isNaN(v) || v <= 0 ? 0.1 : v }); }}
               className={inputClass} />
           </div>
         </div>
@@ -366,7 +366,7 @@ function TypeEditor({
               <div className="flex-1">
                 <label className={labelClass}>Scale</label>
                 <input type="number" step={0.1} min={0.1} value={type.bgPatternScale ?? 1}
-                  onChange={(e) => onChange({ ...type, bgPatternScale: parseFloat(e.target.value) || 1 })}
+                  onChange={(e) => { const v = parseFloat(e.target.value); onChange({ ...type, bgPatternScale: isNaN(v) || v <= 0 ? 0.1 : v }); }}
                   className={inputClass} />
               </div>
             </div>
