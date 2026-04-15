@@ -18,12 +18,12 @@ export const CAD_DEFAULT_TEXT_HEIGHT_MM = 2.5;
 
 /** Default dimension style - values in paper mm */
 export const DEFAULT_DIMENSION_STYLE: DimensionStyle = {
-  arrowType: 'tick',
+  arrowType: 'circle',
   arrowSize: 2.5,
-  extensionLineGap: 1.5,
+  extensionLineGap: 0,
   extensionLineOvershoot: 2.5,
   textHeight: 2.5,
-  textPlacement: 'centered',
+  textPlacement: 'above',
   lineColor: '#00ffff',
   textColor: '#00ffff',
   precision: 0,
