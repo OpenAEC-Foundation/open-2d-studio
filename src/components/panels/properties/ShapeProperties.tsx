@@ -2160,8 +2160,6 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
 
     case 'detail-line': {
       const dl = shape as DetailLineShape;
-      const allTypes = [...BUILT_IN_DETAIL_LINE_TYPES];
-      const currentType = allTypes.find(t => t.id === dl.detailLineTypeId);
 
       return (
         <>
