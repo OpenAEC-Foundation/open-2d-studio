@@ -28,7 +28,8 @@ import {
 } from 'lucide-react';
 import { useAppStore } from '../../../state/appStore';
 import { getActiveDocumentStore } from '../../../state/documentStore';
-import type { Shape, HatchShape, ShapeType, WallShape, PileShape, LineStyle } from '../../../types/geometry';
+import type { Shape, HatchShape, ShapeType, WallShape, PileShape, LineStyle, SpotCoordinateShape } from '../../../types/geometry';
+import { SPOT_COORDINATE_TYPE_PRESETS } from '../../../types/geometry';
 import type { FilledRegionType } from '../../../types/filledRegion';
 import type { CustomHatchPattern } from '../../../types/hatch';
 import { BUILTIN_PATTERNS } from '../../../types/hatch';
@@ -658,6 +659,49 @@ function buildLineStyleOptions(): TypeOption[] {
   }));
 }
 
+function buildSpotCoordinateOptions(): TypeOption[] {
+  return SPOT_COORDINATE_TYPE_PRESETS.map(preset => ({
+    id: preset.id,
+    label: preset.name,
+    renderPreview: (ctx: CanvasRenderingContext2D, w: number, h: number) => {
+      ctx.clearRect(0, 0, w, h);
+      ctx.fillStyle = '#1e1e2e';
+      ctx.fillRect(0, 0, w, h);
+      const lc = preset.style.lineColor || '#ffffff';
+      ctx.strokeStyle = lc;
+      ctx.fillStyle = lc;
+      ctx.lineWidth = 0.8;
+      // cross marker
+      const cx = w / 2, cy = h / 2 + 4;
+      const ms = 4;
+      ctx.beginPath();
+      ctx.moveTo(cx - ms, cy); ctx.lineTo(cx + ms, cy);
+      ctx.moveTo(cx, cy - ms); ctx.lineTo(cx, cy + ms);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.arc(cx, cy, ms * 0.4, 0, Math.PI * 2);
+      ctx.stroke();
+      // leader arrow
+      const lx = cx + 12, ly = cy - 12;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy); ctx.lineTo(lx, ly);
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(lx - 4, ly + 2);
+      ctx.lineTo(lx - 2, ly + 4);
+      ctx.closePath();
+      ctx.fill();
+      // text label
+      ctx.fillStyle = preset.style.textColor || '#ffffff';
+      ctx.font = '5px sans-serif';
+      ctx.textAlign = 'left';
+      ctx.textBaseline = 'bottom';
+      ctx.fillText(`X: 0 ${preset.style.unit}`, lx + 2, ly - 1);
+    },
+  }));
+}
+
 // ─── main component ──────────────────────────────────────────────────────────
 
 interface TypeSelectorProps {
@@ -1002,6 +1046,52 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
           options={lineOptions}
           value={currentLineStyle}
           onChange={handleLineStyleChange}
+        />
+        {selectedShapes.length > 1 && (
+          <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
+        )}
+      </div>
+    );
+  }
+
+  // ── Spot Coordinate: preset type dropdown ──
+  if (firstType === 'spot-coordinate') {
+    const sc = selectedShapes[0] as SpotCoordinateShape;
+    const currentTypeId = sc.spotCoordinateTypeId ?? SPOT_COORDINATE_TYPE_PRESETS[0].id;
+    const scOptions = buildSpotCoordinateOptions();
+
+    const handleScTypeChange = (newTypeId: string) => {
+      const preset = SPOT_COORDINATE_TYPE_PRESETS.find(p => p.id === newTypeId);
+      if (!preset) return;
+      const s = preset.style;
+      selectedShapes.forEach(shape => {
+        const orig = shape as SpotCoordinateShape;
+        updateShape(shape.id, {
+          spotCoordinateTypeId: newTypeId,
+          unit: s.unit,
+          decimalPlaces: s.decimalPlaces,
+          prefix: s.prefix,
+          textHeight: s.textHeight,
+          showLeader: s.showLeader,
+          leaderLength: s.leaderLength,
+          leaderAngle: s.leaderAngle,
+          arrowType: s.arrowType,
+          arrowSize: s.arrowSize,
+          lineColor: s.lineColor,
+          textColor: s.textColor,
+          // Recompute displayX / displayY for new unit
+          displayX: s.unit === 'm' ? orig.position.x / 1000 : orig.position.x,
+          displayY: s.unit === 'm' ? (-orig.position.y) / 1000 : -orig.position.y,
+        } as Partial<SpotCoordinateShape>);
+      });
+    };
+
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
+        <TypeDropdown
+          options={scOptions}
+          value={currentTypeId}
+          onChange={handleScTypeChange}
         />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>

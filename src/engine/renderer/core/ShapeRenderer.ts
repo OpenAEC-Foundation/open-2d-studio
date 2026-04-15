@@ -3473,10 +3473,15 @@ export class ShapeRenderer extends BaseRenderer {
     const th = textHeight * sf;
     const ll = leaderLength * sf;
 
-    const color = shape.style.strokeColor || '#ffffff';
+    // Resolve colors: shape override > style
+    const lineColor = shape.lineColor || shape.style.strokeColor || '#ffffff';
+    const textColor = shape.textColor || shape.style.strokeColor || '#ffffff';
+    const arrowType = shape.arrowType ?? 'filled';
+    const arrowSize = (shape.arrowSize ?? 120) * sf;
+
     ctx.save();
-    ctx.strokeStyle = color;
-    ctx.fillStyle = color;
+    ctx.strokeStyle = lineColor;
+    ctx.fillStyle = lineColor;
     ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth || 0.5);
     ctx.setLineDash([]);
 
@@ -3494,15 +3499,51 @@ export class ShapeRenderer extends BaseRenderer {
     ctx.arc(position.x, position.y, ms * 0.4, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Leader line
-    let labelX = position.x + ll * Math.cos(leaderAngle);
-    let labelY = position.y + ll * Math.sin(leaderAngle);
+    // Leader line with arrowhead
+    const labelX = position.x + ll * Math.cos(leaderAngle);
+    const labelY = position.y + ll * Math.sin(leaderAngle);
 
     if (showLeader && ll > 0.001) {
       ctx.beginPath();
       ctx.moveTo(position.x, position.y);
       ctx.lineTo(labelX, labelY);
       ctx.stroke();
+
+      // Arrowhead at the annotation end (labelX, labelY) pointing back toward position
+      if (arrowType !== 'none') {
+        const dx = position.x - labelX;
+        const dy = position.y - labelY;
+        const len = Math.sqrt(dx * dx + dy * dy) || 1;
+        const ux = dx / len;
+        const uy = dy / len;
+        const as = arrowSize;
+        const wing = as * 0.35;
+        const perp = { x: -uy, y: ux };
+
+        if (arrowType === 'filled') {
+          ctx.beginPath();
+          ctx.moveTo(labelX, labelY);
+          ctx.lineTo(labelX + ux * as + perp.x * wing, labelY + uy * as + perp.y * wing);
+          ctx.lineTo(labelX + ux * as - perp.x * wing, labelY + uy * as - perp.y * wing);
+          ctx.closePath();
+          ctx.fill();
+        } else if (arrowType === 'open') {
+          ctx.beginPath();
+          ctx.moveTo(labelX + ux * as + perp.x * wing, labelY + uy * as + perp.y * wing);
+          ctx.lineTo(labelX, labelY);
+          ctx.lineTo(labelX + ux * as - perp.x * wing, labelY + uy * as - perp.y * wing);
+          ctx.stroke();
+        } else if (arrowType === 'dot') {
+          ctx.beginPath();
+          ctx.arc(labelX, labelY, as * 0.4, 0, Math.PI * 2);
+          ctx.fill();
+        } else if (arrowType === 'tick') {
+          ctx.beginPath();
+          ctx.moveTo(labelX + perp.x * as * 0.5, labelY + perp.y * as * 0.5);
+          ctx.lineTo(labelX - perp.x * as * 0.5, labelY - perp.y * as * 0.5);
+          ctx.stroke();
+        }
+      }
     }
 
     // Format coordinates
@@ -3535,7 +3576,7 @@ export class ShapeRenderer extends BaseRenderer {
     ctx.fillStyle = bgColor;
     ctx.fillRect(boxX, boxY, maxW + th * 0.2, boxH);
 
-    ctx.fillStyle = color;
+    ctx.fillStyle = textColor;
     ctx.fillText(xText, labelX + textOffX, labelY - th - lineGap);
     ctx.fillText(yText, labelX + textOffX, labelY);
 

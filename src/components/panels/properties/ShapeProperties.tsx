@@ -2284,27 +2284,6 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
                 <div className="text-cad-text">{sc.displayY.toFixed(sc.decimalPlaces)} {sc.unit}</div>
               </div>
             </div>
-            <SelectField
-              label="Unit"
-              value={sc.unit}
-              options={[
-                { value: 'mm', label: 'mm' },
-                { value: 'm', label: 'm' },
-              ]}
-              onChange={(v) => update({ unit: v })}
-            />
-            <NumberField label="Decimal Places" value={sc.decimalPlaces} onChange={(v) => update({ decimalPlaces: Math.round(v) })} step={1} min={0} max={6} />
-            <TextField label="Prefix" value={sc.prefix || ''} onChange={(v) => update({ prefix: v || undefined })} />
-          </PropertyGroup>
-          <PropertyGroup label="Appearance">
-            <NumberField label="Text Height" value={sc.textHeight} onChange={(v) => update({ textHeight: v })} step={10} min={10} />
-            <CheckboxField label="Show Leader" value={sc.showLeader} onChange={(v) => update({ showLeader: v })} />
-            {sc.showLeader && (
-              <>
-                <NumberField label="Leader Length" value={sc.leaderLength} onChange={(v) => update({ leaderLength: v })} step={50} min={0} />
-                <NumberField label="Leader Angle (°)" value={sc.leaderAngle * (180 / Math.PI)} onChange={(v) => update({ leaderAngle: v * (Math.PI / 180) })} step={15} />
-              </>
-            )}
           </PropertyGroup>
         </>
       );

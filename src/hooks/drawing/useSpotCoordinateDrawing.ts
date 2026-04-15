@@ -11,15 +11,7 @@
 import { useCallback } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
 import type { Point, SpotCoordinateShape } from '../../types/geometry';
-
-/** Default text height in drawing units (mm) */
-const DEFAULT_TEXT_HEIGHT = 200;
-
-/** Default leader length in drawing units (mm) */
-const DEFAULT_LEADER_LENGTH = 800;
-
-/** Default leader angle in radians (45 degrees, upper-right) */
-const DEFAULT_LEADER_ANGLE = -Math.PI / 4;
+import { SPOT_COORDINATE_TYPE_PRESETS, DEFAULT_SPOT_COORDINATE_STYLE } from '../../types/geometry';
 
 export function useSpotCoordinateDrawing() {
   const {
@@ -33,16 +25,27 @@ export function useSpotCoordinateDrawing() {
   /**
    * Create a SpotCoordinateShape at the given world position.
    * displayX / displayY are set from the world coords (Y negated for display).
+   * Style defaults are resolved from the active SpotCoordinateType preset (if any).
    */
   const createSpotCoordinate = useCallback(
     (position: Point) => {
-      const { unitSettings } = useAppStore.getState();
-      const unit: 'mm' | 'm' = (unitSettings?.lengthUnit === 'm' ? 'm' : 'mm') as 'mm' | 'm';
-      const decimalPlaces = unit === 'm' ? 3 : 0;
+      const state = useAppStore.getState();
+      const { unitSettings } = state;
+
+      // Resolve active type preset
+      const typeId: string | undefined = (state as any).selectedSpotCoordinateTypeId;
+      const preset = typeId
+        ? SPOT_COORDINATE_TYPE_PRESETS.find(p => p.id === typeId)
+        : SPOT_COORDINATE_TYPE_PRESETS[0];
+      const style = preset?.style ?? DEFAULT_SPOT_COORDINATE_STYLE;
+
+      // Unit: prefer type style, fall back to project unit
+      const unit: 'mm' | 'm' = style.unit ?? (unitSettings?.lengthUnit === 'm' ? 'm' : 'mm');
+      const decimalPlaces = style.decimalPlaces ?? (unit === 'm' ? 3 : 0);
 
       // Convert to display units
       const displayX = unit === 'm' ? position.x / 1000 : position.x;
-      const displayY = unit === 'm' ? (-position.y) / 1000 : -position.y; // negate Y: canvas Y is down
+      const displayY = unit === 'm' ? (-position.y) / 1000 : -position.y;
 
       const shape: SpotCoordinateShape = {
         id: generateId(),
@@ -56,11 +59,17 @@ export function useSpotCoordinateDrawing() {
         displayX,
         displayY,
         unit,
-        textHeight: DEFAULT_TEXT_HEIGHT,
-        leaderLength: DEFAULT_LEADER_LENGTH,
-        leaderAngle: DEFAULT_LEADER_ANGLE,
-        showLeader: true,
+        textHeight: style.textHeight,
+        leaderLength: style.leaderLength,
+        leaderAngle: style.leaderAngle,
+        showLeader: style.showLeader,
         decimalPlaces,
+        prefix: style.prefix,
+        spotCoordinateTypeId: preset?.id,
+        arrowType: style.arrowType,
+        arrowSize: style.arrowSize,
+        lineColor: style.lineColor,
+        textColor: style.textColor,
       };
 
       addShape(shape);

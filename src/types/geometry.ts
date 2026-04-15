@@ -756,6 +756,93 @@ export interface SpotElevationShape extends BaseShape {
   markerSize: number;        // Size of cross/circle marker (drawing units)
 }
 
+// ============================================================================
+// Spot Coordinate Type — reusable style definition for spot coordinate annotations
+// ============================================================================
+
+/** Arrow style used on spot-coordinate leader lines */
+export type SpotCoordinateArrowType = 'filled' | 'open' | 'dot' | 'tick' | 'none';
+
+/**
+ * SpotCoordinateStyle — all visual and format settings for a spot coordinate.
+ * Stored in SpotCoordinateType presets; shapes reference the type by ID.
+ */
+export interface SpotCoordinateStyle {
+  /** Display unit */
+  unit: 'mm' | 'm';
+  /** Number of decimal places */
+  decimalPlaces: number;
+  /** Optional prefix (e.g. "RD ") */
+  prefix?: string;
+  /** Text height in drawing units (mm) */
+  textHeight: number;
+  /** Whether to draw a leader line */
+  showLeader: boolean;
+  /** Length of leader line in drawing units (mm) */
+  leaderLength: number;
+  /** Default leader angle in radians (0 = right) */
+  leaderAngle: number;
+  /** Arrow type on the leader tip */
+  arrowType: SpotCoordinateArrowType;
+  /** Arrow size in drawing units (mm) */
+  arrowSize: number;
+  /** Color for leader line and marker */
+  lineColor: string;
+  /** Color for text labels */
+  textColor: string;
+}
+
+/**
+ * SpotCoordinateType — named reusable preset for spot coordinate annotations.
+ */
+export interface SpotCoordinateType {
+  id: string;
+  name: string;
+  style: SpotCoordinateStyle;
+}
+
+/** Default spot coordinate style */
+export const DEFAULT_SPOT_COORDINATE_STYLE: SpotCoordinateStyle = {
+  unit: 'mm',
+  decimalPlaces: 0,
+  textHeight: 200,
+  showLeader: true,
+  leaderLength: 800,
+  leaderAngle: -Math.PI / 4,
+  arrowType: 'filled',
+  arrowSize: 120,
+  lineColor: '#ffffff',
+  textColor: '#ffffff',
+};
+
+/** Built-in spot coordinate type presets */
+export const SPOT_COORDINATE_TYPE_PRESETS: SpotCoordinateType[] = [
+  {
+    id: 'sc-default',
+    name: 'Default',
+    style: { ...DEFAULT_SPOT_COORDINATE_STYLE },
+  },
+  {
+    id: 'sc-meters',
+    name: 'Meters (RD)',
+    style: {
+      ...DEFAULT_SPOT_COORDINATE_STYLE,
+      unit: 'm',
+      decimalPlaces: 3,
+      prefix: 'RD ',
+    },
+  },
+  {
+    id: 'sc-black',
+    name: 'Black (Print)',
+    style: {
+      ...DEFAULT_SPOT_COORDINATE_STYLE,
+      lineColor: '#000000',
+      textColor: '#000000',
+    },
+  },
+];
+
 // Spot Coordinate shape — places X/Y coordinate annotation at a point
 export interface SpotCoordinateShape extends BaseShape {
   type: 'spot-coordinate';
@@ -769,6 +856,16 @@ export interface SpotCoordinateShape extends BaseShape {
   showLeader: boolean;      // Whether to draw a leader line
   decimalPlaces: number;    // Number of decimal places
   prefix?: string;          // Optional prefix (e.g. "RD ")
+  /** Reference to a SpotCoordinateType preset */
+  spotCoordinateTypeId?: string;
+  /** Arrow type on leader tip */
+  arrowType?: SpotCoordinateArrowType;
+  /** Arrow size in drawing units (mm) */
+  arrowSize?: number;
+  /** Line/marker color override */
+  lineColor?: string;
+  /** Text color override */
+  textColor?: string;
 }
 
 // Image shape - embedded raster image on the canvas
