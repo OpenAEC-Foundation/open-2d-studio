@@ -1870,6 +1870,29 @@ export function getShapeBounds(shape: Shape, drawingScale?: number, _gridlineExt
         maxY: bi.position.y + (bi.scaleY || 1),
       };
     }
+    case 'spot-elevation': {
+      const se = shape as SpotElevationShape;
+      const sf = drawingScale ? (0.01 / drawingScale) : 1;
+      const ms = (se.markerSize || 200) * sf;
+      const minX = Math.min(se.position.x, se.labelPosition.x) - ms;
+      const minY = Math.min(se.position.y, se.labelPosition.y) - ms;
+      const maxX = Math.max(se.position.x, se.labelPosition.x) + ms;
+      const maxY = Math.max(se.position.y, se.labelPosition.y) + ms;
+      return { minX, minY, maxX, maxY };
+    }
+    case 'spot-coordinate': {
+      const sc = shape as SpotCoordinateShape;
+      const sf = drawingScale ? (0.01 / drawingScale) : 1;
+      const th = (sc.textHeight || 200) * sf;
+      const lx = sc.position.x + (sc.leaderLength || 0) * sf * Math.cos(sc.leaderAngle || 0);
+      const ly = sc.position.y + (sc.leaderLength || 0) * sf * Math.sin(sc.leaderAngle || 0);
+      // Label is approximately 5 text-heights wide, 2 text-heights tall
+      const minX = Math.min(sc.position.x, lx) - th;
+      const minY = Math.min(sc.position.y, ly) - th;
+      const maxX = Math.max(sc.position.x, lx) + th * 5;
+      const maxY = Math.max(sc.position.y, ly) + th * 2;
+      return { minX, minY, maxX, maxY };
+    }
     default: {
       const extBounds = boundsRegistry.get((shape as any).type);
       return extBounds ? extBounds(shape, drawingScale) : null;
