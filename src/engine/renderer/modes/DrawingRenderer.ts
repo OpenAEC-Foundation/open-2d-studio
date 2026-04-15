@@ -98,6 +98,9 @@ export interface DrawingRenderOptions {
 // Legacy alias
 export type DraftRenderOptions = DrawingRenderOptions;
 
+/** Time budget per frame for background shape rendering (ms). Leaves headroom for UI work. */
+const SHAPE_RENDER_BUDGET_MS = 12;
+
 export class DrawingRenderer extends BaseRenderer {
   private shapeRenderer: ShapeRenderer;
   private parametricRenderer: ParametricRenderer;
@@ -107,6 +110,13 @@ export class DrawingRenderer extends BaseRenderer {
   private selectionLayer: SelectionLayer;
   private cursorLayer: CursorLayer;
   private handleRenderer: HandleRenderer;
+
+  // Progressive rendering state
+  private progressiveIndex = 0;
+  private lastShapeHash = '';
+  private _hasMoreToRender = false;
+  private _renderedCount = 0;
+  private _totalVisible = 0;
 
   constructor(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number) {
     super(ctx, width, height, dpr);
@@ -134,6 +144,30 @@ export class DrawingRenderer extends BaseRenderer {
     this.selectionLayer = new SelectionLayer(this.ctx, width, height, this.dpr);
     this.cursorLayer = new CursorLayer(this.ctx, width, height, this.dpr);
     this.handleRenderer = new HandleRenderer(this.ctx, width, height, this.dpr);
+  }
+
+  /**
+   * Returns true when progressive rendering has more shapes to draw next frame.
+   * Canvas RAF loop uses this to decide whether to keep requesting frames.
+   */
+  hasMoreToRender(): boolean {
+    return this._hasMoreToRender;
+  }
+
+  /**
+   * Returns current progressive rendering progress { rendered, total }.
+   * Used by the status-bar indicator in Canvas.tsx.
+   */
+  getProgressiveStats(): { rendered: number; total: number } {
+    return { rendered: this._renderedCount, total: this._totalVisible };
+  }
+
+  /**
+   * Force reset of the progressive index (e.g. on viewport change or shape mutation).
+   */
+  resetProgressive(): void {
+    this.progressiveIndex = 0;
+    this.lastShapeHash = '';
   }
 
   /**
@@ -357,10 +391,7 @@ export class DrawingRenderer extends BaseRenderer {
         lodPassIds.add(id);
       }
 
-      // ─── Step 3: Single-pass rendering with cached sort order ─────────────────
-      // Collect surviving shapes, sort once by render priority, then draw.
-      // This replaces the original six separate for-loops and produces
-      // identical visual output (same z-order, same drawShape calls).
+      // ─── Step 3: Collect and sort visible shapes ──────────────────────────────
       const visibleShapes: Shape[] = [];
       for (const shape of shapes) {
         if (shape.visible && lodPassIds.has(shape.id)) visibleShapes.push(shape);
@@ -369,12 +400,47 @@ export class DrawingRenderer extends BaseRenderer {
       // Stable sort: V8's Array.sort is stable since Node 11 / Chrome 70
       visibleShapes.sort((a, b) => getRenderPriority(a) - getRenderPriority(b));
 
+      // ─── Step 4: Priority shapes — always rendered this frame ─────────────────
+      // Selected, hovered, and pre-selected shapes are "priority" and drawn every
+      // frame regardless of time budget so interaction always feels instant.
+      const backgroundShapes: Shape[] = [];
       for (const shape of visibleShapes) {
         if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
         const isSelected = selectedSet.has(shape.id);
         const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
-        this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
+        if (isSelected || isHovered) {
+          this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
+        } else {
+          backgroundShapes.push(shape);
+        }
       }
+
+      // ─── Step 5: Background shapes — progressive, time-budgeted ───────────────
+      // Detect shape-set change: reset progressive index so we start from the
+      // beginning whenever shapes are added / removed / the drawing changes.
+      const shapeHash = backgroundShapes.length + '_' + (backgroundShapes[0]?.id ?? '');
+      if (shapeHash !== this.lastShapeHash) {
+        this.progressiveIndex = 0;
+        this.lastShapeHash = shapeHash;
+      }
+
+      this._totalVisible = backgroundShapes.length;
+
+      let bgIdx = this.progressiveIndex;
+      const frameStart = performance.now();
+      while (bgIdx < backgroundShapes.length) {
+        // Check time budget every 8 shapes to amortise performance.now() cost
+        if ((bgIdx & 7) === 0) {
+          const elapsed = performance.now() - frameStart;
+          if (elapsed > SHAPE_RENDER_BUDGET_MS) break;
+        }
+        const shape = backgroundShapes[bgIdx];
+        this.shapeRenderer.drawShape(shape, false, false, whiteBackground, hideSelectionHandles);
+        bgIdx++;
+      }
+      this.progressiveIndex = bgIdx;
+      this._renderedCount = bgIdx;
+      this._hasMoreToRender = bgIdx < backgroundShapes.length;
     }
 
     // Draw parametric shapes

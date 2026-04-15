@@ -88,7 +88,7 @@ export type IfcSlice = IfcState & IfcActions;
 
 export const initialIfcState: IfcState = {
   ifcContent: '',
-  ifcAutoGenerate: true,
+  ifcAutoGenerate: false,
   ifcEntityCount: 0,
   ifcFileSize: 0,
   ifcPanelOpen: false,

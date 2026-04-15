@@ -305,6 +305,14 @@ export class CADRenderer {
   }
 
   /**
+   * Expose the underlying DrawingRenderer for progressive-rendering status queries.
+   * Canvas.tsx uses this to check hasMoreToRender() and getProgressiveStats().
+   */
+  getDrawingRenderer(): DrawingRenderer {
+    return this.drawingRenderer;
+  }
+
+  /**
    * Set callback for when async images (like SVG title blocks) finish loading
    * This allows triggering a re-render after the image is ready
    */

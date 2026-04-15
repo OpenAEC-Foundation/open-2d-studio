@@ -497,6 +497,8 @@ export function Canvas() {
   const containerRef = useRef<HTMLDivElement>(null);
   const rendererRef = useRef<CADRenderer | null>(null);
   const renderCacheRef = useRef<RenderCache>(new RenderCache());
+  // Progressive rendering progress indicator state
+  const [progressiveStats, setProgressiveStats] = useState<{ rendered: number; total: number } | null>(null);
 
   // Only subscribe to state needed for React DOM rendering
   const activeTool = useAppStore(s => s.activeTool);
@@ -710,6 +712,9 @@ export function Canvas() {
 
     let rafId = 0;
     let dirty = true;
+    // progressiveRenderPending: true when the last frame did not finish all shapes
+    // and the drawing renderer needs another frame to continue background rendering.
+    let progressiveRenderPending = false;
 
     const unsub = useAppStore.subscribe(() => { dirty = true; });
 
@@ -726,7 +731,7 @@ export function Canvas() {
     // (smart dirty-check removed — viewport culling + LOD provide sufficient perf)
 
     const tick = () => {
-      if (dirty) {
+      if (dirty || progressiveRenderPending) {
         // Skip rendering if a transaction is suppressing renders
         const cadApi = (window as any).cad;
         if (cadApi?.transactions?.renderSuppressed) {
@@ -734,7 +739,14 @@ export function Canvas() {
           return;
         }
 
+        // On a fresh dirty signal, reset progressive state in the drawing renderer
+        // so we restart from shape 0 rather than continuing a stale sequence.
+        if (dirty) {
+          renderer.getDrawingRenderer()?.resetProgressive();
+        }
+
         dirty = false;
+        progressiveRenderPending = false;
 
         try {
         const s = useAppStore.getState();
@@ -865,6 +877,24 @@ export function Canvas() {
         }
 
         frameBudget.endFrame(frameStart);
+
+        // If the drawing renderer didn't finish all background shapes this frame,
+        // mark the next RAF tick as needing another progressive pass.
+        if (s.editorMode === 'drawing') {
+          const drawingRenderer = renderer.getDrawingRenderer();
+          if (drawingRenderer?.hasMoreToRender()) {
+            progressiveRenderPending = true;
+            // Update React state to show progress indicator (throttled via RAF cadence)
+            const stats = drawingRenderer.getProgressiveStats();
+            if (stats.total > 500) {
+              setProgressiveStats(stats);
+            }
+          } else {
+            // All shapes rendered — clear the progress indicator
+            setProgressiveStats(null);
+          }
+        }
+
         } catch (err) {
           if (!renderErrorLogged) {
             console.error('[Canvas] Render error:', err);
@@ -1154,6 +1184,21 @@ export function Canvas() {
           )}
           onClose={closeMenu}
         />
+      )}
+
+      {/* Progressive Rendering Progress Indicator */}
+      {progressiveStats && progressiveStats.total > 0 && (
+        <div className="absolute bottom-8 right-4 pointer-events-none flex items-center gap-2 bg-gray-900/80 border border-gray-600/60 rounded px-2 py-1 backdrop-blur-sm">
+          <div className="text-[10px] text-gray-400 whitespace-nowrap">
+            Rendering: {progressiveStats.rendered}/{progressiveStats.total} shapes
+          </div>
+          <div className="w-20 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+            <div
+              className="h-full bg-blue-500 rounded-full transition-none"
+              style={{ width: `${Math.round((progressiveStats.rendered / progressiveStats.total) * 100)}%` }}
+            />
+          </div>
+        </div>
       )}
     </div>
   );
