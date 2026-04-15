@@ -746,7 +746,7 @@ function TypeDropdown({ options, value, onChange, placeholder, onEditOption }: T
 
       {/* Dropdown list with search */}
       {open && (
-        <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-cad-surface border border-cad-border rounded shadow-lg max-h-[50vh] flex flex-col">
+        <div className="absolute z-50 left-0 right-0 top-full mt-0.5 bg-cad-surface border border-cad-border rounded shadow-lg max-h-[75vh] flex flex-col">
           {/* Search input */}
           {options.length > 5 && (
             <div className="p-1.5 border-b border-cad-border">
