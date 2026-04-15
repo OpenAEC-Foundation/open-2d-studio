@@ -191,7 +191,7 @@ export function generateIFC(
   // -------------------------------------------------------------------------
   // 3. Additional storeys from LevelShapes
   // -------------------------------------------------------------------------
-  const levels = shapes.filter((s): s is LevelShape => s.type === 'level' && !s.id.startsWith('section-ref-'));
+  const levels = shapes.filter((s): s is LevelShape => s.type === 'level' && s.id != null && !s.id.startsWith('section-ref-'));
   const storeyMap = new Map<string, number>();
 
   if (levels.length > 0) {
@@ -360,7 +360,7 @@ export function generateIFC(
   const exportedProjectGridIds = new Set<string>();
 
   // Filter out section-reference shapes
-  const exportShapes = shapes.filter(s => !s.id.startsWith('section-ref-'));
+  const exportShapes = shapes.filter(s => s.id != null && !s.id.startsWith('section-ref-'));
 
   // Helper to create a property set and track for assignment
   function assignPropertySet(
