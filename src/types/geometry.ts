@@ -805,14 +805,14 @@ export interface SpotCoordinateType {
 export const DEFAULT_SPOT_COORDINATE_STYLE: SpotCoordinateStyle = {
   unit: 'mm',
   decimalPlaces: 0,
-  textHeight: 200,
+  textHeight: 2.5,
   showLeader: true,
-  leaderLength: 800,
+  leaderLength: 10,
   leaderAngle: -Math.PI / 4,
   arrowType: 'filled',
-  arrowSize: 120,
-  lineColor: '#ffffff',
-  textColor: '#ffffff',
+  arrowSize: 1.5,
+  lineColor: '#000000',
+  textColor: '#000000',
 };
 
 /** Built-in spot coordinate type presets */

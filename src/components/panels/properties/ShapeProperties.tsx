@@ -39,7 +39,7 @@ import {
   ExposureClassSection,
   TextStyleSelector,
   // RegionTypeSelector removed — now in TypeSelector
-  DimensionStyleSelector,
+  // DimensionStyleSelector removed — now in TypeSelector
   NumberField,
   TextField,
   CheckboxField,
@@ -884,12 +884,7 @@ export function ShapeProperties({ shape, updateShape }: { shape: Shape; updateSh
 
       return (
         <>
-          <PropertyGroup label="Dimension Type">
-            <DimensionStyleSelector
-              currentStyleName={dim.dimensionStyleName}
-              onApplyStyle={(name, style) => update({ dimensionStyleName: name || undefined, dimensionStyle: { ...style } })}
-            />
-          </PropertyGroup>
+          {/* Dimension Type is now in the TypeSelector at top — no duplicate here */}
           <PropertyGroup label="Instance">
             <div className="text-xs text-cad-text-dim mb-2">
               Type: {dim.dimensionType.charAt(0).toUpperCase() + dim.dimensionType.slice(1)}

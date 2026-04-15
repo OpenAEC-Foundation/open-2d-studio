@@ -3477,7 +3477,9 @@ export class ShapeRenderer extends BaseRenderer {
     const ctx = this.ctx;
     const { position, displayX, displayY, textHeight, leaderLength, leaderAngle, showLeader, decimalPlaces, prefix } = shape;
 
-    const sf = this.drawingScale ? (0.01 / this.drawingScale) : 1;
+    // Scale factor: textHeight and leaderLength are in paper mm,
+    // multiply by (1/drawingScale) to get drawing units
+    const sf = this.drawingScale ? (1 / this.drawingScale) : 1;
     const th = textHeight * sf;
     const ll = leaderLength * sf;
 
@@ -3513,28 +3515,39 @@ export class ShapeRenderer extends BaseRenderer {
     const labelX = position.x + ll * Math.cos(leaderAngle);
     const labelY = position.y + ll * Math.sin(leaderAngle);
 
-    // Bend point for L-shaped leader: drop vertically from position to label Y, then go horizontal
+    // Bend point for L-shaped leader: vertical from position, then horizontal to label
     const bendX = position.x;
     const bendY = labelY;
 
     if (showLeader && ll > 0.001) {
+      // Draw leader: position → bend → past text (underline extends under coordinates)
       ctx.beginPath();
       ctx.moveTo(position.x, position.y);
       ctx.lineTo(bendX, bendY);
-      ctx.lineTo(labelX, labelY);
+
+      // Extend horizontal line PAST the text
+      const rightSide = Math.cos(leaderAngle) >= 0;
+      ctx.font = `${th}px ${CAD_DEFAULT_FONT}`;
+      const pre = prefix || '';
+      const testText = `X: ${pre}${displayX.toFixed(decimalPlaces)}`;
+      const textW = ctx.measureText(testText).width;
+      const underlineEnd = rightSide
+        ? labelX + th * 0.3 + textW + th * 0.5
+        : labelX - th * 0.3 - textW - th * 0.5;
+      ctx.lineTo(underlineEnd, labelY);
       ctx.stroke();
 
-      // Arrowhead at position (at the annotated point), pointing away from the label
+      // Arrowhead at position — aligned with FIRST segment of leader (vertical)
       if (arrowType !== 'none') {
-        const dx = position.x - labelX;
-        const dy = position.y - labelY;
-        const len = Math.sqrt(dx * dx + dy * dy) || 1;
-        const ux = dx / len;
-        const uy = dy / len;
+        // Direction: from bend toward position (the first segment is vertical)
+        const segDx = position.x - bendX;
+        const segDy = position.y - bendY;
+        const segLen = Math.sqrt(segDx * segDx + segDy * segDy) || 1;
+        const ux = segDx / segLen;
+        const uy = segDy / segLen;
         const as = arrowSize;
         const wing = as * 0.35;
         const perp = { x: -uy, y: ux };
-        // Tip is at position; arrowhead body extends back toward label
         const tipX = position.x;
         const tipY = position.y;
 
