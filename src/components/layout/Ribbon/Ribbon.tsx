@@ -673,7 +673,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
               <RibbonMediumButtonStack>
                 <RibbonMediumButton
                   icon={<DetailLineIcon size={18} />}
-                  label="Detail Line"
+                  label="Line Component"
                   onClick={() => switchToDrawingTool('detail-line')}
                   active={activeTool === 'detail-line'}
                   disabled={isSheetMode}

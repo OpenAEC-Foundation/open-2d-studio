@@ -74,7 +74,7 @@ function getShapeTypeLabel(type: ShapeType): string {
     'block-instance': 'Block',
     rebar: 'Rebar',
     'component-instance': 'Component',
-    'detail-line': 'Detail Line',
+    'detail-line': 'Line Component',
     'label': 'Label',
   };
   return labels[type] ?? type;
@@ -1271,7 +1271,7 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
             options={dlOptions}
             value={currentTypeId}
             onChange={handleDetailLineTypeChange}
-            placeholder="Detail Line Type"
+            placeholder="Line Component Type"
           />
         </div>
       );
@@ -1696,7 +1696,7 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
           options={dlOptions}
           value={currentTypeId}
           onChange={handleDetailLineTypeChange}
-          placeholder="Detail Line Type"
+          placeholder="Line Component Type"
         />
         {selectedShapes.length > 1 && (
           <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>

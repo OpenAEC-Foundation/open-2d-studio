@@ -45,7 +45,7 @@ const CATEGORY_LABELS: Record<ShapeType, string> = {
   'block-instance': 'Block Instances',
   rebar: 'Rebar',
   'component-instance': 'Components',
-  'detail-line': 'Detail Lines',
+  'detail-line': 'Line Components',
   'label': 'Labels',
 };
 
@@ -84,7 +84,7 @@ const CATEGORY_LABELS_SINGULAR: Record<ShapeType, string> = {
   'block-instance': 'Block Instance',
   rebar: 'Rebar',
   'component-instance': 'Component',
-  'detail-line': 'Detail Line',
+  'detail-line': 'Line Component',
   'label': 'Label',
 };
 
