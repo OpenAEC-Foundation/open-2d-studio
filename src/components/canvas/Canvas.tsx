@@ -716,6 +716,47 @@ export function Canvas() {
     // and the drawing renderer needs another frame to continue background rendering.
     let progressiveRenderPending = false;
 
+    // ── Shape-filter cache ──────────────────────────────────────────────────
+    // Recomputing shapes.filter() on every RAF tick is O(N) on the full shape
+    // array.  With 2000+ shapes that costs ~0.5 ms/frame for just the filter.
+    // We cache the result and only rebuild when the shapes array reference OR
+    // the active drawing ID actually changes.
+    type StoreState = ReturnType<typeof useAppStore.getState>;
+    let cachedFilteredShapes: StoreState['shapes'] = [];
+    let cachedFilteredParametric: StoreState['parametricShapes'] = [];
+    let cachedFilteredLayers: StoreState['layers'] = [];
+    let cacheShapesRef: StoreState['shapes'] | null = null;
+    let cacheParamRef: StoreState['parametricShapes'] | null = null;
+    let cacheLayersRef: StoreState['layers'] | null = null;
+    let cacheDrawingId: string | null = null;
+
+    const getFilteredData = (s: StoreState) => {
+      const shapesChanged = s.shapes !== cacheShapesRef || s.activeDrawingId !== cacheDrawingId;
+      const paramChanged = s.parametricShapes !== cacheParamRef;
+      const layersChanged = s.layers !== cacheLayersRef;
+
+      if (shapesChanged) {
+        cachedFilteredShapes = s.shapes.filter(sh => sh.drawingId === s.activeDrawingId);
+        cacheShapesRef = s.shapes;
+        cacheDrawingId = s.activeDrawingId;
+      }
+      if (paramChanged || s.activeDrawingId !== cacheDrawingId) {
+        cachedFilteredParametric = s.parametricShapes.filter(sh => sh.drawingId === s.activeDrawingId);
+        cacheParamRef = s.parametricShapes;
+      }
+      if (layersChanged || s.activeDrawingId !== cacheDrawingId) {
+        cachedFilteredLayers = s.layers.filter(l => l.drawingId === s.activeDrawingId);
+        cacheLayersRef = s.layers;
+      }
+
+      return {
+        filteredShapes: cachedFilteredShapes,
+        filteredParametricShapes: cachedFilteredParametric,
+        filteredLayers: cachedFilteredLayers,
+      };
+    };
+    // ───────────────────────────────────────────────────────────────────────
+
     const unsub = useAppStore.subscribe(() => { dirty = true; });
 
     // Set up callback for when async images (like SVG title blocks) finish loading
@@ -806,9 +847,7 @@ export function Canvas() {
             });
           }
         } else {
-          const filteredShapes = s.shapes.filter(shape => shape.drawingId === s.activeDrawingId);
-          const filteredParametricShapes = s.parametricShapes.filter(shape => shape.drawingId === s.activeDrawingId);
-          const filteredLayers = s.layers.filter(layer => layer.drawingId === s.activeDrawingId);
+          const { filteredShapes, filteredParametricShapes, filteredLayers } = getFilteredData(s);
           const activeDrawing = s.drawings.find(d => d.id === s.activeDrawingId) || null;
 
           // Sync rotation gizmo state for the renderer

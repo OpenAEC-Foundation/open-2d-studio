@@ -69,6 +69,54 @@ export class ShapeRenderer extends BaseRenderer {
   // Cached render context for extension renderers
   private _renderCtx: ShapeRenderContext | null = null;
 
+  // ── Text measurement cache ────────────────────────────────────────────────
+  // ctx.measureText() is one of the most expensive Canvas 2D API calls.
+  // Cache results keyed by "<font>|<text>" so repeated measurements of the
+  // same string (e.g. dimension labels, annotation text) cost O(1) lookups.
+  // The cache is cleared when the font or zoom changes significantly.
+  private _textMeasureCache: Map<string, number> = new Map();
+  private _textMeasureCacheFont: string = '';
+
+  /**
+   * Measure text width with caching.  Falls back to ctx.measureText() on miss.
+   */
+  measureTextCached(text: string, font?: string): number {
+    const effectiveFont = font ?? this.ctx.font;
+    // Invalidate cache when font string changes
+    if (effectiveFont !== this._textMeasureCacheFont) {
+      this._textMeasureCache.clear();
+      this._textMeasureCacheFont = effectiveFont;
+    }
+    let w = this._textMeasureCache.get(text);
+    if (w === undefined) {
+      // Set font on ctx if provided before measuring
+      const prevFont = this.ctx.font;
+      if (font) this.ctx.font = font;
+      w = this.ctx.measureText(text).width;
+      if (font) this.ctx.font = prevFont;
+      // Keep cache bounded — evict when it grows too large
+      if (this._textMeasureCache.size > 2000) {
+        // Delete the oldest 500 entries (Map preserves insertion order)
+        let count = 0;
+        for (const key of this._textMeasureCache.keys()) {
+          this._textMeasureCache.delete(key);
+          if (++count >= 500) break;
+        }
+      }
+      this._textMeasureCache.set(text, w);
+    }
+    return w;
+  }
+  // ─────────────────────────────────────────────────────────────────────────
+
+  // ── SVG pattern tile cache ────────────────────────────────────────────────
+  // drawSvgPattern creates a new <canvas> element on every call, which is
+  // expensive (DOM allocation + GPU upload).  Cache the OffscreenCanvas tile
+  // keyed by patternId + scale (rounded to 2 dp) so it is only rebuilt when
+  // scale actually changes.
+  private _svgTileCache: Map<string, { canvas: OffscreenCanvas | HTMLCanvasElement; scale: number }> = new Map();
+  // ─────────────────────────────────────────────────────────────────────────
+
   constructor(ctx: CanvasRenderingContext2D, width: number = 0, height: number = 0, dpr?: number) {
     super(ctx, width, height, dpr);
     this.dimensionRenderer = new DimensionRenderer(ctx, width, height, dpr);
@@ -1486,8 +1534,8 @@ export class ShapeRenderer extends BaseRenderer {
 
         for (const word of words) {
           // Check if the word itself is too long and needs character-level breaking
-          const wordMetrics = ctx.measureText(word);
-          if (wordMetrics.width > fixedWidth) {
+          const wordWidth = this.measureTextCached(word);
+          if (wordWidth > fixedWidth) {
             // Push current line if it has content
             if (currentLine) {
               lines.push(currentLine);
@@ -1497,8 +1545,8 @@ export class ShapeRenderer extends BaseRenderer {
             let charLine = '';
             for (const char of word) {
               const testCharLine = charLine + char;
-              const charMetrics = ctx.measureText(testCharLine);
-              if (charMetrics.width > fixedWidth && charLine) {
+              const charWidth = this.measureTextCached(testCharLine);
+              if (charWidth > fixedWidth && charLine) {
                 lines.push(charLine);
                 charLine = char;
               } else {
@@ -1508,9 +1556,9 @@ export class ShapeRenderer extends BaseRenderer {
             currentLine = charLine;
           } else {
             const testLine = currentLine ? `${currentLine} ${word}` : word;
-            const metrics = ctx.measureText(testLine);
+            const testLineWidth = this.measureTextCached(testLine);
 
-            if (metrics.width > fixedWidth && currentLine) {
+            if (testLineWidth > fixedWidth && currentLine) {
               lines.push(currentLine);
               currentLine = word;
             } else {
@@ -1547,14 +1595,14 @@ export class ShapeRenderer extends BaseRenderer {
         if (letterSpacing !== 1) {
           let totalWidth = 0;
           for (const char of displayLine.split('')) {
-            totalWidth += ctx.measureText(char).width * letterSpacing;
+            totalWidth += this.measureTextCached(char) * letterSpacing;
           }
           if (displayLine.length > 0) {
-            totalWidth -= ctx.measureText(displayLine[displayLine.length - 1]).width * (letterSpacing - 1);
+            totalWidth -= this.measureTextCached(displayLine[displayLine.length - 1]) * (letterSpacing - 1);
           }
           lineWidth = totalWidth;
         } else {
-          lineWidth = ctx.measureText(displayLine).width;
+          lineWidth = this.measureTextCached(displayLine);
         }
         lineWidth *= widthFactor;
         if (lineWidth > maxWidth) maxWidth = lineWidth;
@@ -1632,11 +1680,9 @@ export class ShapeRenderer extends BaseRenderer {
         // Calculate transform origin based on alignment
         let transformOriginX = position.x;
         if (alignment === 'center') {
-          const metrics = ctx.measureText(displayLine);
-          transformOriginX = position.x - metrics.width / 2;
+          transformOriginX = position.x - this.measureTextCached(displayLine) / 2;
         } else if (alignment === 'right') {
-          const metrics = ctx.measureText(displayLine);
-          transformOriginX = position.x - metrics.width;
+          transformOriginX = position.x - this.measureTextCached(displayLine);
         }
 
         ctx.translate(transformOriginX, y);
@@ -1658,18 +1704,17 @@ export class ShapeRenderer extends BaseRenderer {
         if (alignment === 'center' || alignment === 'right') {
           let totalWidth = 0;
           for (const char of chars) {
-            totalWidth += ctx.measureText(char).width * letterSpacing;
+            totalWidth += this.measureTextCached(char) * letterSpacing;
           }
           // Remove extra spacing at the end
-          totalWidth -= ctx.measureText(chars[chars.length - 1]).width * (letterSpacing - 1);
+          totalWidth -= this.measureTextCached(chars[chars.length - 1]) * (letterSpacing - 1);
           if (alignment === 'center') currentX -= totalWidth / 2;
           else if (alignment === 'right') currentX -= totalWidth;
         }
 
         for (let c = 0; c < chars.length; c++) {
           ctx.fillText(chars[c], currentX, y);
-          const charWidth = ctx.measureText(chars[c]).width;
-          currentX += charWidth * letterSpacing;
+          currentX += this.measureTextCached(chars[c]) * letterSpacing;
         }
       } else {
         ctx.fillText(displayLine, position.x, y);
@@ -1678,18 +1723,19 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.restore();
 
       // Calculate line width for underline/strikethrough
-      const metrics = ctx.measureText(displayLine);
-      let lineWidth = metrics.width * widthFactor;
+      let lineWidth: number;
       if (letterSpacing !== 1) {
         // Recalculate width with letter spacing
         let totalWidth = 0;
         for (const char of displayLine.split('')) {
-          totalWidth += ctx.measureText(char).width * letterSpacing;
+          totalWidth += this.measureTextCached(char) * letterSpacing;
         }
         if (displayLine.length > 0) {
-          totalWidth -= ctx.measureText(displayLine[displayLine.length - 1]).width * (letterSpacing - 1);
+          totalWidth -= this.measureTextCached(displayLine[displayLine.length - 1]) * (letterSpacing - 1);
         }
         lineWidth = totalWidth * widthFactor;
+      } else {
+        lineWidth = this.measureTextCached(displayLine) * widthFactor;
       }
 
       // Calculate starting X for decorations
@@ -1760,7 +1806,7 @@ export class ShapeRenderer extends BaseRenderer {
       let textWidth = 0;
       const displayLines = text.split('\n');
       for (const dl of displayLines) {
-        const w = ctx.measureText(dl).width * widthFactor;
+        const w = this.measureTextCached(dl) * widthFactor;
         if (w > textWidth) textWidth = w;
       }
       // Minimum landing width when text is empty
@@ -2054,8 +2100,8 @@ export class ShapeRenderer extends BaseRenderer {
 
         for (const word of words) {
           // Check if the word itself is too long and needs character-level breaking
-          const wordMetrics = ctx.measureText(word);
-          if (wordMetrics.width > fixedWidth) {
+          const wordWidthSel = this.measureTextCached(word);
+          if (wordWidthSel > fixedWidth) {
             // Push current line if it has content
             if (currentLine) {
               lines.push(currentLine);
@@ -2065,8 +2111,8 @@ export class ShapeRenderer extends BaseRenderer {
             let charLine = '';
             for (const char of word) {
               const testCharLine = charLine + char;
-              const charMetrics = ctx.measureText(testCharLine);
-              if (charMetrics.width > fixedWidth && charLine) {
+              const charWidthSel = this.measureTextCached(testCharLine);
+              if (charWidthSel > fixedWidth && charLine) {
                 lines.push(charLine);
                 charLine = char;
               } else {
@@ -2076,8 +2122,8 @@ export class ShapeRenderer extends BaseRenderer {
             currentLine = charLine;
           } else {
             const testLine = currentLine ? `${currentLine} ${word}` : word;
-            const metrics = ctx.measureText(testLine);
-            if (metrics.width > fixedWidth && currentLine) {
+            const testWidthSel = this.measureTextCached(testLine);
+            if (testWidthSel > fixedWidth && currentLine) {
               lines.push(currentLine);
               currentLine = word;
             } else {
@@ -2097,7 +2143,7 @@ export class ShapeRenderer extends BaseRenderer {
     let maxAscent = 0;
     let maxDescent = 0;
     for (const line of lines) {
-      const metrics = ctx.measureText(line);
+      const metrics = ctx.measureText(line);  // need full metrics (ascent/descent) — no cache shortcut
       if (!fixedWidth && metrics.width > maxWidth) maxWidth = metrics.width;
       if (metrics.actualBoundingBoxAscent > maxAscent) maxAscent = metrics.actualBoundingBoxAscent;
       if (metrics.actualBoundingBoxDescent > maxDescent) maxDescent = metrics.actualBoundingBoxDescent;
@@ -2804,6 +2850,31 @@ export class ShapeRenderer extends BaseRenderer {
   private drawHatch(shape: HatchShape, invertColors: boolean = false): void {
     const ctx = this.ctx;
 
+    // ── Hatch LOD: skip pattern fill for tiny shapes ──────────────────────
+    // Each hatch pattern can draw 50–200+ canvas primitives.  At low zoom
+    // levels where the shape occupies fewer than ~8 screen pixels in each
+    // dimension, only the boundary outline is visible; the pattern lines
+    // merge into a smear.  Skip fill entirely to save GPU time.
+    // Threshold: 8 screen pixels each axis (very conservative — still visible
+    // at 4× zoom-out before switching to outline-only).
+    const HATCH_LOD_PX = 8;
+    let hatchLodOutlineOnly = false;
+    if (shape.points.length >= 2) {
+      const pts0 = shape.points;
+      let hMinX = pts0[0].x, hMinY = pts0[0].y, hMaxX = pts0[0].x, hMaxY = pts0[0].y;
+      for (let pi = 1; pi < pts0.length; pi++) {
+        const p = pts0[pi];
+        if (p.x < hMinX) hMinX = p.x;
+        if (p.y < hMinY) hMinY = p.y;
+        if (p.x > hMaxX) hMaxX = p.x;
+        if (p.y > hMaxY) hMaxY = p.y;
+      }
+      const screenW = (hMaxX - hMinX) * this._currentZoom;
+      const screenH = (hMaxY - hMinY) * this._currentZoom;
+      hatchLodOutlineOnly = screenW < HATCH_LOD_PX || screenH < HATCH_LOD_PX;
+    }
+    // ─────────────────────────────────────────────────────────────────────
+
     // Apply live preview override if this shape is selected and a preview pattern is active
     let effectiveShape = shape;
     if (this.previewPatternId && this.previewSelectedIds.has(shape.id)) {
@@ -2900,54 +2971,63 @@ export class ShapeRenderer extends BaseRenderer {
       }
     }
 
-    // Step 2: Render background pattern layer (if set)
-    if (shape.bgPatternType) {
-      const bgScale = shape.bgPatternScale ?? 1;
-      const bgAngle = shape.bgPatternAngle ?? 0;
-      let bgColor = shape.bgFillColor ?? '#808080';
-      if (invertColors && bgColor === '#ffffff') bgColor = '#000000';
-      else if (!invertColors && (bgColor === '#000000' || bgColor === '#000')) bgColor = '#ffffff';
+    // Step 2 & 3: Render pattern layers (skip when shape is too small on screen)
+    if (!hatchLodOutlineOnly) {
+      // Step 2: Render background pattern layer (if set)
+      if (shape.bgPatternType) {
+        const bgScale = shape.bgPatternScale ?? 1;
+        const bgAngle = shape.bgPatternAngle ?? 0;
+        let bgColor = shape.bgFillColor ?? '#808080';
+        if (invertColors && bgColor === '#ffffff') bgColor = '#000000';
+        else if (!invertColors && (bgColor === '#000000' || bgColor === '#000')) bgColor = '#ffffff';
+
+        ctx.save();
+        buildPath();
+        ctx.clip('evenodd');
+
+        this.renderPatternLayer(
+          shape.bgPatternType, bgAngle, bgScale, bgColor,
+          shape.bgCustomPatternId, shape.style.strokeWidth,
+          minX, minY, maxX, maxY, invertColors
+        );
+
+        ctx.restore();
+      }
+
+      // Step 3: Render foreground pattern layer
+      let patternColor = fillColor;
+      // Only invert black/white when there is no explicit backgroundColor — if a background color
+      // is set (e.g. wood #F0DCB9 for naaldhout), the pattern lines are drawn on top of that
+      // background and should keep their authored color (black lines on wood background stay black).
+      if (!backgroundColor) {
+        if (invertColors && patternColor === '#ffffff') {
+          patternColor = '#000000';
+        } else if (!invertColors && (patternColor === '#000000' || patternColor === '#000')) {
+          patternColor = '#ffffff';
+        }
+      }
 
       ctx.save();
       buildPath();
       ctx.clip('evenodd');
 
+      // When a backgroundColor is set the pattern lines render on top of that background color,
+      // so we must not invert them further — pass invertColors=false in that case.
+      const fgInvertColors = backgroundColor ? false : invertColors;
       this.renderPatternLayer(
-        shape.bgPatternType, bgAngle, bgScale, bgColor,
-        shape.bgCustomPatternId, shape.style.strokeWidth,
-        minX, minY, maxX, maxY, invertColors
+        patternType, patternAngle, patternScale, patternColor,
+        customPatternId, shape.style.strokeWidth,
+        minX, minY, maxX, maxY, fgInvertColors
       );
 
       ctx.restore();
+    } else if (backgroundColor) {
+      // LOD outline-only: still draw the solid background fill so the shape
+      // is not invisible, but skip the expensive pattern lines.
+      buildPath();
+      ctx.fillStyle = backgroundColor;
+      ctx.fill('evenodd');
     }
-
-    // Step 3: Render foreground pattern layer
-    let patternColor = fillColor;
-    // Only invert black/white when there is no explicit backgroundColor — if a background color
-    // is set (e.g. wood #F0DCB9 for naaldhout), the pattern lines are drawn on top of that
-    // background and should keep their authored color (black lines on wood background stay black).
-    if (!backgroundColor) {
-      if (invertColors && patternColor === '#ffffff') {
-        patternColor = '#000000';
-      } else if (!invertColors && (patternColor === '#000000' || patternColor === '#000')) {
-        patternColor = '#ffffff';
-      }
-    }
-
-    ctx.save();
-    buildPath();
-    ctx.clip('evenodd');
-
-    // When a backgroundColor is set the pattern lines render on top of that background color,
-    // so we must not invert them further — pass invertColors=false in that case.
-    const fgInvertColors = backgroundColor ? false : invertColors;
-    this.renderPatternLayer(
-      patternType, patternAngle, patternScale, patternColor,
-      customPatternId, shape.style.strokeWidth,
-      minX, minY, maxX, maxY, fgInvertColors
-    );
-
-    ctx.restore();
 
     // Step 4: Stroke boundary (only if visible)
     if (boundaryVisible) {
@@ -3076,20 +3156,35 @@ export class ShapeRenderer extends BaseRenderer {
     const tileWidth = pattern.tileWidth * scale;
     const tileHeight = pattern.tileHeight * scale;
 
-    // Create off-screen canvas for the scaled tile
-    const tileCanvas = document.createElement('canvas');
-    tileCanvas.width = tileWidth;
-    tileCanvas.height = tileHeight;
-    const tileCtx = tileCanvas.getContext('2d');
-
-    if (!tileCtx) {
-      ctx.fillStyle = 'rgba(128, 128, 128, 0.1)';
-      ctx.fill();
-      return;
+    // ── Tile canvas cache ─────────────────────────────────────────────────
+    // Avoid recreating and re-drawing the tile canvas on every render call.
+    // Cache keyed by patternId + rounded scale (nearest 0.5 is sufficient
+    // precision for visual fidelity while keeping cache entries low).
+    const scaleBucket = Math.round(scale * 2) / 2; // snap to 0.5 increments
+    const tileCacheKey = `${pattern.id}@${scaleBucket}`;
+    let tileCanvas: OffscreenCanvas | HTMLCanvasElement | undefined = this._svgTileCache.get(tileCacheKey)?.canvas;
+    if (!tileCanvas) {
+      let newCanvas: OffscreenCanvas | HTMLCanvasElement;
+      let tileCtxNew: CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D | null = null;
+      try {
+        newCanvas = new OffscreenCanvas(Math.ceil(tileWidth), Math.ceil(tileHeight));
+        tileCtxNew = (newCanvas as OffscreenCanvas).getContext('2d') as OffscreenCanvasRenderingContext2D | null;
+      } catch {
+        newCanvas = document.createElement('canvas');
+        (newCanvas as HTMLCanvasElement).width = Math.ceil(tileWidth);
+        (newCanvas as HTMLCanvasElement).height = Math.ceil(tileHeight);
+        tileCtxNew = (newCanvas as HTMLCanvasElement).getContext('2d');
+      }
+      if (!tileCtxNew) {
+        ctx.fillStyle = 'rgba(128, 128, 128, 0.1)';
+        ctx.fill();
+        return;
+      }
+      tileCtxNew.drawImage(img, 0, 0, tileWidth, tileHeight);
+      this._svgTileCache.set(tileCacheKey, { canvas: newCanvas, scale });
+      tileCanvas = newCanvas;
     }
-
-    // Draw the SVG image scaled to tile size
-    tileCtx.drawImage(img, 0, 0, tileWidth, tileHeight);
+    // ─────────────────────────────────────────────────────────────────────
 
     // Create canvas pattern
     const canvasPattern = ctx.createPattern(tileCanvas, 'repeat');
@@ -3530,7 +3625,7 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.font = `${th}px ${CAD_DEFAULT_FONT}`;
       const pre = prefix || '';
       const testText = `X: ${pre}${displayX.toFixed(decimalPlaces)}`;
-      const textW = ctx.measureText(testText).width;
+      const textW = this.measureTextCached(testText);
       const underlineEnd = rightSide
         ? labelX + th * 0.3 + textW + th * 0.5
         : labelX - th * 0.3 - textW - th * 0.5;
@@ -3595,9 +3690,7 @@ export class ShapeRenderer extends BaseRenderer {
     const textOffX = rightHalf ? th * 0.3 : -th * 0.3;
 
     // Measure text for selection indicator
-    const xMetrics = ctx.measureText(xText);
-    const yMetrics = ctx.measureText(yText);
-    const maxW = Math.max(xMetrics.width, yMetrics.width);
+    const maxW = Math.max(this.measureTextCached(xText), this.measureTextCached(yText));
     const boxX = rightHalf ? labelX + textOffX - th * 0.1 : labelX + textOffX - maxW - th * 0.1;
     const boxY = labelY - th * 2 - lineGap - th * 0.1;
     const boxH = th * 2 + lineGap + th * 0.2;

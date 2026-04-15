@@ -118,6 +118,18 @@ export class DrawingRenderer extends BaseRenderer {
   private _renderedCount = 0;
   private _totalVisible = 0;
 
+  // ── QuadTree / bounds cache ───────────────────────────────────────────────
+  // Building a QuadTree from 2000 shapes takes ~2-3 ms per frame.  Cache it
+  // and only rebuild when the shapes array reference changes (i.e. a shape was
+  // added / removed / modified by the store).  Progressive frames that only
+  // advance the render index reuse the cached tree without any rebuild cost.
+  private _cachedTree: QuadTree | null = null;
+  private _cachedBoundsMap: Map<string, { minX: number; minY: number; maxX: number; maxY: number }> = new Map();
+  private _cachedShapeById: Map<string, Shape> = new Map();
+  private _cachedShapesRef: Shape[] | null = null;
+  private _cachedDrawingScale: number | undefined = undefined;
+  // ─────────────────────────────────────────────────────────────────────────
+
   constructor(ctx: CanvasRenderingContext2D, width: number, height: number, dpr: number) {
     super(ctx, width, height, dpr);
     this.shapeRenderer = new ShapeRenderer(ctx, width, height, dpr);
@@ -164,6 +176,8 @@ export class DrawingRenderer extends BaseRenderer {
 
   /**
    * Force reset of the progressive index (e.g. on viewport change or shape mutation).
+   * Does NOT clear the QuadTree cache — that is keyed on the shapes array reference
+   * and is still valid even when the viewport changes.
    */
   resetProgressive(): void {
     this.progressiveIndex = 0;
@@ -318,14 +332,17 @@ export class DrawingRenderer extends BaseRenderer {
       maxY: visibleArea.bottom + marginY,
     };
 
-    // Build QuadTree from visible shapes and query for those in viewport.
-    // Shapes are already pre-filtered to the active drawing by the caller
-    // (Canvas), so we build the index directly rather than using
-    // buildFromShapes (which would skip all shapes due to a drawingId mismatch).
-    const boundsMap = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
-    const shapeById = new Map<string, Shape>();
+    // ── Cached QuadTree ───────────────────────────────────────────────────────
+    // Only rebuild when the shapes array reference has changed (new/deleted/modified
+    // shapes) or when the drawing scale changes (affects bounds calculations).
+    // Progressive frames that merely advance the render index reuse the cached
+    // tree at zero cost — the biggest win for 2000+ shape datasets.
+    const scaleChanged = options.drawingScale !== this._cachedDrawingScale;
+    const shapesChanged = shapes !== this._cachedShapesRef;
 
-    {
+    if (shapesChanged || scaleChanged) {
+      const boundsMap = new Map<string, { minX: number; minY: number; maxX: number; maxY: number }>();
+      const shapeById = new Map<string, Shape>();
       let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
       const entries: { id: string; bounds: { minX: number; minY: number; maxX: number; maxY: number } }[] = [];
 
@@ -334,7 +351,6 @@ export class DrawingRenderer extends BaseRenderer {
         shapeById.set(shape.id, shape);
         const b = getShapeBounds(shape, options.drawingScale);
         if (!b) {
-          // No computable bounds — always include (mark with Infinity)
           boundsMap.set(shape.id, { minX: -Infinity, minY: -Infinity, maxX: Infinity, maxY: Infinity });
           continue;
         }
@@ -346,7 +362,6 @@ export class DrawingRenderer extends BaseRenderer {
         if (b.maxY > maxY) maxY = b.maxY;
       }
 
-      // Build fresh QuadTree from pre-filtered shapes
       const cx = isFinite(minX) ? (minX + maxX) / 2 : 0;
       const cy = isFinite(minY) ? (minY + maxY) / 2 : 0;
       const hw = isFinite(minX) ? (maxX - minX) / 2 + 100 : 1e6;
@@ -355,6 +370,19 @@ export class DrawingRenderer extends BaseRenderer {
       for (const entry of entries) {
         tree.insert(entry);
       }
+
+      this._cachedTree = tree;
+      this._cachedBoundsMap = boundsMap;
+      this._cachedShapeById = shapeById;
+      this._cachedShapesRef = shapes;
+      this._cachedDrawingScale = options.drawingScale;
+    }
+
+    const boundsMap = this._cachedBoundsMap;
+    const shapeById = this._cachedShapeById;
+    const tree = this._cachedTree!;
+
+    {
 
       // ─── Step 1: Viewport culling — query QuadTree ────────────────────────────
       const inView = tree.queryBounds(cullBounds);
