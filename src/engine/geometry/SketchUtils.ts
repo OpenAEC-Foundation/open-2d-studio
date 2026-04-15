@@ -44,14 +44,15 @@ export function extractSkEdges(shapeIds: string[], allShapes: any[]): SkEdge[] {
   return edges;
 }
 
-/** Chain edges into a closed loop. Returns null if not closed. */
+/** Chain edges into a closed loop. Returns null if not closed within tolerance. */
 export function chainSkEdges(edges: SkEdge[], tol: number): { points: SkPt[]; bulges: number[] } | null {
   if (edges.length === 0) return null;
-  const ptClose = (a: SkPt, b: SkPt) => {
+  const dist2 = (a: SkPt, b: SkPt) => {
     const dx = a.x - b.x;
     const dy = a.y - b.y;
-    return dx * dx + dy * dy <= tol * tol;
+    return dx * dx + dy * dy;
   };
+  const ptClose = (a: SkPt, b: SkPt) => dist2(a, b) <= tol * tol;
   const used = new Array(edges.length).fill(false);
   const pts: SkPt[] = [];
   const bulges: number[] = [];
@@ -72,13 +73,29 @@ export function chainSkEdges(edges: SkEdge[], tol: number): { points: SkPt[]; bu
     }
     if (!found) break;
   }
-  if (!ptClose(pts[0], pts[pts.length - 1])) return null;
-  pts.pop();
-  if (pts.length < 3) return null;
-  return { points: pts, bulges };
+
+  // Check if the loop closes within tolerance
+  if (ptClose(pts[0], pts[pts.length - 1])) {
+    pts.pop();
+    if (pts.length < 3) return null;
+    return { points: pts, bulges };
+  }
+
+  // Fallback: if the gap is small enough (< 100mm), force-close by snapping last point to first
+  const gap = Math.sqrt(dist2(pts[0], pts[pts.length - 1]));
+  const FORCE_CLOSE_THRESHOLD = 100; // mm
+  if (gap < FORCE_CLOSE_THRESHOLD && pts.length >= 3) {
+    console.info(`[Sketch] Force-closing boundary: gap=${gap.toFixed(1)}mm (< ${FORCE_CLOSE_THRESHOLD}mm threshold)`);
+    // Replace last point with first point to close cleanly
+    pts[pts.length - 1] = { ...pts[0] };
+    pts.pop(); // remove the duplicate closing point
+    return { points: pts, bulges };
+  }
+
+  return null;
 }
 
-const SKETCH_TOL = 10; // tolerance in mm for endpoint matching
+const SKETCH_TOL = 20; // tolerance in mm for endpoint matching
 
 /**
  * Extract ALL separate closed loops from a set of edges.
@@ -130,6 +147,16 @@ function extractAllLoops(edges: SkEdge[], tol: number): Array<{ points: SkPt[]; 
     if (pts.length >= 4 && ptClose(pts[0], pts[pts.length - 1])) {
       pts.pop(); // Remove duplicate closing point
       loops.push({ points: pts, bulges });
+    } else if (pts.length >= 4) {
+      // Force-close fallback: if gap < 100mm, snap last to first
+      const dx = pts[0].x - pts[pts.length - 1].x;
+      const dy = pts[0].y - pts[pts.length - 1].y;
+      const gap = Math.sqrt(dx * dx + dy * dy);
+      if (gap < 100) {
+        pts[pts.length - 1] = { ...pts[0] };
+        pts.pop();
+        loops.push({ points: pts, bulges });
+      }
     }
   }
 
