@@ -9,7 +9,7 @@
 
 import { useCallback, useRef } from 'react';
 import { useAppStore } from '../../state/appStore';
-import type { Point, Shape, EllipseShape, TextShape, BeamShape, LineShape, ImageShape, GridlineShape, LevelShape, PileShape, WallShape, SectionCalloutShape, PlateSystemShape, PuntniveauShape, SpotCoordinateShape } from '../../types/geometry';
+import type { Point, Shape, EllipseShape, TextShape, BeamShape, LineShape, ImageShape, GridlineShape, LevelShape, PileShape, WallShape, SectionCalloutShape, PlateSystemShape, PuntniveauShape, SpotCoordinateShape, DetailLineShape } from '../../types/geometry';
 import type { DimensionShape } from '../../types/dimension';
 import type { ParametricShape } from '../../types/parametric';
 import { updateParametricPosition } from '../../services/parametric/parametricService';
@@ -534,6 +534,18 @@ function getGripPoints(shape: Shape, drawingScale?: number, zoom?: number): Poin
       return grips;
     }
 
+    case 'detail-line': {
+      // Grip 0: start point
+      // Grip 1: end point
+      // Grip 2: midpoint (body move)
+      const dl = shape as DetailLineShape;
+      return [
+        dl.start,
+        dl.end,
+        { x: (dl.start.x + dl.end.x) / 2, y: (dl.start.y + dl.end.y) / 2 },
+      ];
+    }
+
     default: {
       const extGrip = gripProviderRegistry.get(shape.type);
       return extGrip ? extGrip.getGripPoints(shape) : [];
@@ -599,6 +611,7 @@ function getShapeReferencePoint(shape: Shape): Point {
     case 'image': return shape.position;
     case 'spot-coordinate': return (shape as SpotCoordinateShape).position;
     case 'dimension': return (shape as DimensionShape).points[0] || { x: 0, y: 0 };
+    case 'detail-line': return (shape as DetailLineShape).start;
     default: {
       const extGrip = gripProviderRegistry.get(shape.type);
       return extGrip ? extGrip.getReferencePoint(shape) : { x: 0, y: 0 };
@@ -670,6 +683,14 @@ function computeBodyMoveUpdates(shape: Shape, newPos: Point): Partial<Shape> | n
       } as Partial<Shape>;
     }
 
+    case 'detail-line': {
+      const dl = shape as DetailLineShape;
+      return {
+        start: { x: dl.start.x + dx, y: dl.start.y + dy },
+        end: { x: dl.end.x + dx, y: dl.end.y + dy },
+      } as Partial<Shape>;
+    }
+
     default: {
       const extGrip = gripProviderRegistry.get(shape.type);
       return extGrip ? extGrip.computeBodyMove(shape, newPos) as Partial<Shape> | null : null;
@@ -716,6 +737,10 @@ function computeRotationUpdates(shape: Shape, center: Point, angleRad: number): 
     case 'wall': {
       const wa = shape as WallShape;
       return { start: rotPt(wa.start), end: rotPt(wa.end) } as Partial<Shape>;
+    }
+    case 'detail-line': {
+      const dl = shape as DetailLineShape;
+      return { start: rotPt(dl.start), end: rotPt(dl.end) } as Partial<Shape>;
     }
     case 'section-callout': {
       const sc = shape as SectionCalloutShape;
@@ -803,6 +828,28 @@ function computeGripUpdates(shape: Shape, gripIndex: number, newPos: Point, edge
         } as Partial<Shape>;
       }
       return null;
+
+    case 'detail-line': {
+      const dl = shape as DetailLineShape;
+      // Grip 0: move start point
+      if (gripIndex === 0) return { start: newPos } as Partial<Shape>;
+      // Grip 1: move end point
+      if (gripIndex === 1) return { end: newPos } as Partial<Shape>;
+      // Grip 2: body (midpoint) drag — translate both endpoints
+      if (gripIndex === 2) {
+        const dlOrigMid = {
+          x: (dl.start.x + dl.end.x) / 2,
+          y: (dl.start.y + dl.end.y) / 2,
+        };
+        const dlDx = newPos.x - dlOrigMid.x;
+        const dlDy = newPos.y - dlOrigMid.y;
+        return {
+          start: { x: dl.start.x + dlDx, y: dl.start.y + dlDy },
+          end: { x: dl.end.x + dlDx, y: dl.end.y + dlDy },
+        } as Partial<Shape>;
+      }
+      return null;
+    }
 
     case 'arc': {
       if (gripIndex === 0) {

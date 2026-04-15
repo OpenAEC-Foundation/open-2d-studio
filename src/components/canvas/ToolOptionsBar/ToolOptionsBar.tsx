@@ -167,6 +167,36 @@ function LShapeOptions() {
 }
 
 /**
+ * Detail Line tool options — justification (Center / Left / Right) + chain mode
+ */
+function DetailLineOptions() {
+  const justification = useAppStore((s) => s.detailLineJustification);
+  const setJustification = useAppStore((s) => s.setDetailLineJustification);
+  const chainMode = useAppStore((s) => s.chainMode);
+  const setChainMode = useAppStore((s) => s.setChainMode);
+
+  const btnClass = (active: boolean) =>
+    `px-2 h-5 text-xs border ${
+      active
+        ? 'bg-cad-accent text-white border-cad-accent'
+        : 'bg-cad-bg text-cad-text border-cad-border hover:border-cad-accent'
+    }`;
+
+  return (
+    <>
+      <span className="text-cad-text-dim">Justification:</span>
+      <div className="flex">
+        <button className={btnClass(justification === 'left')} onClick={() => setJustification('left')}>Left</button>
+        <button className={btnClass(justification === 'center')} onClick={() => setJustification('center')}>Center</button>
+        <button className={btnClass(justification === 'right')} onClick={() => setJustification('right')}>Right</button>
+      </div>
+      <Separator />
+      <OptionCheckbox label="Chain" checked={chainMode} onChange={setChainMode} />
+    </>
+  );
+}
+
+/**
  * Rectangle tool options
  */
 function RectangleOptions() {
@@ -1094,6 +1124,8 @@ export const ToolOptionsBar = memo(function ToolOptionsBar() {
         return null;
       case 'l-shape':
         return <LShapeOptions />;
+      case 'detail-line':
+        return <DetailLineOptions />;
       default:
         return null;
     }

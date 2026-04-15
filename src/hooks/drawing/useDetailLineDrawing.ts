@@ -57,6 +57,8 @@ export function useDetailLineDrawing() {
         patternScale: lineType?.patternScale,
         patternColor: lineType?.patternColor,
         backgroundColor: lineType?.backgroundColor,
+        justification: state.detailLineJustification,
+        ifcClass: 'IfcBuildingElementProxy',
       };
 
       addShape(shape);
@@ -67,9 +69,12 @@ export function useDetailLineDrawing() {
   /**
    * Handle canvas click for detail-line tool.
    * First click: record start. Second click: create shape.
+   * With chain mode on, automatically starts the next segment from the endpoint.
    */
   const handleDetailLineClick = useCallback(
     (snappedPos: Point): boolean => {
+      const chainMode = useAppStore.getState().chainMode;
+
       if (drawingPoints.length === 0) {
         addDrawingPoint(snappedPos);
         return true;
@@ -82,8 +87,10 @@ export function useDetailLineDrawing() {
         }
         clearDrawingPoints();
         setDrawingPreview(null);
-        // Re-add new start point for chaining (matches line tool behavior)
-        addDrawingPoint(snappedPos);
+        if (chainMode) {
+          // Continue drawing from the endpoint (chain mode — like walls)
+          addDrawingPoint(snappedPos);
+        }
         return true;
       }
     },

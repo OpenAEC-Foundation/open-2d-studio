@@ -1277,6 +1277,15 @@ export interface DetailLineShape extends BaseShape {
   patternColor?: string;
   /** Solid background fill color */
   backgroundColor?: string;
+  /**
+   * Band justification relative to the center line.
+   * - 'center' (default): band is symmetric around the line
+   * - 'left': band is entirely on the left side of the line direction
+   * - 'right': band is entirely on the right side of the line direction
+   */
+  justification?: 'center' | 'left' | 'right';
+  /** IFC class for export */
+  ifcClass?: string;
 }
 
 // ============================================================================

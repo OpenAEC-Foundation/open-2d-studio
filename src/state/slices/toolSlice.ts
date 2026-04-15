@@ -139,6 +139,8 @@ export interface ToolState {
 
   // Detail Line tool: selected type id
   selectedDetailLineTypeId: string;
+  /** Band justification relative to the center line ('center' | 'left' | 'right') */
+  detailLineJustification: 'center' | 'left' | 'right';
 
   // Rotation gizmo numeric input state
   // Set when the user starts dragging the rotation gizmo so DynamicInput can show an angle field.
@@ -278,6 +280,7 @@ export interface ToolActions {
 
   // Detail Line tool
   setSelectedDetailLineTypeId: (id: string) => void;
+  setDetailLineJustification: (justification: 'center' | 'left' | 'right') => void;
 
   // Rotation gizmo numeric input
   setActiveGizmoRotation: (state: ToolState['activeGizmoRotation']) => void;
@@ -417,6 +420,7 @@ export const initialToolState: ToolState = {
 
   // Detail Line tool
   selectedDetailLineTypeId: 'builtin-insulation-nen47',
+  detailLineJustification: 'center',
 
   // Rotation gizmo numeric input
   activeGizmoRotation: null,
@@ -1004,6 +1008,11 @@ export const createToolSlice = (
   setSelectedDetailLineTypeId: (id) =>
     set((state) => {
       state.selectedDetailLineTypeId = id;
+    }),
+
+  setDetailLineJustification: (justification) =>
+    set((state) => {
+      state.detailLineJustification = justification;
     }),
 
   // Rotation gizmo numeric input

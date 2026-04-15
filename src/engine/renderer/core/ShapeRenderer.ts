@@ -3794,11 +3794,19 @@ export class ShapeRenderer extends BaseRenderer {
 
     const halfT = thickness / 2;
 
+    // Justification offset: shifts the entire band sideways relative to the centerline
+    // 'left'  → band is on the left side  (jOffset = +halfT shifts p0/p1/p2/p3 left)
+    // 'right' → band is on the right side (jOffset = -halfT shifts band right)
+    // 'center'→ band is symmetric (jOffset = 0)
+    const jOffset = shape.justification === 'left' ? halfT
+                  : shape.justification === 'right' ? -halfT
+                  : 0;
+
     // The 4 corners of the band rectangle
-    const p0 = { x: start.x + px * halfT,  y: start.y + py * halfT  };
-    const p1 = { x: end.x   + px * halfT,  y: end.y   + py * halfT  };
-    const p2 = { x: end.x   - px * halfT,  y: end.y   - py * halfT  };
-    const p3 = { x: start.x - px * halfT,  y: start.y - py * halfT  };
+    const p0 = { x: start.x + px * (halfT + jOffset),  y: start.y + py * (halfT + jOffset)  };
+    const p1 = { x: end.x   + px * (halfT + jOffset),  y: end.y   + py * (halfT + jOffset)  };
+    const p2 = { x: end.x   + px * (-halfT + jOffset), y: end.y   + py * (-halfT + jOffset) };
+    const p3 = { x: start.x + px * (-halfT + jOffset), y: start.y + py * (-halfT + jOffset) };
 
     ctx.save();
 
@@ -3843,10 +3851,10 @@ export class ShapeRenderer extends BaseRenderer {
     } else if (patternType === 'insulation-nen47') {
       // NEN 47 isolatie: zig-zag lines from edge to edge of the band
       // Each zig-zag goes from +halfT to -halfT (full width of insulation)
-      this.drawDetailLineNEN47Insulation(start, halfT, ux, uy, px, py, len, lineColor);
+      this.drawDetailLineNEN47Insulation(start, halfT, jOffset, ux, uy, px, py, len, lineColor);
     } else if (patternType === 'insulation-us') {
       // US: sinusoidal wave curves along the band centerline
-      this.drawDetailLineSineWave(start, end, halfT, ux, uy, px, py, len, spacing, lineColor);
+      this.drawDetailLineSineWave(start, end, halfT, jOffset, ux, uy, px, py, len, spacing, lineColor);
     } else if (patternType === 'diagonal') {
       const angle = (shape.patternAngle ?? 45) * Math.PI / 180;
       this.drawDetailLineHatchPattern(start, end, halfT, ux, uy, px, py, len, spacing, angle * 180 / Math.PI, lineColor);
@@ -3949,6 +3957,7 @@ export class ShapeRenderer extends BaseRenderer {
   private drawDetailLineNEN47Insulation(
     start: { x: number; y: number },
     halfT: number,
+    jOffset: number,
     ux: number, uy: number,
     px: number, py: number,
     len: number,
@@ -3968,8 +3977,8 @@ export class ShapeRenderer extends BaseRenderer {
       const t = i * step;
       if (t > len) break;
 
-      // Alternate between top edge (+halfT) and bottom edge (-halfT)
-      const side = (i % 2 === 0) ? halfT : -halfT;
+      // Alternate between the two band edges, shifted by jOffset for justification
+      const side = (i % 2 === 0) ? (halfT + jOffset) : (-halfT + jOffset);
       const x = start.x + ux * t + px * side;
       const y = start.y + uy * t + py * side;
 
@@ -3991,6 +4000,7 @@ export class ShapeRenderer extends BaseRenderer {
     start: { x: number; y: number },
     _end: { x: number; y: number },
     halfT: number,
+    jOffset: number,
     ux: number, uy: number,
     px: number, py: number,
     len: number,
@@ -4008,7 +4018,8 @@ export class ShapeRenderer extends BaseRenderer {
     for (let i = 0; i <= steps; i++) {
       const t = i / steps;
       const along = t * len;
-      const perp = amplitude * Math.sin((along / wavelength) * Math.PI * 2);
+      // Wave centered on jOffset (the shifted centerline)
+      const perp = jOffset + amplitude * Math.sin((along / wavelength) * Math.PI * 2);
 
       const wx = start.x + ux * along + px * perp;
       const wy = start.y + uy * along + py * perp;

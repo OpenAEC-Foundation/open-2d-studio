@@ -660,6 +660,22 @@ export function isPointNearShape(point: Point, shape: Shape, tolerance: number =
     }
     case 'image':
       return isPointNearImage(point, shape, tolerance);
+    case 'detail-line': {
+      // Hit-test the filled band: check distance to the centerline ≤ halfT + tolerance
+      const dlHit = shape as import('../../types/geometry').DetailLineShape;
+      const dlDx = dlHit.end.x - dlHit.start.x;
+      const dlDy = dlHit.end.y - dlHit.start.y;
+      const dlLen = Math.sqrt(dlDx * dlDx + dlDy * dlDy);
+      if (dlLen < 0.001) return false;
+      // Project point onto the line segment
+      const dlT = Math.max(0, Math.min(1,
+        ((point.x - dlHit.start.x) * dlDx + (point.y - dlHit.start.y) * dlDy) / (dlLen * dlLen)
+      ));
+      const dlNx = dlHit.start.x + dlT * dlDx;
+      const dlNy = dlHit.start.y + dlT * dlDy;
+      const dlDist = Math.sqrt((point.x - dlNx) ** 2 + (point.y - dlNy) ** 2);
+      return dlDist <= dlHit.thickness / 2 + tolerance;
+    }
     default: {
       // Extension-registered shape types: use bounds-based hit testing
       const extBounds = boundsRegistry.get(shape.type);

@@ -993,6 +993,29 @@ export function getShapeSnapPoints(
       }
       break;
 
+    case 'detail-line': {
+      const dlShape = shape as import('../../types/geometry').DetailLineShape;
+      const dlAngle = Math.atan2(dlShape.end.y - dlShape.start.y, dlShape.end.x - dlShape.start.x);
+      if (activeSnaps.includes('endpoint')) {
+        snapPoints.push({ point: dlShape.start, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: dlAngle });
+        snapPoints.push({ point: dlShape.end, type: 'endpoint', sourceShapeId: shape.id, sourceAngle: dlAngle });
+      }
+      if (activeSnaps.includes('midpoint')) {
+        snapPoints.push({
+          point: {
+            x: (dlShape.start.x + dlShape.end.x) / 2,
+            y: (dlShape.start.y + dlShape.end.y) / 2,
+          },
+          type: 'midpoint',
+          sourceShapeId: shape.id,
+        });
+      }
+      if (activeSnaps.includes('nearest') && cursor) {
+        snapPoints.push(...getNearestPointOnLine(dlShape as unknown as LineShape, cursor));
+      }
+      break;
+    }
+
     default: {
       const extSnap = snapProviderRegistry.getSnap(shape.type);
       if (extSnap) {
