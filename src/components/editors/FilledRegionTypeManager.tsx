@@ -166,8 +166,8 @@ export function FilledRegionTypeManager({ isOpen, onClose, focusId }: FilledRegi
       onClose={onClose}
       title="Filled Region Types"
       icon={<Layers className="w-4 h-4" />}
-      width={700}
-      height={500}
+      width={900}
+      height={650}
     >
       <div className="flex h-full gap-3">
         {/* Left panel - Type list */}
