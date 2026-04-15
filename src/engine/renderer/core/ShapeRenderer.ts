@@ -3470,14 +3470,15 @@ export class ShapeRenderer extends BaseRenderer {
       const angleDeg = family.angle + rotationOffset;
       const strokeWidth = family.strokeWidth ?? defaultStrokeWidth * 0.5;
       let strokeColor = family.strokeColor ?? defaultColor;
-      // Invert per-family explicit black/white stroke colors based on background mode
-      if (invertColors && (strokeColor === '#000000' || strokeColor === '#000')) {
-        // white background: black lines stay black (already correct)
-      } else if (!invertColors && (strokeColor === '#000000' || strokeColor === '#000')) {
-        // dark background: black lines → white so they're visible
-        strokeColor = '#ffffff';
-      } else if (invertColors && (strokeColor === '#ffffff' || strokeColor === '#fff')) {
-        strokeColor = '#000000';
+      // Only invert colors when explicitly told to (invertColors=true means white bg mode)
+      // When invertColors=false AND no explicit family strokeColor, use the defaultColor as-is
+      // This prevents black naaldhout lines from turning white when the hatch has a wood background
+      if (invertColors) {
+        // White background mode: white → black
+        if (strokeColor === '#ffffff' || strokeColor === '#fff') strokeColor = '#000000';
+      } else if (!family.strokeColor) {
+        // Dark background, no explicit per-family color: use default (which is already inverted by caller)
+        // Don't touch it
       }
 
       // Set line style
@@ -3825,8 +3826,11 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.fill();
     }
 
-    // Draw pattern within the band
-    const lineColor = shape.patternColor || ctx.strokeStyle as string;
+    // Draw pattern within the band — always use black (or white on dark bg)
+    const rawPatternColor = shape.patternColor || '#000000';
+    const lineColor = (!shape.backgroundColor && rawPatternColor === '#000000')
+      ? '#ffffff' // No background → dark canvas → white lines
+      : rawPatternColor; // Has background → use pattern color as-is
     const scale = shape.patternScale ?? 1;
     // NEN47 isolatie: spacing adapts to thickness so pattern fills the band properly
     // The zig-zag lines should go from edge to edge of the band
@@ -3868,7 +3872,9 @@ export class ShapeRenderer extends BaseRenderer {
 
     // Draw outline border of the band
     ctx.save();
-    ctx.strokeStyle = isSelected ? COLORS.selection : (shape.style.strokeColor || lineColor);
+    // Contour always visible — use shape stroke color, fallback to black
+    const contourColor = shape.style.strokeColor || '#000000';
+    ctx.strokeStyle = isSelected ? COLORS.selection : contourColor;
     ctx.lineWidth = isSelected ? 2 : 1;
     ctx.setLineDash([]);
     ctx.beginPath();
