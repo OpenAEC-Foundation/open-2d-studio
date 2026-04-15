@@ -3570,7 +3570,13 @@ export class ShapeRenderer extends BaseRenderer {
    */
   private drawSpotCoordinate(shape: import('../../../types/geometry').SpotCoordinateShape, isSelected: boolean, invertColors: boolean = false): void {
     const ctx = this.ctx;
-    const { position, displayX, displayY, textHeight, leaderLength, leaderAngle, showLeader, decimalPlaces, prefix } = shape;
+    const { position, textHeight, leaderLength, leaderAngle, showLeader, decimalPlaces, prefix } = shape;
+    // Always compute display values LIVE from position so they update on move
+    const unit = shape.unit || 'mm';
+    const liveX = unit === 'm' ? position.x / 1000 : position.x;
+    const liveY = unit === 'm' ? -position.y / 1000 : -position.y; // Y inverted for display
+    const displayX = liveX;
+    const displayY = liveY;
 
     // Scale factor: textHeight and leaderLength are in paper mm,
     // multiply by (1/drawingScale) to get drawing units
