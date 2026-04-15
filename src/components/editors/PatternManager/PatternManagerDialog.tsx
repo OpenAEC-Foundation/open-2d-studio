@@ -87,6 +87,9 @@ export function PatternManagerDialog({
   // SVG multi-pattern import dialog
   const [svgImportPatterns, setSvgImportPatterns] = useState<ParsedSvgPattern[] | null>(null);
 
+  // Search filter for pattern list
+  const [searchQuery, setSearchQuery] = useState('');
+
   // Preview expand/collapse on double-click
   const [previewExpanded, setPreviewExpanded] = useState(false);
 
@@ -119,6 +122,20 @@ export function PatternManagerDialog({
     user: userPatterns,
     project: projectPatterns,
   }), [userPatterns, projectPatterns, favoritePatterns]);
+
+  // Filtered patterns based on search query
+  const filteredPatterns = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return allPatterns;
+    const filter = (patterns: CustomHatchPattern[]) =>
+      patterns.filter(p => p.name.toLowerCase().includes(q) || (p.description ?? '').toLowerCase().includes(q));
+    return {
+      favorites: filter(allPatterns.favorites),
+      builtin: filter(allPatterns.builtin),
+      user: filter(allPatterns.user),
+      project: filter(allPatterns.project),
+    };
+  }, [allPatterns, searchQuery]);
 
   // Find the selected pattern
   const selectedPattern = useMemo(() => {
@@ -501,8 +518,8 @@ export function PatternManagerDialog({
               width={48}
               height={36}
               scale={0.8}
-              lineColor={pattern.lineFamilies[0]?.strokeColor ?? '#888888'}
-              backgroundColor="#f0f0f0"
+              lineColor="#333333"
+              backgroundColor="#f5f5f5"
             />
             <span className="text-xs truncate flex-1">{pattern.name}</span>
             {/* Star icon for toggling favorite */}
@@ -550,11 +567,11 @@ export function PatternManagerDialog({
       isOpen={isOpen}
       onClose={onClose}
       title="Hatch Pattern Manager"
-      width={600}
-      height={450}
+      width={860}
+      height={620}
       resizable
-      minWidth={450}
-      minHeight={300}
+      minWidth={550}
+      minHeight={400}
       footer={
         <>
           <ModalButton onClick={onClose} variant="secondary">
@@ -664,6 +681,17 @@ export function PatternManagerDialog({
             </div>
           </div>
 
+          {/* Search bar */}
+          <div className="px-2 py-1.5 border-b border-cad-border">
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              placeholder="Search patterns..."
+              className="w-full bg-cad-bg border border-cad-border rounded px-2 py-1 text-xs text-cad-text outline-none focus:border-cad-accent"
+            />
+          </div>
+
           {/* Pattern tree */}
           <div className="flex-1 overflow-y-auto p-1">
             {(['favorites', 'builtin', 'user', 'project'] as PatternCategory[]).map(category => (
@@ -680,12 +708,17 @@ export function PatternManagerDialog({
                   {categoryIcons[category]}
                   <span className="text-xs font-medium">{categoryLabels[category]}</span>
                   <span className="text-[10px] text-cad-text-dim ml-auto">
-                    ({allPatterns[category].length})
+                    ({filteredPatterns[category].length}{searchQuery ? `/${allPatterns[category].length}` : ''})
                   </span>
                 </button>
-                {expandedCategories[category] && renderPatternList(allPatterns[category], category)}
+                {expandedCategories[category] && renderPatternList(filteredPatterns[category], category)}
               </div>
             ))}
+            {searchQuery && (['favorites', 'builtin', 'user', 'project'] as PatternCategory[]).every(c => filteredPatterns[c].length === 0) && (
+              <div className="py-4 text-center text-xs text-cad-text-dim italic">
+                No patterns match &ldquo;{searchQuery}&rdquo;
+              </div>
+            )}
           </div>
 
           {/* Status message */}
@@ -726,6 +759,8 @@ export function PatternManagerDialog({
                   width={400}
                   height={300}
                   scale={1.5}
+                  lineColor="#333333"
+                  backgroundColor="#f5f5f5"
                 />
               </div>
 
