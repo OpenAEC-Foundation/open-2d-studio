@@ -675,6 +675,8 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   active={activeTool === 'hatch' || filledRegionMode}
                   disabled={isSheetMode}
                 />
+              </RibbonMediumButtonStack>
+              <RibbonMediumButtonStack>
                 <RibbonMediumButton
                   icon={<DetailLineIcon size={18} />}
                   label="Detail Line"
