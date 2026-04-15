@@ -3509,7 +3509,7 @@ export class ShapeRenderer extends BaseRenderer {
       ctx.lineTo(labelX, labelY);
       ctx.stroke();
 
-      // Arrowhead at the annotation end (labelX, labelY) pointing back toward position
+      // Arrowhead at position (at the annotated point), pointing away from the label
       if (arrowType !== 'none') {
         const dx = position.x - labelX;
         const dy = position.y - labelY;
@@ -3519,28 +3519,31 @@ export class ShapeRenderer extends BaseRenderer {
         const as = arrowSize;
         const wing = as * 0.35;
         const perp = { x: -uy, y: ux };
+        // Tip is at position; arrowhead body extends back toward label
+        const tipX = position.x;
+        const tipY = position.y;
 
         if (arrowType === 'filled') {
           ctx.beginPath();
-          ctx.moveTo(labelX, labelY);
-          ctx.lineTo(labelX + ux * as + perp.x * wing, labelY + uy * as + perp.y * wing);
-          ctx.lineTo(labelX + ux * as - perp.x * wing, labelY + uy * as - perp.y * wing);
+          ctx.moveTo(tipX, tipY);
+          ctx.lineTo(tipX - ux * as + perp.x * wing, tipY - uy * as + perp.y * wing);
+          ctx.lineTo(tipX - ux * as - perp.x * wing, tipY - uy * as - perp.y * wing);
           ctx.closePath();
           ctx.fill();
         } else if (arrowType === 'open') {
           ctx.beginPath();
-          ctx.moveTo(labelX + ux * as + perp.x * wing, labelY + uy * as + perp.y * wing);
-          ctx.lineTo(labelX, labelY);
-          ctx.lineTo(labelX + ux * as - perp.x * wing, labelY + uy * as - perp.y * wing);
+          ctx.moveTo(tipX - ux * as + perp.x * wing, tipY - uy * as + perp.y * wing);
+          ctx.lineTo(tipX, tipY);
+          ctx.lineTo(tipX - ux * as - perp.x * wing, tipY - uy * as - perp.y * wing);
           ctx.stroke();
         } else if (arrowType === 'dot') {
           ctx.beginPath();
-          ctx.arc(labelX, labelY, as * 0.4, 0, Math.PI * 2);
+          ctx.arc(tipX, tipY, as * 0.4, 0, Math.PI * 2);
           ctx.fill();
         } else if (arrowType === 'tick') {
           ctx.beginPath();
-          ctx.moveTo(labelX + perp.x * as * 0.5, labelY + perp.y * as * 0.5);
-          ctx.lineTo(labelX - perp.x * as * 0.5, labelY - perp.y * as * 0.5);
+          ctx.moveTo(tipX + perp.x * as * 0.5, tipY + perp.y * as * 0.5);
+          ctx.lineTo(tipX - perp.x * as * 0.5, tipY - perp.y * as * 0.5);
           ctx.stroke();
         }
       }
@@ -3564,7 +3567,7 @@ export class ShapeRenderer extends BaseRenderer {
     ctx.textAlign = rightHalf ? 'left' : 'right';
     const textOffX = rightHalf ? th * 0.3 : -th * 0.3;
 
-    // Draw background for readability
+    // Measure text for selection indicator
     const xMetrics = ctx.measureText(xText);
     const yMetrics = ctx.measureText(yText);
     const maxW = Math.max(xMetrics.width, yMetrics.width);
@@ -3572,10 +3575,7 @@ export class ShapeRenderer extends BaseRenderer {
     const boxY = labelY - th * 2 - lineGap - th * 0.1;
     const boxH = th * 2 + lineGap + th * 0.2;
 
-    const bgColor = isSelected ? 'rgba(0,0,0,0.8)' : 'rgba(0,0,0,0.6)';
-    ctx.fillStyle = bgColor;
-    ctx.fillRect(boxX, boxY, maxW + th * 0.2, boxH);
-
+    // Draw text without background
     ctx.fillStyle = textColor;
     ctx.fillText(xText, labelX + textOffX, labelY - th - lineGap);
     ctx.fillText(yText, labelX + textOffX, labelY);

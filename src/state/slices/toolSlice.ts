@@ -276,7 +276,7 @@ export const initialToolState: ToolState = {
   polylineArcThroughPoint: null,
   lockedDistance: null,
   lockedAngle: null,
-  dimensionPrecision: 2,
+  dimensionPrecision: 0,
   dimensionArrowStyle: 'tick',
   linearDimensionDirection: 'auto',
   dimensionStylePreset: 'Default',

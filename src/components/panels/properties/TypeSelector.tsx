@@ -33,8 +33,8 @@ import { SPOT_COORDINATE_TYPE_PRESETS } from '../../../types/geometry';
 import type { FilledRegionType } from '../../../types/filledRegion';
 import type { CustomHatchPattern } from '../../../types/hatch';
 import { BUILTIN_PATTERNS } from '../../../types/hatch';
-import type { DimensionShape } from '../../../types/dimension';
-import type { TextShape, TextStyle, WallType, PileTypeDefinition } from '../../../types/geometry';
+import type { DimensionShape, DimensionStyle } from '../../../types/dimension';
+import type { TextShape, TextStyle, WallType, PileTypeDefinition, SpotCoordinateStyle } from '../../../types/geometry';
 import { DIMENSION_STYLE_PRESETS } from '../../../constants/cadDefaults';
 
 // ─── helpers ────────────────────────────────────────────────────────────────
@@ -156,8 +156,6 @@ function renderPilePreview(
   shape: string,
 ) {
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#1e1e2e';
-  ctx.fillRect(0, 0, w, h);
 
   ctx.strokeStyle = '#cccccc';
   ctx.lineWidth = 1;
@@ -214,8 +212,6 @@ function renderTextPreview(
   style: TextStyle,
 ) {
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#1e1e2e';
-  ctx.fillRect(0, 0, w, h);
 
   const fontParts: string[] = [];
   if (style.italic) fontParts.push('italic');
@@ -248,8 +244,6 @@ function renderDimensionPreview(
   h: number,
 ) {
   ctx.clearRect(0, 0, w, h);
-  ctx.fillStyle = '#1e1e2e';
-  ctx.fillRect(0, 0, w, h);
 
   const y = Math.round(h / 2) + 2;
   const x1 = 3;
@@ -296,6 +290,310 @@ function renderDimensionPreview(
   ctx.textAlign = 'center';
   ctx.textBaseline = 'bottom';
   ctx.fillText('dim', w / 2, y - 1);
+}
+
+// ─── DimensionStyle inline editor ─────────────────────────────────────────────
+
+interface DimensionStyleEditorProps {
+  styleName: string;
+  style: DimensionStyle;
+  onChange: (updated: DimensionStyle) => void;
+  onClose: () => void;
+}
+
+function DimensionStyleEditor({ styleName, style, onChange, onClose }: DimensionStyleEditorProps) {
+  const [local, setLocal] = useState<DimensionStyle>({ ...style });
+
+  const set = (patch: Partial<DimensionStyle>) => {
+    const next = { ...local, ...patch };
+    setLocal(next);
+    onChange(next);
+  };
+
+  return (
+    <div className="mt-1 px-3 py-2 bg-cad-bg border border-cad-border rounded space-y-1.5">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-semibold text-cad-text">{styleName}</span>
+        <button className="text-cad-text-dim hover:text-cad-text text-xs px-1" onClick={onClose}>✕</button>
+      </div>
+
+      {/* Arrow type */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Arrow</label>
+        <select
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.arrowType}
+          onChange={e => set({ arrowType: e.target.value as DimensionStyle['arrowType'] })}
+        >
+          <option value="tick">Tick</option>
+          <option value="filled">Filled</option>
+          <option value="open">Open</option>
+          <option value="dot">Dot</option>
+          <option value="circle">Circle</option>
+          <option value="slash">Slash</option>
+          <option value="none">None</option>
+        </select>
+      </div>
+
+      {/* Arrow size */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Arrow size (mm)</label>
+        <input
+          type="number" min="0.5" max="10" step="0.5"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.arrowSize}
+          onChange={e => set({ arrowSize: parseFloat(e.target.value) || local.arrowSize })}
+        />
+      </div>
+
+      {/* Text height */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Text height (mm)</label>
+        <input
+          type="number" min="1" max="20" step="0.5"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.textHeight}
+          onChange={e => set({ textHeight: parseFloat(e.target.value) || local.textHeight })}
+        />
+      </div>
+
+      {/* Precision */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Precision</label>
+        <select
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.precision}
+          onChange={e => set({ precision: parseInt(e.target.value) })}
+        >
+          <option value={0}>0 (integer)</option>
+          <option value={1}>0.0</option>
+          <option value={2}>0.00</option>
+          <option value={3}>0.000</option>
+        </select>
+      </div>
+
+      {/* Line color */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Line color</label>
+        <input
+          type="color"
+          className="w-8 h-5 border-0 p-0 cursor-pointer"
+          value={local.lineColor}
+          onChange={e => set({ lineColor: e.target.value })}
+        />
+        <span className="text-[10px] text-cad-text-dim">{local.lineColor}</span>
+      </div>
+
+      {/* Text color */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Text color</label>
+        <input
+          type="color"
+          className="w-8 h-5 border-0 p-0 cursor-pointer"
+          value={local.textColor}
+          onChange={e => set({ textColor: e.target.value })}
+        />
+        <span className="text-[10px] text-cad-text-dim">{local.textColor}</span>
+      </div>
+
+      {/* Line weight */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Line weight (mm)</label>
+        <input
+          type="number" min="0.1" max="5" step="0.1"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.strokeWidth ?? 1}
+          onChange={e => set({ strokeWidth: parseFloat(e.target.value) || 1 })}
+        />
+      </div>
+
+      {/* Ext line gap */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Ext gap (mm)</label>
+        <input
+          type="number" min="0" max="10" step="0.5"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.extensionLineGap}
+          onChange={e => set({ extensionLineGap: parseFloat(e.target.value) || 0 })}
+        />
+      </div>
+
+      {/* Ext line overshoot */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Ext overshoot (mm)</label>
+        <input
+          type="number" min="0" max="10" step="0.5"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.extensionLineOvershoot}
+          onChange={e => set({ extensionLineOvershoot: parseFloat(e.target.value) || 0 })}
+        />
+      </div>
+
+      {/* Text placement */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Text placement</label>
+        <select
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.textPlacement}
+          onChange={e => set({ textPlacement: e.target.value as DimensionStyle['textPlacement'] })}
+        >
+          <option value="above">Above</option>
+          <option value="centered">Centered</option>
+          <option value="below">Below</option>
+        </select>
+      </div>
+    </div>
+  );
+}
+
+// ─── SpotCoordinateStyle inline editor ────────────────────────────────────────
+
+interface SpotCoordinateStyleEditorProps {
+  typeName: string;
+  style: SpotCoordinateStyle;
+  onChange: (updated: SpotCoordinateStyle) => void;
+  onClose: () => void;
+}
+
+function SpotCoordinateStyleEditor({ typeName, style, onChange, onClose }: SpotCoordinateStyleEditorProps) {
+  const [local, setLocal] = useState<SpotCoordinateStyle>({ ...style });
+
+  const set = (patch: Partial<SpotCoordinateStyle>) => {
+    const next = { ...local, ...patch };
+    setLocal(next);
+    onChange(next);
+  };
+
+  return (
+    <div className="mt-1 px-3 py-2 bg-cad-bg border border-cad-border rounded space-y-1.5">
+      <div className="flex items-center justify-between mb-1">
+        <span className="text-xs font-semibold text-cad-text">{typeName}</span>
+        <button className="text-cad-text-dim hover:text-cad-text text-xs px-1" onClick={onClose}>✕</button>
+      </div>
+
+      {/* Text height */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Text height (mm)</label>
+        <input
+          type="number" min="50" max="1000" step="50"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.textHeight}
+          onChange={e => set({ textHeight: parseFloat(e.target.value) || local.textHeight })}
+        />
+      </div>
+
+      {/* Unit */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Unit</label>
+        <select
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.unit}
+          onChange={e => set({ unit: e.target.value as 'mm' | 'm' })}
+        >
+          <option value="mm">mm</option>
+          <option value="m">m</option>
+        </select>
+      </div>
+
+      {/* Decimal places */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Decimals</label>
+        <select
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.decimalPlaces}
+          onChange={e => set({ decimalPlaces: parseInt(e.target.value) })}
+        >
+          <option value={0}>0</option>
+          <option value={1}>1</option>
+          <option value={2}>2</option>
+          <option value={3}>3</option>
+        </select>
+      </div>
+
+      {/* Show leader */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Show leader</label>
+        <input
+          type="checkbox"
+          checked={local.showLeader}
+          onChange={e => set({ showLeader: e.target.checked })}
+        />
+      </div>
+
+      {/* Leader length */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Leader length</label>
+        <input
+          type="number" min="100" max="5000" step="100"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.leaderLength}
+          onChange={e => set({ leaderLength: parseFloat(e.target.value) || local.leaderLength })}
+        />
+      </div>
+
+      {/* Arrow type */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Arrow</label>
+        <select
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.arrowType}
+          onChange={e => set({ arrowType: e.target.value as SpotCoordinateStyle['arrowType'] })}
+        >
+          <option value="filled">Filled</option>
+          <option value="open">Open</option>
+          <option value="dot">Dot</option>
+          <option value="tick">Tick</option>
+          <option value="none">None</option>
+        </select>
+      </div>
+
+      {/* Arrow size */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Arrow size</label>
+        <input
+          type="number" min="10" max="500" step="10"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.arrowSize}
+          onChange={e => set({ arrowSize: parseFloat(e.target.value) || local.arrowSize })}
+        />
+      </div>
+
+      {/* Line color */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Line color</label>
+        <input
+          type="color"
+          className="w-8 h-5 border-0 p-0 cursor-pointer"
+          value={local.lineColor}
+          onChange={e => set({ lineColor: e.target.value })}
+        />
+        <span className="text-[10px] text-cad-text-dim">{local.lineColor}</span>
+      </div>
+
+      {/* Text color */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Text color</label>
+        <input
+          type="color"
+          className="w-8 h-5 border-0 p-0 cursor-pointer"
+          value={local.textColor}
+          onChange={e => set({ textColor: e.target.value })}
+        />
+        <span className="text-[10px] text-cad-text-dim">{local.textColor}</span>
+      </div>
+
+      {/* Prefix */}
+      <div className="flex items-center gap-2">
+        <label className="text-[10px] text-cad-text-dim w-20 flex-shrink-0">Prefix</label>
+        <input
+          type="text"
+          className="flex-1 bg-cad-bg border border-cad-border rounded text-xs text-cad-text px-1 py-0.5"
+          value={local.prefix ?? ''}
+          onChange={e => set({ prefix: e.target.value })}
+        />
+      </div>
+    </div>
+  );
 }
 
 // ─── generic mini canvas preview ─────────────────────────────────────────────
@@ -508,8 +806,6 @@ function buildHatchOptions(
       label: '— No type —',
       renderPreview: (ctx, w, h) => {
         ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = '#1e1e2e';
-        ctx.fillRect(0, 0, w, h);
       },
     });
   }
@@ -615,8 +911,6 @@ function buildTextStyleOptions(textStyles: TextStyle[]): TypeOption[] {
       label: '(Custom)',
       renderPreview: (ctx, w, h) => {
         ctx.clearRect(0, 0, w, h);
-        ctx.fillStyle = '#1e1e2e';
-        ctx.fillRect(0, 0, w, h);
         ctx.fillStyle = '#cccccc';
         ctx.font = '10px sans-serif';
         ctx.textAlign = 'center';
@@ -666,8 +960,6 @@ function buildSpotCoordinateOptions(): TypeOption[] {
     label: preset.name,
     renderPreview: (ctx: CanvasRenderingContext2D, w: number, h: number) => {
       ctx.clearRect(0, 0, w, h);
-      ctx.fillStyle = '#1e1e2e';
-      ctx.fillRect(0, 0, w, h);
       const lc = preset.style.lineColor || '#ffffff';
       ctx.strokeStyle = lc;
       ctx.fillStyle = lc;
@@ -724,6 +1016,10 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
   const setCurrentStyle = useAppStore(s => s.setCurrentStyle);
   const setRegionTypeManagerOpen = useAppStore(s => s.setRegionTypeManagerOpen);
   const openWallTypesDialog = useAppStore(s => s.openWallTypesDialog);
+
+  // Editor open state for dimension and spot-coordinate type inline editors
+  const [dimEditorOpen, setDimEditorOpen] = useState<string | null>(null);
+  const [scEditorOpen, setScEditorOpen] = useState<string | null>(null);
 
   // ── Filled Region sketch mode: show Filled Region type selector ──
   if (filledRegionMode) {
@@ -1000,6 +1296,7 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
     const handleDimStyleChange = (newStyleName: string) => {
       const preset = DIMENSION_STYLE_PRESETS[newStyleName];
       if (!preset) return;
+      setDimEditorOpen(null);
       selectedShapes.forEach(shape => {
         updateShape(shape.id, {
           dimensionStyleName: newStyleName,
@@ -1008,17 +1305,47 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       });
     };
 
+    const handleDimStyleEdit = (styleName: string) => {
+      setDimEditorOpen(prev => prev === styleName ? null : styleName);
+    };
+
+    // Apply edited DimensionStyle to all shapes using this preset, and persist to the preset object
+    const handleDimStyleEditorChange = (styleName: string, updated: DimensionStyle) => {
+      // Mutate the preset in memory so future shapes get the updated defaults
+      Object.assign(DIMENSION_STYLE_PRESETS[styleName], updated);
+      // Update all selected shapes (and any shapes in the drawing using this preset)
+      const allShapes = useAppStore.getState().shapes as Shape[];
+      const dimShapes = allShapes.filter(
+        s => s.type === 'dimension' && (s as DimensionShape).dimensionStyleName === styleName,
+      );
+      dimShapes.forEach(shape => {
+        updateShape(shape.id, { dimensionStyle: { ...updated } } as Partial<DimensionShape>);
+      });
+    };
+
     const dimOptions = buildDimensionStyleOptions(presetNames, currentStyleName);
+    const activeEditorStyle = dimEditorOpen ? DIMENSION_STYLE_PRESETS[dimEditorOpen] : null;
 
     return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
-        <TypeDropdown
-          options={dimOptions}
-          value={currentStyleName}
-          onChange={handleDimStyleChange}
-        />
-        {selectedShapes.length > 1 && (
-          <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
+      <div className="px-3 py-2 bg-cad-surface border-b border-cad-border">
+        <div className="flex items-center gap-2">
+          <TypeDropdown
+            options={dimOptions}
+            value={currentStyleName}
+            onChange={handleDimStyleChange}
+            onEditOption={handleDimStyleEdit}
+          />
+          {selectedShapes.length > 1 && (
+            <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
+          )}
+        </div>
+        {dimEditorOpen && activeEditorStyle && (
+          <DimensionStyleEditor
+            styleName={dimEditorOpen}
+            style={activeEditorStyle}
+            onChange={updated => handleDimStyleEditorChange(dimEditorOpen, updated)}
+            onClose={() => setDimEditorOpen(null)}
+          />
         )}
       </div>
     );
@@ -1061,14 +1388,11 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
     const currentTypeId = sc.spotCoordinateTypeId ?? SPOT_COORDINATE_TYPE_PRESETS[0].id;
     const scOptions = buildSpotCoordinateOptions();
 
-    const handleScTypeChange = (newTypeId: string) => {
-      const preset = SPOT_COORDINATE_TYPE_PRESETS.find(p => p.id === newTypeId);
-      if (!preset) return;
-      const s = preset.style;
+    const applyScPresetToShapes = (typeId: string, s: SpotCoordinateStyle) => {
       selectedShapes.forEach(shape => {
         const orig = shape as SpotCoordinateShape;
         updateShape(shape.id, {
-          spotCoordinateTypeId: newTypeId,
+          spotCoordinateTypeId: typeId,
           unit: s.unit,
           decimalPlaces: s.decimalPlaces,
           prefix: s.prefix,
@@ -1087,15 +1411,69 @@ export function TypeSelector({ selectedShapes }: TypeSelectorProps) {
       });
     };
 
+    const handleScTypeChange = (newTypeId: string) => {
+      const preset = SPOT_COORDINATE_TYPE_PRESETS.find(p => p.id === newTypeId);
+      if (!preset) return;
+      setScEditorOpen(null);
+      applyScPresetToShapes(newTypeId, preset.style);
+    };
+
+    const handleScTypeEdit = (typeId: string) => {
+      setScEditorOpen(prev => prev === typeId ? null : typeId);
+    };
+
+    // Apply edited SpotCoordinateStyle to preset and propagate to all matching shapes
+    const handleScStyleEditorChange = (typeId: string, updated: SpotCoordinateStyle) => {
+      const preset = SPOT_COORDINATE_TYPE_PRESETS.find(p => p.id === typeId);
+      if (!preset) return;
+      // Mutate preset style in memory
+      Object.assign(preset.style, updated);
+      // Update all shapes in the drawing using this type
+      const allShapes = useAppStore.getState().shapes as Shape[];
+      const scShapes = allShapes.filter(
+        s => s.type === 'spot-coordinate' && (s as SpotCoordinateShape).spotCoordinateTypeId === typeId,
+      );
+      scShapes.forEach(shape => {
+        const orig = shape as SpotCoordinateShape;
+        updateShape(shape.id, {
+          unit: updated.unit,
+          decimalPlaces: updated.decimalPlaces,
+          prefix: updated.prefix,
+          textHeight: updated.textHeight,
+          showLeader: updated.showLeader,
+          leaderLength: updated.leaderLength,
+          arrowType: updated.arrowType,
+          arrowSize: updated.arrowSize,
+          lineColor: updated.lineColor,
+          textColor: updated.textColor,
+          displayX: updated.unit === 'm' ? orig.position.x / 1000 : orig.position.x,
+          displayY: updated.unit === 'm' ? (-orig.position.y) / 1000 : -orig.position.y,
+        } as Partial<SpotCoordinateShape>);
+      });
+    };
+
+    const activeScPreset = scEditorOpen ? SPOT_COORDINATE_TYPE_PRESETS.find(p => p.id === scEditorOpen) : null;
+
     return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-cad-surface border-b border-cad-border">
-        <TypeDropdown
-          options={scOptions}
-          value={currentTypeId}
-          onChange={handleScTypeChange}
-        />
-        {selectedShapes.length > 1 && (
-          <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
+      <div className="px-3 py-2 bg-cad-surface border-b border-cad-border">
+        <div className="flex items-center gap-2">
+          <TypeDropdown
+            options={scOptions}
+            value={currentTypeId}
+            onChange={handleScTypeChange}
+            onEditOption={handleScTypeEdit}
+          />
+          {selectedShapes.length > 1 && (
+            <span className="text-[10px] text-cad-text-dim flex-shrink-0">×{selectedShapes.length}</span>
+          )}
+        </div>
+        {scEditorOpen && activeScPreset && (
+          <SpotCoordinateStyleEditor
+            typeName={activeScPreset.name}
+            style={activeScPreset.style}
+            onChange={updated => handleScStyleEditorChange(scEditorOpen, updated)}
+            onClose={() => setScEditorOpen(null)}
+          />
         )}
       </div>
     );
