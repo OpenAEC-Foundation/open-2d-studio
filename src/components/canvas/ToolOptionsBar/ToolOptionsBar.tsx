@@ -215,6 +215,16 @@ function CircleOptions() {
 /**
  * Arc tool options
  */
+type ArcModeType = '3point' | 'center-start-end' | 'start-end-radius' | 'fillet' | 'tangent';
+
+const ARC_MODE_OPTIONS: { value: ArcModeType; label: string; title: string }[] = [
+  { value: '3point',            label: '3-Point',          title: '3-Point arc (start, through, end)' },
+  { value: 'center-start-end', label: 'Ctr-St-End',       title: 'Center → Start → End' },
+  { value: 'start-end-radius', label: 'St-End-R',         title: 'Start → End → Radius' },
+  { value: 'fillet',           label: 'Fillet',            title: 'Fillet (arc between two lines)' },
+  { value: 'tangent',          label: 'Tangent',           title: 'Tangent continuation' },
+];
+
 function ArcOptions() {
   const arcMode = useAppStore((s) => s.arcMode);
   const setArcMode = useAppStore((s) => s.setArcMode);
@@ -223,18 +233,26 @@ function ArcOptions() {
 
   return (
     <>
-      <OptionSelect
-        label="Mode"
-        value={arcMode}
-        options={[
-          { value: '3point', label: '3-Point' },
-          { value: 'center-start-end', label: 'Center-Start-End' },
-          { value: 'start-end-radius', label: 'Start-End-Radius' },
-          { value: 'fillet', label: 'Fillet' },
-          { value: 'tangent', label: 'Tangent' },
-        ]}
-        onChange={setArcMode}
-      />
+      <div className="flex items-center gap-0">
+        {ARC_MODE_OPTIONS.map((opt, idx) => (
+          <button
+            key={opt.value}
+            onClick={() => setArcMode(opt.value)}
+            title={opt.title}
+            className={[
+              'px-2 py-0.5 text-xs border border-cad-border',
+              idx === 0 ? 'rounded-l' : '',
+              idx === ARC_MODE_OPTIONS.length - 1 ? 'rounded-r' : '',
+              idx > 0 ? 'border-l-0' : '',
+              arcMode === opt.value
+                ? 'bg-cad-accent text-white'
+                : 'bg-cad-bg text-cad-text hover:bg-cad-hover',
+            ].join(' ')}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
       <Separator />
       <OptionNumberInput
         label="Radius"
