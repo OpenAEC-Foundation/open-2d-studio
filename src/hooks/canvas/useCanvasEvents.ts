@@ -12,7 +12,7 @@
 
 import { useCallback, useMemo, useEffect, useRef } from 'react';
 import { useAppStore, generateId } from '../../state/appStore';
-import type { Point, GridlineShape, BeamShape, PlateSystemShape, PlateSystemOpening, WallShape } from '../../types/geometry';
+import type { Point, Shape, GridlineShape, BeamShape, PlateSystemShape, PlateSystemOpening, WallShape, LineShape, ArcShape, CircleShape, RectangleShape, PolylineShape, ImageShape } from '../../types/geometry';
 import { screenToWorld, isPointNearShape, isPointNearParametricShape, snapToAngle, bulgeToArc, calculateBulgeFrom3Points } from '../../engine/geometry/GeometryUtils';
 import { regeneratePlateSystemBeams } from '../drawing/usePlateSystemDrawing';
 import { QuadTree } from '../../engine/spatial/QuadTree';
@@ -36,8 +36,146 @@ import { useLeaderDrawing } from '../drawing/useLeaderDrawing';
 import { useAecCanvasTools } from './useAecCanvasTools';
 import { showImportImageDialog } from '../../services/file/fileService';
 import { importImage } from '../../services/file/imageImportService';
-import type { ImageShape } from '../../types/geometry';
 import { enterHatchEditMode } from '../../engine/geometry/SketchUtils';
+
+/**
+ * Create sketch boundary copies from an existing shape for the Filled Region Pick Lines tool.
+ * Returns one or more new shapes that will be added to the document as sketch edges.
+ *
+ * - line       → one copy of the line
+ * - arc        → one copy of the arc
+ * - circle     → one arc (0 → 2π) covering the full circle
+ * - rectangle  → four line segments (one per edge)
+ * - polyline   → individual line or arc shapes for each segment
+ */
+function createSketchCopiesFromShape(
+  source: Shape,
+  layerId: string,
+  drawingId: string,
+): Shape[] {
+  const base = {
+    layerId,
+    drawingId,
+    style: { ...source.style },
+    visible: true,
+    locked: false,
+  };
+
+  switch (source.type) {
+    case 'line': {
+      const s = source as LineShape;
+      return [{
+        ...base,
+        id: generateId(),
+        type: 'line' as const,
+        start: { ...s.start },
+        end: { ...s.end },
+      } as LineShape];
+    }
+
+    case 'arc': {
+      const s = source as ArcShape;
+      return [{
+        ...base,
+        id: generateId(),
+        type: 'arc' as const,
+        center: { ...s.center },
+        radius: s.radius,
+        startAngle: s.startAngle,
+        endAngle: s.endAngle,
+      } as ArcShape];
+    }
+
+    case 'circle': {
+      const s = source as CircleShape;
+      return [{
+        ...base,
+        id: generateId(),
+        type: 'arc' as const,
+        center: { ...s.center },
+        radius: s.radius,
+        startAngle: 0,
+        endAngle: Math.PI * 2,
+      } as ArcShape];
+    }
+
+    case 'rectangle': {
+      const s = source as RectangleShape;
+      const { topLeft, width, height, rotation } = s;
+      const cos = Math.cos(rotation);
+      const sin = Math.sin(rotation);
+      const rotate = (dx: number, dy: number) => ({
+        x: topLeft.x + dx * cos - dy * sin,
+        y: topLeft.y + dx * sin + dy * cos,
+      });
+      const corners = [
+        rotate(0, 0),
+        rotate(width, 0),
+        rotate(width, height),
+        rotate(0, height),
+      ];
+      return corners.map((pt, i) => ({
+        ...base,
+        id: generateId(),
+        type: 'line' as const,
+        start: { ...pt },
+        end: { ...corners[(i + 1) % 4] },
+      } as LineShape));
+    }
+
+    case 'polyline': {
+      const s = source as PolylineShape;
+      const pts = s.points;
+      if (pts.length < 2) return [];
+      const count = s.closed ? pts.length : pts.length - 1;
+      const result: Shape[] = [];
+      for (let i = 0; i < count; i++) {
+        const p1 = pts[i];
+        const p2 = pts[(i + 1) % pts.length];
+        const bulge = s.bulge ? (s.bulge[i] ?? 0) : 0;
+        if (Math.abs(bulge) > 0.0001) {
+          // Arc segment: convert bulge to arc parameters
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const d = Math.sqrt(dx * dx + dy * dy);
+          const r = Math.abs(d * (1 + bulge * bulge) / (4 * Math.abs(bulge)));
+          const midX = (p1.x + p2.x) / 2;
+          const midY = (p1.y + p2.y) / 2;
+          const alpha = 2 * Math.atan(Math.abs(bulge));
+          const sagitta = r * (1 - Math.cos(alpha));
+          const perpX = -dy / d;
+          const perpY = dx / d;
+          const sign = bulge > 0 ? 1 : -1;
+          const cx = midX + sign * (r - sagitta) * perpX;
+          const cy = midY + sign * (r - sagitta) * perpY;
+          const startAngle = Math.atan2(p1.y - cy, p1.x - cx);
+          const endAngle = Math.atan2(p2.y - cy, p2.x - cx);
+          result.push({
+            ...base,
+            id: generateId(),
+            type: 'arc' as const,
+            center: { x: cx, y: cy },
+            radius: r,
+            startAngle: bulge > 0 ? startAngle : endAngle,
+            endAngle: bulge > 0 ? endAngle : startAngle,
+          } as ArcShape);
+        } else {
+          result.push({
+            ...base,
+            id: generateId(),
+            type: 'line' as const,
+            start: { ...p1 },
+            end: { ...p2 },
+          } as LineShape);
+        }
+      }
+      return result;
+    }
+
+    default:
+      return [];
+  }
+}
 
 export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
   // Compose specialized hooks
@@ -108,7 +246,9 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
     finishSlabInnerContour: _finishSlabInnerContour,
     cancelSlabInnerContour: _cancelSlabInnerContour,
     filledRegionMode,
+    filledRegionDrawTool,
     sketchShapeIds,
+    addSketchShapeId,
   } = useAppStore();
 
   // Get the active drawing's scale for text hit detection
@@ -386,6 +526,25 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       // Tool-specific handling
       switch (activeTool) {
         case 'select': {
+          // Filled region Pick Lines mode: click to copy a shape as a sketch boundary edge
+          if (filledRegionMode && filledRegionDrawTool === 'pickLines') {
+            const shapeId = findShapeAtPoint(worldPos);
+            if (shapeId && !sketchShapeIds.includes(shapeId)) {
+              const sourceShape = shapes.find(s => s.id === shapeId);
+              if (sourceShape) {
+                const newShapes = createSketchCopiesFromShape(sourceShape, activeLayerId, activeDrawingId);
+                if (newShapes.length > 0) {
+                  addShapes(newShapes);
+                  for (const ns of newShapes) {
+                    addSketchShapeId(ns.id);
+                  }
+                  setHoveredShapeId(null);
+                }
+              }
+            }
+            break;
+          }
+
           // In filled region sketch mode: only allow selecting sketch shapes
           if (filledRegionMode) {
             const shapeId = findShapeAtPoint(worldPos);
@@ -924,7 +1083,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       editingSlabId,
       addSlabInnerContourPoint,
       filledRegionMode,
+      filledRegionDrawTool,
       sketchShapeIds,
+      addSketchShapeId,
+      addShapes,
+      setHoveredShapeId,
     ]
   );
 
@@ -1108,6 +1271,11 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
           // Pick-lines mode: highlight shape under cursor
           const hoveredShape = findShapeAtPoint(worldPos);
           setHoveredShapeId(hoveredShape);
+        } else if (filledRegionMode && filledRegionDrawTool === 'pickLines') {
+          // Filled region pick lines mode: highlight non-sketch shapes under cursor
+          const hoveredShape = findShapeAtPoint(worldPos);
+          // Only highlight shapes that are not already sketch shapes
+          setHoveredShapeId(hoveredShape && !sketchShapeIds.includes(hoveredShape) ? hoveredShape : null);
         } else {
           setHoveredShapeId(null);
         }
@@ -1115,7 +1283,7 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         setHoveredShapeId(null);
       }
     },
-    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, gripEditing, boxSelection, shapeDrawing, snapDetection, activeTool, dimensionMode, pickLinesMode, findShapeAtPoint, setHoveredShapeId, canvasRef, modifyTools, aecTools, leaderDrawing, setCursor2D, modifyOrtho, orthoMode]
+    [panZoom, annotationEditing, viewportEditing, editorMode, viewport, boundaryEditing, gripEditing, boxSelection, shapeDrawing, snapDetection, activeTool, dimensionMode, pickLinesMode, filledRegionMode, filledRegionDrawTool, sketchShapeIds, findShapeAtPoint, setHoveredShapeId, canvasRef, modifyTools, aecTools, leaderDrawing, setCursor2D, modifyOrtho, orthoMode]
   );
 
   /**

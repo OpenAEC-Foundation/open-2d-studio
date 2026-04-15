@@ -37,6 +37,7 @@ import {
   FolderOpen,
   ClipboardCopy,
   Info,
+  Crosshair,
 } from 'lucide-react';
 import type { UITheme } from '../../../state/slices/snapSlice';
 import { UI_THEMES } from '../../../state/slices/snapSlice';
@@ -1243,6 +1244,13 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                   onClick={() => { setFilledRegionDrawTool('line'); switchToDrawingTool('polyline'); }}
                   active={activeTool === 'polyline' && filledRegionMode}
                   tooltip="Draw polyline boundary segment"
+                />
+                <RibbonButton
+                  icon={<Crosshair size={24} />}
+                  label="Pick Lines"
+                  onClick={() => { setFilledRegionDrawTool('pickLines'); }}
+                  active={filledRegionDrawTool === 'pickLines'}
+                  tooltip="Click existing shapes to copy them as sketch boundary edges"
                 />
               </RibbonGroup>
               <RibbonGroup label="Loops">
