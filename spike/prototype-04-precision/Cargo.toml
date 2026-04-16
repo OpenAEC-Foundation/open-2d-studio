@@ -1,0 +1,15 @@
+[package]
+name = "prototype-04-precision"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+robust = "1.1"
+anyhow = { workspace = true }
+
+[[bin]]
+name = "prototype-04"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"

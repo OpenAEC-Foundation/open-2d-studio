@@ -1,0 +1,19 @@
+[workspace]
+resolver = "2"
+members = [
+    "prototype-01-ecs-command",
+    "prototype-02-gpu-benchmark",
+    "prototype-03-egui-ribbon",
+    "prototype-04-precision",
+    "prototype-05-wry-webview",
+]
+
+[workspace.package]
+version = "0.0.1"
+edition = "2021"
+rust-version = "1.77"
+
+[workspace.dependencies]
+bevy_ecs = "0.15"
+anyhow = "1.0"
+uuid = { version = "1.10", features = ["v4"] }

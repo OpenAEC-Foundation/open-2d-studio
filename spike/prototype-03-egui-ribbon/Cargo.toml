@@ -1,0 +1,18 @@
+[package]
+name = "prototype-03-egui-ribbon"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+egui = "0.29"
+egui-wgpu = "0.29"
+egui-winit = "0.29"
+egui_dock = "0.14"
+wgpu = "0.20"
+winit = "0.30"
+pollster = "0.3"
+anyhow = { workspace = true }
+
+[[bin]]
+name = "prototype-03"
+path = "src/main.rs"

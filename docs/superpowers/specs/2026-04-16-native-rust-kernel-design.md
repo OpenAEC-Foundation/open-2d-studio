@@ -2,9 +2,34 @@
 
 > **Datum:** 2026-04-16
 > **Branch:** `native-kernel-rust`
-> **Status:** Design approved, ready for implementation planning
+> **Status:** ⚠️ **Superseded — zie Route A+ in parliament-synthesis.md**
+> **Route gekozen:** A+ (gewijzigde versie met spike-fase + parallelle feature releases)
 > **Scope:** Volledige herbouw van de engine als native Rust desktop applicatie
 > **Voorgaande baseline:** TypeScript + Canvas 2D + Tauri (master branch)
+
+---
+
+## ⚠️ BELANGRIJKE UPDATE (2026-04-16, na parlementair debat)
+
+Na kritische review door 7 rollen (2 rondes) is de oorspronkelijke roadmap van 18-24 weken
+verworpen als ongeloofwaardig. De opdrachtgever heeft gekozen voor **Route A+**:
+
+1. **Week 1-2:** spec-herziening met robuustheidssectie, implementatie-details, crate-versies
+2. **Week 3-4:** spike-fase — risicovolle prototypes valideren voor go/no-go
+3. **Maand 1-6:** 3 commerciële features shippen parallel aan kernel-voorbereiding
+   - IFC4X3 import (maand 1-2)
+   - Revit-roundtrip via IFC (maand 3-4)
+   - Cloud-sync light (maand 5-6)
+4. **Maand 7-18:** Rust-kernel-herbouw in fases (was: maand 1-6)
+5. **Parallel:** Tekenaar's bugs in huidige TS kernel fixen (undo-scope, block-instances, hatch scaling, snap cycling)
+
+**Kill-criteria** (wanneer terug naar master TS-kernel):
+- Spike-prototype faalt op 100k shapes @ 60fps (target 120 was ambitieus)
+- Precisie-testsuite op 1000 km faalt na Shewchuk-integratie
+- Spec-addendum onvoldoende scherp na week 2
+- Maand 4 review: MVP-features lopen 6+ weken uit
+
+Zie `2026-04-16-parliament-synthesis.md` voor volledige context.
 
 ---
 

@@ -1,0 +1,16 @@
+[package]
+name = "prototype-01-ecs-command"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+bevy_ecs = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+
+[[bin]]
+name = "prototype-01"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"

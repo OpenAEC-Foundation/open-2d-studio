@@ -1,0 +1,15 @@
+[package]
+name = "prototype-02-gpu-benchmark"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+wgpu = "0.20"
+winit = "0.30"
+pollster = "0.3"
+bytemuck = { version = "1.19", features = ["derive"] }
+anyhow = { workspace = true }
+
+[[bin]]
+name = "prototype-02"
+path = "src/main.rs"
