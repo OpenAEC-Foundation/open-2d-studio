@@ -222,6 +222,13 @@ impl ApplicationHandler for App {
                 physical_key: PhysicalKey::Code(KeyCode::Escape), ..
             }, .. } => event_loop.exit(),
             WindowEvent::RedrawRequested => {
+                // Sync ECS → instance buffer each frame. For demo this is cheap
+                // because the demo scene is static. In production we'd sync only
+                // Dirty-marked entities.
+                crate::sync::collect_instances(&mut self.world, &mut self.instances);
+                if let (Some(gpu), Some(pipeline)) = (self.gpu.as_ref(), self.pipeline.as_ref()) {
+                    pipeline.upload_instances(&gpu.queue, &self.instances);
+                }
                 self.render_frame();
                 if let Some(w) = self.window.as_ref() { w.request_redraw(); }
             }
