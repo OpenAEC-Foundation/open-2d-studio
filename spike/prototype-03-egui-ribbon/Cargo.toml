@@ -8,7 +8,8 @@ egui = "0.29"
 egui-wgpu = "0.29"
 egui-winit = "0.29"
 egui_dock = "0.14"
-wgpu = "0.20"
+# egui-wgpu 0.29 requires wgpu 22, NOT 0.20. Pin same version across crates.
+wgpu = "22"
 winit = "0.30"
 pollster = "0.3"
 anyhow = { workspace = true }

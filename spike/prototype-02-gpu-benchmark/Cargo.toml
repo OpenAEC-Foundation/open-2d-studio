@@ -4,7 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
-wgpu = "0.20"
+# Use wgpu 22 for consistency with egui-wgpu 0.29 (proto 3)
+wgpu = "22"
 winit = "0.30"
 pollster = "0.3"
 bytemuck = { version = "1.19", features = ["derive"] }

@@ -6,7 +6,7 @@
 
 **Architecture:** Aparte Cargo workspace (`spike/`) met één crate per prototype. Geen integratie — elk prototype is een geïsoleerde `cargo run` binary die één ding meet of demonstreert. Resultaten worden gebundeld in `SPIKE-RESULTS.md` voor go/no-go moment.
 
-**Tech Stack:** Rust 1.77+, wgpu 0.20, bevy_ecs 0.15.4, egui 0.29, egui_dock 0.14, egui-wgpu 0.29, egui-winit 0.29, lyon 1.0, robust 1.2, wry 0.45, winit 0.30.13.
+**Tech Stack (verified):** Rust 1.77+ (tested 1.94), **wgpu 22** (niet 0.20 — egui-wgpu 0.29 vereist wgpu 22), bevy_ecs 0.15.4, egui 0.29, egui_dock 0.14, egui-wgpu 0.29, egui-winit 0.29, robust 1.2, wry 0.45.0, winit 0.30.13, uuid 1.10.
 
 ---
 
@@ -22,19 +22,20 @@ Vóór implementatie zijn alle plannen door een kritische review gehaald en **ge
 | 2 — GPU API probe (wgpu 0.20 + winit 0.30) | ✅ | — | RTX 2000 gedetecteerd, Vulkan backend, 256 MB max buffer |
 | 4 — Precisie (naive/RTC/adaptive) | ✅ | 7/7 pass | Alle 3 methodes geven 1.19e-7 mm op 1000 km |
 
-### Review-claims vs Werkelijkheid
+### Review-claims vs Werkelijkheid (alles geverifieerd via cargo build + run)
 
 | Reviewer claim | Verdict | Impact |
 |----------------|---------|--------|
 | `Cell` in Command is `!Sync`, compileert niet | **WAAR** | Opgelost met `std::sync::Mutex` |
-| Catastrophic cancellation killt precisie @ 1000 km | **OVERDREVEN** | Naive f64 geeft nanometer-precisie. 1.19e-7 mm is 10000× ruimer dan 1 µm target |
-| Adaptive predicates verbeteren intersection coord | **ONWAAR** voor onze cases | Alle 3 methodes geven identieke output. Adaptive nuttig voor orient2d sign-tests, niet voor coördinaten |
-| `winit 0.30` mist `rwh_06` feature | **ONWAAR** | Feature bestaat in 0.30.13, compileert schoon |
-| `memory_hints` in wgpu 0.20 DeviceDescriptor | **ONWAAR** | Veld is in wgpu 0.21+, niet 0.20. Uit alle plannen gehaald |
-| `robust::orient2d` API klopt | **WAAR** | Werkt zoals gespecificeerd. Crate is 1.2 (niet 1.1 zoals in spec) |
-| wry `EVAL_CHAN` threading hack is UB | **WAAR** (plausibel, docs bevestigen `!Send`) | Vervangen door `winit` `UserEvent` pattern in Task 5 |
-| `pass.forget_lifetime()` niet in wgpu 0.20 | Pending — Task 3 compile check loopt | Verwijderd uit plan preventief |
-| `Arc<Window>` vs `&Window` coercion | Pending — Task 3 compile check loopt | Fix bekend: `&*window` waar nodig |
+| Catastrophic cancellation killt precisie @ 1000 km | **OVERDREVEN** | Naive f64 geeft 1.19e-7 mm (100 nm), 10000× ruimer dan 1 µm target |
+| Adaptive predicates verbeteren intersection coord | **ONWAAR** voor onze cases | Alle 3 methodes geven identieke output. Adaptive nuttig voor orient2d sign-tests |
+| `winit 0.30` mist `rwh_06` feature | **ONWAAR** | Feature bestaat in 0.30.13 |
+| `memory_hints` in wgpu 0.20 DeviceDescriptor | **COMPLEX** | Veld is wgpu 21+, NIET 0.20. Maar omdat egui-wgpu 0.29 wgpu 22 vereist, gebruiken we wgpu 22 door — dus `memory_hints` wél verplicht |
+| `robust::orient2d` API klopt | **WAAR** | Werkt. Crate is 1.2, niet 1.1 |
+| wry `EVAL_CHAN` threading hack is UB | **WAAR** | Vervangen door `EventLoopProxy<AppEvent>` pattern |
+| `pass.forget_lifetime()` niet in wgpu 0.20 | **WAAR in 0.20, nodig in 22** | In wgpu 22 eist `egui_renderer.render()` een `'static` RenderPass, dus `forget_lifetime()` is de sanctioned fix |
+| `wry 0.45` `.build(&window)` API | **WAAR** — is `.build()` zonder arg | Correct: `WebViewBuilder::new(&window).with_*().build()` |
+| `Arc<Window>` vs `&Window` coercion | **WAAR** | `&*window` deref explicitly in egui-winit state constructor |
 
 ### Aangebrachte correcties in plannen
 

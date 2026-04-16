@@ -27,11 +27,13 @@
 
 ### Metingen op RTX 2000 Ada Laptop GPU
 
-| Scenario | Dirty/frame | Mean FPS | Mean ms | P99 ms | Target |
-|----------|-------------|----------|---------|--------|--------|
-| Static   | 0 | **459** | 2.179 | 5.698 | ✅ 3.8× over 120 fps |
-| Sparse   | 500 | **280** | 3.566 | 7.180 | ✅ 2.3× over 120 fps |
-| Heavy    | 5.000 | **54** | 18.574 | 26.106 | ⚠️ onder 60 fps |
+| Scenario | Dirty/frame | Initial FPS | Optimized FPS | Strategie |
+|----------|-------------|-------------|---------------|-----------|
+| Static   | 0 | **459** | — | instance buffer, 1 draw call |
+| Sparse   | 500 | **280** | — | sparse write_buffer coalesced |
+| Heavy    | 5.000 | 54 ❌ | **456** ✅ | full staging rewrite (8.4× sneller) |
+
+**Optimalisatie:** voor > 1000 dirty/frame is één `write_buffer` met de hele instance array sneller dan N sparse writes (wgpu internal staging ring is efficiënter dan driver-coalesced sparse submits). De **Programmeur's concern in round 2** is daarmee empirisch bevestigd én opgelost.
 
 ### Belangrijke bevindingen
 

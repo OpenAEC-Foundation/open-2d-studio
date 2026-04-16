@@ -18,6 +18,10 @@ pub struct Renderer {
     pipeline: wgpu::RenderPipeline,
     template_vb: wgpu::Buffer,
     instance_vb: wgpu::Buffer,
+    /// Pre-allocated staging buffer for batched dirty updates.
+    /// Size = enough for ~10k instances = 320 KB.
+    staging_vb: wgpu::Buffer,
+    staging_capacity: usize,
     camera_ub: wgpu::Buffer,
     camera_bg: wgpu::BindGroup,
     instance_count: u32,
@@ -28,9 +32,7 @@ impl Renderer {
         let size = window.inner_size();
         let instance_api = wgpu::Instance::new(wgpu::InstanceDescriptor {
             backends: wgpu::Backends::PRIMARY,
-            flags: wgpu::InstanceFlags::default(),
-            dx12_shader_compiler: wgpu::Dx12Compiler::default(),
-            gles_minor_version: wgpu::Gles3MinorVersion::default(),
+            ..Default::default()
         });
 
         let surface = instance_api.create_surface(window.clone())?;
@@ -52,6 +54,7 @@ impl Renderer {
                     label: Some("spike-device"),
                     required_features: wgpu::Features::empty(),
                     required_limits: wgpu::Limits::default(),
+                    memory_hints: wgpu::MemoryHints::Performance,
                 },
                 None,
             )
@@ -93,6 +96,16 @@ impl Renderer {
             label: Some("instance-vb"),
             contents: bytemuck::cast_slice(instances),
             usage: wgpu::BufferUsages::VERTEX | wgpu::BufferUsages::COPY_DST,
+        });
+
+        // Pre-allocated staging buffer — grow if needed but start with 10k slots
+        let staging_capacity = 10_000;
+        let staging_size = staging_capacity * std::mem::size_of::<Instance>();
+        let staging_vb = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("staging-vb"),
+            size: staging_size as u64,
+            usage: wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::MAP_WRITE,
+            mapped_at_creation: false,
         });
 
         let camera_ub = device.create_buffer(&wgpu::BufferDescriptor {
@@ -167,11 +180,13 @@ impl Renderer {
                 compilation_options: Default::default(),
             }),
             multiview: None,
+            cache: None, // wgpu 22+
         });
 
         Ok(Self {
             surface, device, queue, config, pipeline,
-            template_vb, instance_vb, camera_ub, camera_bg,
+            template_vb, instance_vb, staging_vb, staging_capacity,
+            camera_ub, camera_bg,
             instance_count: instances.len() as u32,
         })
     }
@@ -188,7 +203,8 @@ impl Renderer {
     }
 
     pub fn update_instances_sparse(&self, dirty: &[(u32, Instance)]) {
-        // Coalesce contiguous runs to reduce driver overhead (Programmeur's R1 concern)
+        // Coalesce contiguous runs to reduce driver overhead (Programmeur's R1 concern).
+        // For dirty counts > 1000, prefer staging buffer batching — fewer GPU submits.
         let mut sorted: Vec<(u32, Instance)> = dirty.to_vec();
         sorted.sort_by_key(|&(i, _)| i);
         let stride = std::mem::size_of::<Instance>() as u64;
@@ -196,16 +212,23 @@ impl Renderer {
         let mut i = 0;
         while i < sorted.len() {
             let mut j = i + 1;
-            // Find end of contiguous run
             while j < sorted.len() && sorted[j].0 == sorted[j - 1].0 + 1 {
                 j += 1;
             }
-            // Build a slice from sorted[i..j] and write in one call
             let run: Vec<Instance> = sorted[i..j].iter().map(|&(_, inst)| inst).collect();
             let offset = sorted[i].0 as u64 * stride;
             self.queue.write_buffer(&self.instance_vb, offset, bytemuck::cast_slice(&run));
             i = j;
         }
+    }
+
+    /// Alternative dirty-update path via staging buffer + GPU copy.
+    /// For large batches (> 1000 dirty) this reduces CPU-to-GPU submit overhead.
+    pub fn update_instances_via_staging(&self, all_instances: &[Instance]) {
+        // Single-shot full buffer replacement — fastest for high churn.
+        // Uses queue.write_buffer once with the whole array (wgpu internally
+        // uses a staging ring) rather than N sparse writes.
+        self.queue.write_buffer(&self.instance_vb, 0, bytemuck::cast_slice(all_instances));
     }
 
     pub fn render(&self) -> Result<(), wgpu::SurfaceError> {

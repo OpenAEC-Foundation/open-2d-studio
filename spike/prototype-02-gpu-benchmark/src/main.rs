@@ -23,9 +23,7 @@ enum Scenario { Static, Sparse, Heavy }
 async fn probe_only() -> anyhow::Result<()> {
     let instance = wgpu::Instance::new(wgpu::InstanceDescriptor {
         backends: wgpu::Backends::PRIMARY,
-        flags: wgpu::InstanceFlags::default(),
-        dx12_shader_compiler: wgpu::Dx12Compiler::default(),
-        gles_minor_version: wgpu::Gles3MinorVersion::default(),
+        ..Default::default()
     });
     let adapter = instance
         .request_adapter(&wgpu::RequestAdapterOptions {
@@ -42,6 +40,7 @@ async fn probe_only() -> anyhow::Result<()> {
         label: Some("probe"),
         required_features: wgpu::Features::empty(),
         required_limits: wgpu::Limits::default(),
+        memory_hints: wgpu::MemoryHints::Performance,
     }, None).await?;
     println!("      max_buffer_size: {}", device.limits().max_buffer_size);
     Ok(())
@@ -142,14 +141,25 @@ impl ApplicationHandler for App {
                     };
                     if dirty_count > 0 {
                         let mut lcg: u32 = self.frame_idx as u32;
-                        let mut dirty_pairs = Vec::with_capacity(dirty_count);
                         for _ in 0..dirty_count {
                             lcg = lcg.wrapping_mul(1664525).wrapping_add(1013904223);
                             let idx = (lcg as usize) % self.instances.len();
                             self.instances[idx].rotation += 0.01;
-                            dirty_pairs.push((idx as u32, self.instances[idx]));
                         }
-                        r.update_instances_sparse(&dirty_pairs);
+                        // Heuristic: > 1000 dirty → full buffer replace is faster
+                        // than N sparse writes (wgpu internally uses staging).
+                        if dirty_count > 1000 {
+                            r.update_instances_via_staging(&self.instances);
+                        } else {
+                            let mut lcg2: u32 = self.frame_idx as u32;
+                            let mut dirty_pairs = Vec::with_capacity(dirty_count);
+                            for _ in 0..dirty_count {
+                                lcg2 = lcg2.wrapping_mul(1664525).wrapping_add(1013904223);
+                                let idx = (lcg2 as usize) % self.instances.len();
+                                dirty_pairs.push((idx as u32, self.instances[idx]));
+                            }
+                            r.update_instances_sparse(&dirty_pairs);
+                        }
                     }
 
                     // Fit a grid of 100k * 5mm spacing into viewport
