@@ -10,6 +10,7 @@ pub mod pipeline;
 pub mod style;
 pub mod tessellate;
 pub mod tess_pipeline;
+pub mod text;
 
 pub use arc::{tessellate_arc, tessellate_bezier};
 pub use hatch::{generate_hatch_lines, HatchParams};
@@ -18,3 +19,4 @@ pub use pipeline::{camera_center, CameraUniform, ShapePipeline};
 pub use style::{LineStyle, Style, StyleTable};
 pub use tessellate::{tessellate_fill, tessellate_stroke, TessBuffers, TessVertex};
 pub use tess_pipeline::{TessPipeline, TessUniform};
+pub use text::TextEngine;

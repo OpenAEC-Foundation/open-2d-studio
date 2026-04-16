@@ -11,3 +11,5 @@ wgpu = { workspace = true }
 bytemuck = { workspace = true }
 anyhow = { workspace = true }
 lyon = "1.0"
+cosmic-text = "0.12"
+etagere = "0.2"
