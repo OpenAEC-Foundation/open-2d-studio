@@ -6,6 +6,7 @@ members = [
     "prototype-03-egui-ribbon",
     "prototype-04-precision",
     "prototype-05-wry-webview",
+    "prototype-06-integration",
 ]
 
 [workspace.package]

@@ -1,0 +1,21 @@
+[package]
+name = "prototype-06-integration"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
+# Full stack — egui + wgpu 22 + bevy_ecs + winit
+egui = "0.29"
+egui-wgpu = "0.29"
+egui-winit = "0.29"
+wgpu = "22"
+winit = "0.30"
+pollster = "0.3"
+bytemuck = { version = "1.19", features = ["derive"] }
+bevy_ecs = { workspace = true }
+anyhow = { workspace = true }
+uuid = { workspace = true }
+
+[[bin]]
+name = "prototype-06"
+path = "src/main.rs"
