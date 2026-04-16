@@ -10,3 +10,4 @@ bevy_ecs = { workspace = true }
 wgpu = { workspace = true }
 bytemuck = { workspace = true }
 anyhow = { workspace = true }
+lyon = "1.0"

@@ -6,7 +6,9 @@
 pub mod instance;
 pub mod pipeline;
 pub mod style;
+pub mod tessellate;
 
 pub use instance::{Instance, INSTANCE_ATTRIBS, instance_buffer_layout};
 pub use pipeline::{camera_center, CameraUniform, ShapePipeline};
 pub use style::{LineStyle, Style, StyleTable};
+pub use tessellate::{tessellate_fill, tessellate_stroke, TessBuffers, TessVertex};
