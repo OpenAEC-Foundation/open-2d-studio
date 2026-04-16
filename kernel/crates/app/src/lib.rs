@@ -1,8 +1,13 @@
 //! kernel-app — top-level app binding: winit + wgpu + egui + ECS loop.
-//! Dit is de entry point die de andere crates samenvoegt tot één draaiend programma.
 
 use bevy_ecs::prelude::*;
 use kernel_core::new_world;
+
+pub mod app;
+pub mod gpu;
+pub mod sync;
+
+pub use app::{App, DEMO_SHAPE_COUNT};
 
 /// Bootstrap a World with all kernel subsystems installed.
 pub fn create_world() -> World {

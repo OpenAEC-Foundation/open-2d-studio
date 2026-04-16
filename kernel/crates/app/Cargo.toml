@@ -9,6 +9,14 @@ kernel-core = { workspace = true }
 kernel-commands = { workspace = true }
 kernel-render = { workspace = true }
 bevy_ecs = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+egui = { workspace = true }
+egui-wgpu = { workspace = true }
+egui-winit = { workspace = true }
+egui_dock = { workspace = true }
+pollster = { workspace = true }
+bytemuck = { workspace = true }
 anyhow = { workspace = true }
 
 [[bin]]
