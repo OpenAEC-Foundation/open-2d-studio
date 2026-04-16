@@ -1,0 +1,19 @@
+[package]
+name = "kernel-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kernel-core = { workspace = true }
+kernel-commands = { workspace = true }
+kernel-render = { workspace = true }
+bevy_ecs = { workspace = true }
+anyhow = { workspace = true }
+
+[[bin]]
+name = "kernel-app"
+path = "src/main.rs"
+
+[lib]
+path = "src/lib.rs"

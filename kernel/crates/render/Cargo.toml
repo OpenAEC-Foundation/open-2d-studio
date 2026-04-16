@@ -1,0 +1,12 @@
+[package]
+name = "kernel-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kernel-core = { workspace = true }
+bevy_ecs = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+anyhow = { workspace = true }

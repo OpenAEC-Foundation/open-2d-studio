@@ -1,0 +1,47 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/core",
+    "crates/render",
+    "crates/commands",
+    "crates/app",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.77"
+license = "AGPL-3.0-or-later"
+
+[workspace.dependencies]
+# ECS
+bevy_ecs = "0.15"
+# GPU
+wgpu = "22"
+winit = "0.30"
+# UI
+egui = "0.29"
+egui-wgpu = "0.29"
+egui-winit = "0.29"
+egui_dock = "0.14"
+# Serialization & utilities
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+bytemuck = { version = "1.19", features = ["derive"] }
+uuid = { version = "1.10", features = ["v4", "serde"] }
+# Error handling & async
+anyhow = "1"
+thiserror = "1"
+pollster = "0.3"
+# Internal
+kernel-core = { path = "crates/core" }
+kernel-commands = { path = "crates/commands" }
+kernel-render = { path = "crates/render" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+
+[profile.dev]
+opt-level = 1  # faster builds but reasonable performance
