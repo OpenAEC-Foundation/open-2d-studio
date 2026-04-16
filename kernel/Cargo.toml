@@ -6,6 +6,7 @@ members = [
     "crates/commands",
     "crates/spatial",
     "crates/fileio",
+    "crates/dxf-import",
     "crates/app",
 ]
 

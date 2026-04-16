@@ -10,6 +10,7 @@ kernel-commands = { workspace = true }
 kernel-render = { workspace = true }
 kernel-spatial = { path = "../spatial" }
 kernel-fileio = { path = "../fileio" }
+kernel-dxf-import = { path = "../dxf-import" }
 bevy_ecs = { workspace = true }
 wgpu = { workspace = true }
 winit = { workspace = true }

@@ -40,6 +40,20 @@ fn main() -> anyhow::Result<()> {
             println!("loaded {} shapes from {}", doc.shapes.len(), path);
             Ok(())
         }
+        "--import-dxf" => {
+            let path = args.get(2).ok_or_else(|| anyhow::anyhow!("--import-dxf requires path"))?;
+            let mut world = create_world();
+            let t0 = std::time::Instant::now();
+            let stats = kernel_dxf_import::import_dxf(&mut world, path)?;
+            let elapsed = t0.elapsed();
+            println!("imported DXF {} in {:?}", path, elapsed);
+            println!("  lines:       {}", stats.lines);
+            println!("  circles:     {}", stats.circles);
+            println!("  arcs:        {}", stats.arcs);
+            println!("  polylines:   {}", stats.polylines);
+            println!("  unsupported: {}", stats.unsupported);
+            Ok(())
+        }
         "--spatial-bench" => {
             use kernel_spatial::{SpatialEntry, SpatialIndex};
             use kernel_core::WorldBounds;
