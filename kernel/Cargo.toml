@@ -4,6 +4,7 @@ members = [
     "crates/core",
     "crates/render",
     "crates/commands",
+    "crates/spatial",
     "crates/app",
 ]
 
@@ -37,6 +38,7 @@ pollster = "0.3"
 kernel-core = { path = "crates/core" }
 kernel-commands = { path = "crates/commands" }
 kernel-render = { path = "crates/render" }
+kernel-spatial = { path = "crates/spatial" }
 
 [profile.release]
 opt-level = 3
