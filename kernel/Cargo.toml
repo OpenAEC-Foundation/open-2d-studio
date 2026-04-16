@@ -5,6 +5,7 @@ members = [
     "crates/render",
     "crates/commands",
     "crates/spatial",
+    "crates/fileio",
     "crates/app",
 ]
 

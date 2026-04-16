@@ -1,0 +1,13 @@
+[package]
+name = "kernel-fileio"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+kernel-core = { workspace = true }
+bevy_ecs = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
