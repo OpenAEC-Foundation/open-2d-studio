@@ -1,0 +1,360 @@
+<!DOCTYPE html>
+<html lang="nl">
+<head>
+  <meta charset="UTF-8">
+  <title>Kernel Ontwerp — Parlement</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', 'Helvetica Neue', sans-serif;
+      background: radial-gradient(ellipse at top, #1a2332 0%, #0a0e16 100%);
+      color: #e5e7eb;
+      min-height: 100vh;
+      padding: 20px 40px 60px;
+    }
+    .header {
+      text-align: center;
+      margin-bottom: 30px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid #374151;
+    }
+    .header h1 {
+      font-size: 28px;
+      font-weight: 300;
+      letter-spacing: 2px;
+      color: #fbbf24;
+      text-transform: uppercase;
+    }
+    .header p {
+      color: #9ca3af;
+      font-size: 14px;
+      margin-top: 8px;
+    }
+    .topic {
+      background: rgba(251, 191, 36, 0.1);
+      border: 1px solid #fbbf24;
+      border-radius: 8px;
+      padding: 16px 24px;
+      margin: 20px auto 40px;
+      max-width: 900px;
+      text-align: center;
+    }
+    .topic strong { color: #fbbf24; }
+    .round-header {
+      text-align: center;
+      color: #60a5fa;
+      font-size: 18px;
+      margin: 40px 0 20px;
+      padding-top: 20px;
+      border-top: 1px dashed #374151;
+      letter-spacing: 3px;
+      text-transform: uppercase;
+    }
+    .parliament {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(380px, 1fr));
+      gap: 24px;
+      max-width: 1400px;
+      margin: 0 auto;
+    }
+    .speaker {
+      background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+      border: 1px solid #374151;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+      transition: transform 0.2s, box-shadow 0.2s;
+    }
+    .speaker:hover {
+      transform: translateY(-3px);
+      box-shadow: 0 6px 28px rgba(0,0,0,0.6);
+    }
+    .speaker-header {
+      padding: 18px 22px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      border-bottom: 1px solid #374151;
+    }
+    .avatar {
+      width: 60px;
+      height: 60px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 32px;
+      flex-shrink: 0;
+      border: 2px solid rgba(255,255,255,0.1);
+    }
+    .speaker-info h3 {
+      font-size: 18px;
+      font-weight: 600;
+      letter-spacing: 1px;
+      margin-bottom: 4px;
+    }
+    .speaker-info p {
+      font-size: 12px;
+      color: #9ca3af;
+      font-style: italic;
+    }
+    .statement {
+      padding: 20px 22px;
+      font-size: 14px;
+      line-height: 1.6;
+      color: #d1d5db;
+      white-space: pre-wrap;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .statement:empty::after {
+      content: "⏳ nog aan het woord …";
+      color: #6b7280;
+      font-style: italic;
+    }
+    .statement h4 {
+      color: #fbbf24;
+      font-size: 14px;
+      margin: 12px 0 6px;
+      font-weight: 600;
+    }
+    .statement p { margin-bottom: 10px; }
+    .statement code {
+      background: rgba(0,0,0,0.3);
+      padding: 2px 6px;
+      border-radius: 3px;
+      font-size: 12px;
+      color: #fbbf24;
+    }
+
+    /* Per-rol kleuren */
+    .luis    .avatar { background: linear-gradient(135deg, #7f1d1d, #dc2626); }
+    .luis    h3      { color: #fca5a5; }
+    .purist  .avatar { background: linear-gradient(135deg, #1e3a8a, #3b82f6); }
+    .purist  h3      { color: #93c5fd; }
+    .tekenaar .avatar { background: linear-gradient(135deg, #365314, #84cc16); }
+    .tekenaar h3     { color: #bef264; }
+    .programmeur .avatar { background: linear-gradient(135deg, #4c1d95, #8b5cf6); }
+    .programmeur h3  { color: #c4b5fd; }
+    .professor .avatar { background: linear-gradient(135deg, #78350f, #f59e0b); }
+    .professor h3    { color: #fcd34d; }
+    .verkoper .avatar { background: linear-gradient(135deg, #831843, #ec4899); }
+    .verkoper h3     { color: #f9a8d4; }
+    .ideoloog .avatar { background: linear-gradient(135deg, #134e4a, #14b8a6); }
+    .ideoloog h3     { color: #5eead4; }
+
+    .footer {
+      text-align: center;
+      color: #6b7280;
+      margin-top: 60px;
+      font-size: 12px;
+      padding: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🏛 Parlement van het Kernel Ontwerp</h1>
+    <p>Zeven perspectieven over de native Rust kernel voor Open 2D Studio</p>
+  </div>
+
+  <div class="topic">
+    <strong>Onderwerp:</strong> Is het ontwerp voor de nieuwe native Rust + wgpu + bevy_ecs kernel
+    (100k shapes @ 120fps, 0.001mm op 1000km, 18-24 weken) de juiste route?
+  </div>
+
+  <div class="round-header">🔔 Ronde 1 — Opening</div>
+
+  <div class="parliament" id="round1">
+    <div class="speaker luis">
+      <div class="speaker-header">
+        <div class="avatar">🦗</div>
+        <div class="speaker-info">
+          <h3>DE LUIS IN DE PELS</h3>
+          <p>De criticaster die elk zwak punt blootlegt</p>
+        </div>
+      </div>
+      <div class="statement" id="stmt-r1-luis"></div>
+    </div>
+
+    <div class="speaker purist">
+      <div class="speaker-header">
+        <div class="avatar">⚖️</div>
+        <div class="speaker-info">
+          <h3>DE PURIST</h3>
+          <p>Strikt correct, geen compromissen</p>
+        </div>
+      </div>
+      <div class="statement" id="stmt-r1-purist"></div>
+    </div>
+
+    <div class="speaker tekenaar">
+      <div class="speaker-header">
+        <div class="avatar">✏️</div>
+        <div class="speaker-info">
+          <h3>DE TEKENAAR</h3>
+          <p>De échte CAD-gebruiker in de praktijk</p>
+        </div>
+      </div>
+      <div class="statement" id="stmt-r1-tekenaar"></div>
+    </div>
+
+    <div class="speaker programmeur">
+      <div class="speaker-header">
+        <div class="avatar">⚙️</div>
+        <div class="speaker-info">
+          <h3>DE PROGRAMMEUR</h3>
+          <p>Hands-on, wat gaat dit écht kosten om te bouwen?</p>
+        </div>
+      </div>
+      <div class="statement" id="stmt-r1-programmeur"></div>
+    </div>
+
+    <div class="speaker professor">
+      <div class="speaker-header">
+        <div class="avatar">🎓</div>
+        <div class="speaker-info">
+          <h3>DE PROFESSOR</h3>
+          <p>Theoretisch fundament, academische strengheid</p>
+        </div>
+      </div>
+      <div class="statement" id="stmt-r1-professor"></div>
+    </div>
+
+    <div class="speaker verkoper">
+      <div class="speaker-header">
+        <div class="avatar">💼</div>
+        <div class="speaker-info">
+          <h3>DE VERKOPER</h3>
+          <p>Business case, markt, klanten, ROI</p>
+        </div>
+      </div>
+      <div class="statement" id="stmt-r1-verkoper"></div>
+    </div>
+
+    <div class="speaker ideoloog">
+      <div class="speaker-header">
+        <div class="avatar">🔥</div>
+        <div class="speaker-info">
+          <h3>DE IDEOLOOG</h3>
+          <p>Visie, principes, open source, missie</p>
+        </div>
+      </div>
+      <div class="statement" id="stmt-r1-ideoloog"></div>
+    </div>
+  </div>
+
+  <div class="round-header" id="round2-header" style="display:none;">⚔️ Ronde 2 — Wederwoord</div>
+
+  <div class="parliament" id="round2" style="display:none;">
+    <div class="speaker luis">
+      <div class="speaker-header">
+        <div class="avatar">🦗</div>
+        <div class="speaker-info"><h3>DE LUIS IN DE PELS</h3><p>reageert op de anderen</p></div>
+      </div>
+      <div class="statement" id="stmt-r2-luis"></div>
+    </div>
+    <div class="speaker purist">
+      <div class="speaker-header">
+        <div class="avatar">⚖️</div>
+        <div class="speaker-info"><h3>DE PURIST</h3><p>reageert op de anderen</p></div>
+      </div>
+      <div class="statement" id="stmt-r2-purist"></div>
+    </div>
+    <div class="speaker tekenaar">
+      <div class="speaker-header">
+        <div class="avatar">✏️</div>
+        <div class="speaker-info"><h3>DE TEKENAAR</h3><p>reageert op de anderen</p></div>
+      </div>
+      <div class="statement" id="stmt-r2-tekenaar"></div>
+    </div>
+    <div class="speaker programmeur">
+      <div class="speaker-header">
+        <div class="avatar">⚙️</div>
+        <div class="speaker-info"><h3>DE PROGRAMMEUR</h3><p>reageert op de anderen</p></div>
+      </div>
+      <div class="statement" id="stmt-r2-programmeur"></div>
+    </div>
+    <div class="speaker professor">
+      <div class="speaker-header">
+        <div class="avatar">🎓</div>
+        <div class="speaker-info"><h3>DE PROFESSOR</h3><p>reageert op de anderen</p></div>
+      </div>
+      <div class="statement" id="stmt-r2-professor"></div>
+    </div>
+    <div class="speaker verkoper">
+      <div class="speaker-header">
+        <div class="avatar">💼</div>
+        <div class="speaker-info"><h3>DE VERKOPER</h3><p>reageert op de anderen</p></div>
+      </div>
+      <div class="statement" id="stmt-r2-verkoper"></div>
+    </div>
+    <div class="speaker ideoloog">
+      <div class="speaker-header">
+        <div class="avatar">🔥</div>
+        <div class="speaker-info"><h3>DE IDEOLOOG</h3><p>reageert op de anderen</p></div>
+      </div>
+      <div class="statement" id="stmt-r2-ideoloog"></div>
+    </div>
+  </div>
+
+  <div class="footer">Een debat in zeven stemmen · Open 2D Studio · 2026</div>
+
+  <script>
+    function renderStatement(elId, content) {
+      const el = document.getElementById(elId);
+      if (!el || !content) return;
+      let html = content
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/^/, '<p>')
+        .replace(/$/, '</p>');
+      el.innerHTML = html;
+    }
+
+    async function loadStatements() {
+      try {
+        const res = await fetch('./statements.json?' + Date.now());
+        const data = await res.json();
+
+        // Support both old flat structure and new rounds structure
+        const r1 = data.round1 || data;
+        const r2 = data.round2 || {};
+
+        // Fix legacy IDs if needed (old HTML used stmt-xxx, new uses stmt-r1-xxx)
+        for (const [key, content] of Object.entries(r1)) {
+          // try new id first, then fallback to old
+          const el = document.getElementById('stmt-r1-' + key) || document.getElementById('stmt-' + key);
+          if (el && content) renderStatementEl(el, content);
+        }
+
+        // Round 2 visibility
+        const anyR2 = Object.values(r2).some(v => v && v.length > 0);
+        document.getElementById('round2-header').style.display = anyR2 ? 'block' : 'none';
+        document.getElementById('round2').style.display = anyR2 ? 'grid' : 'none';
+        for (const [key, content] of Object.entries(r2)) {
+          if (content) renderStatement('stmt-r2-' + key, content);
+        }
+      } catch (e) {
+        console.error('Load failed:', e);
+      }
+    }
+
+    function renderStatementEl(el, content) {
+      let html = content
+        .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+        .replace(/^### (.+)$/gm, '<h4>$1</h4>')
+        .replace(/`(.+?)`/g, '<code>$1</code>')
+        .replace(/\n\n/g, '</p><p>')
+        .replace(/^/, '<p>')
+        .replace(/$/, '</p>');
+      el.innerHTML = html;
+    }
+
+    loadStatements();
+    setInterval(loadStatements, 3000);
+  </script>
+</body>
+</html>
