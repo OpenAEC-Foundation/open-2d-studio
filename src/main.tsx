@@ -3,10 +3,18 @@ import ReactDOM from 'react-dom/client';
 import { isMobileViewer } from './utils/platform';
 import './styles/globals.css';
 
+// Slice 1 of the 1.0 + 2.0 merge: when VITE_MERGED=1 is set (via
+// vite.merged.config.ts or npm run dev:merged), render the stripped
+// MergedApp shell instead of the full 1.0 App. See
+// docs/superpowers/specs/2026-04-22-open2d-merge-slice1-design.md.
+const isMerged = import.meta.env.VITE_MERGED === '1';
+
 const AppComponent = React.lazy(() =>
-  isMobileViewer()
-    ? import('./components/tablet/TabletApp')
-    : import('./App')
+  isMerged
+    ? import('./MergedApp')
+    : isMobileViewer()
+      ? import('./components/tablet/TabletApp')
+      : import('./App')
 );
 
 const LoadingFallback = () => (
