@@ -173,6 +173,7 @@ export const LINE_DASH_PATTERNS: Record<string, number[]> = {
   dashed: [500, 250],
   dotted: [100, 150],
   dashdot: [500, 150, 100, 150],
+  center: [800, 150, 200, 150],
 };
 
 // Reference drawing scale for LINE_DASH_PATTERNS values (1:100)

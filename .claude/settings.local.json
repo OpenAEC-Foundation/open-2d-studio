@@ -27,7 +27,14 @@
       "Bash(npx vitest:*)",
       "Bash(git status:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(cmd //c \"taskkill /F /IM split_compare.exe\")",
+      "Bash(/c/Users/rickd/Documents/GitHub/open-2d-studio/kernel/target/release/split_compare.exe \"C:\\\\\\\\Users\\\\\\\\rickd\\\\\\\\Desktop\\\\\\\\dwg_samples\\\\\\\\circle_2010\")",
+      "Bash(powershell -NoProfile -ExecutionPolicy Bypass -File \"C:\\\\Users\\\\rickd\\\\Documents\\\\GitHub\\\\open-2d-studio\\\\kernel\\\\focus_window.ps1\")",
+      "Bash(cp \"C:/Users/rickd/.claude/projects/C--Users-rickd-Documents-GitHub-open-2d-studio/626ff968-bf03-4166-8bd7-e2f4a7830f2a.jsonl\" \"C:/Users/rickd/Desktop/dwg_samples/3bm-trainingset/chat_history_dxf_work.jsonl\")",
+      "Read(//c/Users/rickd/Desktop/dwg_samples/3bm-trainingset/**)",
+      "Bash(mkdir -p \"/c/Users/rickd/Documents/GitHub/open-2d-studio/docs/session-exports\")",
+      "Bash(cp \"/c/Users/rickd/.claude/projects/C--Users-rickd-Documents-GitHub-open-2d-studio/626ff968-bf03-4166-8bd7-e2f4a7830f2a.jsonl\" \"/c/Users/rickd/Documents/GitHub/open-2d-studio/docs/session-exports/2026-04-21-dxf-dwg-viewer-session.jsonl\")"
     ]
   },
   "enabledMcpjsonServers": [

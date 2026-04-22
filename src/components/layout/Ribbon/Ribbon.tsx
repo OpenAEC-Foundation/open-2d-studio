@@ -44,6 +44,9 @@ import {
   Ruler,
   Package,
   Ungroup,
+  ScanSearch,
+  SlidersHorizontal,
+  Undo2,
 } from 'lucide-react';
 import type { UITheme } from '../../../state/slices/snapSlice';
 import { UI_THEMES } from '../../../state/slices/snapSlice';
@@ -292,6 +295,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
     zoomIn,
     zoomOut,
     zoomToFit,
+    zoomPrevious,
     deleteSelectedShapes,
     selectedShapeIds,
     // Clipboard
@@ -350,6 +354,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
 
     // Settings
     setSettingsDialogOpen,
+    setScaleSettingsDialogOpen,
 
   } = useAppStore();
 
@@ -564,36 +569,38 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
         <div className={`ribbon-content ${activeTab === 'home' ? 'active' : ''}`}>
           <div className="ribbon-groups">
             {/* Selection Group */}
-            <RibbonGroup label="Selection">
-              <RibbonButton
-                icon={<MousePointer2 size={24} />}
-                label="Select"
-                onClick={() => switchToolAndCancelCommand('select')}
-                active={activeTool === 'select'}
-                shortcut="MD"
-              />
-              <RibbonButton
-                icon={<Hand size={24} />}
-                label="Pan"
-                onClick={() => switchToolAndCancelCommand('pan')}
-                active={activeTool === 'pan'}
-              />
+            <RibbonGroup label="Selection" noLabels>
               <RibbonButtonStack>
                 <RibbonSmallButton
+                  icon={<MousePointer2 size={14} />}
+                  label=""
+                  onClick={() => switchToolAndCancelCommand('select')}
+                  active={activeTool === 'select'}
+                  shortcut="MD"
+                />
+                <RibbonSmallButton
+                  icon={<Hand size={14} />}
+                  label=""
+                  onClick={() => switchToolAndCancelCommand('pan')}
+                  active={activeTool === 'pan'}
+                />
+                <RibbonSmallButton
                   icon={<CheckSquare size={14} />}
-                  label="Select All"
+                  label=""
                   onClick={selectAll}
                   disabled={isSheetMode}
                 />
+              </RibbonButtonStack>
+              <RibbonButtonStack>
                 <RibbonSmallButton
                   icon={<XSquare size={14} />}
-                  label="Deselect"
+                  label=""
                   onClick={deselectAll}
                   disabled={isSheetMode}
                 />
                 <RibbonSmallButton
                   icon={<Search size={14} />}
-                  label="Find/Replace"
+                  label=""
                   onClick={() => setFindReplaceDialogOpen(true)}
                   disabled={isSheetMode}
                   shortcut="Ctrl+H"
@@ -836,11 +843,11 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
             </RibbonGroup>
 
             {/* Modify Group */}
-            <RibbonGroup label="Modify">
+            <RibbonGroup label="Modify" noLabels>
               <RibbonButtonStack>
                 <RibbonSmallButton
                   icon={<ArrowRight size={14} />}
-                  label="Move"
+                  label=""
                   onClick={() => switchToolAndCancelCommand('move')}
                   active={activeTool === 'move'}
                   disabled={isSheetMode}
@@ -848,7 +855,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 />
                 <RibbonSmallButton
                   icon={<Copy size={14} />}
-                  label="Copy"
+                  label=""
                   onClick={() => switchToolAndCancelCommand('copy')}
                   active={activeTool === 'copy'}
                   disabled={isSheetMode}
@@ -856,7 +863,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 />
                 <RibbonSmallButton
                   icon={<RotateCw size={14} />}
-                  label="Rotate"
+                  label=""
                   onClick={() => switchToolAndCancelCommand('rotate')}
                   active={activeTool === 'rotate'}
                   disabled={isSheetMode}
@@ -866,7 +873,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
               <RibbonButtonStack>
                 <RibbonSmallButton
                   icon={<FlipHorizontal size={14} />}
-                  label="Mirror"
+                  label=""
                   onClick={() => switchToolAndCancelCommand('mirror')}
                   active={activeTool === 'mirror'}
                   disabled={isSheetMode}
@@ -874,14 +881,14 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 />
                 <RibbonSmallButton
                   icon={<ArrayIcon size={14} />}
-                  label="Array"
+                  label=""
                   onClick={() => switchToolAndCancelCommand('array')}
                   active={activeTool === 'array'}
                   disabled={isSheetMode}
                 />
                 <RibbonSmallButton
                   icon={<ScaleIcon size={14} />}
-                  label="Scale"
+                  label=""
                   onClick={() => switchToolAndCancelCommand('scale')}
                   active={activeTool === 'scale'}
                   disabled={isSheetMode}
@@ -954,7 +961,7 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 />
                 <RibbonSmallButton
                   icon={<AlignIcon size={14} />}
-                  label="Align"
+                  label=""
                   onClick={() => switchToolAndCancelCommand('align')}
                   active={activeTool === 'align'}
                   disabled={isSheetMode}
@@ -1054,6 +1061,12 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 onClick={() => setSettingsDialogOpen(true)}
                 tooltip="Open application settings"
               />
+              <RibbonButton
+                icon={<SlidersHorizontal size={24} />}
+                label="Scale Settings"
+                onClick={() => setScaleSettingsDialogOpen(true)}
+                tooltip="Configure display factors per drawing scale"
+              />
               <TypeManagerDropdown
                 setPatternManagerOpen={setPatternManagerOpen}
                 setRegionTypeManagerOpen={setRegionTypeManagerOpen}
@@ -1093,6 +1106,19 @@ export const Ribbon = memo(function Ribbon({ onOpenAppMenu, hidden }: RibbonProp
                 icon={<Maximize size={24} />}
                 label="Fit All"
                 onClick={zoomToFit}
+              />
+              <RibbonButton
+                icon={<ScanSearch size={24} />}
+                label="Region"
+                shortcut="ZR"
+                active={activeTool === 'zoom-region'}
+                onClick={() => switchToolAndCancelCommand('zoom-region')}
+              />
+              <RibbonButton
+                icon={<Undo2 size={24} />}
+                label="Previous"
+                shortcut="ZP"
+                onClick={zoomPrevious}
               />
             </RibbonGroup>
 

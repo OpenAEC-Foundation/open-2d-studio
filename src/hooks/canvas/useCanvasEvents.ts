@@ -304,6 +304,15 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
   /**
    * Find shape at point using spatial index (only shapes in active drawing)
    */
+  // ── Shape-by-ID map for O(1) lookups in hit testing ──────────────────────
+  // Rebuilt only when shapes reference changes. Avoids O(N) shapes.find()
+  // per candidate in findShapeAtPoint (was 240K comparisons → now O(1)).
+  const shapeByIdMap = useMemo(() => {
+    const map = new Map<string, Shape>();
+    for (const s of shapes) map.set(s.id, s);
+    return map;
+  }, [shapes]);
+
   const findShapeAtPoint = useCallback(
     (worldPoint: Point): string | null => {
       const tolerance = 5 / viewport.zoom;
@@ -314,14 +323,12 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         const shape = drawingParametricShapes[i];
         const bounds = shape.generatedGeometry?.bounds;
         if (bounds) {
-          // Quick bounding box check first
           if (
             worldPoint.x >= bounds.minX - tolerance &&
             worldPoint.x <= bounds.maxX + tolerance &&
             worldPoint.y >= bounds.minY - tolerance &&
             worldPoint.y <= bounds.maxY + tolerance
           ) {
-            // Precise hit test on actual outline geometry
             if (isPointNearParametricShape(worldPoint, shape, tolerance)) {
               return shape.id;
             }
@@ -329,38 +336,34 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         }
       }
 
-      // Check regular shapes
+      // Check regular shapes via QuadTree + O(1) Map lookup
       const candidates = quadTree.queryPoint(worldPoint, tolerance);
 
-      // First pass: check text shapes (labels, annotations) before other shapes.
-      // This ensures labels are independently selectable even when overlapping
-      // with walls/beams they are linked to.
-      for (let i = candidates.length - 1; i >= 0; i--) {
-        const shape = shapes.find(s => s.id === candidates[i].id);
-        if (shape && shape.type === 'text' && !isShapeInHiddenCategory(shape, hiddenIfcCategories) && isPointNearShape(worldPoint, shape, tolerance, activeDrawingScale)) {
-          return resolvePlateSystemHit(shape.id);
-        }
-      }
+      // Single pass with priority ordering: text > wall-opening/slab-opening > rest
+      let bestHit: string | null = null;
+      let bestPriority = 0; // 3=text, 2=opening, 1=other
 
-      // Second pass: check hosted/child shapes first (wall-opening, slab-opening)
-      // so they get selected instead of their parent wall/slab
       for (let i = candidates.length - 1; i >= 0; i--) {
-        const shape = shapes.find(s => s.id === candidates[i].id);
-        if (shape && (shape.type === 'wall-opening' || shape.type === 'slab-opening') && !isShapeInHiddenCategory(shape, hiddenIfcCategories) && isPointNearShape(worldPoint, shape, tolerance, activeDrawingScale)) {
-          return shape.id;
-        }
-      }
+        const shape = shapeByIdMap.get(candidates[i].id);
+        if (!shape || isShapeInHiddenCategory(shape, hiddenIfcCategories)) continue;
 
-      // Third pass: check all other shapes in reverse z-order
-      for (let i = candidates.length - 1; i >= 0; i--) {
-        const shape = shapes.find(s => s.id === candidates[i].id);
-        if (shape && shape.type !== 'text' && !isShapeInHiddenCategory(shape, hiddenIfcCategories) && isPointNearShape(worldPoint, shape, tolerance, activeDrawingScale)) {
-          return resolvePlateSystemHit(shape.id);
+        const isText = shape.type === 'text';
+        const isOpening = shape.type === 'wall-opening' || shape.type === 'slab-opening';
+        const priority = isText ? 3 : isOpening ? 2 : 1;
+
+        // Skip if we already have a higher-priority hit
+        if (priority < bestPriority) continue;
+
+        if (isPointNearShape(worldPoint, shape, tolerance, activeDrawingScale)) {
+          if (priority > bestPriority) {
+            bestPriority = priority;
+            bestHit = isOpening ? shape.id : resolvePlateSystemHit(shape.id);
+          }
         }
       }
-      return null;
+      return bestHit;
     },
-    [quadTree, shapes, parametricShapes, activeDrawingId, viewport.zoom, activeDrawingScale, hiddenIfcCategories, resolvePlateSystemHit]
+    [quadTree, shapes, shapeByIdMap, parametricShapes, activeDrawingId, viewport.zoom, activeDrawingScale, hiddenIfcCategories, resolvePlateSystemHit]
   );
 
   /**
@@ -368,12 +371,19 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
    */
   const handleMouseDown = useCallback(
     (e: React.MouseEvent<HTMLCanvasElement>) => {
-      // Middle-mouse double-click: zoom extents (standard CAD behavior)
+      // Middle-mouse double-click: zoom to selection (Blender-style) or zoom extents
       if (e.button === 1) {
         const now = Date.now();
         if (now - middleClickRef.current < 400) {
           e.preventDefault();
-          useAppStore.getState().zoomToFit();
+          const st = useAppStore.getState();
+          if (st.selectedShapeIds.length > 0) {
+            // Zoom to selected shapes (like Blender numpad .)
+            st.zoomToSelection();
+          } else {
+            // No selection: zoom to fit all
+            st.zoomToFit();
+          }
           middleClickRef.current = 0;
           return;
         }
@@ -428,6 +438,12 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         }
       }
 
+      // Zoom region tool: start zoom box on click
+      if (activeTool === 'zoom-region' && e.button === 0) {
+        boxSelection.startBoxSelection(screenPos);
+        return;
+      }
+
       // Drawing mode: start box selection if clicking on empty space
       if (editorMode === 'drawing' && e.button === 0 && sketchSelectAllowed) {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
@@ -459,6 +475,8 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
       if (boxSelection.justFinishedBoxSelection()) return;
       if (gripEditing.justFinishedGripDrag()) return;
       if (e.button !== 0) return;
+      // Zoom region tool handles clicks via mouseDown/mouseUp — skip click handler
+      if (activeTool === 'zoom-region') return;
 
       const screenPos = panZoom.getMousePos(e);
 
@@ -993,19 +1011,33 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
 
         case 'measure': {
           // Measure tool: first click sets start point, second click shows distance.
-          // No shapes are created — purely informational.
+          // Uses drawingPreview to show a temporary line during measurement.
+          // Result is shown as a temporary dimension line that stays until next measurement.
           deselectAll();
-          const { drawingPoints, addDrawingPoint, clearDrawingPoints, unitSettings } = useAppStore.getState();
+          const { drawingPoints, addDrawingPoint, clearDrawingPoints, unitSettings, setDrawingPreview } = useAppStore.getState();
           if (drawingPoints.length === 0) {
+            // First click: set start point, start preview line
             addDrawingPoint(snappedPos);
+            setDrawingPreview({
+              type: 'line',
+              start: snappedPos,
+              end: snappedPos,
+            });
           } else {
+            // Second click: calculate and display result
             const start = drawingPoints[0];
             const dx = snappedPos.x - start.x;
             const dy = snappedPos.y - start.y;
             const dist = Math.sqrt(dx * dx + dy * dy);
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
             const distStr = formatLength(dist, unitSettings);
-            alert(`Afstand: ${distStr}`);
+            const dxStr = formatLength(Math.abs(dx), unitSettings);
+            const dyStr = formatLength(Math.abs(dy), unitSettings);
+            // Show result in status bar (via window for cross-component access)
+            (window as any).__measureResult = `Afstand: ${distStr}  |  ΔX: ${dxStr}  |  ΔY: ${dyStr}  |  Hoek: ${angle.toFixed(1)}°`;
+            // Clear preview and points, ready for next measurement
             clearDrawingPoints();
+            setDrawingPreview(null);
           }
           snapDetection.clearTracking();
           break;
@@ -1206,6 +1238,28 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         return;
       }
 
+      // Measure tool: update preview line from start point to current mouse position
+      if (activeTool === 'measure' && editorMode === 'drawing') {
+        const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
+        const basePoint = useAppStore.getState().drawingPoints[0];
+        if (basePoint) {
+          const snapResult = snapDetection.snapPoint(worldPos, basePoint);
+          const snappedPos = snapResult.point;
+          const dx = snappedPos.x - basePoint.x;
+          const dy = snappedPos.y - basePoint.y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          const { unitSettings } = useAppStore.getState();
+          const distStr = formatLength(dist, unitSettings);
+          useAppStore.getState().setDrawingPreview({
+            type: 'line',
+            start: basePoint,
+            end: snappedPos,
+          });
+          (window as any).__measureResult = `Afstand: ${distStr}  |  ΔX: ${formatLength(Math.abs(dx), unitSettings)}  |  ΔY: ${formatLength(Math.abs(dy), unitSettings)}`;
+        }
+        return;
+      }
+
       // Pending section placement preview
       if (pendingSection && editorMode === 'drawing') {
         const worldPos = screenToWorld(screenPos.x, screenPos.y, viewport);
@@ -1368,13 +1422,53 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         return;
       }
 
+      // Zoom region end: convert box to viewport zoom
+      if (activeTool === 'zoom-region' && boxSelection.isSelecting()) {
+        const screenPos = panZoom.getMousePos(e);
+        const st = useAppStore.getState();
+        const selBox = st.selectionBox;
+        const currentViewport = st.viewport;
+        // Clear box selection FIRST to prevent shape selection
+        boxSelection.endBoxSelection(screenPos, false);
+        st.deselectAll();
+        st.setSelectionBox(null);
+
+        if (selBox) {
+          // Convert screen coordinates to world coordinates using CURRENT viewport
+          const worldStart = screenToWorld(selBox.start.x, selBox.start.y, currentViewport);
+          const worldEnd = screenToWorld(screenPos.x, screenPos.y, currentViewport);
+          const minX = Math.min(worldStart.x, worldEnd.x);
+          const maxX = Math.max(worldStart.x, worldEnd.x);
+          const minY = Math.min(worldStart.y, worldEnd.y);
+          const maxY = Math.max(worldStart.y, worldEnd.y);
+          const boxW = maxX - minX;
+          const boxH = maxY - minY;
+          // Minimum 10 screen pixels to prevent accidental zoom
+          const screenW = boxW * currentViewport.zoom;
+          const screenH = boxH * currentViewport.zoom;
+          if (screenW > 10 && screenH > 10) {
+            const cw = st.canvasSize.width;
+            const ch = st.canvasSize.height;
+            const zoom = Math.min(cw / boxW, ch / boxH) * 0.9;
+            const cx = (minX + maxX) / 2;
+            const cy = (minY + maxY) / 2;
+            st.setViewport({
+              offsetX: cw / 2 - cx * zoom,
+              offsetY: ch / 2 - cy * zoom,
+              zoom: Math.min(zoom, 50),
+            });
+          }
+        }
+        return;
+      }
+
       // Box selection end
       if (boxSelection.isSelecting()) {
         const screenPos = panZoom.getMousePos(e);
         boxSelection.endBoxSelection(screenPos, e.ctrlKey || e.shiftKey);
       }
     },
-    [panZoom, annotationEditing, viewportEditing, boundaryEditing, gripEditing, boxSelection, editorMode, viewport, snapDetection, setCursor2D]
+    [panZoom, annotationEditing, viewportEditing, boundaryEditing, gripEditing, boxSelection, editorMode, viewport, snapDetection, setCursor2D, activeTool]
   );
 
   /**
@@ -1549,6 +1643,13 @@ export function useCanvasEvents(canvasRef: React.RefObject<HTMLCanvasElement>) {
         }
         setActiveTool('select');
         snapDetection.clearTracking();
+        return;
+      }
+
+      // Cancel zoom region tool on right-click
+      if (activeTool === 'zoom-region') {
+        useAppStore.getState().setSelectionBox(null);
+        setActiveTool('select');
         return;
       }
 

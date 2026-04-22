@@ -171,6 +171,8 @@ const TWO_KEY_SHORTCUTS: Record<string, string> = {
   'cs': 'create-similar',  // Create Similar
   'tl': 'toggle-thin-lines',  // Toggle thin/thick line display
   'za': 'zoom-all',           // Zoom to fit all shapes
+  'zr': 'zoom-region',        // Zoom to drawn region
+  'zp': 'zoom-previous',      // Zoom to previous view
 };
 
 const TWO_KEY_TIMEOUT = 750; // ms to wait for second key
@@ -493,6 +495,12 @@ export function useKeyboardShortcuts() {
             } else if (tool === 'zoom-all') {
               // Zoom to fit all shapes in viewport
               zoomToFit();
+            } else if (tool === 'zoom-region') {
+              // Activate zoom region tool — user draws a box then viewport zooms to it
+              setActiveTool('zoom-region' as any);
+            } else if (tool === 'zoom-previous') {
+              // Go back to previous viewport
+              useAppStore.getState().zoomPrevious();
             } else {
               setActiveTool(tool as any);
               // If activating 'move' with a grip-selected endpoint, auto-set base point

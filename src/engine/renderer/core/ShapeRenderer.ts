@@ -66,6 +66,14 @@ export class ShapeRenderer extends BaseRenderer {
   private unitSettings: UnitSettings = DEFAULT_UNIT_SETTINGS;
   // Whether the canvas is in transparent-background mode
   private transparentBackground: boolean = false;
+  // Scale display settings factors (from per-scale settings)
+  private _linePatternFactor: number = 1.0;
+  /** Hatch pattern spacing multiplier (accessed by renderPatternLayer) */
+  _hatchPatternFactor: number = 1.0;
+  /** Lineweight display multiplier (accessed by getLineWidth) */
+  _lineweightFactor: number = 1.0;
+  /** Text height multiplier (accessed by drawText/drawDimension) */
+  _textHeightFactor: number = 1.0;
   // Cached render context for extension renderers
   private _renderCtx: ShapeRenderContext | null = null;
 
@@ -115,6 +123,13 @@ export class ShapeRenderer extends BaseRenderer {
   // keyed by patternId + scale (rounded to 2 dp) so it is only rebuilt when
   // scale actually changes.
   private _svgTileCache: Map<string, { canvas: OffscreenCanvas | HTMLCanvasElement; scale: number }> = new Map();
+
+  // ── Path2D cache for hatch boundaries ────────────────────────────────────
+  // Hatch shapes build the same boundary path 3-5× per draw call (fill, clip,
+  // stroke, selection overlay). Caching as Path2D avoids repeated moveTo/lineTo/arc
+  // calculations. Invalidated when the shapes array reference changes.
+  private _pathCache = new Map<string, { outer: Path2D; full: Path2D }>();
+  private _pathCacheShapesRef: Shape[] | null = null;
   // ─────────────────────────────────────────────────────────────────────────
 
   constructor(ctx: CanvasRenderingContext2D, width: number = 0, height: number = 0, dpr?: number) {
@@ -140,13 +155,27 @@ export class ShapeRenderer extends BaseRenderer {
   override getLineDash(lineStyle: string): number[] {
     const pattern = LINE_DASH_PATTERNS[lineStyle] || [];
     if (pattern.length === 0) return pattern;
-    const scaleFactor = LINE_DASH_REFERENCE_SCALE / this.drawingScale;
+    // Scale patterns so dashes stay the same size on paper regardless of drawing scale.
+    // Patterns are authored at 1:100 (ref=0.01). At 1:500 (scale=0.002) dashes must be
+    // larger in world units (×5) so they appear the same on paper.  At 1:1 (scale=1)
+    // they must be smaller (×0.01).  Formula: refScale / drawingScale.
+    const scaleFactor = LINE_DASH_REFERENCE_SCALE / this.drawingScale * this._linePatternFactor;
     return pattern.map(v => v * scaleFactor);
   }
 
   /**
    * Set whether to display actual line weights (false = all lines 1px thin)
    */
+  /**
+   * Set per-scale display factors from ScaleDisplaySettings
+   */
+  setScaleDisplayFactors(linePattern: number, hatchPattern: number, lineweight: number, textHeight: number): void {
+    this._linePatternFactor = linePattern;
+    this._hatchPatternFactor = hatchPattern;
+    this._lineweightFactor = lineweight;
+    this._textHeightFactor = textHeight;
+  }
+
   setShowLineweight(show: boolean): void {
     this._showLineweight = show;
   }
@@ -181,6 +210,17 @@ export class ShapeRenderer extends BaseRenderer {
   setPreviewPattern(patternId: string | null, selectedIds: string[]): void {
     this.previewPatternId = patternId;
     this.previewSelectedIds = new Set(selectedIds);
+  }
+
+  /**
+   * Invalidate the Path2D cache for hatch boundaries.
+   * Call when the shapes array reference changes (shapes added/removed/modified).
+   */
+  invalidatePathCache(shapesRef: Shape[]): void {
+    if (shapesRef !== this._pathCacheShapesRef) {
+      this._pathCache.clear();
+      this._pathCacheShapesRef = shapesRef;
+    }
   }
 
   /**
@@ -409,7 +449,14 @@ export class ShapeRenderer extends BaseRenderer {
     // Set line style
     const strokeColor = adaptColorForBackground(style.strokeColor, invertColors);
     ctx.strokeStyle = isSelected ? COLORS.selection : isHovered ? COLORS.hover : strokeColor;
-    ctx.lineWidth = this.getLineWidth(style.strokeWidth);
+    let lw = this.getLineWidth(style.strokeWidth);
+    // Ensure selected/hovered shapes are at least 2 screen pixels wide so the
+    // color change is clearly visible, even when lineweight display is off.
+    if (isSelected || isHovered) {
+      const minSelWidth = 2 / this._currentZoom;
+      if (lw < minSelWidth) lw = minSelWidth;
+    }
+    ctx.lineWidth = lw;
     ctx.setLineDash(this.getLineDash(style.lineStyle));
 
     if (style.fillColor) {
@@ -446,7 +493,7 @@ export class ShapeRenderer extends BaseRenderer {
         this.dimensionRenderer.drawDimension(shape as DimensionShape, isSelected, isHovered);
         break;
       case 'hatch':
-        this.drawHatch(shape as HatchShape, invertColors);
+        this.drawHatch(shape as HatchShape, invertColors, isSelected);
         break;
       case 'image':
         this.drawImage(shape as ImageShape);
@@ -2803,6 +2850,9 @@ export class ShapeRenderer extends BaseRenderer {
         // Text uses selection box instead of handles
         return [shape.position];
       case 'hatch': {
+        // Skip grip points for complex hatches (>20 vertices) — they clutter
+        // the view and hurt performance without adding useful editability.
+        if (shape.points.length > 20) return [];
         const pts: { x: number; y: number }[] = [...shape.points];
         // Add edge midpoints
         for (let i = 0; i < shape.points.length; i++) {
@@ -2894,7 +2944,7 @@ export class ShapeRenderer extends BaseRenderer {
     ctx.restore();
   }
 
-  private drawHatch(shape: HatchShape, invertColors: boolean = false): void {
+  private drawHatch(shape: HatchShape, invertColors: boolean = false, isSelected: boolean = false): void {
     const ctx = this.ctx;
 
     // ── Hatch LOD: skip pattern fill for tiny shapes ──────────────────────
@@ -2904,7 +2954,7 @@ export class ShapeRenderer extends BaseRenderer {
     // merge into a smear.  Skip fill entirely to save GPU time.
     // Threshold: 8 screen pixels each axis (very conservative — still visible
     // at 4× zoom-out before switching to outline-only).
-    const HATCH_LOD_PX = 8;
+    const HATCH_LOD_PX = 20;
     let hatchLodOutlineOnly = false;
     if (shape.points.length >= 2) {
       const pts0 = shape.points;
@@ -2943,53 +2993,58 @@ export class ShapeRenderer extends BaseRenderer {
 
     if (points.length < 3) return;
 
-    // Build outer boundary path (supports bulge/arc segments like polyline)
-    const buildOuterPath = () => {
-      ctx.moveTo(points[0].x, points[0].y);
-
+    // ── Path2D cache: avoid rebuilding the same boundary 3-5× per shape ────
+    // Invalidate when shapes array reference changes (set externally via
+    // invalidatePathCache). Cache outer path (boundary stroke) and full path
+    // (outer + inner loops for fill/clip with evenodd).
+    let cached = this._pathCache.get(shape.id);
+    if (!cached) {
+      // Build outer Path2D
+      const outer = new Path2D();
+      outer.moveTo(points[0].x, points[0].y);
       for (let i = 0; i < points.length - 1; i++) {
         const b = bulge?.[i] ?? 0;
         if (b !== 0) {
           const arc = bulgeToArc(points[i], points[i + 1], b);
-          ctx.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
+          outer.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
         } else {
-          ctx.lineTo(points[i + 1].x, points[i + 1].y);
+          outer.lineTo(points[i + 1].x, points[i + 1].y);
         }
       }
-
-      // Close path (handle last segment bulge)
       const lastB = bulge?.[points.length - 1] ?? 0;
       if (lastB !== 0) {
         const arc = bulgeToArc(points[points.length - 1], points[0], lastB);
-        ctx.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
+        outer.arc(arc.center.x, arc.center.y, arc.radius, arc.startAngle, arc.endAngle, arc.clockwise);
       } else {
-        ctx.closePath();
+        outer.closePath();
       }
-    };
 
-    // Build full path with inner loops (holes) using evenodd winding rule
-    const buildPath = () => {
-      ctx.beginPath();
-      buildOuterPath();
-
-      // Add inner loops (drawn in reverse winding for evenodd cutout)
+      // Build full Path2D (outer + inner loops)
+      const full = new Path2D(outer);
       if (innerLoops && innerLoops.length > 0) {
         for (const loop of innerLoops) {
           if (loop.length < 3) continue;
-          ctx.moveTo(loop[0].x, loop[0].y);
+          full.moveTo(loop[0].x, loop[0].y);
           for (let i = 1; i < loop.length; i++) {
-            ctx.lineTo(loop[i].x, loop[i].y);
+            full.lineTo(loop[i].x, loop[i].y);
           }
-          ctx.closePath();
+          full.closePath();
         }
       }
-    };
+
+      cached = { outer, full };
+      // Keep cache bounded
+      if (this._pathCache.size > 500) this._pathCache.clear();
+      this._pathCache.set(shape.id, cached);
+    }
+
+    const outerPath = cached.outer;
+    const fullPath = cached.full;
 
     // Step 1: Fill solid background if masking is on or backgroundColor is set
     if (backgroundColor) {
-      buildPath();
       ctx.fillStyle = backgroundColor;
-      ctx.fill('evenodd');
+      ctx.fill(fullPath, 'evenodd');
     }
 
     // Get bounding box — expand to include arc extents when bulge values are present
@@ -3029,8 +3084,7 @@ export class ShapeRenderer extends BaseRenderer {
         else if (!invertColors && (bgColor === '#000000' || bgColor === '#000')) bgColor = '#ffffff';
 
         ctx.save();
-        buildPath();
-        ctx.clip('evenodd');
+        ctx.clip(fullPath, 'evenodd');
 
         this.renderPatternLayer(
           shape.bgPatternType, bgAngle, bgScale, bgColor,
@@ -3055,8 +3109,7 @@ export class ShapeRenderer extends BaseRenderer {
       }
 
       ctx.save();
-      buildPath();
-      ctx.clip('evenodd');
+      ctx.clip(fullPath, 'evenodd');
 
       // When a backgroundColor is set the pattern lines render on top of that background color,
       // so we must not invert them further — pass invertColors=false in that case.
@@ -3071,18 +3124,15 @@ export class ShapeRenderer extends BaseRenderer {
     } else if (backgroundColor) {
       // LOD outline-only: still draw the solid background fill so the shape
       // is not invisible, but skip the expensive pattern lines.
-      buildPath();
       ctx.fillStyle = backgroundColor;
-      ctx.fill('evenodd');
+      ctx.fill(fullPath, 'evenodd');
     }
 
     // Step 4: Stroke boundary (only if visible)
     if (boundaryVisible) {
-      ctx.beginPath();
-      buildOuterPath();
-      ctx.stroke();
+      ctx.stroke(outerPath);
 
-      // Also stroke inner loops
+      // Also stroke inner loops (these are part of fullPath but we need separate stroke)
       if (innerLoops && innerLoops.length > 0) {
         for (const loop of innerLoops) {
           if (loop.length < 3) continue;
@@ -3095,6 +3145,35 @@ export class ShapeRenderer extends BaseRenderer {
           ctx.stroke();
         }
       }
+    }
+
+    // Step 5: Selection overlay — semi-transparent blue fill + blue boundary stroke
+    if (isSelected) {
+      // Semi-transparent blue selection fill over the entire region
+      ctx.save();
+      ctx.fillStyle = 'rgba(0, 120, 215, 0.25)';
+      ctx.fill(fullPath, 'evenodd');
+
+      // Bold blue selection boundary
+      ctx.strokeStyle = '#0078d7';
+      ctx.lineWidth = 3 / this._currentZoom;
+      ctx.setLineDash([]);
+      ctx.stroke(outerPath);
+
+      // Blue inner loop boundaries
+      if (innerLoops && innerLoops.length > 0) {
+        for (const loop of innerLoops) {
+          if (loop.length < 3) continue;
+          ctx.beginPath();
+          ctx.moveTo(loop[0].x, loop[0].y);
+          for (let i = 1; i < loop.length; i++) {
+            ctx.lineTo(loop[i].x, loop[i].y);
+          }
+          ctx.closePath();
+          ctx.stroke();
+        }
+      }
+      ctx.restore();
     }
   }
 
@@ -3641,8 +3720,8 @@ export class ShapeRenderer extends BaseRenderer {
     const arrowSize = (shape.arrowSize ?? 120) * sf;
 
     ctx.save();
-    ctx.strokeStyle = lineColor;
-    ctx.fillStyle = lineColor;
+    ctx.strokeStyle = isSelected ? COLORS.selection : lineColor;
+    ctx.fillStyle = isSelected ? COLORS.selection : lineColor;
     ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth || 0.5);
     ctx.setLineDash([]);
 
@@ -4151,8 +4230,8 @@ export class ShapeRenderer extends BaseRenderer {
     }
 
     ctx.save();
-    ctx.strokeStyle = lineColor;
-    ctx.fillStyle = lineColor;
+    ctx.strokeStyle = isSelected ? COLORS.selection : lineColor;
+    ctx.fillStyle = isSelected ? COLORS.selection : lineColor;
     ctx.lineWidth = this.getLineWidth(shape.style.strokeWidth || 0.5);
     ctx.setLineDash([]);
 

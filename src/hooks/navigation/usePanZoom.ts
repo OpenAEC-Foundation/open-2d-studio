@@ -123,7 +123,7 @@ export function usePanZoom(canvasRef: React.RefObject<HTMLCanvasElement>) {
 
       // Zoom factor
       const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
-      const newZoom = Math.min(Math.max(viewport.zoom * zoomFactor, 0.001), 100);
+      const newZoom = Math.min(Math.max(viewport.zoom * zoomFactor, 0.0001), 100);
 
       // Zoom towards cursor position
       const worldX = (screenPos.x - viewport.offsetX) / viewport.zoom;

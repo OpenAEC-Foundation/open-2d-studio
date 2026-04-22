@@ -17,15 +17,15 @@ export const PropertiesPanel = memo(function PropertiesPanel() {
   const updateShape = useAppStore(s => s.updateShape);
   const activeTool = useAppStore(s => s.activeTool);
   const selectedIdSet = useMemo(() => new Set(selectedShapeIds), [selectedShapeIds]);
-  const selectedShapes = shapes.filter((s) => {
+  const selectedShapes = useMemo(() => shapes.filter((s) => {
     if (!selectedIdSet.has(s.id)) return false;
     if (selectionFilter && s.type !== selectionFilter) return false;
     return true;
-  });
-  const selectedParametricShapes = parametricShapes.filter((s) => {
+  }), [shapes, selectedIdSet, selectionFilter]);
+  const selectedParametricShapes = useMemo(() => parametricShapes.filter((s) => {
     if (!selectedIdSet.has(s.id)) return false;
     return true;
-  });
+  }), [parametricShapes, selectedIdSet]);
   const hasSelection = selectedShapes.length > 0 || selectedParametricShapes.length > 0;
   const hasRegularShapeSelection = selectedShapes.length > 0;
 

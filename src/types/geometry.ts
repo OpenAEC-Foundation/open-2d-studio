@@ -12,7 +12,7 @@ export interface BoundingBox {
   maxY: number;
 }
 
-export type LineStyle = 'solid' | 'dashed' | 'dotted' | 'dashdot';
+export type LineStyle = 'solid' | 'dashed' | 'dotted' | 'dashdot' | 'center';
 
 export interface ShapeStyle {
   strokeColor: string;
@@ -1546,6 +1546,8 @@ export type ToolType =
   | 'rebar'
   | 'l-shape'
   | 'measure'
+  // Zoom tools
+  | 'zoom-region'
   // Image tools
   | 'image'
   // Modify tools (legacy - now commands)
@@ -1631,6 +1633,29 @@ export interface Drawing {
   createdAt: string;
   modifiedAt: string;
 }
+
+/**
+ * Scale display settings — controls how annotations, line patterns, hatches
+ * and lineweights scale at a specific drawing scale. These are global settings
+ * that apply to ALL drawings at the given scale.
+ */
+export interface ScaleDisplaySettings {
+  /** Multiplier for line dash pattern lengths (default 1.0) */
+  linePatternFactor: number;
+  /** Multiplier for hatch pattern spacing (default 1.0) */
+  hatchPatternFactor: number;
+  /** Multiplier for lineweight display thickness (default 1.0) */
+  lineweightFactor: number;
+  /** Multiplier for annotation text height (default 1.0) */
+  textHeightFactor: number;
+}
+
+export const DEFAULT_SCALE_DISPLAY_SETTINGS: ScaleDisplaySettings = {
+  linePatternFactor: 1.0,
+  hatchPatternFactor: 1.0,
+  lineweightFactor: 1.0,
+  textHeightFactor: 1.0,
+};
 
 /** @deprecated Use DrawingBoundary instead */
 export type DraftBoundary = DrawingBoundary;

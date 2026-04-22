@@ -141,6 +141,15 @@ export function createDrawingStandardsActions(
       }),
 
     // ========================================================================
+    // Scale Display Settings
+    // ========================================================================
+
+    setScaleDisplaySettings: (settings: Record<string, import('../../../types/geometry').ScaleDisplaySettings>) =>
+      set((state) => {
+        state.scaleDisplaySettings = { ...settings };
+      }),
+
+    // ========================================================================
     // Material Hatch Settings (Drawing Standards)
     // ========================================================================
 

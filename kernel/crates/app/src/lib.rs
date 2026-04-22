@@ -4,8 +4,13 @@ use bevy_ecs::prelude::*;
 use kernel_core::new_world;
 
 pub mod app;
+pub mod dxf_export;
 pub mod gpu;
+pub mod ifcx_export;
+pub mod scene_io;
+pub mod stroke_font;
 pub mod sync;
+pub mod ttf_font;
 
 pub use app::{App, DEMO_SHAPE_COUNT};
 

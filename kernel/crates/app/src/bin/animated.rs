@@ -349,14 +349,25 @@ impl ApplicationHandler for App {
                 if self.dragging {
                     let dx = self.mouse_pos.0 - self.drag_start.0;
                     let dy = self.mouse_pos.1 - self.drag_start.1;
+                    // 1:1 tracking: the world point under cursor at press must stay
+                    // under the cursor while dragging. Derivation:
+                    //   base_zoom = (2/extent) * ui_zoom
+                    //   visible world height = 2 / base_zoom = extent / ui_zoom
+                    //   world_per_pixel = visible_world_height / screen_height_px
+                    //                   = extent / (ui_zoom * screen_height_px)
+                    // For aspect-correct ortho this is identical in X and Y.
+                    let screen_h = self.gpu.as_ref()
+                        .map(|g| g.config.height.max(1) as f32)
+                        .unwrap_or(1000.0);
                     let cols = (SHAPE_COUNT as f32).sqrt().ceil();
                     let extent = cols * 3.0;
-                    let world_per_pixel = extent / (self.zoom * 500.0);
+                    let world_per_pixel = extent / (self.zoom * screen_h);
                     self.pan_x = self.drag_start_pan.0 - dx * world_per_pixel;
                     self.pan_y = self.drag_start_pan.1 + dy * world_per_pixel;
                 }
             }
-            WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
+            WindowEvent::MouseInput { state, button: MouseButton::Middle, .. } => {
+                // CAD convention: middle mouse button (scroll wheel click) = pan
                 let pointer_over_ui = self.gpu.as_ref()
                     .map(|g| g.egui_ctx.is_pointer_over_area())
                     .unwrap_or(false);

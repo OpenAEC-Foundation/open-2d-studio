@@ -11,6 +11,8 @@ import { DEFAULT_DRAWING_BOUNDARY } from './types';
 
 export interface ViewState {
   viewport: Viewport;
+  /** Stack of previous viewport states for Zoom Previous (max 20) */
+  viewportHistory: Viewport[];
   canvasSize: { width: number; height: number };
   mousePosition: Point;
   cursor2D: Point;
@@ -28,6 +30,7 @@ export interface ViewActions {
   zoomOut: () => void;
   zoomToFit: () => void;
   zoomToSelection: () => void;
+  zoomPrevious: () => void;
   resetView: () => void;
   rotateView: (angleDeg: number) => void;
   setCanvasSize: (size: { width: number; height: number }) => void;
@@ -53,6 +56,7 @@ const _initOffsetY = _ch / 2 - (_b.y + _b.height / 2) * _initZoom;
 
 export const initialViewState: ViewState = {
   viewport: { offsetX: _initOffsetX, offsetY: _initOffsetY, zoom: _initZoom },
+  viewportHistory: [],
   canvasSize: { width: _cw, height: _ch },
   mousePosition: { x: 0, y: 0 },
   cursor2D: { x: 0, y: 0 },
@@ -84,17 +88,24 @@ export const createViewSlice = (
 ): ViewActions => ({
   setViewport: (viewport) =>
     set((state) => {
+      // Push current viewport to history when zoom changes (not on pan-only)
+      const zoomChanged = viewport.zoom !== undefined && viewport.zoom !== state.viewport.zoom;
+      if (zoomChanged) {
+        state.viewportHistory = [...state.viewportHistory.slice(-19), { ...state.viewport }];
+      }
       state.viewport = { ...state.viewport, ...viewport };
     }),
 
   zoomIn: () =>
     set((state) => {
+      state.viewportHistory = [...state.viewportHistory.slice(-19), { ...state.viewport }];
       state.viewport.zoom = Math.min(state.viewport.zoom * 1.2, 100);
     }),
 
   zoomOut: () =>
     set((state) => {
-      state.viewport.zoom = Math.max(state.viewport.zoom / 1.2, 0.001);
+      state.viewportHistory = [...state.viewportHistory.slice(-19), { ...state.viewport }];
+      state.viewport.zoom = Math.max(state.viewport.zoom / 1.2, 0.0001);
     }),
 
   zoomToFit: () => {
@@ -143,6 +154,9 @@ export const createViewSlice = (
     const centerY = (minY + maxY) / 2;
 
     set((state) => {
+      // Push current viewport to history before changing
+      state.viewportHistory = [...state.viewportHistory.slice(-19), { ...state.viewport }];
+
       // Calculate zoom to fit bounds in canvas
       const zoomX = state.canvasSize.width / boundsWidth;
       const zoomY = state.canvasSize.height / boundsHeight;
@@ -194,6 +208,9 @@ export const createViewSlice = (
     const centerY = (minY + maxY) / 2;
 
     set((state) => {
+      // Push current viewport to history before changing
+      state.viewportHistory = [...state.viewportHistory.slice(-19), { ...state.viewport }];
+
       // Calculate zoom to fit bounds in canvas
       const zoomX = state.canvasSize.width / boundsWidth;
       const zoomY = state.canvasSize.height / boundsHeight;
@@ -207,6 +224,14 @@ export const createViewSlice = (
       };
     });
   },
+
+  zoomPrevious: () =>
+    set((state) => {
+      if (state.viewportHistory.length === 0) return;
+      const prev = state.viewportHistory[state.viewportHistory.length - 1];
+      state.viewportHistory = state.viewportHistory.slice(0, -1);
+      state.viewport = { ...prev };
+    }),
 
   resetView: () =>
     set((state) => {

@@ -757,7 +757,187 @@ export function Canvas() {
     };
     // ───────────────────────────────────────────────────────────────────────
 
-    const unsub = useAppStore.subscribe(() => { dirty = true; });
+    // ── Selective dirty subscription ─────────────────────────────────────────
+    // Only set dirty when rendering-relevant state changes. UI dialogs, snap
+    // settings, log entries, tool configs etc. are ignored — they don't affect
+    // the canvas output. Compared via reference equality (===) which is correct
+    // because Zustand/Immer always produces new references on mutation.
+    let prevRenderState = (() => {
+      const s = useAppStore.getState();
+      return {
+        shapes: s.shapes,
+        parametricShapes: s.parametricShapes,
+        viewport: s.viewport,
+        selectedShapeIds: s.selectedShapeIds,
+        hoveredShapeId: s.hoveredShapeId,
+        preSelectedShapeIds: s.preSelectedShapeIds,
+        drawingPreview: s.drawingPreview,
+        selectionBox: s.selectionBox,
+        currentSnapPoint: s.currentSnapPoint,
+        currentTrackingLines: s.currentTrackingLines,
+        trackingPoint: s.trackingPoint,
+        activeDrawingId: s.activeDrawingId,
+        editorMode: s.editorMode,
+        whiteBackground: s.whiteBackground,
+        transparentBackground: s.transparentBackground,
+        gridVisible: s.gridVisible,
+        gridSize: s.gridSize,
+        axesVisible: s.axesVisible,
+        layers: s.layers,
+        drawings: s.drawings,
+        boundaryVisible: s.boundaryVisible,
+        boundaryEditState: s.boundaryEditState,
+        activeTool: s.activeTool,
+        currentStyle: s.currentStyle,
+        cursor2D: s.cursor2D,
+        cursor2DVisible: s.cursor2DVisible,
+        showLineweight: s.showLineweight,
+        wallTypes: s.wallTypes,
+        wallSystemTypes: s.wallSystemTypes,
+        userPatterns: s.userPatterns,
+        projectPatterns: s.projectPatterns,
+        previewPatternId: s.previewPatternId,
+        hiddenIfcCategories: s.hiddenIfcCategories,
+        activeSheetId: s.activeSheetId,
+        sheets: s.sheets,
+        selectedAnnotationIds: s.selectedAnnotationIds,
+        slabEditMode: s.slabEditMode,
+        editingSlabId: s.editingSlabId,
+        slabInnerContourPoints: s.slabInnerContourPoints,
+        showRotationGizmo: s.showRotationGizmo,
+        selectionFilter: s.selectionFilter,
+        selectedWallSubElement: s.selectedWallSubElement,
+        materialHatchSettings: s.materialHatchSettings,
+        sectionPlacementPreview: s.sectionPlacementPreview,
+        pendingSection: s.pendingSection,
+        drawingViewports: s.drawingViewports,
+        viewportEditState: s.viewportEditState,
+        cropRegionEditState: s.cropRegionEditState,
+        planSubtypeSettings: s.planSubtypeSettings,
+        projectStructure: s.projectStructure,
+        gridlineExtensionPerScale: s.gridlineExtensionPerScale,
+        unitSettings: s.unitSettings,
+      };
+    })();
+
+    const unsub = useAppStore.subscribe(() => {
+      const s = useAppStore.getState();
+      // Quick check: compare rendering-relevant references only
+      if (
+        s.shapes !== prevRenderState.shapes ||
+        s.parametricShapes !== prevRenderState.parametricShapes ||
+        s.viewport !== prevRenderState.viewport ||
+        s.selectedShapeIds !== prevRenderState.selectedShapeIds ||
+        s.hoveredShapeId !== prevRenderState.hoveredShapeId ||
+        s.preSelectedShapeIds !== prevRenderState.preSelectedShapeIds ||
+        s.drawingPreview !== prevRenderState.drawingPreview ||
+        s.selectionBox !== prevRenderState.selectionBox ||
+        s.currentSnapPoint !== prevRenderState.currentSnapPoint ||
+        s.currentTrackingLines !== prevRenderState.currentTrackingLines ||
+        s.trackingPoint !== prevRenderState.trackingPoint ||
+        s.activeDrawingId !== prevRenderState.activeDrawingId ||
+        s.editorMode !== prevRenderState.editorMode ||
+        s.whiteBackground !== prevRenderState.whiteBackground ||
+        s.transparentBackground !== prevRenderState.transparentBackground ||
+        s.gridVisible !== prevRenderState.gridVisible ||
+        s.gridSize !== prevRenderState.gridSize ||
+        s.axesVisible !== prevRenderState.axesVisible ||
+        s.layers !== prevRenderState.layers ||
+        s.drawings !== prevRenderState.drawings ||
+        s.boundaryVisible !== prevRenderState.boundaryVisible ||
+        s.boundaryEditState !== prevRenderState.boundaryEditState ||
+        s.activeTool !== prevRenderState.activeTool ||
+        s.currentStyle !== prevRenderState.currentStyle ||
+        s.cursor2D !== prevRenderState.cursor2D ||
+        s.cursor2DVisible !== prevRenderState.cursor2DVisible ||
+        s.showLineweight !== prevRenderState.showLineweight ||
+        s.wallTypes !== prevRenderState.wallTypes ||
+        s.wallSystemTypes !== prevRenderState.wallSystemTypes ||
+        s.userPatterns !== prevRenderState.userPatterns ||
+        s.projectPatterns !== prevRenderState.projectPatterns ||
+        s.previewPatternId !== prevRenderState.previewPatternId ||
+        s.hiddenIfcCategories !== prevRenderState.hiddenIfcCategories ||
+        s.activeSheetId !== prevRenderState.activeSheetId ||
+        s.sheets !== prevRenderState.sheets ||
+        s.selectedAnnotationIds !== prevRenderState.selectedAnnotationIds ||
+        s.slabEditMode !== prevRenderState.slabEditMode ||
+        s.editingSlabId !== prevRenderState.editingSlabId ||
+        s.slabInnerContourPoints !== prevRenderState.slabInnerContourPoints ||
+        s.showRotationGizmo !== prevRenderState.showRotationGizmo ||
+        s.selectionFilter !== prevRenderState.selectionFilter ||
+        s.selectedWallSubElement !== prevRenderState.selectedWallSubElement ||
+        s.materialHatchSettings !== prevRenderState.materialHatchSettings ||
+        s.sectionPlacementPreview !== prevRenderState.sectionPlacementPreview ||
+        s.pendingSection !== prevRenderState.pendingSection ||
+        s.drawingViewports !== prevRenderState.drawingViewports ||
+        s.viewportEditState !== prevRenderState.viewportEditState ||
+        s.cropRegionEditState !== prevRenderState.cropRegionEditState ||
+        s.planSubtypeSettings !== prevRenderState.planSubtypeSettings ||
+        s.projectStructure !== prevRenderState.projectStructure ||
+        s.gridlineExtensionPerScale !== prevRenderState.gridlineExtensionPerScale ||
+        s.unitSettings !== prevRenderState.unitSettings
+      ) {
+        prevRenderState = {
+          shapes: s.shapes, parametricShapes: s.parametricShapes,
+          viewport: s.viewport, selectedShapeIds: s.selectedShapeIds,
+          hoveredShapeId: s.hoveredShapeId, preSelectedShapeIds: s.preSelectedShapeIds,
+          drawingPreview: s.drawingPreview, selectionBox: s.selectionBox,
+          currentSnapPoint: s.currentSnapPoint, currentTrackingLines: s.currentTrackingLines,
+          trackingPoint: s.trackingPoint, activeDrawingId: s.activeDrawingId,
+          editorMode: s.editorMode, whiteBackground: s.whiteBackground,
+          transparentBackground: s.transparentBackground, gridVisible: s.gridVisible,
+          gridSize: s.gridSize, axesVisible: s.axesVisible, layers: s.layers,
+          drawings: s.drawings, boundaryVisible: s.boundaryVisible,
+          boundaryEditState: s.boundaryEditState, activeTool: s.activeTool,
+          currentStyle: s.currentStyle, cursor2D: s.cursor2D,
+          cursor2DVisible: s.cursor2DVisible, showLineweight: s.showLineweight,
+          wallTypes: s.wallTypes, wallSystemTypes: s.wallSystemTypes,
+          userPatterns: s.userPatterns, projectPatterns: s.projectPatterns,
+          previewPatternId: s.previewPatternId, hiddenIfcCategories: s.hiddenIfcCategories,
+          activeSheetId: s.activeSheetId, sheets: s.sheets,
+          selectedAnnotationIds: s.selectedAnnotationIds,
+          slabEditMode: s.slabEditMode, editingSlabId: s.editingSlabId,
+          slabInnerContourPoints: s.slabInnerContourPoints,
+          showRotationGizmo: s.showRotationGizmo, selectionFilter: s.selectionFilter,
+          selectedWallSubElement: s.selectedWallSubElement,
+          materialHatchSettings: s.materialHatchSettings,
+          sectionPlacementPreview: s.sectionPlacementPreview,
+          pendingSection: s.pendingSection, drawingViewports: s.drawingViewports,
+          viewportEditState: s.viewportEditState, cropRegionEditState: s.cropRegionEditState,
+          planSubtypeSettings: s.planSubtypeSettings, projectStructure: s.projectStructure,
+          gridlineExtensionPerScale: s.gridlineExtensionPerScale,
+          unitSettings: s.unitSettings,
+        };
+        // Detect overlay-only changes: viewport pan, cursor, snap, tracking,
+        // hover, AND selection changes. These don't change the shape set so
+        // progressive rendering can continue from where it left off instead of
+        // restarting from shape 0. Selection is overlay-only because selected
+        // shapes are always drawn as "priority" shapes every frame — only their
+        // color/handles change, not the background shape set.
+        // Zoom changes affect visible shape set (viewport culling + LOD) — NOT overlay-only.
+        // Pan changes are overlay-only (shapes just shift, no new shapes appear).
+        const zoomUnchanged = s.viewport.zoom === prevRenderState.viewport.zoom;
+        const shapesUnchanged =
+          zoomUnchanged &&
+          s.shapes === prevRenderState.shapes &&
+          s.parametricShapes === prevRenderState.parametricShapes &&
+          s.drawingPreview === prevRenderState.drawingPreview &&
+          s.layers === prevRenderState.layers &&
+          s.whiteBackground === prevRenderState.whiteBackground &&
+          s.gridVisible === prevRenderState.gridVisible &&
+          s.gridSize === prevRenderState.gridSize &&
+          s.activeDrawingId === prevRenderState.activeDrawingId &&
+          s.editorMode === prevRenderState.editorMode &&
+          s.wallTypes === prevRenderState.wallTypes &&
+          s.hiddenIfcCategories === prevRenderState.hiddenIfcCategories &&
+          s.userPatterns === prevRenderState.userPatterns &&
+          s.projectPatterns === prevRenderState.projectPatterns &&
+          s.showLineweight === prevRenderState.showLineweight &&
+          s.boundaryVisible === prevRenderState.boundaryVisible;
+        if (shapesUnchanged) overlayOnlyDirty = true;
+        dirty = true;
+      }
+    });
 
     // Set up callback for when async images (like SVG title blocks) finish loading
     // This ensures the canvas re-renders after the image is ready
@@ -769,7 +949,12 @@ export function Canvas() {
     const frameBudget = new FrameBudget();
     (window as any).__frameBudget = frameBudget;
 
-    // (smart dirty-check removed — viewport culling + LOD provide sufficient perf)
+    // ── Overlay-only detection for progressive render optimization ─────────
+    // When only overlays change (viewport pan, cursor, snap, tracking, hover),
+    // skip resetting the progressive render index. The shape set is unchanged
+    // so progressive rendering can continue from where it left off, avoiding
+    // the 1-2 second full re-render on every mouse move or pan gesture.
+    let overlayOnlyDirty = false;
 
     const tick = () => {
       if (dirty || progressiveRenderPending) {
@@ -781,10 +966,12 @@ export function Canvas() {
         }
 
         // On a fresh dirty signal, reset progressive state in the drawing renderer
-        // so we restart from shape 0 rather than continuing a stale sequence.
-        if (dirty) {
+        // UNLESS only overlay state changed (cursor, snap, hover, pan). Overlay-only
+        // changes don't affect the shape set so progressive can continue.
+        if (dirty && !overlayOnlyDirty) {
           renderer.getDrawingRenderer()?.resetProgressive();
         }
+        overlayOnlyDirty = false;
 
         dirty = false;
         progressiveRenderPending = false;
@@ -910,6 +1097,9 @@ export function Canvas() {
             slabEditMode: s.slabEditMode,
             editingSlabId: s.editingSlabId,
             slabInnerContourPoints: s.slabInnerContourPoints,
+            scaleDisplaySettings: activeDrawing?.scale
+              ? s.scaleDisplaySettings?.[String(activeDrawing.scale)]
+              : undefined,
           });
 
           // (RenderCache capture disabled — see note above)

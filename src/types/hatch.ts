@@ -691,7 +691,7 @@ export const BUILTIN_PATTERNS: CustomHatchPattern[] = [
     source: 'builtin',
     category: 'material',
     lineFamilies: [
-      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 3, strokeColor: '#000000' },
+      { angle: 45, originX: 0, originY: 0, deltaX: 0, deltaY: 6, strokeColor: '#000000' },
     ],
   },
 

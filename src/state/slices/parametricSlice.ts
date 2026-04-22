@@ -318,6 +318,10 @@ export interface ParametricState {
   /** Gridline extension per drawing scale. Keys are scale values as strings (e.g. '0.01' for 1:100). */
   gridlineExtensionPerScale: Record<string, number>;
 
+  /** Scale display settings per drawing scale. Keys are scale values as strings.
+   *  Controls line pattern factor, hatch factor, lineweight factor, text height factor. */
+  scaleDisplaySettings: Record<string, import('../../types/geometry').ScaleDisplaySettings>;
+
   /** Offset between dimension line rows for grid dimensioning (mm). Default 200. */
   gridDimensionLineOffset: number;
 
@@ -575,6 +579,9 @@ export interface ParametricActions {
   setPilePlanAutoDimensioning: (value: boolean) => void;
   setPilePlanAutoDepthLabel: (value: boolean) => void;
 
+  // Scale Display Settings
+  setScaleDisplaySettings: (settings: Record<string, import('../../types/geometry').ScaleDisplaySettings>) => void;
+
   // Material Hatch Settings (Drawing Standards)
   updateMaterialHatchSetting: (material: string, setting: Partial<MaterialHatchSetting>) => void;
   setMaterialHatchSettings: (settings: MaterialHatchSettings) => void;
@@ -677,6 +684,7 @@ export const initialParametricState: ParametricState = {
   drawingStandardsDialogOpen: false,
   gridlineExtension: 1000,
   gridlineExtensionPerScale: { ...DEFAULT_GRIDLINE_EXTENSION_PER_SCALE },
+  scaleDisplaySettings: {},
   gridDimensionLineOffset: 300,
   autoGridDimension: true,
   sectionGridlineDimensioning: true,

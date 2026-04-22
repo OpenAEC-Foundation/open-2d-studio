@@ -21,10 +21,78 @@ egui_dock = { workspace = true }
 pollster = { workspace = true }
 bytemuck = { workspace = true }
 anyhow = { workspace = true }
+dxf = "0.5"
+dwg-parser = { path = "../../../src-tauri/dwg-parser" }
+serde_json = { workspace = true }
+rfd = "0.15"
+image = { version = "0.25", default-features = false, features = ["png"] }
+# Pure-Rust TrueType font loader + glyph outline access. Used by
+# `ttf_font.rs` to render DXF TEXT/MTEXT via the drawing's actual
+# STYLE font (swissc.ttf, segoeui.ttf, …) instead of the Hershey
+# stroke-font placeholder. Glyph outlines come back as line/quad/cubic
+# Bezier curves which we tessellate to short line segments for the
+# scene_io::Segment pipeline.
+ab_glyph = "0.2"
+# Polygon triangulator with holes support. Used by `render_dxf_text` to
+# correctly punch holes in filled glyphs: letters like 'O' / 'B' / 'D'
+# have an outer contour (CCW) plus one or more inner contours (CW =
+# holes). Our own ear_clip helper treats each contour independently and
+# therefore fills the holes — which looks like a solid blob instead of a
+# ring. `earcutr` takes a flat vertex array plus hole-start indices and
+# produces a correct triangle list that respects even-odd fill rule.
+earcutr = "0.4"
+# MessagePack encoder for the IFCX-binary ("IFC 2D B") exporter —
+# self-describing numeric payload, much tighter than JSON on the
+# coordinate batches we dump per layer/color group.
+rmp-serde = "1.3"
+serde = { workspace = true }
+# Opt-in bytes serialisation for `Vec<u8>` fields — without this
+# serde_derive emits the blob as a sequence of integers (tripling the
+# size on msgpack). `#[serde(with = "serde_bytes")]` on the field
+# makes it a single `bin` chunk.
+serde_bytes = "0.11"
+# zstd compressor layered on top of the msgpack payload. Coordinate
+# buffers are highly structured (repeated motifs, small integer layer
+# ids) and compress extremely well at level 19 — typically 3-6× smaller
+# than raw msgpack, which is what lets the final file beat the source
+# DWG by a comfortable margin.
+zstd = "0.13"
 
 [[bin]]
 name = "kernel-app"
 path = "src/main.rs"
+
+[[bin]]
+name = "lz77-variants"
+path = "src/bin/lz77_variants.rs"
+
+[[bin]]
+name = "lz77-fuzz"
+path = "src/bin/lz77_fuzz.rs"
+
+[[bin]]
+name = "lz77-bisect"
+path = "src/bin/lz77_bisect.rs"
+
+[[bin]]
+name = "headless-render"
+path = "src/bin/headless_render.rs"
+
+[[bin]]
+name = "pix-diff"
+path = "src/bin/pix_diff.rs"
+
+[[bin]]
+name = "cls-size-check"
+path = "src/bin/cls_size_check.rs"
+
+[[bin]]
+name = "oracle-diff"
+path = "src/bin/oracle_diff.rs"
+
+[[bin]]
+name = "ifcx-size-check"
+path = "src/bin/ifcx_size_check.rs"
 
 [lib]
 path = "src/lib.rs"

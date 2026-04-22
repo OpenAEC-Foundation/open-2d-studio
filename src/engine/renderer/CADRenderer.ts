@@ -98,6 +98,8 @@ interface RenderOptions {
   editingSlabId?: string | null;
   /** Whether slab edit mode is active */
   slabEditMode?: boolean;
+  /** Per-scale display settings (line pattern, hatch, lineweight, text factors) */
+  scaleDisplaySettings?: import('../../types/geometry').ScaleDisplaySettings;
 }
 
 // Interface for sheet mode rendering (supports both new and legacy property names)
@@ -230,6 +232,7 @@ export class CADRenderer {
       slabEditMode: options.slabEditMode,
       editingSlabId: options.editingSlabId,
       slabInnerContourPoints: options.slabInnerContourPoints,
+      scaleDisplaySettings: options.scaleDisplaySettings,
     };
 
     this.drawingRenderer.render(drawingOptions);

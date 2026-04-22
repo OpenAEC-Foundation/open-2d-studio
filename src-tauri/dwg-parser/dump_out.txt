@@ -1,0 +1,56 @@
+[dwg] version=R2010 objects=1000
+[dwg] entities=560, non_entities=440
+[dwg] LINE=407 CIRCLE=0 ARC=0 LWPL=0 PL2D=0 PL3D=0 INS=2 TXT=0 MTXT=20 HATCH=102
+[dwg] type histogram:
+   407  LINE
+   148  UNKNOWN_0
+   102  HATCH
+    24  VISUALSTYLE
+    21  UNKNOWN_58880
+    20  MTEXT
+    19  XRECORD
+    17  SCALE
+    16  DICTIONARY
+    12  UNKNOWN_222
+    11  UNKNOWN_57344
+    10  UNKNOWN_166
+    10  UNKNOWN_98
+     9  ATTRIB
+     9  UNKNOWN_59392
+     9  UNKNOWN_100
+     9  UNKNOWN_24576
+     7  RAY
+     6  UNKNOWN_160
+     6  UNKNOWN_40960
+     6  UNKNOWN_168
+     6  UNKNOWN_164
+     5  ENDBLK
+     5  BLOCK
+     5  UNKNOWN_58368
+     5  LAYER
+     5  STYLE
+     5  BLOCK_HEADER
+     4  UNKNOWN_104
+     4  UNKNOWN_228
+[dwg] bbox: [597.077, -259.228] to [2789.526, 3515.725]
+  sample 206: LINE Some(Array [Number(948.4984067675141), Number(3515.725358862074), Number(0.0)])
+  sample 207: LINE Some(Array [Number(597.0766875610908), Number(3515.725358862075), Number(0.0)])
+  sample 208: LINE Some(Array [Number(597.0766875610907), Number(3463.2485861431096), Number(0.0)])
+  sample 209: LINE Some(Array [Number(948.4984067675141), Number(3463.2485861431082), Number(0.0)])
+  sample 215: LINE Some(Array [Number(948.498406767514), Number(3435.725358862074), Number(0.0)])
+  ORACLE MATCH: HATCH h=371 edge={"end":[948.4984067675124,1750.7253588620724],"start":[948.4984067675124,1698.2485861431062],"type":"line"}
+  ORACLE MATCH: HATCH h=371 edge={"end":[597.0766875610886,1750.725358862073],"start":[948.4984067675124,1750.7253588620724],"type":"line"}
+  ORACLE MATCH: HATCH h=371 edge={"end":[597.0766875610886,1698.2485861431076],"start":[597.0766875610886,1750.725358862073],"type":"line"}
+  ORACLE MATCH: HATCH h=371 edge={"end":[948.4984067675124,1698.2485861431062],"start":[597.0766875610886,1698.2485861431076],"type":"line"}
+  HATCH h=188 pattern=SOLID solid=true paths=1
+    path[0] edges: 4
+      edge[0] = {"end":[948.4984067675144,2955.725358862076],"start":[948.4984067675144,2903.248586143111],"type":"line"}
+      edge[1] = {"end":[597.0766875610906,2955.7253588620774],"start":[948.4984067675144,2955.725358862076],"type":"line"}
+  HATCH h=193 pattern=SOLID solid=true paths=1
+    path[0] edges: 4
+      edge[0] = {"end":[948.4984067675108,860.72535886207],"start":[948.4984067675108,808.2485861431038],"type":"line"}
+      edge[1] = {"end":[597.0766875610872,860.7253588620706],"start":[948.4984067675108,860.72535886207],"type":"line"}
+  HATCH h=198 pattern=SOLID solid=true paths=1
+    path[0] edges: 4
+      edge[0] = {"end":[948.4984067675106,700.7253588620691],"start":[948.4984067675106,648.2485861431035],"type":"line"}
+      edge[1] = {"end":[597.0766875610868,700.7253588620702],"start":[948.4984067675106,700.7253588620691],"type":"line"}

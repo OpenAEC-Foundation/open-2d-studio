@@ -142,3 +142,110 @@ mod tests {
         assert_eq!(index.len(), 0);
     }
 }
+
+// =============================================================================
+// SegmentIndex — R-tree keyed by raw segment index (u32).
+//
+// `SpatialIndex` above keys on `ShapeId` (UUID) which is the right shape for
+// the persistent ECS world. The viewer in `kernel-app` keeps a flat
+// `Vec<Segment>` per scene and needs a much cheaper key — the segment's
+// position in that vec. This keeps lookups O(log n + k) without a UUID
+// alloc/hash per entry, which matters when a single DWG yields ~700k
+// segments and we rebuild the index on every reload.
+// =============================================================================
+
+/// One entry in `SegmentIndex`: the segment's `usize` index encoded as `u32`
+/// (688k fits easily) plus its world-space AABB (the segment endpoints'
+/// bounding box, optionally inflated by line-width / pick-radius at query
+/// time — the index itself stores the tight box).
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct SegmentEntry {
+    pub seg_idx: u32,
+    pub min: [f64; 2],
+    pub max: [f64; 2],
+}
+
+impl RTreeObject for SegmentEntry {
+    type Envelope = AABB<[f64; 2]>;
+    fn envelope(&self) -> Self::Envelope {
+        AABB::from_corners(self.min, self.max)
+    }
+}
+
+/// R-tree over a flat segment buffer. Built once after scene-load and queried
+/// per cursor-move event. Bulk-loaded for the cheapest construction cost
+/// (~50 ms for 700k entries on a release build, vs minutes for incremental
+/// inserts).
+pub struct SegmentIndex {
+    tree: RTree<SegmentEntry>,
+}
+
+impl Default for SegmentIndex {
+    fn default() -> Self { Self::new() }
+}
+
+impl SegmentIndex {
+    pub fn new() -> Self { Self { tree: RTree::new() } }
+
+    /// Bulk-load — strongly preferred for initial population.
+    pub fn bulk_load(entries: Vec<SegmentEntry>) -> Self {
+        Self { tree: RTree::bulk_load(entries) }
+    }
+
+    pub fn len(&self) -> usize { self.tree.size() }
+    pub fn is_empty(&self) -> bool { self.tree.size() == 0 }
+
+    /// Return every segment whose AABB intersects a square of side
+    /// `2 * radius` centred at `p`. Caller does the exact distance test.
+    pub fn query_point(&self, p: [f64; 2], radius: f64) -> Vec<u32> {
+        let env = AABB::from_corners(
+            [p[0] - radius, p[1] - radius],
+            [p[0] + radius, p[1] + radius],
+        );
+        self.tree
+            .locate_in_envelope_intersecting(&env)
+            .map(|e| e.seg_idx)
+            .collect()
+    }
+
+    /// Return every segment whose AABB intersects the given world-space
+    /// rect. Used by drag-box select.
+    pub fn query_rect(&self, min: [f64; 2], max: [f64; 2]) -> Vec<u32> {
+        let env = AABB::from_corners(min, max);
+        self.tree
+            .locate_in_envelope_intersecting(&env)
+            .map(|e| e.seg_idx)
+            .collect()
+    }
+}
+
+#[cfg(test)]
+mod segment_index_tests {
+    use super::*;
+
+    #[test]
+    fn bulk_load_segments_and_query_point() {
+        let entries = vec![
+            SegmentEntry { seg_idx: 0, min: [0.0, 0.0], max: [10.0, 10.0] },
+            SegmentEntry { seg_idx: 1, min: [100.0, 100.0], max: [110.0, 110.0] },
+            SegmentEntry { seg_idx: 2, min: [50.0, 50.0], max: [60.0, 60.0] },
+        ];
+        let idx = SegmentIndex::bulk_load(entries);
+        assert_eq!(idx.len(), 3);
+
+        let mut hits = idx.query_point([5.0, 5.0], 1.0);
+        hits.sort();
+        assert_eq!(hits, vec![0]);
+
+        let mut hits = idx.query_point([55.0, 55.0], 100.0);
+        hits.sort();
+        assert_eq!(hits, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn empty_index_returns_no_hits() {
+        let idx = SegmentIndex::new();
+        let hits = idx.query_point([0.0, 0.0], 1.0);
+        assert!(hits.is_empty());
+    }
+}

@@ -29,6 +29,7 @@ import { NewSheetDialog } from './components/dialogs/NewSheetDialog';
 import { DrawingStandardsDialog } from './components/dialogs/DrawingStandardsDialog';
 import { FindReplaceDialog } from './components/dialogs/FindReplaceDialog';
 import { PdfUnderlayDialog } from './components/dialogs/PdfUnderlayDialog';
+import { ScaleSettingsDialog } from './components/dialogs/ScaleSettingsDialog/ScaleSettingsDialog';
 import { renderPdfPageForUnderlay } from './services/file/pdfUnderlayService';
 import { getPdfUnderlayData } from './state/slices/uiSlice';
 import type { ImageShape } from './types/geometry';
@@ -414,6 +415,8 @@ function App() {
     setPrintDialogOpen,
     settingsDialogOpen,
     setSettingsDialogOpen,
+    scaleSettingsDialogOpen,
+    setScaleSettingsDialogOpen,
     titleBlockEditorOpen,
     setTitleBlockEditorOpen,
     newSheetDialogOpen,
@@ -591,6 +594,12 @@ function App() {
       <SettingsDialog
         isOpen={settingsDialogOpen}
         onClose={() => setSettingsDialogOpen(false)}
+      />
+
+      {/* Scale Display Settings Dialog */}
+      <ScaleSettingsDialog
+        isOpen={scaleSettingsDialogOpen}
+        onClose={() => setScaleSettingsDialogOpen(false)}
       />
 
       {/* Title Block Editor Dialog */}

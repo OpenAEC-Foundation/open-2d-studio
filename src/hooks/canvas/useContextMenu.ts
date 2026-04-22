@@ -74,6 +74,7 @@ const TOOL_DISPLAY_NAMES: Record<ToolType, string> = {
   'sheet-dimension': 'Sheet Dimension',
   'sheet-callout': 'Sheet Callout',
   'sheet-revision-cloud': 'Revision Cloud',
+  'zoom-region': 'Zoom Region',
 };
 
 export interface ContextMenuState {

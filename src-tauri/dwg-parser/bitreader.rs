@@ -12,6 +12,9 @@ use crate::error::DwgError;
 pub struct DwgBitReader<'a> {
     data: &'a [u8],
     bit_position: usize,
+    /// R2007+ string stream: if set, `read_tv` with is_r2007=true reads
+    /// from this separate bit position instead of the main body stream.
+    string_stream_bit: Option<usize>,
 }
 
 impl<'a> DwgBitReader<'a> {
@@ -20,7 +23,29 @@ impl<'a> DwgBitReader<'a> {
         Self {
             data,
             bit_position: byte_offset * 8,
+            string_stream_bit: None,
         }
+    }
+
+    /// Set the string stream start position (R2007+).
+    /// When set, `read_tv(true)` will read from this position.
+    pub fn set_string_stream(&mut self, bit_pos: usize) {
+        self.string_stream_bit = Some(bit_pos);
+    }
+
+    /// Clear the string stream position.
+    pub fn clear_string_stream(&mut self) {
+        self.string_stream_bit = None;
+    }
+
+    /// Check if string stream is active.
+    pub fn has_string_stream(&self) -> bool {
+        self.string_stream_bit.is_some()
+    }
+
+    /// Get the string stream bit position (if set).
+    pub fn get_string_stream_bit(&self) -> Option<usize> {
+        self.string_stream_bit
     }
 
     // ------------------------------------------------------------------
@@ -142,27 +167,49 @@ impl<'a> DwgBitReader<'a> {
     }
 
     /// Default Double (DD) -- 2-bit prefix + variable payload.
+    ///
+    /// Per ODA OpenDesignSpec §2.2 DD (Default Double):
+    /// - prefix 00: use default (no bytes)
+    /// - prefix 01: 4 bytes patch lower half of default (raw[0..=3])
+    /// - prefix 10: 6 bytes total — first 2 patch raw[4..=5] (upper mantissa),
+    ///              next 4 patch raw[0..=3] (lower mantissa). Bytes 6..=7
+    ///              (sign + high exponent) stay from the default.
+    /// - prefix 11: full 8-byte raw double
+    ///
+    /// The prefix-10 byte ordering was verified empirically against
+    /// example_2010.dwg LWPOLYLINE handles 0x8D / 0x8E / 0x156:
+    ///   - h=0x8D v5.y: default=1142.26 [a3 bb a8 37 0f d9 91 40],
+    ///     6 stream bytes = e7 a9 db b9 9f 11, expected result=1130.48
+    ///     with LE bytes [d9 b9 9f 11 e7 a9 91 40]. The 2+4 mapping
+    ///     produces [db b9 9f 11 e7 a9 91 40] = 1130.475... ✓
+    ///   - h=0x8D v6 closes the polyline to v0=(571.68, 1289.73);
+    ///     the entire DD chain only re-aligns to bit-correct v0 iff
+    ///     prefix 10 consumes exactly 6 bytes (not 4).
     pub fn read_dd(&mut self, default: f64) -> Result<f64, DwgError> {
         let prefix = self.read_bits(2)?;
         match prefix {
             0 => Ok(default),
             3 => self.read_double(),
-            _ => {
+            1 => {
+                // 4 bytes replace lower half of default
                 let mut raw = default.to_le_bytes();
-                if prefix == 1 {
-                    raw[0] = self.read_byte()?;
-                    raw[1] = self.read_byte()?;
-                    raw[2] = self.read_byte()?;
-                    raw[3] = self.read_byte()?;
-                } else {
-                    // prefix == 2
-                    raw[4] = self.read_byte()?;
-                    raw[5] = self.read_byte()?;
-                    raw[0] = self.read_byte()?;
-                    raw[1] = self.read_byte()?;
-                    raw[2] = self.read_byte()?;
-                    raw[3] = self.read_byte()?;
-                }
+                raw[0] = self.read_byte()?;
+                raw[1] = self.read_byte()?;
+                raw[2] = self.read_byte()?;
+                raw[3] = self.read_byte()?;
+                Ok(f64::from_le_bytes(raw))
+            }
+            _ => {
+                // prefix == 2: 6 bytes total. First 2 bytes patch raw[4..5],
+                // then 4 bytes patch raw[0..3]. This scramble is per ODA §2.2
+                // DD encoding where the upper-mantissa delta comes first.
+                let mut raw = default.to_le_bytes();
+                raw[4] = self.read_byte()?;
+                raw[5] = self.read_byte()?;
+                raw[0] = self.read_byte()?;
+                raw[1] = self.read_byte()?;
+                raw[2] = self.read_byte()?;
+                raw[3] = self.read_byte()?;
                 Ok(f64::from_le_bytes(raw))
             }
         }
@@ -289,28 +336,79 @@ impl<'a> DwgBitReader<'a> {
         self.read_bs()
     }
 
-    /// Read an Extended NamedColor (ENC) for R2004+.
+    /// Read a CMC (CmColor) per ODA §2.11 for R2004+.
     ///
-    /// Returns `(color_index, optional_rgb, optional_name)`.
-    /// The ENC type starts with a BS color index, then optional
-    /// true-color and book-name data indicated by flag bits.
+    /// R2004+ CMC layout on non-entity objects (LAYER §20.4.53, STYLE, etc.):
+    ///   BL : index/rgb word  — high byte is the method:
+    ///          0xC0 ByBlock, 0xC1 ByLayer, 0xC2 TrueColor (low 24 bits = RGB),
+    ///          0xC3 ByColor (low 8 bits = ACI index), 0xC8 None.
+    ///        When the BL is a bare positive integer (no 0xCx byte), it's a
+    ///        legacy ACI index written straight.
+    ///   RC : color-byte-flag
+    ///          bit 0 (0x01) — color_name follows (TV)
+    ///          bit 1 (0x02) — book_name follows (TV)
+    ///   if (flag & 1): TV color_name
+    ///   if (flag & 2): TV book_name
+    ///
+    /// Returns the ACI index (BYLAYER→-1, BYBLOCK→0, true-color→-color_rgb
+    /// with sign bit set so callers can distinguish, named→0). Layer "off"
+    /// state historically signalled via negative index is preserved by
+    /// callers that want it via the sign of the original BL.
+    pub fn read_cmc_r2004(&mut self, is_unicode: bool) -> Result<i16, DwgError> {
+        let rgb_or_idx = self.read_bl()? as u32;
+        let flag = self.read_byte()?;
+        if flag & 0x01 != 0 {
+            let _name = self.read_tv(is_unicode)?;
+        }
+        if flag & 0x02 != 0 {
+            let _book = self.read_tv(is_unicode)?;
+        }
+        // Decode the BL method byte (high byte of the 32-bit word).
+        let method = (rgb_or_idx >> 24) as u8;
+        let aci = match method {
+            0xC0 => 0,                                    // ByBlock
+            0xC1 => 256,                                  // ByLayer
+            0xC2 => -(((rgb_or_idx & 0x00FF_FFFF) as i32) as i16), // TrueColor (not ACI)
+            0xC3 => (rgb_or_idx & 0xFF) as i16,           // ByColor indexed
+            0xC8 => 0,                                    // None
+            _    => (rgb_or_idx & 0xFFFF) as i16,         // Legacy plain index
+        };
+        Ok(aci)
+    }
+
+    /// Read an Extended NamedColor (ENC) as used by R2004+ entities.
+    ///
+    /// Per ODA OpenDesignSpec §2.11 (CmColor / ENC):
+    ///   BS : color number — the *first byte* of this BS is a flag byte.
+    ///        0x8000: complex color; next value is a BS containing RGB (24 bits).
+    ///        0x4000: has AcDbColor reference; color handle stored in handle stream.
+    ///        0x2000: followed by a transparency BL.
+    ///   - If no flags set, the low bits of the BS are the ACI color number.
+    ///
+    /// Returns `(color_index, optional_rgb, optional_name)`.  The `name` is
+    /// never populated by the inline stream (book/name data lives in the
+    /// handle stream), but the return signature is preserved.
     pub fn read_enc(&mut self) -> Result<(i16, Option<u32>, Option<String>), DwgError> {
-        let index = self.read_bs()?;
-        let flags = self.read_bs()? as u16;
+        let raw = self.read_bs()? as u16;
+        let flags = raw & 0xE000; // top three bits are the flag byte
+        let index = (raw & 0x1FFF) as i16;
 
-        let rgb = if flags & 0x01 != 0 {
-            Some(self.read_raw_long()?)
+        let rgb = if flags & 0x8000 != 0 {
+            // Complex color: next BS holds the RGB value (low 24 bits).
+            Some(self.read_bs()? as u32 & 0x00FF_FFFF)
         } else {
             None
         };
 
-        let name = if flags & 0x02 != 0 {
-            Some(self.read_t(false)?)
-        } else {
-            None
-        };
+        // 0x4000 indicates a color reference handle in the handle stream;
+        // nothing to read from the bit stream here.
 
-        Ok((index, rgb, name))
+        if flags & 0x2000 != 0 {
+            // Transparency BL follows — read and discard.
+            let _ = self.read_bl()?;
+        }
+
+        Ok((index, rgb, None))
     }
 
     // ------------------------------------------------------------------
@@ -382,7 +480,25 @@ impl<'a> DwgBitReader<'a> {
     /// Otherwise reads a T (code-page) string.
     pub fn read_tv(&mut self, is_r2007: bool) -> Result<String, DwgError> {
         if is_r2007 {
-            self.read_tu()
+            if let Some(ss_bit) = self.string_stream_bit {
+                // Read from the string stream, preserving main position
+                let saved = self.bit_position;
+                self.bit_position = ss_bit;
+                let result = self.read_tu();
+                // Update string stream position for next TV read
+                self.string_stream_bit = Some(self.bit_position);
+                self.bit_position = saved;
+                result
+            } else {
+                // per ODA OpenDesignSpec §5.4.4: R2007+ TVs live exclusively in
+                // the string stream. If no stream was set up (string_present flag
+                // was 0 at endbit - 1), every TV in that record is the empty
+                // string and NO BITS are consumed from the main stream. The
+                // previous fallback to read_t(false) consumed a bogus BS length
+                // inline and corrupted the rest of the parse (classes section,
+                // table objects, entity bodies without strings).
+                Ok(String::new())
+            }
         } else {
             self.read_t(false)
         }
@@ -424,6 +540,35 @@ impl<'a> DwgBitReader<'a> {
         }
         if negative {
             result = -result;
+        }
+        Ok((result, p))
+    }
+
+    /// Read an unsigned modular char (unsigned MC) from raw bytes at pos.
+    /// Unlike signed MC, the 0x40 bit of the last byte is NOT a sign flag —
+    /// it's part of the value.  Returns `(value, new_pos)`.
+    pub fn read_unsigned_modular_char(data: &[u8], pos: usize) -> Result<(u32, usize), DwgError> {
+        let mut result = 0u32;
+        let mut shift = 0u32;
+        let mut p = pos;
+
+        loop {
+            if p >= data.len() {
+                return Err(DwgError::InvalidBinary("unsigned_mc: unexpected end".into()));
+            }
+            let b = data[p];
+            p += 1;
+            let cont = b & 0x80;
+            if shift < 32 {
+                result |= ((b & 0x7F) as u32) << shift;
+            }
+            shift += 7;
+            if cont == 0 {
+                break;
+            }
+            if shift > 35 {
+                return Err(DwgError::InvalidBinary("unsigned_mc: too many bytes".into()));
+            }
         }
         Ok((result, p))
     }

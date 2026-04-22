@@ -190,13 +190,16 @@ function renderLinePreview(
   lineStyle: LineStyle,
 ) {
   ctx.clearRect(0, 0, w, h);
-  // Transparent background — no fillRect so the canvas CSS background shows through
+  // White background with black lines for consistent preview
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, w, h);
 
-  ctx.strokeStyle = '#ffffff';
+  ctx.strokeStyle = '#000000';
   ctx.lineWidth = 1.5;
   if (lineStyle === 'dashed') ctx.setLineDash([4, 3]);
   else if (lineStyle === 'dotted') ctx.setLineDash([1, 3]);
   else if (lineStyle === 'dashdot') ctx.setLineDash([6, 2, 1, 2]);
+  else if (lineStyle === 'center') ctx.setLineDash([10, 2, 3, 2]);
   else ctx.setLineDash([]);
 
   ctx.beginPath();
@@ -907,9 +910,10 @@ const LINE_STYLE_LABELS: Record<LineStyle, string> = {
   dashed: 'Dashed',
   dotted: 'Dotted',
   dashdot: 'Dash-Dot',
+  center: 'Center',
 };
 
-const LINE_STYLE_OPTIONS: LineStyle[] = ['solid', 'dashed', 'dotted', 'dashdot'];
+const LINE_STYLE_OPTIONS: LineStyle[] = ['solid', 'dashed', 'dotted', 'dashdot', 'center'];
 
 // ─── option builders ──────────────────────────────────────────────────────────
 

@@ -119,6 +119,41 @@ impl Default for Transform2D {
 #[derive(Component, Copy, Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct StyleRef(pub u32);
 
+// ── Shape-specific geometry components ───────────────────────────────────
+//
+// These carry the full geometric data for each shape kind, complementing the
+// generic `Position` component. Coordinates are world-space f64 mm.
+
+/// Line segment defined by two endpoints.
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct LineGeom {
+    pub p1: [f64; 2],
+    pub p2: [f64; 2],
+}
+
+/// Circle defined by center and radius.
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct CircleGeom {
+    pub center: [f64; 2],
+    pub radius: f64,
+}
+
+/// Arc defined by center, radius and start/end angles (radians, CCW).
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct ArcGeom {
+    pub center: [f64; 2],
+    pub radius: f64,
+    pub start_angle_rad: f64,
+    pub end_angle_rad: f64,
+}
+
+/// Polyline defined by an ordered list of vertices and an optional closing edge.
+#[derive(Component, Debug, Clone, Serialize, Deserialize)]
+pub struct PolylineGeom {
+    pub vertices: Vec<[f64; 2]>,
+    pub closed: bool,
+}
+
 // ── Marker components ────────────────────────────────────────────────────
 
 #[derive(Component, Default)] pub struct Visible;

@@ -93,13 +93,15 @@ export interface DrawingRenderOptions {
   editingSlabId?: string | null;
   /** Whether slab edit mode is active */
   slabEditMode?: boolean;
+  /** Per-scale display settings (line pattern, hatch, lineweight, text factors) */
+  scaleDisplaySettings?: import('../../../types/geometry').ScaleDisplaySettings;
 }
 
 // Legacy alias
 export type DraftRenderOptions = DrawingRenderOptions;
 
-/** Time budget per frame for background shape rendering (ms). Leaves headroom for UI work. */
-const SHAPE_RENDER_BUDGET_MS = 12;
+/** Time budget per frame for background shape rendering (ms). 14ms leaves 2.6ms for overlays + compositing. */
+const SHAPE_RENDER_BUDGET_MS = 14;
 
 export class DrawingRenderer extends BaseRenderer {
   private shapeRenderer: ShapeRenderer;
@@ -117,6 +119,21 @@ export class DrawingRenderer extends BaseRenderer {
   private _hasMoreToRender = false;
   private _renderedCount = 0;
   private _totalVisible = 0;
+
+  // ── Reusable Sets (avoid GC pressure from per-frame allocations) ──────────
+  private _selectedSet = new Set<string>();
+  private _visibleIds = new Set<string>();
+  private _lodPassIds = new Set<string>();
+  private _backgroundShapes: Shape[] = [];
+
+  // ── Sorted visible shapes cache ──────────────────────────────────────────
+  // Sorting 1600 shapes by render priority costs ~0.5-1ms per frame.
+  // Cache the sorted array and only rebuild when shapes/viewport change.
+  private _cachedSortedVisible: Shape[] = [];
+  private _cachedSortedShapesRef: Shape[] | null = null;
+  private _cachedSortedViewportZoom: number = 0;
+  private _cachedSortedViewportOX: number = 0;
+  private _cachedSortedViewportOY: number = 0;
 
   // ── QuadTree / bounds cache ───────────────────────────────────────────────
   // Building a QuadTree from 2000 shapes takes ~2-3 ms per frame.  Cache it
@@ -268,6 +285,9 @@ export class DrawingRenderer extends BaseRenderer {
     // Set shapes lookup for linked label text resolution
     this.shapeRenderer.setShapesLookup(shapes);
 
+    // Invalidate Path2D cache when shapes change
+    this.shapeRenderer.invalidatePathCache(shapes);
+
     // Set live preview pattern
     this.shapeRenderer.setPreviewPattern(options.previewPatternId || null, selectedShapeIds);
 
@@ -275,6 +295,17 @@ export class DrawingRenderer extends BaseRenderer {
     this.shapeRenderer.setShowLineweight(options.showLineweight !== false);
     this.shapeRenderer.setZoom(viewport.zoom);
     this.shapeRenderer.setTransparentBackground(!!options.transparentBackground);
+
+    // Apply per-scale display factors
+    if (options.scaleDisplaySettings) {
+      const sds = options.scaleDisplaySettings;
+      this.shapeRenderer.setScaleDisplayFactors(
+        sds.linePatternFactor, sds.hatchPatternFactor,
+        sds.lineweightFactor, sds.textHeightFactor,
+      );
+    } else {
+      this.shapeRenderer.setScaleDisplayFactors(1, 1, 1, 1);
+    }
     this.parametricRenderer.setShowLineweight(options.showLineweight !== false);
 
     // Clear canvas
@@ -310,8 +341,10 @@ export class DrawingRenderer extends BaseRenderer {
       );
     }
 
-    // Build Set for O(1) selection lookups (avoids O(n²) with .includes() in loop)
-    const selectedSet = new Set(selectedShapeIds);
+    // Build Set for O(1) selection lookups (reuse class-level Set to avoid GC)
+    const selectedSet = this._selectedSet;
+    selectedSet.clear();
+    for (const id of selectedShapeIds) selectedSet.add(id);
 
     // Pass selected IDs to shape renderer for associative dimension highlighting
     this.shapeRenderer.setSelectedShapeIds(selectedSet);
@@ -387,11 +420,17 @@ export class DrawingRenderer extends BaseRenderer {
       // ─── Step 1: Viewport culling — query QuadTree ────────────────────────────
       const inView = tree.queryBounds(cullBounds);
 
-      // Build visible ID set; shapes with unbounded extents are always visible
-      const visibleIds = new Set<string>();
+      // Build visible ID set (reuse class-level Set); shapes with unbounded extents
+      // and images are always visible regardless of viewport culling
+      const visibleIds = this._visibleIds;
+      visibleIds.clear();
       for (const entry of inView) visibleIds.add(entry.id);
       for (const [id, b] of boundsMap) {
         if (!isFinite(b.maxX)) visibleIds.add(id);
+      }
+      // Images are never culled — always add them to the visible set
+      for (const shape of shapes) {
+        if (shape.type === 'image' && shape.visible) visibleIds.add(shape.id);
       }
 
       // ─── Step 2: LOD culling — skip sub-pixel shapes ─────────────────────────
@@ -401,7 +440,8 @@ export class DrawingRenderer extends BaseRenderer {
       const LOD_MIN_PX = 2;
       const LOD_TEXT_MIN_PX = 3;
 
-      const lodPassIds = new Set<string>();
+      const lodPassIds = this._lodPassIds;
+      lodPassIds.clear();
       for (const id of visibleIds) {
         const b = boundsMap.get(id);
         if (!b) { lodPassIds.add(id); continue; }
@@ -410,6 +450,11 @@ export class DrawingRenderer extends BaseRenderer {
         const screenH = (b.maxY - b.minY) * zoom;
         const shape = shapeById.get(id);
         if (!shape) continue;
+        // Never LOD-cull images (WMS rasters, underlays) — they are always visible
+        if (shape.type === 'image') {
+          lodPassIds.add(id);
+          continue;
+        }
         if (shape.type === 'text') {
           // For text, cull on the height axis only
           if (screenH < LOD_TEXT_MIN_PX) continue;
@@ -419,24 +464,43 @@ export class DrawingRenderer extends BaseRenderer {
         lodPassIds.add(id);
       }
 
-      // ─── Step 3: Collect and sort visible shapes ──────────────────────────────
-      const visibleShapes: Shape[] = [];
-      for (const shape of shapes) {
-        if (shape.visible && lodPassIds.has(shape.id)) visibleShapes.push(shape);
-      }
+      // ─── Step 3: Collect and sort visible shapes (cached) ────────────────────
+      // Only rebuild the sorted array when shapes or viewport change.
+      // Selection/hover/cursor changes reuse the cached sorted list.
+      const viewportChanged = shapes !== this._cachedSortedShapesRef ||
+        viewport.zoom !== this._cachedSortedViewportZoom ||
+        viewport.offsetX !== this._cachedSortedViewportOX ||
+        viewport.offsetY !== this._cachedSortedViewportOY;
 
-      // Stable sort: V8's Array.sort is stable since Node 11 / Chrome 70
-      visibleShapes.sort((a, b) => getRenderPriority(a) - getRenderPriority(b));
+      let visibleShapes: Shape[];
+      if (viewportChanged) {
+        visibleShapes = [];
+        for (const shape of shapes) {
+          if (shape.visible && lodPassIds.has(shape.id)) visibleShapes.push(shape);
+        }
+        // Stable sort: V8's Array.sort is stable since Node 11 / Chrome 70
+        visibleShapes.sort((a, b) => getRenderPriority(a) - getRenderPriority(b));
+        this._cachedSortedVisible = visibleShapes;
+        this._cachedSortedShapesRef = shapes;
+        this._cachedSortedViewportZoom = viewport.zoom;
+        this._cachedSortedViewportOX = viewport.offsetX;
+        this._cachedSortedViewportOY = viewport.offsetY;
+      } else {
+        visibleShapes = this._cachedSortedVisible;
+      }
 
       // ─── Step 4: Priority shapes — always rendered this frame ─────────────────
       // Selected, hovered, and pre-selected shapes are "priority" and drawn every
       // frame regardless of time budget so interaction always feels instant.
-      const backgroundShapes: Shape[] = [];
+      const backgroundShapes = this._backgroundShapes;
+      backgroundShapes.length = 0;
       for (const shape of visibleShapes) {
         if (isShapeInHiddenCategory(shape, hiddenCats)) continue;
         const isSelected = selectedSet.has(shape.id);
         const isHovered = hoveredShapeId === shape.id || (preSelectedSet !== null && preSelectedSet.has(shape.id));
-        if (isSelected || isHovered) {
+        // Images (WMS rasters, underlays) are always drawn as priority — never deferred
+        const isImage = shape.type === 'image';
+        if (isSelected || isHovered || isImage) {
           this.shapeRenderer.drawShape(shape, isSelected, isHovered, whiteBackground, hideSelectionHandles);
         } else {
           backgroundShapes.push(shape);
@@ -457,8 +521,8 @@ export class DrawingRenderer extends BaseRenderer {
       let bgIdx = this.progressiveIndex;
       const frameStart = performance.now();
       while (bgIdx < backgroundShapes.length) {
-        // Check time budget every 8 shapes to amortise performance.now() cost
-        if ((bgIdx & 7) === 0) {
+        // Check time budget every 16 shapes to amortise performance.now() cost
+        if ((bgIdx & 15) === 0) {
           const elapsed = performance.now() - frameStart;
           if (elapsed > SHAPE_RENDER_BUDGET_MS) break;
         }

@@ -71,6 +71,7 @@ export interface UIState {
   feedbackDialogOpen: boolean;
   settingsDialogOpen: boolean;
   settingsDialogTab: SettingsDialogTab;
+  scaleSettingsDialogOpen: boolean;
 
   // Command Palette
   commandPaletteOpen: boolean;
@@ -113,6 +114,7 @@ export interface UIActions {
   setFeedbackDialogOpen: (open: boolean) => void;
   setSettingsDialogOpen: (open: boolean) => void;
   setSettingsDialogTab: (tab: SettingsDialogTab) => void;
+  setScaleSettingsDialogOpen: (open: boolean) => void;
   openSettings: (tab?: SettingsDialogTab) => void;
   setCommandPaletteOpen: (open: boolean) => void;
   toggleCommandPalette: () => void;
@@ -179,6 +181,7 @@ export const initialUIState: UIState = {
   feedbackDialogOpen: false,
   settingsDialogOpen: false,
   settingsDialogTab: 'drawing-aids' as SettingsDialogTab,
+  scaleSettingsDialogOpen: false,
   commandPaletteOpen: false,
   pdfUnderlayDialogOpen: false,
   pdfUnderlayFileName: '',
@@ -209,6 +212,7 @@ interface FullStore {
   feedbackDialogOpen: boolean;
   settingsDialogOpen: boolean;
   settingsDialogTab: SettingsDialogTab;
+  scaleSettingsDialogOpen: boolean;
   commandPaletteOpen: boolean;
   pdfUnderlayDialogOpen: boolean;
   pdfUnderlayFileName: string;
@@ -296,6 +300,11 @@ export const createUISlice = (
   setSettingsDialogTab: (tab) =>
     set((state) => {
       state.settingsDialogTab = tab;
+    }),
+
+  setScaleSettingsDialogOpen: (open) =>
+    set((state) => {
+      state.scaleSettingsDialogOpen = open;
     }),
 
   openSettings: (tab) =>

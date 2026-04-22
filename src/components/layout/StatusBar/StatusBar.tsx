@@ -349,7 +349,13 @@ function StatusMessage() {
         else msg = 'Click destination point (point to align to)';
         break;
       case 'measure':
-        msg = pts === 0 ? 'Click first point to measure from' : 'Click second point to measure distance';
+        if (pts === 0) {
+          // Show previous result if available, otherwise show hint
+          const prevResult = (window as any).__measureResult;
+          msg = prevResult || 'Click first point to measure from';
+        } else {
+          msg = 'Click second point to measure distance';
+        }
         break;
     }
   }
