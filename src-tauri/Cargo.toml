@@ -31,6 +31,20 @@ tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
 dwg-parser = { path = "dwg-parser" }
 
+# --- Slice 1 merged-app deps ---
+winit = "0.30"
+wry = "0.40"
+wgpu = "22"
+pollster = "0.3"
+anyhow = "1"
+bytemuck = { version = "1.19", features = ["derive"] }
+raw-window-handle = "0.6"
+
+# --- Binaries ---
+[[bin]]
+name = "merged"
+path = "src/bin/merged.rs"
+
 [features]
 default = ["custom-protocol"]
 custom-protocol = ["tauri/custom-protocol"]
