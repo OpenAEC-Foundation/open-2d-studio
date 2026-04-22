@@ -1,0 +1,122 @@
+/* merged.css — Slice 1 of the 1.0 + 2.0 merge.
+   Transparent body + opaque TitleBar & Ribbon so the wgpu surface
+   shows through the empty canvas region below. */
+
+html, body, #root {
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  color: #e6e6e6;
+  font-family: 'Segoe UI', sans-serif;
+  height: 100%;
+}
+
+.merged-app {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  width: 100%;
+}
+
+/* ---- TitleBar ---- */
+
+.merged-titlebar {
+  display: flex;
+  align-items: center;
+  height: 32px;
+  background: #1f232a;
+  border-bottom: 1px solid #14171c;
+  padding: 0 8px;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.merged-titlebar__left { display: flex; align-items: center; gap: 8px; }
+.merged-titlebar__icon {
+  width: 16px; height: 16px;
+  background: #007acc;
+  border-radius: 3px;
+}
+.merged-titlebar__title { font-size: 12px; color: #b8bfc9; }
+.merged-titlebar__center { flex: 1; }
+.merged-titlebar__controls { display: flex; gap: 2px; }
+.merged-titlebar__ctrl {
+  width: 36px; height: 26px;
+  background: transparent; border: 0;
+  color: #9aa3ad; cursor: default;
+}
+.merged-titlebar__ctrl:hover { background: #2a2f38; }
+.merged-titlebar__ctrl--close:hover { background: #c42b1c; color: #fff; }
+
+/* ---- Ribbon ---- */
+
+.merged-ribbon {
+  display: flex;
+  background: #2b303a;
+  border-bottom: 1px solid #14171c;
+  padding: 4px 8px;
+  gap: 0;
+  flex-shrink: 0;
+  min-height: 96px;
+}
+
+.merged-ribbon__group {
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid #1f232a;
+  padding: 2px 8px 0 8px;
+}
+.merged-ribbon__group:last-child { border-right: 0; }
+.merged-ribbon__group-body {
+  display: flex;
+  gap: 4px;
+  flex: 1;
+  align-items: center;
+}
+.merged-ribbon__group-title {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: #6c7380;
+  text-align: center;
+  letter-spacing: 0.5px;
+  padding-top: 2px;
+}
+
+.merged-ribbon__big {
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: center;
+  width: 64px; min-height: 62px;
+  background: transparent; border: 0;
+  color: #cbd3dd;
+  font-size: 11px;
+  gap: 4px;
+  cursor: default;
+}
+.merged-ribbon__big[disabled] { opacity: 0.75; }
+.merged-ribbon__big:hover:not([disabled]) { background: #3a4050; }
+
+.merged-ribbon__stack {
+  display: flex; flex-direction: column;
+  gap: 2px;
+}
+.merged-ribbon__small {
+  display: flex; align-items: center;
+  gap: 6px;
+  padding: 3px 8px;
+  background: transparent; border: 0;
+  color: #cbd3dd;
+  font-size: 11px;
+  text-align: left;
+  min-width: 100px;
+  cursor: default;
+}
+.merged-ribbon__small[disabled] { opacity: 0.75; }
+.merged-ribbon__small:hover:not([disabled]) { background: #3a4050; }
+
+/* ---- Canvas region (transparent) ---- */
+
+.merged-canvas-region {
+  flex: 1;
+  background: transparent;
+  pointer-events: none;  /* Slice 1: no canvas interaction */
+}
