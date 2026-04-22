@@ -170,7 +170,7 @@ impl ApplicationHandler for App {
         // through wherever the page has CSS background: transparent.
         let webview = wry::WebViewBuilder::new_as_child(window.as_ref())
             .with_transparent(true)
-            .with_url("data:text/html,<html><body style='margin:0;background:transparent'><div style='background:#2b2b33;color:white;padding:12px;font-family:sans-serif'>webview online</div></body></html>")
+            .with_url("http://127.0.0.1:5173")
             .build()
             .expect("build webview");
         self.webview = Some(webview);
