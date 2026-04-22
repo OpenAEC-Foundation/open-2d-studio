@@ -25,11 +25,12 @@ struct GpuState {
 struct App {
     window: Option<Arc<Window>>,
     gpu: Option<GpuState>,
+    webview: Option<wry::WebView>,
 }
 
 impl App {
     fn new() -> Self {
-        Self { window: None, gpu: None }
+        Self { window: None, gpu: None, webview: None }
     }
 
     async fn init_gpu(window: Arc<Window>) -> Result<GpuState> {
@@ -137,6 +138,15 @@ impl App {
         gpu.config.width = w.max(1);
         gpu.config.height = h.max(1);
         gpu.surface.configure(&gpu.device, &gpu.config);
+        if let Some(wv) = self.webview.as_ref() {
+            let _ = wv.set_bounds(wry::Rect {
+                position: wry::dpi::LogicalPosition::new(0, 0).into(),
+                size: wry::dpi::LogicalSize::new(
+                    (w as f64).max(1.0) as u32,
+                    (h as f64).max(1.0) as u32,
+                ).into(),
+            });
+        }
     }
 }
 
@@ -153,8 +163,17 @@ impl ApplicationHandler for App {
         );
         let gpu = pollster::block_on(Self::init_gpu(window.clone()))
             .expect("init gpu");
-        self.window = Some(window);
+        self.window = Some(window.clone());
         self.gpu = Some(gpu);
+
+        // Child webview over the same window. Transparent so wgpu shows
+        // through wherever the page has CSS background: transparent.
+        let webview = wry::WebViewBuilder::new_as_child(window.as_ref())
+            .with_transparent(true)
+            .with_url("data:text/html,<html><body style='margin:0;background:transparent'><div style='background:#2b2b33;color:white;padding:12px;font-family:sans-serif'>webview online</div></body></html>")
+            .build()
+            .expect("build webview");
+        self.webview = Some(webview);
     }
 
     fn window_event(
