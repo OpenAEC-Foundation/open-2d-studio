@@ -9,6 +9,9 @@
     "preview": "vite preview",
     "tauri": "tauri",
     "test": "vitest run",
+    "dev:merged": "vite --config vite.merged.config.ts",
+    "build:merged": "tsc && vite build --config vite.merged.config.ts",
+    "run:merged": "cargo run --release --manifest-path src-tauri/Cargo.toml --bin merged",
     "bump": "node scripts/bump-version.js"
   },
   "dependencies": {
