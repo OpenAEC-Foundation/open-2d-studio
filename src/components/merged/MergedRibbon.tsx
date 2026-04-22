@@ -5,10 +5,10 @@ import {
   Layers, Settings, Grid3X3,
   Columns, Rows, Eye,
   Info,
+  type LucideIcon,
 } from 'lucide-react';
-import type { ComponentType, SVGProps } from 'react';
 
-type IconComp = ComponentType<SVGProps<SVGSVGElement>>;
+type IconComp = LucideIcon;
 
 function BigButton({ icon: Icon, label }: { icon: IconComp; label: string }) {
   return (
