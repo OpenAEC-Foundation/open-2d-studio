@@ -1,20 +1,33 @@
-//! merged.exe — Slice 1 of the 1.0 + 2.0 merge.
+//! merged.exe — Slice 1.5 pivot (route B: two-window architecture).
 //!
-//! Opens a single winit window, initialises a wgpu surface on it, and
-//! clears to `#1E3A8A` every frame. wry webview is added in Task 5.
+//! Opens TWO winit windows:
+//!   * shell  — 1800×150, hosts the wry webview (loads the Vite dev server).
+//!     Has OS chrome (titlebar + close button).
+//!   * canvas — 1800×850, hosts the wgpu surface (clears to #1E3A8A).
+//!     Decorations off; positioned flush against the bottom of the shell.
+//!
+//! The two windows are kept attached: when the shell moves, the canvas
+//! follows; when the shell resizes (width), the canvas matches the new
+//! width. Closing either window terminates the process. WebView2 paints
+//! opaquely on Windows, so we no longer rely on a transparent overlay.
 
 use anyhow::{Context, Result};
 use std::sync::Arc;
 use wgpu::SurfaceError;
 use winit::{
     application::ApplicationHandler,
+    dpi::{LogicalSize, PhysicalPosition, PhysicalSize},
     event::WindowEvent,
     event_loop::{ActiveEventLoop, EventLoop},
     window::{Window, WindowId},
 };
 
-/// Resources that only exist once the OS has given us a window. winit's
-/// `ApplicationHandler` pattern spins these up in `resumed()`.
+const SHELL_W: u32 = 1800;
+const SHELL_H: u32 = 150;
+const CANVAS_W: u32 = 1800;
+const CANVAS_H: u32 = 850;
+
+/// Resources that only exist once the OS has given us a window.
 struct GpuState {
     surface: wgpu::Surface<'static>,
     device: wgpu::Device,
@@ -23,14 +36,25 @@ struct GpuState {
 }
 
 struct App {
-    window: Option<Arc<Window>>,
-    gpu: Option<GpuState>,
+    /// Window 1: hosts the wry webview (Vite dev server).
+    shell: Option<Arc<Window>>,
     webview: Option<wry::WebView>,
+    /// Window 2: hosts the wgpu surface.
+    canvas: Option<Arc<Window>>,
+    gpu: Option<GpuState>,
+    /// Last observed shell outer position — used to debounce sync work.
+    last_shell_pos: Option<PhysicalPosition<i32>>,
 }
 
 impl App {
     fn new() -> Self {
-        Self { window: None, gpu: None, webview: None }
+        Self {
+            shell: None,
+            webview: None,
+            canvas: None,
+            gpu: None,
+            last_shell_pos: None,
+        }
     }
 
     async fn init_gpu(window: Arc<Window>) -> Result<GpuState> {
@@ -110,11 +134,7 @@ impl App {
                     view: &view,
                     resolve_target: None,
                     ops: wgpu::Operations {
-                        // #1E3A8A = rgb(30, 58, 138). The surface format is
-                        // sRGB, so wgpu writes the clear value into the
-                        // texture as-is and the hardware applies the sRGB
-                        // transfer on scan-out. We therefore supply the
-                        // *linear* representation of the target sRGB colour.
+                        // #1E3A8A linear-encoded; sRGB scan-out re-encodes.
                         load: wgpu::LoadOp::Clear(wgpu::Color {
                             r: srgb_to_linear(30.0 / 255.0),
                             g: srgb_to_linear(58.0 / 255.0),
@@ -133,75 +153,172 @@ impl App {
         frame.present();
     }
 
-    fn resize(&mut self, w: u32, h: u32) {
+    /// Reconfigure the wgpu surface for the canvas window's new size.
+    fn resize_canvas(&mut self, w: u32, h: u32) {
         let Some(gpu) = self.gpu.as_mut() else { return };
         gpu.config.width = w.max(1);
         gpu.config.height = h.max(1);
         gpu.surface.configure(&gpu.device, &gpu.config);
+    }
+
+    /// Resize the wry webview to fill the shell's client area.
+    fn resize_webview(&self, w: u32, h: u32) {
         if let Some(wv) = self.webview.as_ref() {
             let _ = wv.set_bounds(wry::Rect {
                 position: wry::dpi::LogicalPosition::new(0, 0).into(),
-                size: wry::dpi::LogicalSize::new(
-                    (w as f64).max(1.0) as u32,
-                    (h as f64).max(1.0) as u32,
-                ).into(),
+                size: wry::dpi::LogicalSize::new(w.max(1), h.max(1)).into(),
             });
         }
+    }
+
+    /// Reposition the canvas window flush against the bottom of the shell.
+    fn sync_canvas_position(&mut self) {
+        let (Some(shell), Some(canvas)) = (self.shell.as_ref(), self.canvas.as_ref())
+        else {
+            return;
+        };
+        let Ok(shell_pos) = shell.outer_position() else { return };
+        let shell_size = shell.outer_size();
+        let target = PhysicalPosition::new(
+            shell_pos.x,
+            shell_pos.y + shell_size.height as i32,
+        );
+        canvas.set_outer_position(target);
+        self.last_shell_pos = Some(shell_pos);
     }
 }
 
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        if self.window.is_some() {
+        if self.shell.is_some() {
             return;
         }
-        let attrs = Window::default_attributes()
-            .with_title("Open 2D Studio (merged)")
-            .with_inner_size(winit::dpi::LogicalSize::new(1800, 1000));
-        let window = Arc::new(
-            event_loop.create_window(attrs).expect("create window"),
-        );
-        let gpu = pollster::block_on(Self::init_gpu(window.clone()))
-            .expect("init gpu");
-        self.window = Some(window.clone());
-        self.gpu = Some(gpu);
 
-        // Child webview over the same window. Transparent so wgpu shows
-        // through wherever the page has CSS background: transparent.
-        let webview = wry::WebViewBuilder::new_as_child(window.as_ref())
-            .with_transparent(true)
+        // ---- Shell window (hosts the webview) ---------------------------
+        let shell_attrs = Window::default_attributes()
+            .with_title("Open 2D Studio (merged) — shell")
+            .with_inner_size(LogicalSize::new(SHELL_W, SHELL_H))
+            .with_decorations(true)
+            .with_resizable(true);
+        let shell = Arc::new(
+            event_loop
+                .create_window(shell_attrs)
+                .expect("create shell window"),
+        );
+
+        // Webview as a child of the shell. No transparency: route B uses
+        // a separate window for wgpu, so the webview can paint opaquely.
+        let shell_inner = shell.inner_size();
+        let webview = wry::WebViewBuilder::new_as_child(shell.as_ref())
             .with_url("http://127.0.0.1:5173")
+            .with_bounds(wry::Rect {
+                position: wry::dpi::LogicalPosition::new(0, 0).into(),
+                size: wry::dpi::LogicalSize::new(
+                    shell_inner.width.max(1),
+                    shell_inner.height.max(1),
+                )
+                .into(),
+            })
             .build()
             .expect("build webview");
+
+        // ---- Canvas window (hosts the wgpu surface) ---------------------
+        // Position directly below the shell's outer rect (no gap, no overlap).
+        let shell_outer_pos = shell
+            .outer_position()
+            .unwrap_or(PhysicalPosition::new(100, 100));
+        let shell_outer_size = shell.outer_size();
+        let canvas_pos = PhysicalPosition::new(
+            shell_outer_pos.x,
+            shell_outer_pos.y + shell_outer_size.height as i32,
+        );
+        let canvas_attrs = Window::default_attributes()
+            .with_title("Open 2D Studio (merged) — canvas")
+            .with_inner_size(LogicalSize::new(CANVAS_W, CANVAS_H))
+            .with_decorations(false)
+            .with_resizable(false)
+            .with_position(canvas_pos);
+        let canvas = Arc::new(
+            event_loop
+                .create_window(canvas_attrs)
+                .expect("create canvas window"),
+        );
+
+        let gpu = pollster::block_on(Self::init_gpu(canvas.clone()))
+            .expect("init gpu");
+
+        self.shell = Some(shell);
         self.webview = Some(webview);
+        self.canvas = Some(canvas);
+        self.gpu = Some(gpu);
+        self.last_shell_pos = Some(shell_outer_pos);
+
+        // Make sure the canvas ends up exactly under the shell after both
+        // windows have been realised by the OS (positions can shift slightly
+        // once decorations are measured).
+        self.sync_canvas_position();
     }
 
     fn window_event(
         &mut self,
         event_loop: &ActiveEventLoop,
-        _id: WindowId,
+        id: WindowId,
         event: WindowEvent,
     ) {
-        match event {
-            WindowEvent::CloseRequested => event_loop.exit(),
-            WindowEvent::Resized(size) => self.resize(size.width, size.height),
-            WindowEvent::RedrawRequested => self.render(),
-            _ => {}
+        let shell_id = self.shell.as_ref().map(|w| w.id());
+        let canvas_id = self.canvas.as_ref().map(|w| w.id());
+
+        if Some(id) == shell_id {
+            match event {
+                WindowEvent::CloseRequested => event_loop.exit(),
+                WindowEvent::Moved(_pos) => {
+                    // Keep the canvas attached to the shell's bottom edge.
+                    self.sync_canvas_position();
+                }
+                WindowEvent::Resized(size) => {
+                    // Match the canvas width to the shell width; preserve
+                    // the canvas's current inner height.
+                    self.resize_webview(size.width, size.height);
+                    let canvas_height = self
+                        .canvas
+                        .as_ref()
+                        .map(|c| c.inner_size().height)
+                        .unwrap_or(CANVAS_H);
+                    if let Some(canvas) = self.canvas.as_ref() {
+                        let _ = canvas.request_inner_size(PhysicalSize::new(
+                            size.width.max(1),
+                            canvas_height.max(1),
+                        ));
+                    }
+                    // The shell's outer height may have changed (e.g. DPI).
+                    self.sync_canvas_position();
+                }
+                _ => {}
+            }
+        } else if Some(id) == canvas_id {
+            match event {
+                WindowEvent::CloseRequested => event_loop.exit(),
+                WindowEvent::Resized(size) => {
+                    self.resize_canvas(size.width, size.height);
+                }
+                WindowEvent::RedrawRequested => self.render(),
+                _ => {}
+            }
         }
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if let Some(w) = self.window.as_ref() {
-            w.request_redraw();
+        // Only the canvas needs continuous redraws; the webview drives itself.
+        if let Some(c) = self.canvas.as_ref() {
+            c.request_redraw();
         }
     }
 }
 
-/// Convert an sRGB channel in [0, 1] to its linear-light equivalent using
-/// the standard piecewise transfer function. Needed because our surface
-/// uses an sRGB texture format: wgpu stores the clear value as linear and
-/// the display hardware applies the sRGB encoding, so passing the naive
-/// 8-bit/255 value would double-encode and yield a too-bright result.
+/// Convert an sRGB channel in [0, 1] to its linear-light equivalent. Needed
+/// because our surface uses an sRGB texture format: wgpu stores the clear
+/// value as linear and the display hardware applies the sRGB encoding, so
+/// passing the naive 8-bit/255 value would double-encode.
 fn srgb_to_linear(c: f64) -> f64 {
     if c <= 0.04045 {
         c / 12.92
