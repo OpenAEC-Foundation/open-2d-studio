@@ -1,10 +1,15 @@
 //! merged.exe — Slice 1.5 pivot (route B: two-window architecture).
 //!
 //! Opens TWO winit windows:
-//!   * shell  — 1800×150, hosts the wry webview (loads the Vite dev server).
-//!     Has OS chrome (titlebar + close button).
-//!   * canvas — 1800×850, hosts the wgpu surface (clears to #1E3A8A).
-//!     Decorations off; positioned flush against the bottom of the shell.
+//!   * shell  — 1800×200 (inner), hosts the wry webview (loads the Vite dev
+//!     server). Has OS chrome (titlebar + close button), so the outer height
+//!     is ~230px on Win11. Inner area fits the React TitleBar (32px) +
+//!     Ribbon (~150px, tallest group is "View" with 4 stacked small buttons)
+//!     without clipping the group titles.
+//!   * canvas — hosts the wgpu surface (clears to #1E3A8A). Decorations off;
+//!     positioned flush against the bottom of the shell. Its inner width
+//!     matches the shell's OUTER width so the left/right edges line up
+//!     visually with the OS-chrome borders.
 //!
 //! The two windows are kept attached: when the shell moves, the canvas
 //! follows; when the shell resizes (width), the canvas matches the new
@@ -23,8 +28,7 @@ use winit::{
 };
 
 const SHELL_W: u32 = 1800;
-const SHELL_H: u32 = 150;
-const CANVAS_W: u32 = 1800;
+const SHELL_H: u32 = 200;
 const CANVAS_H: u32 = 850;
 
 /// Resources that only exist once the OS has given us a window.
@@ -224,6 +228,10 @@ impl ApplicationHandler for App {
 
         // ---- Canvas window (hosts the wgpu surface) ---------------------
         // Position directly below the shell's outer rect (no gap, no overlap).
+        // Canvas inner width == shell outer width so the left/right edges line
+        // up visually with the OS-chrome border (canvas has no decorations,
+        // so its outer == inner). On Win11 default theme the chrome is mostly
+        // vertical, so a 1-2px horizontal mismatch is acceptable.
         let shell_outer_pos = shell
             .outer_position()
             .unwrap_or(PhysicalPosition::new(100, 100));
@@ -232,9 +240,12 @@ impl ApplicationHandler for App {
             shell_outer_pos.x,
             shell_outer_pos.y + shell_outer_size.height as i32,
         );
+        let scale = shell.scale_factor();
+        let canvas_logical_w =
+            (shell_outer_size.width as f64 / scale).max(1.0) as u32;
         let canvas_attrs = Window::default_attributes()
             .with_title("Open 2D Studio (merged) — canvas")
-            .with_inner_size(LogicalSize::new(CANVAS_W, CANVAS_H))
+            .with_inner_size(LogicalSize::new(canvas_logical_w, CANVAS_H))
             .with_decorations(false)
             .with_resizable(false)
             .with_position(canvas_pos);
@@ -276,17 +287,23 @@ impl ApplicationHandler for App {
                     self.sync_canvas_position();
                 }
                 WindowEvent::Resized(size) => {
-                    // Match the canvas width to the shell width; preserve
-                    // the canvas's current inner height.
+                    // `size` is the shell's NEW INNER size — what the webview
+                    // gets. The canvas should match the shell's OUTER width
+                    // (so the chrome borders align visually).
                     self.resize_webview(size.width, size.height);
                     let canvas_height = self
                         .canvas
                         .as_ref()
                         .map(|c| c.inner_size().height)
                         .unwrap_or(CANVAS_H);
+                    let target_w = self
+                        .shell
+                        .as_ref()
+                        .map(|s| s.outer_size().width)
+                        .unwrap_or(size.width);
                     if let Some(canvas) = self.canvas.as_ref() {
                         let _ = canvas.request_inner_size(PhysicalSize::new(
-                            size.width.max(1),
+                            target_w.max(1),
                             canvas_height.max(1),
                         ));
                     }
