@@ -26,6 +26,21 @@ use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, ModifiersState, PhysicalKey};
 use winit::window::Window;
 
+// superui — reusable chrome widgets (titlebar, ribbon, file-tab bar,
+// status bar). Phase 1 of the UI-crate migration replaces the inline
+// painter helpers below with these data-driven widgets so future
+// applications can reuse them.
+use superui::{
+    apply_theme, Theme,
+    layout::{
+        TitleBar, TitleBarAction,
+        Ribbon, RibbonAction, RibbonTabId, RibbonTabDef, RibbonGroup, RibbonButtonDef, ButtonSize,
+        FileTabBar, FileTabAction, FileTabDef,
+        StatusBar, StatusSection,
+    },
+    icon::IconKind,
+};
+
 // Scene / Segment / load_dxf / load_dwg are shared with headless_render.rs
 // via the kernel_app::scene_io module. See crates/app/src/scene_io.rs for
 // the implementation (INSERT block expansion, HATCH boundary tessellation,
@@ -243,527 +258,6 @@ impl RibbonStyle {
 
 const RIBBON: RibbonStyle = RibbonStyle::dark();
 
-/// Icon identity — custom painter-drawn vectors for primary tools, and a
-/// small set of clean single-codepoint symbols for secondary actions. Using
-/// an enum lets the button function dispatch to the right painter without
-/// threading a function pointer through every call site.
-///
-/// Icons are painted with flat-colour accents (folder yellow, plot slate,
-/// about-red, CAD-blue selection) to match the feel of DWG TrueView's
-/// ribbon — not monochrome strokes.
-#[derive(Copy, Clone)]
-#[allow(dead_code)]
-enum IconId {
-    Open, NewTab, Reload, Close,
-    SaveAsDxf, SaveAsIfcx,
-    Fit, Layers, Properties, Samples,
-    Select, Measure, Clear, Settings,
-    Dim, Area, Move, Undo,
-    PerfHud, VSync,
-    SplitH, SplitV, Unsplit,
-    About,
-    // Blok 3 — Modify group icons (Rotate/Scale/Mirror/Copy).
-    Rotate, Scale, Mirror, Copy,
-}
-
-// Flat-colour palette — tuned to match AutoCAD DWG TrueView 2026's ribbon.
-// Each entry is (primary, secondary) where secondary is an accent such as
-// a red arrow tip or an inner badge. When a button is disabled or selected
-// we collapse to the caller-supplied `tint` to keep visuals consistent.
-#[allow(dead_code)]
-mod ico_col {
-    use egui::Color32;
-    pub const FOLDER_YELLOW: Color32 = Color32::from_rgb(250, 200,  90);
-    pub const FOLDER_EDGE:   Color32 = Color32::from_rgb(180, 130,  30);
-    pub const ARROW_RED:     Color32 = Color32::from_rgb(220,  70,  55);
-    pub const DOC_TEAL:      Color32 = Color32::from_rgb( 60, 180, 200);
-    pub const DOC_TEAL_DK:   Color32 = Color32::from_rgb( 25, 120, 140);
-    pub const PLOTTER_SLATE: Color32 = Color32::from_rgb( 70,  80,  92);
-    pub const PLOTTER_FRAME: Color32 = Color32::from_rgb(150, 110,  70);
-    pub const ACCENT_BLUE:   Color32 = Color32::from_rgb(  0, 122, 204);
-    pub const ACCENT_BLUE_D: Color32 = Color32::from_rgb( 40, 160, 220);
-    pub const WARN_RED:      Color32 = Color32::from_rgb(200,  60,  60);
-    pub const INFO_AMBER:    Color32 = Color32::from_rgb(255, 206,  84);
-    pub const LAYER_A:       Color32 = Color32::from_rgb( 90, 170, 220);
-    pub const LAYER_B:       Color32 = Color32::from_rgb(230, 170,  70);
-    pub const BAR_GREEN:     Color32 = Color32::from_rgb( 90, 190,  90);
-    pub const BAR_RED:       Color32 = Color32::from_rgb(220,  85,  85);
-    pub const PAGE_WHITE:    Color32 = Color32::from_rgb(236, 236, 236);
-}
-
-/// Paint a vector icon centred inside `rect`. The `tint` colour is used as
-/// the "monochrome fallback" whenever the icon is disabled, selected, or
-/// hovered (selected buttons get a solid blue fill so the icon must stay
-/// readable). When `colored` is true, flat colour accents are drawn.
-#[allow(dead_code)]
-fn paint_icon(painter: &egui::Painter, rect: egui::Rect, id: IconId, tint: egui::Color32) {
-    paint_icon_ex(painter, rect, id, tint, true);
-}
-
-#[allow(clippy::too_many_arguments)]
-fn paint_icon_ex(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    id: IconId,
-    tint: egui::Color32,
-    colored: bool,
-) {
-    let c = rect.center();
-    let s = rect.width().min(rect.height()) * 0.5;
-    let stroke_w = (s * 0.15).max(1.0).min(1.5);
-    let stroke = egui::Stroke::new(stroke_w, tint);
-    // Small helpers — keep expressions short.
-    let p = |dx: f32, dy: f32| egui::pos2(c.x + dx, c.y + dy);
-    let line = |painter: &egui::Painter, a: egui::Pos2, b: egui::Pos2|
-        painter.line_segment([a, b], stroke);
-
-    match id {
-        IconId::Open => {
-            // Yellow folder with a red "open" arrow piercing from top-right.
-            let fill = if colored { ico_col::FOLDER_YELLOW } else { tint };
-            let edge = if colored { ico_col::FOLDER_EDGE   } else { tint };
-            let body = egui::Rect::from_min_max(p(-s * 0.95, -s * 0.15), p(s * 0.95, s * 0.75));
-            painter.rect_filled(body, 1.5, fill);
-            painter.rect_stroke(body, 1.5, egui::Stroke::new(stroke_w, edge));
-            // Tab ear on top-left.
-            let tab = egui::Rect::from_min_max(p(-s * 0.85, -s * 0.55), p(-s * 0.15, -s * 0.15));
-            painter.rect_filled(tab, 1.0, fill);
-            painter.rect_stroke(tab, 1.0, egui::Stroke::new(stroke_w, edge));
-            // Red arrow down-right for "open".
-            if colored {
-                let arrow = ico_col::ARROW_RED;
-                let ar_stroke = egui::Stroke::new(stroke_w + 0.3, arrow);
-                painter.line_segment([p(s * 0.05, s * 0.05), p(s * 0.55, s * 0.55)], ar_stroke);
-                painter.add(egui::Shape::convex_polygon(
-                    vec![p(s * 0.60, s * 0.60), p(s * 0.25, s * 0.60), p(s * 0.60, s * 0.25)],
-                    arrow, egui::Stroke::NONE,
-                ));
-            }
-        }
-        IconId::NewTab => {
-            // Teal page with a "+" badge — "new document".
-            let fill = if colored { ico_col::DOC_TEAL    } else { tint };
-            let edge = if colored { ico_col::DOC_TEAL_DK } else { tint };
-            let body = egui::Rect::from_min_max(p(-s * 0.7, -s * 0.8), p(s * 0.6, s * 0.8));
-            painter.rect_filled(body, 1.0, fill);
-            painter.rect_stroke(body, 1.0, egui::Stroke::new(stroke_w, edge));
-            // Folded corner
-            painter.add(egui::Shape::convex_polygon(
-                vec![p(s * 0.2, -s * 0.8), p(s * 0.6, -s * 0.8), p(s * 0.6, -s * 0.4)],
-                edge, egui::Stroke::NONE,
-            ));
-            // Plus badge bottom-right.
-            let plus_col = if colored { ico_col::ACCENT_BLUE } else { tint };
-            let pstroke = egui::Stroke::new(stroke_w + 0.5, plus_col);
-            line(painter, p(s * 0.0, s * 0.25), p(s * 0.0, s * 0.75));
-            painter.line_segment([p(-s * 0.25, s * 0.5), p(s * 0.25, s * 0.5)], pstroke);
-            painter.line_segment([p(0.0, s * 0.25), p(0.0, s * 0.75)], pstroke);
-        }
-        IconId::Reload => {
-            // 3/4 arc with an arrowhead at top-right.
-            let r = s * 0.75;
-            let n = 24;
-            let mut pts = Vec::with_capacity(n);
-            for i in 0..=n {
-                let t = i as f32 / n as f32;
-                let ang = 0.35 + t * std::f32::consts::TAU * 0.82;
-                pts.push(egui::pos2(c.x + r * ang.cos(), c.y + r * ang.sin()));
-            }
-            painter.add(egui::Shape::line(pts, stroke));
-            let tip = egui::pos2(c.x + r * 0.35_f32.cos(), c.y + r * 0.35_f32.sin());
-            line(painter, tip, egui::pos2(tip.x - 4.0, tip.y - 1.5));
-            line(painter, tip, egui::pos2(tip.x - 1.5, tip.y + 4.0));
-        }
-        IconId::Close => {
-            let col = if colored { ico_col::WARN_RED } else { tint };
-            let cs = egui::Stroke::new(stroke_w + 0.5, col);
-            painter.line_segment([p(-s * 0.7, -s * 0.7), p(s * 0.7, s * 0.7)], cs);
-            painter.line_segment([p(s * 0.7, -s * 0.7), p(-s * 0.7, s * 0.7)], cs);
-        }
-        IconId::SaveAsDxf => {
-            // Teal document with "DXF" label below a downward save arrow.
-            let fill = if colored { ico_col::DOC_TEAL    } else { tint };
-            let edge = if colored { ico_col::DOC_TEAL_DK } else { tint };
-            let body = egui::Rect::from_min_max(p(-s * 0.75, -s * 0.85), p(s * 0.75, s * 0.75));
-            painter.rect_filled(body, 1.0, fill);
-            painter.rect_stroke(body, 1.0, egui::Stroke::new(stroke_w, edge));
-            // Downward arrow (save).
-            let ar = if colored { ico_col::ACCENT_BLUE } else { tint };
-            let ars = egui::Stroke::new(stroke_w + 0.3, ar);
-            painter.line_segment([p(0.0, -s * 0.45), p(0.0, s * 0.15)], ars);
-            painter.add(egui::Shape::convex_polygon(
-                vec![p(-s * 0.28, s * 0.0), p(s * 0.28, s * 0.0), p(0.0, s * 0.35)],
-                ar, egui::Stroke::NONE,
-            ));
-            // Small "dxf" label band.
-            let band = egui::Rect::from_min_max(p(-s * 0.75, s * 0.45), p(s * 0.75, s * 0.75));
-            painter.rect_filled(band, 0.0, edge);
-        }
-        IconId::SaveAsIfcx => {
-            // Amber/yellow document — "IFCX" variant.
-            let fill = if colored { ico_col::FOLDER_YELLOW } else { tint };
-            let edge = if colored { ico_col::FOLDER_EDGE   } else { tint };
-            let body = egui::Rect::from_min_max(p(-s * 0.75, -s * 0.85), p(s * 0.75, s * 0.75));
-            painter.rect_filled(body, 1.0, fill);
-            painter.rect_stroke(body, 1.0, egui::Stroke::new(stroke_w, edge));
-            let ar = if colored { ico_col::WARN_RED } else { tint };
-            let ars = egui::Stroke::new(stroke_w + 0.3, ar);
-            painter.line_segment([p(0.0, -s * 0.45), p(0.0, s * 0.15)], ars);
-            painter.add(egui::Shape::convex_polygon(
-                vec![p(-s * 0.28, s * 0.0), p(s * 0.28, s * 0.0), p(0.0, s * 0.35)],
-                ar, egui::Stroke::NONE,
-            ));
-            let band = egui::Rect::from_min_max(p(-s * 0.75, s * 0.45), p(s * 0.75, s * 0.75));
-            painter.rect_filled(band, 0.0, edge);
-        }
-        IconId::Fit => {
-            // Corner brackets — like "fit to view".
-            let k = s * 0.9;
-            let q = s * 0.3;
-            // TL
-            line(painter, p(-k, -k + q), p(-k, -k));
-            line(painter, p(-k, -k), p(-k + q, -k));
-            // TR
-            line(painter, p(k, -k + q), p(k, -k));
-            line(painter, p(k, -k), p(k - q, -k));
-            // BL
-            line(painter, p(-k, k - q), p(-k, k));
-            line(painter, p(-k, k), p(-k + q, k));
-            // BR
-            line(painter, p(k, k - q), p(k, k));
-            line(painter, p(k, k), p(k - q, k));
-            // Centre arrows cross
-            line(painter, p(-s * 0.35, 0.0), p(s * 0.35, 0.0));
-            line(painter, p(0.0, -s * 0.35), p(0.0, s * 0.35));
-        }
-        IconId::Layers => {
-            // 3 stacked parallelograms with alternating fill to suggest layers.
-            for i in 0..3 {
-                let dy = -s * 0.55 + i as f32 * s * 0.45;
-                let a = p(-s * 0.75, dy);
-                let b = p(-s * 0.15, dy - s * 0.3);
-                let cc = p(s * 0.75, dy);
-                let d = p(s * 0.15, dy + s * 0.3);
-                let fill = if colored {
-                    if i == 1 { ico_col::LAYER_B } else { ico_col::LAYER_A }
-                } else {
-                    tint
-                };
-                painter.add(egui::Shape::convex_polygon(
-                    vec![a, b, cc, d], fill,
-                    egui::Stroke::new(stroke_w * 0.8, tint),
-                ));
-            }
-        }
-        IconId::Properties => {
-            // Horizontal rows — a properties inspector list.
-            let col_a = if colored { ico_col::LAYER_A } else { tint };
-            let col_b = if colored { ico_col::PAGE_WHITE } else { tint };
-            let body = egui::Rect::from_min_max(p(-s * 0.85, -s * 0.75), p(s * 0.85, s * 0.75));
-            painter.rect_stroke(body, 1.0, stroke);
-            for i in 0..4 {
-                let y = -s * 0.5 + i as f32 * s * 0.33;
-                let key = egui::Rect::from_min_max(p(-s * 0.7, y - s * 0.08), p(-s * 0.1, y + s * 0.08));
-                let val = egui::Rect::from_min_max(p( s * 0.0, y - s * 0.08), p( s * 0.7, y + s * 0.08));
-                painter.rect_filled(key, 0.0, col_a);
-                painter.rect_filled(val, 0.0, col_b);
-            }
-        }
-        IconId::Samples => {
-            // Book / library — two pages with horizontal lines.
-            let page_col = if colored { ico_col::PAGE_WHITE } else { tint };
-            let line_col = if colored { ico_col::ACCENT_BLUE } else { tint };
-            let body = egui::Rect::from_min_max(p(-s * 0.85, -s * 0.65), p(s * 0.85, s * 0.75));
-            painter.rect_filled(body, 1.0, page_col);
-            painter.rect_stroke(body, 1.0, stroke);
-            line(painter, p(0.0, -s * 0.65), p(0.0, s * 0.75));
-            let ls = egui::Stroke::new(stroke_w * 0.9, line_col);
-            for i in 0..3 {
-                let y = -s * 0.35 + i as f32 * s * 0.35;
-                painter.line_segment([p(-s * 0.65, y), p(-s * 0.15, y)], ls);
-                painter.line_segment([p(s * 0.15, y), p(s * 0.65, y)], ls);
-            }
-        }
-        IconId::Select => {
-            // Classic arrow cursor in CAD blue.
-            let col = if colored { ico_col::ACCENT_BLUE } else { tint };
-            let pts = vec![
-                p(-s * 0.5, -s * 0.7),
-                p(-s * 0.5, s * 0.5),
-                p(-s * 0.15, s * 0.15),
-                p(s * 0.05, s * 0.6),
-                p(s * 0.25, s * 0.5),
-                p(s * 0.05, s * 0.05),
-                p(s * 0.35, s * 0.05),
-            ];
-            painter.add(egui::Shape::convex_polygon(
-                pts, col, egui::Stroke::new(stroke_w * 0.8, tint),
-            ));
-        }
-        IconId::Measure => {
-            // Ruler — rectangle with tick marks, amber body.
-            let fill = if colored { ico_col::INFO_AMBER } else { tint };
-            let edge = if colored { ico_col::FOLDER_EDGE } else { tint };
-            let body = egui::Rect::from_min_max(p(-s * 0.9, -s * 0.35), p(s * 0.9, s * 0.35));
-            painter.rect_filled(body, 1.0, fill);
-            painter.rect_stroke(body, 1.0, egui::Stroke::new(stroke_w, edge));
-            let ts = egui::Stroke::new(stroke_w, edge);
-            for i in 0..7 {
-                let x = -s * 0.75 + i as f32 * s * 0.25;
-                let h = if i % 2 == 0 { s * 0.22 } else { s * 0.12 };
-                painter.line_segment([p(x, -s * 0.35), p(x, -s * 0.35 + h)], ts);
-            }
-        }
-        IconId::Clear => {
-            // Trash can with red lid.
-            let lid = if colored { ico_col::WARN_RED } else { tint };
-            let body = if colored { ico_col::PAGE_WHITE } else { tint };
-            let ls = egui::Stroke::new(stroke_w + 0.3, lid);
-            painter.line_segment([p(-s * 0.8, -s * 0.5), p(s * 0.8, -s * 0.5)], ls);
-            painter.line_segment([p(-s * 0.3, -s * 0.5), p(-s * 0.3, -s * 0.75)], ls);
-            painter.line_segment([p(s * 0.3, -s * 0.5), p(s * 0.3, -s * 0.75)], ls);
-            painter.line_segment([p(-s * 0.3, -s * 0.75), p(s * 0.3, -s * 0.75)], ls);
-            // body
-            let bs = egui::Stroke::new(stroke_w, body);
-            painter.line_segment([p(-s * 0.6, -s * 0.5), p(-s * 0.45, s * 0.75)], bs);
-            painter.line_segment([p(s * 0.6, -s * 0.5), p(s * 0.45, s * 0.75)], bs);
-            painter.line_segment([p(-s * 0.45, s * 0.75), p(s * 0.45, s * 0.75)], bs);
-            painter.line_segment([p(-s * 0.15, -s * 0.25), p(-s * 0.15, s * 0.55)], bs);
-            painter.line_segment([p(s * 0.15, -s * 0.25), p(s * 0.15, s * 0.55)], bs);
-        }
-        IconId::Settings => {
-            // Gear — 8-tooth simplified.
-            painter.circle_stroke(c, s * 0.35, stroke);
-            for i in 0..8 {
-                let ang = i as f32 * std::f32::consts::TAU / 8.0;
-                let (sx, sy) = ang.sin_cos();
-                line(painter,
-                    egui::pos2(c.x + sy * s * 0.55, c.y + sx * s * 0.55),
-                    egui::pos2(c.x + sy * s * 0.85, c.y + sx * s * 0.85));
-            }
-        }
-        IconId::Dim => {
-            // Dimension line: |---- value ----|
-            line(painter, p(-s * 0.9, -s * 0.5), p(-s * 0.9, s * 0.5));
-            line(painter, p(s * 0.9, -s * 0.5), p(s * 0.9, s * 0.5));
-            line(painter, p(-s * 0.9, 0.0), p(s * 0.9, 0.0));
-            // Arrow heads on the horizontal line
-            line(painter, p(-s * 0.9, 0.0), p(-s * 0.6, -s * 0.2));
-            line(painter, p(-s * 0.9, 0.0), p(-s * 0.6, s * 0.2));
-            line(painter, p(s * 0.9, 0.0), p(s * 0.6, -s * 0.2));
-            line(painter, p(s * 0.9, 0.0), p(s * 0.6, s * 0.2));
-        }
-        IconId::Area => {
-            // Closed polygon — pentagon.
-            let mut pts = Vec::with_capacity(5);
-            for i in 0..5 {
-                let ang = -std::f32::consts::FRAC_PI_2 + i as f32 * std::f32::consts::TAU / 5.0;
-                pts.push(egui::pos2(c.x + s * 0.85 * ang.cos(), c.y + s * 0.85 * ang.sin()));
-            }
-            painter.add(egui::Shape::closed_line(pts, stroke));
-        }
-        IconId::Move => {
-            // 4-arrow compass in CAD blue.
-            let col = if colored { ico_col::ACCENT_BLUE } else { tint };
-            let ms = egui::Stroke::new(stroke_w + 0.3, col);
-            painter.line_segment([p(-s * 0.8, 0.0), p(s * 0.8, 0.0)], ms);
-            painter.line_segment([p(0.0, -s * 0.8), p(0.0, s * 0.8)], ms);
-            // filled arrow heads
-            for pts in [
-                [p(-s * 0.8, 0.0), p(-s * 0.55, -s * 0.22), p(-s * 0.55, s * 0.22)],
-                [p(s * 0.8, 0.0),  p(s * 0.55, -s * 0.22),  p(s * 0.55, s * 0.22)],
-                [p(0.0, -s * 0.8), p(-s * 0.22, -s * 0.55), p(s * 0.22, -s * 0.55)],
-                [p(0.0, s * 0.8),  p(-s * 0.22, s * 0.55),  p(s * 0.22, s * 0.55)],
-            ] {
-                painter.add(egui::Shape::convex_polygon(pts.to_vec(), col, egui::Stroke::NONE));
-            }
-        }
-        IconId::Undo => {
-            // Curved arrow back.
-            let r = s * 0.65;
-            let n = 22;
-            let mut pts = Vec::with_capacity(n);
-            for i in 0..=n {
-                let t = i as f32 / n as f32;
-                let ang = std::f32::consts::PI * (0.15 + t * 0.9);
-                pts.push(egui::pos2(c.x + r * ang.cos(), c.y - r * ang.sin() + s * 0.2));
-            }
-            let tip = pts_first(&pts);
-            painter.add(egui::Shape::line(pts, stroke));
-            line(painter, tip, egui::pos2(tip.x + 5.0, tip.y - 2.0));
-            line(painter, tip, egui::pos2(tip.x + 3.0, tip.y + 4.0));
-        }
-        IconId::PerfHud => {
-            // Bar chart — alternating green / red columns.
-            let heights = [0.55_f32, 0.8, 0.35, 0.65];
-            let cols = [true, false, true, false];
-            let bar_w = s * 0.35;
-            let gap = s * 0.1;
-            let total = 4.0 * bar_w + 3.0 * gap;
-            let start = -total * 0.5;
-            let base_y = s * 0.8;
-            for i in 0..4 {
-                let x0 = start + i as f32 * (bar_w + gap);
-                let x1 = x0 + bar_w;
-                let y0 = base_y - heights[i] * s * 1.6;
-                let col = if colored {
-                    if cols[i] { ico_col::BAR_GREEN } else { ico_col::BAR_RED }
-                } else { tint };
-                let r = egui::Rect::from_min_max(p(x0, y0), p(x1, base_y));
-                painter.rect_filled(r, 1.0, col);
-            }
-            // baseline
-            let bs = if colored { ico_col::PLOTTER_SLATE } else { tint };
-            painter.line_segment([p(-s * 0.9, base_y), p(s * 0.9, base_y)],
-                egui::Stroke::new(stroke_w, bs));
-        }
-        IconId::VSync => {
-            // Clock face.
-            painter.circle_stroke(c, s * 0.85, stroke);
-            line(painter, c, p(0.0, -s * 0.55));
-            line(painter, c, p(s * 0.45, s * 0.15));
-        }
-        IconId::SplitH => {
-            // Vertical divider: two panes side by side.
-            let body = egui::Rect::from_min_max(p(-s * 0.85, -s * 0.65), p(s * 0.85, s * 0.65));
-            painter.rect_stroke(body, 1.0, stroke);
-            line(painter, p(0.0, -s * 0.65), p(0.0, s * 0.65));
-        }
-        IconId::SplitV => {
-            // Horizontal divider: two panes stacked.
-            let body = egui::Rect::from_min_max(p(-s * 0.85, -s * 0.65), p(s * 0.85, s * 0.65));
-            painter.rect_stroke(body, 1.0, stroke);
-            line(painter, p(-s * 0.85, 0.0), p(s * 0.85, 0.0));
-        }
-        IconId::Unsplit => {
-            // Single filled-outline pane with a dotted inner.
-            let body = egui::Rect::from_min_max(p(-s * 0.85, -s * 0.65), p(s * 0.85, s * 0.65));
-            painter.rect_stroke(body, 1.0, stroke);
-            let inner = egui::Rect::from_min_max(p(-s * 0.55, -s * 0.35), p(s * 0.55, s * 0.35));
-            painter.rect_stroke(inner, 1.0, egui::Stroke::new(1.0, tint.linear_multiply(0.55)));
-        }
-        IconId::About => {
-            // Solid red circle with white "i".
-            let bg = if colored { ico_col::WARN_RED } else { tint };
-            let fg = if colored { egui::Color32::WHITE } else { tint };
-            painter.circle_filled(c, s * 0.9, bg);
-            painter.circle_filled(p(0.0, -s * 0.4), (s * 0.15).max(1.2), fg);
-            let ws = egui::Stroke::new((stroke_w + 0.6).max(1.8), fg);
-            painter.line_segment([p(0.0, -s * 0.1), p(0.0, s * 0.55)], ws);
-        }
-        // Blok 3 — Modify group icons.
-        IconId::Rotate => {
-            // Open circular arrow — arc from NE down to SW, arrow head at tip.
-            let col = if colored { ico_col::ACCENT_BLUE } else { tint };
-            let rs = egui::Stroke::new(stroke_w + 0.3, col);
-            let r = s * 0.7;
-            let n = 22;
-            let mut pts = Vec::with_capacity(n + 1);
-            // Sweep about 270 degrees, leaving a gap on the top for the arrow.
-            for i in 0..=n {
-                let t = i as f32 / n as f32;
-                let ang = std::f32::consts::PI * (1.15 + t * 1.55);
-                pts.push(egui::pos2(c.x + r * ang.cos(), c.y + r * ang.sin()));
-            }
-            painter.add(egui::Shape::line(pts.clone(), rs));
-            // Arrow tip at the last point, pointing tangentially.
-            if pts.len() >= 2 {
-                let tip = pts[pts.len() - 1];
-                let prev = pts[pts.len() - 2];
-                let dx = tip.x - prev.x; let dy = tip.y - prev.y;
-                let l = (dx*dx + dy*dy).sqrt().max(0.001);
-                let nx = -dy / l; let ny = dx / l;
-                let tx = dx / l;  let ty = dy / l;
-                let head = s * 0.35;
-                let a = egui::pos2(tip.x - tx*head + nx*head*0.55, tip.y - ty*head + ny*head*0.55);
-                let b = egui::pos2(tip.x - tx*head - nx*head*0.55, tip.y - ty*head - ny*head*0.55);
-                painter.add(egui::Shape::convex_polygon(vec![tip, a, b], col, egui::Stroke::NONE));
-            }
-            // Small dot at centre — "pivot".
-            painter.circle_filled(c, (s * 0.08).max(1.0), col);
-        }
-        IconId::Scale => {
-            // Diagonal double-headed arrow — NW-SE, with small corner ticks
-            // hinting at a box being resized.
-            let col = if colored { ico_col::ACCENT_BLUE } else { tint };
-            let ms = egui::Stroke::new(stroke_w + 0.3, col);
-            let a = p(-s * 0.6, -s * 0.6);
-            let b = p( s * 0.6,  s * 0.6);
-            painter.line_segment([a, b], ms);
-            // Arrow heads at both ends.
-            let head = s * 0.25;
-            painter.add(egui::Shape::convex_polygon(vec![
-                a,
-                egui::pos2(a.x + head, a.y),
-                egui::pos2(a.x, a.y + head),
-            ], col, egui::Stroke::NONE));
-            painter.add(egui::Shape::convex_polygon(vec![
-                b,
-                egui::pos2(b.x - head, b.y),
-                egui::pos2(b.x, b.y - head),
-            ], col, egui::Stroke::NONE));
-            // Faint outer box to hint "resize".
-            let edge = if colored { ico_col::PLOTTER_SLATE } else { tint };
-            let fs = egui::Stroke::new(stroke_w * 0.7, edge);
-            painter.line_segment([p(-s * 0.85, -s * 0.85), p(-s * 0.85, -s * 0.4)], fs);
-            painter.line_segment([p(-s * 0.85, -s * 0.85), p(-s * 0.4,  -s * 0.85)], fs);
-            painter.line_segment([p( s * 0.85,  s * 0.85), p( s * 0.85,  s * 0.4 )], fs);
-            painter.line_segment([p( s * 0.85,  s * 0.85), p( s * 0.4,   s * 0.85)], fs);
-        }
-        IconId::Mirror => {
-            // Dashed vertical axis with a solid triangle on the left and a
-            // hollow triangle on the right — the mirror image.
-            let axis_col = if colored { ico_col::WARN_RED } else { tint };
-            let shape_col = if colored { ico_col::ACCENT_BLUE } else { tint };
-            let ds = egui::Stroke::new(stroke_w + 0.3, axis_col);
-            // Dashed axis: four short vertical segments.
-            for i in 0..5 {
-                let y0 = -s * 0.85 + i as f32 * s * 0.4;
-                let y1 = y0 + s * 0.22;
-                painter.line_segment([p(0.0, y0), p(0.0, y1)], ds);
-            }
-            // Left solid triangle (pointing right towards the axis).
-            let left = vec![
-                p(-s * 0.8, -s * 0.55),
-                p(-s * 0.15, 0.0),
-                p(-s * 0.8,  s * 0.55),
-            ];
-            painter.add(egui::Shape::convex_polygon(left, shape_col,
-                egui::Stroke::new(stroke_w, shape_col)));
-            // Right hollow triangle (mirror image).
-            let right = vec![
-                p( s * 0.8, -s * 0.55),
-                p( s * 0.15, 0.0),
-                p( s * 0.8,  s * 0.55),
-            ];
-            let rs = egui::Stroke::new(stroke_w + 0.3, shape_col);
-            painter.add(egui::Shape::closed_line(right, rs));
-        }
-        IconId::Copy => {
-            // Two overlapping rectangles — back one faded, front one solid.
-            let back = if colored { ico_col::DOC_TEAL_DK } else { tint };
-            let front = if colored { ico_col::DOC_TEAL } else { tint };
-            let edge = if colored { ico_col::PLOTTER_FRAME } else { tint };
-            let es = egui::Stroke::new(stroke_w, edge);
-            // Back rectangle (shifted NE).
-            let r_back = egui::Rect::from_min_max(p(-s * 0.35, -s * 0.85), p(s * 0.85, s * 0.35));
-            painter.rect_filled(r_back, 1.5, back);
-            painter.rect_stroke(r_back, 1.5, es);
-            // Front rectangle (shifted SW).
-            let r_front = egui::Rect::from_min_max(p(-s * 0.85, -s * 0.35), p(s * 0.35, s * 0.85));
-            painter.rect_filled(r_front, 1.5, front);
-            painter.rect_stroke(r_front, 1.5, es);
-            // Small "+" badge on front rect to hint duplicate.
-            let pc = p(-s * 0.6, -s * 0.1);
-            let ps = egui::Stroke::new(stroke_w + 0.3, egui::Color32::WHITE);
-            painter.line_segment([egui::pos2(pc.x - s * 0.15, pc.y), egui::pos2(pc.x + s * 0.15, pc.y)], ps);
-            painter.line_segment([egui::pos2(pc.x, pc.y - s * 0.15), egui::pos2(pc.x, pc.y + s * 0.15)], ps);
-        }
-    }
-}
-
-fn pts_first(pts: &[egui::Pos2]) -> egui::Pos2 { *pts.first().unwrap_or(&egui::Pos2::ZERO) }
-
 /// Ribbon group — a vertical stack with a row of buttons, a thin 1 px top
 /// and bottom hair-line, and a small uppercase label below. The subtle
 /// border framing boxes the group without adding visual noise.
@@ -772,78 +266,6 @@ fn pts_first(pts: &[egui::Pos2]) -> egui::Pos2 { *pts.first().unwrap_or(&egui::P
 /// big buttons (48×52) and small-label stacks (3 × 22 px) are centred on a
 /// common vertical axis so the group looks balanced regardless of which
 /// primitives it mixes.
-fn ribbon_group<R>(
-    ui: &mut egui::Ui,
-    label: &str,
-    add_contents: impl FnOnce(&mut egui::Ui) -> R,
-) -> R {
-    let resp = ui.vertical(|ui| {
-        ui.add_space(2.0);
-        // Button row — vertically-centered so big and small buttons share
-        // a common baseline. We capture the row's actual min_rect so the
-        // footer hair-line + label match the row's width exactly, rather
-        // than stretching to fill all remaining ribbon width (which makes
-        // the first group steal space from the rest).
-        let row_resp = ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 4.0;
-            ui.add_space(2.0);
-            let inner = ui
-                .vertical(|ui| {
-                    ui.set_min_height(70.0);
-                    ui.horizontal_centered(|ui| add_contents(ui)).inner
-                })
-                .inner;
-            ui.add_space(2.0);
-            inner
-        });
-        let row_w = row_resp.response.rect.width().max(64.0);
-        ui.add_space(2.0);
-        // 1 px hair-line that spans ~80 % of the group's actual row width.
-        let (lr, _) = ui.allocate_exact_size(egui::vec2(row_w, 1.0), egui::Sense::hover());
-        let margin = row_w * 0.08;
-        ui.painter().line_segment(
-            [egui::pos2(lr.left() + margin, lr.center().y),
-             egui::pos2(lr.right() - margin, lr.center().y)],
-            egui::Stroke::new(1.0, RIBBON.separator),
-        );
-        ui.add_space(2.0);
-        // Group label — centered on the button-row width, not the full ribbon.
-        let (lbl_rect, _) = ui.allocate_exact_size(egui::vec2(row_w, 12.0), egui::Sense::hover());
-        let painter = ui.painter_at(lbl_rect);
-        let font = egui::FontId::proportional(9.5);
-        let text = label.to_uppercase();
-        let galley = painter.layout_no_wrap(text, font, RIBBON.label);
-        painter.galley(
-            egui::pos2(
-                lbl_rect.center().x - galley.size().x * 0.5,
-                lbl_rect.center().y - galley.size().y * 0.5,
-            ),
-            galley,
-            RIBBON.label,
-        );
-        row_resp.inner
-    });
-    resp.inner
-}
-
-/// Vertical group separator — a 1 px hair-line that spans 60 % of the
-/// ribbon height, centered vertically, at the separator colour.
-fn ribbon_sep(ui: &mut egui::Ui) {
-    // Thin 3 px channel with a 1 px vertical hairline in the middle.
-    // Minimal horizontal padding so groups visually touch in the
-    // TrueView / Office-ribbon style — the label "FILES / TOOLS / …"
-    // strip below used to dominate visually due to wide gutters here.
-    let desired = egui::vec2(3.0, ui.available_height());
-    let (rect, _) = ui.allocate_exact_size(desired, egui::Sense::hover());
-    let h = rect.height() * 0.7;
-    let x = rect.center().x;
-    ui.painter().line_segment(
-        [egui::pos2(x, rect.center().y - h * 0.5),
-         egui::pos2(x, rect.center().y + h * 0.5)],
-        egui::Stroke::new(1.0, RIBBON.separator),
-    );
-}
-
 /// 2D view-cube / nav-disk widget painted in the bottom-right corner of
 /// the canvas. For 2D CAD the "cube" is a compass-wheel: a dark disk
 /// with 4 cardinal arrows that rotate with the camera, a centre "Fit"
@@ -1064,323 +486,6 @@ fn paint_view_cube(
     }
         });
     let _ = area_resp;
-}
-
-// -----------------------------------------------------------------------------
-// Button internals — shared background + hover/selected drawing for both
-// big and small buttons, plus caption typography.
-// -----------------------------------------------------------------------------
-
-fn draw_button_chrome(
-    painter: &egui::Painter,
-    rect: egui::Rect,
-    resp: &egui::Response,
-    selected: bool,
-    enabled: bool,
-    rounding: f32,
-) {
-    let bg = if !enabled {
-        egui::Color32::TRANSPARENT
-    } else if selected {
-        RIBBON.accent
-    } else if resp.hovered() {
-        RIBBON.accent_soft
-    } else {
-        egui::Color32::TRANSPARENT
-    };
-    if bg != egui::Color32::TRANSPARENT {
-        painter.rect_filled(rect, rounding, bg);
-    }
-    if selected {
-        painter.rect_stroke(rect, rounding,
-            egui::Stroke::new(1.0, egui::Color32::from_rgb(60, 160, 235)));
-    }
-}
-
-fn button_icon_color(selected: bool, enabled: bool) -> egui::Color32 {
-    if !enabled { RIBBON.disabled }
-    else if selected { egui::Color32::WHITE }
-    else { RIBBON.icon }
-}
-
-fn button_label_color(selected: bool, enabled: bool) -> egui::Color32 {
-    if !enabled { RIBBON.disabled }
-    else if selected { egui::Color32::WHITE }
-    else { RIBBON.label_bold }
-}
-
-/// Big ribbon button with a painter-drawn vector icon on top and a 10 pt
-/// caption underneath. 48 × 52 px — slightly tighter than the old 52 × 56
-/// for a more refined look. Returns the response so callers can chain
-/// `.on_hover_text(...)` and `.clicked()`.
-fn big_icon_button(
-    ui: &mut egui::Ui,
-    icon: IconId,
-    label: &str,
-    selected: bool,
-    enabled: bool,
-) -> egui::Response {
-    let size = egui::vec2(48.0, 52.0);
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    let resp = if enabled { resp } else { resp.on_hover_cursor(egui::CursorIcon::NotAllowed) };
-
-    let painter = ui.painter_at(rect);
-    draw_button_chrome(&painter, rect, &resp, selected, enabled, 4.0);
-
-    // Icon — 26×26 centered horizontally, sits in the upper half.
-    let icon_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.center().x, rect.top() + 18.0),
-        egui::vec2(26.0, 26.0),
-    );
-    let colored_ok = enabled && !selected;
-    paint_icon_ex(
-        &painter, icon_rect, icon,
-        button_icon_color(selected, enabled),
-        colored_ok,
-    );
-
-    // Label — centered horizontally in the lower third.
-    let label_col = button_label_color(selected, enabled);
-    let galley = painter.layout_no_wrap(
-        label.to_string(),
-        egui::FontId::proportional(10.0),
-        label_col,
-    );
-    let label_pos = egui::pos2(
-        rect.center().x - galley.size().x * 0.5,
-        rect.bottom() - galley.size().y - 5.0,
-    );
-    painter.galley(label_pos, galley, label_col);
-
-    resp
-}
-
-/// Legacy glyph-based variant of `big_icon_button` — kept around as a
-/// fallback for future call-sites that may want a specific Unicode symbol
-/// (e.g. foreign glyphs). Uses the same chrome + typography helpers so
-/// the visual result matches the vector-drawn variant.
-#[allow(dead_code)]
-fn big_ribbon_button(
-    ui: &mut egui::Ui,
-    icon: &str,
-    label: &str,
-    selected: bool,
-    enabled: bool,
-) -> egui::Response {
-    let size = egui::vec2(48.0, 52.0);
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    let resp = if enabled { resp } else { resp.on_hover_cursor(egui::CursorIcon::NotAllowed) };
-
-    let painter = ui.painter_at(rect);
-    draw_button_chrome(&painter, rect, &resp, selected, enabled, 4.0);
-
-    // Glyph — rendered at 20 pt, centered in the upper half.
-    let icon_col = button_icon_color(selected, enabled);
-    let icon_galley = painter.layout_no_wrap(
-        icon.to_string(),
-        egui::FontId::proportional(20.0),
-        icon_col,
-    );
-    let icon_pos = egui::pos2(
-        rect.center().x - icon_galley.size().x * 0.5,
-        rect.top() + 6.0,
-    );
-    painter.galley(icon_pos, icon_galley, icon_col);
-
-    // Caption.
-    let label_col = button_label_color(selected, enabled);
-    let label_galley = painter.layout_no_wrap(
-        label.to_string(),
-        egui::FontId::proportional(10.0),
-        label_col,
-    );
-    let label_pos = egui::pos2(
-        rect.center().x - label_galley.size().x * 0.5,
-        rect.bottom() - label_galley.size().y - 5.0,
-    );
-    painter.galley(label_pos, label_galley, label_col);
-
-    resp
-}
-
-/// Small square ribbon button with a painter-drawn vector icon — 24 × 24
-/// icon-only, for secondary actions (Clear, Reload, Close, Settings).
-/// Superseded by `small_icon_label_button` (icon + text row) but retained
-/// for call-sites that want an icon-only square toggle.
-#[allow(dead_code)]
-fn small_icon_button(
-    ui: &mut egui::Ui,
-    icon: IconId,
-    selected: bool,
-    enabled: bool,
-) -> egui::Response {
-    let size = egui::vec2(24.0, 24.0);
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    let resp = if enabled { resp } else { resp.on_hover_cursor(egui::CursorIcon::NotAllowed) };
-
-    let painter = ui.painter_at(rect);
-    draw_button_chrome(&painter, rect, &resp, selected, enabled, 3.0);
-
-    // Icon box 16x16 centered.
-    let icon_rect = egui::Rect::from_center_size(rect.center(), egui::vec2(16.0, 16.0));
-    paint_icon(&painter, icon_rect, icon, button_icon_color(selected, enabled));
-
-    resp
-}
-
-/// Deprecated glyph-based variant of `small_icon_button` — kept for parity
-/// with older call sites but not currently used.
-#[allow(dead_code)]
-fn small_ribbon_button(
-    ui: &mut egui::Ui,
-    icon: &str,
-    selected: bool,
-    enabled: bool,
-) -> egui::Response {
-    let size = egui::vec2(24.0, 24.0);
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    let resp = if enabled { resp } else { resp.on_hover_cursor(egui::CursorIcon::NotAllowed) };
-
-    let painter = ui.painter_at(rect);
-    draw_button_chrome(&painter, rect, &resp, selected, enabled, 3.0);
-
-    let col = button_icon_color(selected, enabled);
-    let galley = painter.layout_no_wrap(
-        icon.to_string(),
-        egui::FontId::proportional(13.0),
-        col,
-    );
-    let pos = egui::pos2(
-        rect.center().x - galley.size().x * 0.5,
-        rect.center().y - galley.size().y * 0.5,
-    );
-    painter.galley(pos, galley, col);
-
-    resp
-}
-
-/// Column of two stacked small buttons (24×24 each, 2 px gap) — used to
-/// place secondary variants next to a primary big button. Superseded by
-/// `small_label_stack` for the icon+text rows, but kept for icon-only
-/// stacks.
-#[allow(dead_code)]
-fn small_button_stack<R>(
-    ui: &mut egui::Ui,
-    add: impl FnOnce(&mut egui::Ui) -> R,
-) -> R {
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing.y = 2.0;
-        add(ui)
-    })
-    .inner
-}
-
-/// Small icon-plus-label button — 16×16 icon on the left + text label on
-/// the right, laid out as a single 22 px tall row. This is the
-/// densest ribbon primitive and mirrors DWG TrueView's layout where most
-/// secondary commands show both icon and text.
-fn small_icon_label_button(
-    ui: &mut egui::Ui,
-    icon: IconId,
-    label: &str,
-    selected: bool,
-    enabled: bool,
-) -> egui::Response {
-    small_icon_label_button_ex(ui, icon, label, selected, enabled, false)
-}
-
-/// Variant of `small_icon_label_button` that appends a small ▾ chevron on
-/// the right, indicating a split-button / dropdown (e.g. "Unsaved View ▾").
-fn small_icon_label_button_ex(
-    ui: &mut egui::Ui,
-    icon: IconId,
-    label: &str,
-    selected: bool,
-    enabled: bool,
-    dropdown: bool,
-) -> egui::Response {
-    // Measure the label width, then allocate an exact-size row so adjacent
-    // rows align. Minimum row width keeps very short labels ("Fit") from
-    // shrinking the stack.
-    let font = egui::FontId::proportional(11.0);
-    let text_w = ui
-        .fonts(|f| f.layout_no_wrap(label.to_string(), font.clone(), egui::Color32::WHITE))
-        .size()
-        .x;
-    let extra = if dropdown { 10.0 } else { 0.0 };
-    let row_w = (text_w + 28.0 + extra).max(96.0);
-    let size = egui::vec2(row_w, 22.0);
-
-    let (rect, resp) = ui.allocate_exact_size(size, egui::Sense::click());
-    let resp = if enabled { resp } else { resp.on_hover_cursor(egui::CursorIcon::NotAllowed) };
-
-    let painter = ui.painter_at(rect);
-    draw_button_chrome(&painter, rect, &resp, selected, enabled, 3.0);
-
-    // Icon — 16x16, left-aligned with 3 px padding.
-    let icon_rect = egui::Rect::from_center_size(
-        egui::pos2(rect.left() + 3.0 + 8.0, rect.center().y),
-        egui::vec2(16.0, 16.0),
-    );
-    // Keep flat-colour icons even for the small row — dimmed if disabled or
-    // inverted (to white) when the button is selected.
-    let colored_ok = enabled && !selected;
-    let icon_tint = button_icon_color(selected, enabled);
-    paint_icon_ex(&painter, icon_rect, icon, icon_tint, colored_ok);
-
-    // Label.
-    let label_col = button_label_color(selected, enabled);
-    let galley = painter.layout_no_wrap(label.to_string(), font, label_col);
-    let label_pos = egui::pos2(
-        rect.left() + 3.0 + 16.0 + 5.0,
-        rect.center().y - galley.size().y * 0.5,
-    );
-    painter.galley(label_pos, galley, label_col);
-
-    // Dropdown chevron — small inverted triangle on the right edge.
-    if dropdown {
-        let cx = rect.right() - 7.0;
-        let cy = rect.center().y;
-        let col = if enabled { RIBBON.label } else { RIBBON.disabled };
-        painter.add(egui::Shape::convex_polygon(
-            vec![
-                egui::pos2(cx - 3.5, cy - 1.5),
-                egui::pos2(cx + 3.5, cy - 1.5),
-                egui::pos2(cx,       cy + 2.5),
-            ],
-            col, egui::Stroke::NONE,
-        ));
-    }
-
-    resp
-}
-
-/// Vertical stack used as the "right column" of a ribbon group — lays out
-/// 2–3 small-icon-label buttons with tight 2 px gaps, centered vertically.
-fn small_label_stack<R>(
-    ui: &mut egui::Ui,
-    add: impl FnOnce(&mut egui::Ui) -> R,
-) -> R {
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing.y = 2.0;
-        ui.add_space(2.0);
-        add(ui)
-    })
-    .inner
-}
-
-/// Compact 2-column grid for small-icon-label buttons. Used by the View
-/// group to place Layers / Properties / Samples / Perf HUD in a 2×2
-/// arrangement mirroring TrueView's "Object Snap" style.
-fn small_label_grid<R>(
-    ui: &mut egui::Ui,
-    add: impl FnOnce(&mut egui::Ui) -> R,
-) -> R {
-    ui.vertical(|ui| {
-        ui.spacing_mut().item_spacing = egui::vec2(4.0, 2.0);
-        add(ui)
-    })
-    .inner
 }
 
 /// Result carrier for `side_panel_header`: report header-button activations
@@ -2064,6 +1169,12 @@ struct App {
     /// next release is within 400 ms and 6 px of these.
     last_lmb_click_time: Option<std::time::Instant>,
     last_lmb_click_pos: (f32, f32),
+
+    // --- Ribbon (superui) -------------------------------------------
+    /// Identifier of the active ribbon tab. Drives which tab's groups
+    /// the `superui::Ribbon` widget renders each frame. Free-form
+    /// string keyed against the ids in `build_ribbon_tabs`.
+    active_ribbon_tab: RibbonTabId,
 }
 
 /// Per-section render timings — one frame.
@@ -2210,6 +1321,8 @@ impl App {
             edit_mode: None,
             last_lmb_click_time: None,
             last_lmb_click_pos: (0.0, 0.0),
+            // Ribbon defaults to the Files tab on launch.
+            active_ribbon_tab: "files".to_string(),
         }
     }
 
@@ -2681,6 +1794,15 @@ impl App {
         let about_dialog_open_snapshot = self.about_dialog_open;
         let current_split_snapshot: Option<SplitKind> = self.tabs.get(active_tab_idx)
             .and_then(|t| t.split_kind);
+        // Active ribbon tab id, snapshotted so the egui closure can build
+        // the Ribbon without re-borrowing self mutably.
+        let active_ribbon_tab_snapshot: RibbonTabId = self.active_ribbon_tab.clone();
+        // Window maximised state, surfaced to the TitleBar so it can paint
+        // the right glyph on the maximise button.
+        let window_maximized_snapshot: bool = self.window
+            .as_ref()
+            .map(|w| w.is_maximized())
+            .unwrap_or(false);
 
         // Status bar snapshots — cursor coords, camera zoom, layer counts,
         // active tab label. Cheap to compute; always needed at bottom of frame.
@@ -2747,6 +1869,16 @@ impl App {
         // folded into self.requested_duplicate at the end of the frame so
         // the deferred editor block picks it up alongside Ctrl+D presses.
         let mut requested_duplicate = false;
+        // Ribbon tab switch — when the user clicks a different tab strip
+        // entry, the action carries the new tab id which we apply to
+        // self.active_ribbon_tab after the closure ends.
+        let mut requested_ribbon_tab: Option<RibbonTabId> = None;
+        // Title-bar actions — applied after the egui closure exits so we
+        // hold a clean borrow on `self.window` to forward them to winit.
+        let mut requested_toggle_app_menu = false;
+        let mut requested_window_minimize = false;
+        let mut requested_window_toggle_max = false;
+        let mut requested_window_close = false;
         // Text-editor overlay buttons (Task 10). Set when the user clicks
         // Commit / Cancel in the floating overlay; processed AFTER the
         // egui closure so the &mut self borrow on tabs/edit_mode is free.
@@ -2827,440 +1959,103 @@ impl App {
         let mut canvas_rect_logical: Option<egui::Rect> = None;
 
         let full_output = gpu.egui_ctx.run(raw_input, |ctx| {
-            // Menubar has been collapsed into a hamburger button at the
-            // left edge of the ribbon below — one unified top slab.
+            // Apply the warm-dark superui theme to every widget egui draws
+            // this frame. Equivalent to 1.0's [data-theme="default"] tokens.
+            apply_theme(ctx, Theme::Default);
+
+            // ---- Title bar ------------------------------------------
+            // superui::TitleBar paints app icon, title, and Windows-style
+            // minimise/maximise/close controls. Actions are dispatched
+            // back into deferred flags applied after the egui closure.
+            egui::TopBottomPanel::top("titlebar")
+                .show_separator_line(false)
+                .show(ctx, |ui| {
+                    let actions = TitleBar::new("Open 2D Studio")
+                        .maximized(window_maximized_snapshot)
+                        .show(ui);
+                    for a in actions {
+                        match a {
+                            TitleBarAction::OpenAppMenu => {
+                                requested_toggle_app_menu = true;
+                            }
+                            TitleBarAction::Minimize => {
+                                requested_window_minimize = true;
+                            }
+                            TitleBarAction::ToggleMaximize => {
+                                requested_window_toggle_max = true;
+                            }
+                            TitleBarAction::Close => {
+                                requested_window_close = true;
+                            }
+                        }
+                    }
+                });
 
             // ---- Ribbon ---------------------------------------------
-            // Frame: warm-dark background tinted with a single-pixel bottom
-            // border so the ribbon detaches cleanly from the canvas below.
-            let ribbon_frame = egui::Frame::none()
-                .fill(RIBBON.bg)
-                .inner_margin(egui::Margin { left: 6.0, right: 6.0, top: 4.0, bottom: 4.0 })
-                .stroke(egui::Stroke::NONE);
+            // Data-driven `superui::Ribbon` widget — tab strip plus the
+            // active tab's groups + buttons. The button list mirrors the
+            // 1.0 React app's ribbon: Files / Tools / View / Help. Action
+            // dispatch is handled by the action-id match below.
             egui::TopBottomPanel::top("ribbon")
-                .exact_height(102.0)
-                .frame(ribbon_frame)
                 .show(ctx, |ui| {
-                    egui::ScrollArea::horizontal()
-                        .auto_shrink([false, true])
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 0.0;
-
-                                // ---- App menu (hamburger) -----------------
-                                // Compact 28x28 button at the very left that
-                                // opens a popup with File/View/Help groups —
-                                // replaces the former 3rd-row menubar panel
-                                // so the top region reads as one unified
-                                // slab instead of three debug stripes.
-                                ui.add_space(6.0);
-                                let (btn_rect, btn_resp) = ui.allocate_exact_size(
-                                    egui::vec2(30.0, 30.0),
-                                    egui::Sense::click(),
-                                );
-                                {
-                                    let painter = ui.painter_at(btn_rect);
-                                    let bg = if btn_resp.hovered() {
-                                        RIBBON.accent_soft
-                                    } else {
-                                        egui::Color32::TRANSPARENT
-                                    };
-                                    if bg != egui::Color32::TRANSPARENT {
-                                        painter.rect_filled(btn_rect, 4.0, bg);
-                                    }
-                                    let cx = btn_rect.center().x;
-                                    let cy = btn_rect.center().y;
-                                    let bar_w = 15.0;
-                                    let bar_gap = 4.0;
-                                    let stroke = egui::Stroke::new(1.8, RIBBON.icon);
-                                    for dy in [-bar_gap, 0.0, bar_gap] {
-                                        painter.line_segment(
-                                            [
-                                                egui::pos2(cx - bar_w * 0.5, cy + dy),
-                                                egui::pos2(cx + bar_w * 0.5, cy + dy),
-                                            ],
-                                            stroke,
-                                        );
+                    let tabs = build_ribbon_tabs(
+                        current_tool_mode,
+                        layer_panel_open,
+                        properties_panel_open,
+                        samples_open,
+                        show_perf_hud_snapshot,
+                        current_split_snapshot,
+                    );
+                    let actions = Ribbon::new(tabs, active_ribbon_tab_snapshot.clone()).show(ui);
+                    for a in actions {
+                        match a {
+                            RibbonAction::TabChanged(id) => {
+                                requested_ribbon_tab = Some(id);
+                            }
+                            RibbonAction::ButtonClicked(id) => match id.as_str() {
+                                "open"          => { requested_menu_open_dialog = true; }
+                                "new_tab"       => { requested_new_tab = true; }
+                                "save_as_dxf"   => { requested_menu_save_as_dxf = true; }
+                                "save_as_ifcx"  => { requested_menu_save_as_ifcx = true; }
+                                "fit_extents"   => { requested_fit = true; }
+                                "select"        => { requested_tool_mode = Some(ToolMode::Select); }
+                                "move"          => { requested_tool_mode = Some(ToolMode::Move); }
+                                "rotate"        => { requested_tool_mode = Some(ToolMode::Rotate); }
+                                "scale"         => { requested_tool_mode = Some(ToolMode::Scale); }
+                                "mirror"        => { requested_tool_mode = Some(ToolMode::Mirror); }
+                                "duplicate"     => { requested_duplicate = true; }
+                                "measure"       => { requested_tool_mode = Some(ToolMode::Measure); }
+                                "dim"           => { requested_tool_mode = Some(ToolMode::Dimension); }
+                                "area"          => { requested_tool_mode = Some(ToolMode::Area); }
+                                "clear"         => {
+                                    requested_clear_measurement = true;
+                                    requested_clear_annotations = true;
+                                }
+                                "layers"        => { requested_toggle_layer_panel = true; }
+                                "properties"    => { requested_toggle_props_panel = true; }
+                                "samples"       => { requested_toggle_samples_panel = true; }
+                                "perf_hud"      => { requested_toggle_perf_hud = true; }
+                                "vsync"         => { requested_toggle_present_mode = true; }
+                                "split_h"       => {
+                                    if n_tabs >= 2 {
+                                        let other = (active_tab_idx + 1) % n_tabs.max(1);
+                                        requested_split_h_with = Some(other);
                                     }
                                 }
-                                let popup_id = ui.make_persistent_id("app_menu_popup");
-                                if btn_resp.clicked() {
-                                    ui.memory_mut(|m| m.toggle_popup(popup_id));
+                                "split_v"       => {
+                                    if n_tabs >= 2 {
+                                        let other = (active_tab_idx + 1) % n_tabs.max(1);
+                                        requested_split_v_with = Some(other);
+                                    }
                                 }
-                                egui::popup::popup_below_widget(
-                                    ui,
-                                    popup_id,
-                                    &btn_resp,
-                                    egui::PopupCloseBehavior::CloseOnClickOutside,
-                                    |ui| {
-                                        ui.set_min_width(240.0);
-                                        ui.label(
-                                            egui::RichText::new("FILE")
-                                                .size(9.5)
-                                                .color(RIBBON.label)
-                                                .extra_letter_spacing(0.6),
-                                        );
-                                        if ui.button("Open DXF/DWG…   Ctrl+O").clicked() {
-                                            requested_menu_open_dialog = true;
-                                            ui.memory_mut(|m| m.close_popup());
-                                        }
-                                        ui.menu_button("Recent files", |ui| {
-                                            if recent_files_snapshot.is_empty() {
-                                                ui.label("(no recent files)");
-                                            } else {
-                                                for p in &recent_files_snapshot {
-                                                    let display = std::path::Path::new(p)
-                                                        .file_name()
-                                                        .map(|s| s.to_string_lossy().into_owned())
-                                                        .unwrap_or_else(|| p.clone());
-                                                    if ui.button(&display).on_hover_text(p).clicked() {
-                                                        requested_menu_recent_load = Some(p.clone());
-                                                        ui.close_menu();
-                                                    }
-                                                }
-                                                ui.separator();
-                                                if ui.button("Clear recent").clicked() {
-                                                    requested_menu_recent_clear = true;
-                                                    ui.close_menu();
-                                                }
-                                            }
-                                        });
-                                        ui.separator();
-                                        if ui.button("Save As IFC 2D B (.ifcx)…").clicked() {
-                                            requested_menu_save_as_ifcx = true;
-                                            ui.memory_mut(|m| m.close_popup());
-                                        }
-                                        if ui.button("Save As DXF (.dxf)…").clicked() {
-                                            requested_menu_save_as_dxf = true;
-                                            ui.memory_mut(|m| m.close_popup());
-                                        }
-                                        ui.separator();
-                                        if ui.button("Reload active tab").clicked() {
-                                            requested_menu_reload = true;
-                                            ui.memory_mut(|m| m.close_popup());
-                                        }
-                                        if ui.button("Close active tab   Ctrl+W").clicked() {
-                                            requested_menu_close_active = true;
-                                            ui.memory_mut(|m| m.close_popup());
-                                        }
-                                        ui.separator();
-                                        ui.label(
-                                            egui::RichText::new("VIEW")
-                                                .size(9.5)
-                                                .color(RIBBON.label)
-                                                .extra_letter_spacing(0.6),
-                                        );
-                                        let mut lo = layer_panel_open;
-                                        if ui.checkbox(&mut lo, "Layers panel (F3)").changed() {
-                                            requested_toggle_layer_panel = true;
-                                        }
-                                        let mut po = properties_panel_open;
-                                        if ui.checkbox(&mut po, "Properties panel (F4)").changed() {
-                                            requested_toggle_props_panel = true;
-                                        }
-                                        let mut so = samples_open;
-                                        if ui.checkbox(&mut so, "Samples browser (F2)").changed() {
-                                            requested_toggle_samples_panel = true;
-                                        }
-                                        ui.separator();
-                                        ui.label(
-                                            egui::RichText::new("HELP")
-                                                .size(9.5)
-                                                .color(RIBBON.label)
-                                                .extra_letter_spacing(0.6),
-                                        );
-                                        if ui.button("About & shortcuts…").clicked() {
-                                            requested_toggle_about = true;
-                                            ui.memory_mut(|m| m.close_popup());
-                                        }
-                                        ui.separator();
-                                        if ui.button("Exit").clicked() {
-                                            std::process::exit(0);
-                                        }
-                                    },
-                                );
-                                ui.add_space(8.0);
-                                // Thin vertical separator between menu and Files group.
-                                {
-                                    let h = ui.available_height() * 0.6;
-                                    let (sep, _) = ui.allocate_exact_size(
-                                        egui::vec2(1.0, h),
-                                        egui::Sense::hover(),
-                                    );
-                                    ui.painter().line_segment(
-                                        [egui::pos2(sep.center().x, sep.top()),
-                                         egui::pos2(sep.center().x, sep.bottom())],
-                                        egui::Stroke::new(1.0, RIBBON.separator),
-                                    );
-                                }
-                                ui.add_space(4.0);
-
-                                // Tool-mode flags used by Tools + Measure groups.
-                                let sel_active = current_tool_mode == ToolMode::Select;
-                                let msr_active = current_tool_mode == ToolMode::Measure;
-                                let mov_active = current_tool_mode == ToolMode::Move;
-                                let dim_active = current_tool_mode == ToolMode::Dimension;
-                                let area_active = current_tool_mode == ToolMode::Area;
-                                // Blok 3 — Modify group flags.
-                                let rot_active = current_tool_mode == ToolMode::Rotate;
-                                let sca_active = current_tool_mode == ToolMode::Scale;
-                                let mir_active = current_tool_mode == ToolMode::Mirror;
-
-                                // ---- Files (DWG TrueView style) -------------------
-                                // BIG:    Open (yellow folder + red arrow)
-                                // STACK:  New Tab · Save As DXF · Save As IFCX
-                                //         (small icon + text label rows, 22 px each)
-                                ribbon_group(ui, "Files", |ui| {
-                                    if big_icon_button(ui, IconId::Open, "Open", false, true)
-                                        .on_hover_text("Open a DWG/DXF file in a new tab\nShortcut: Ctrl+O")
-                                        .clicked()
-                                    {
-                                        requested_menu_open_dialog = true;
-                                    }
-                                    small_label_stack(ui, |ui| {
-                                        if small_icon_label_button(ui, IconId::NewTab, "New Tab", false, true)
-                                            .on_hover_text("Open a file in a new tab (pick from disk)")
-                                            .clicked()
-                                        {
-                                            requested_new_tab = true;
-                                        }
-                                        if small_icon_label_button(ui, IconId::SaveAsDxf, "Save As DXF", false, true)
-                                            .on_hover_text("Export the active tab as a DXF R2013 file")
-                                            .clicked()
-                                        {
-                                            requested_menu_save_as_dxf = true;
-                                        }
-                                        if small_icon_label_button(ui, IconId::SaveAsIfcx, "Save As IFCX", false, true)
-                                            .on_hover_text("Export the active tab as a binary IFC 2D B (.ifcx) file")
-                                            .clicked()
-                                        {
-                                            requested_menu_save_as_ifcx = true;
-                                        }
-                                    });
-                                });
-                                ribbon_sep(ui);
-
-                                // ---- Tools ---------------------------------------
-                                // BIG:    Fit (extents)
-                                // STACK:  Select · Move · Undo
-                                ribbon_group(ui, "Tools", |ui| {
-                                    if big_icon_button(ui, IconId::Fit, "Fit Extents", false, true)
-                                        .on_hover_text("Fit the active tab to its bounds\nShortcut: F")
-                                        .clicked()
-                                    {
-                                        requested_fit = true;
-                                    }
-                                    small_label_stack(ui, |ui| {
-                                        if small_icon_label_button(ui, IconId::Select, "Select", sel_active, true)
-                                            .on_hover_text("Select tool — pick entities\nShortcut: Esc")
-                                            .clicked()
-                                        {
-                                            requested_tool_mode = Some(ToolMode::Select);
-                                        }
-                                        if small_icon_label_button(ui, IconId::Move, "Move", mov_active, true)
-                                            .on_hover_text("Move tool — drag selected entities\nShortcut: V")
-                                            .clicked()
-                                        {
-                                            requested_tool_mode = Some(ToolMode::Move);
-                                        }
-                                        if small_icon_label_button(ui, IconId::Undo, "Undo", false, true)
-                                            .on_hover_text("Undo the last move\nShortcut: Ctrl+Z")
-                                            .clicked()
-                                        {
-                                            // Undo itself runs via Ctrl+Z.
-                                        }
-                                    });
-                                });
-                                ribbon_sep(ui);
-
-                                // ---- Modify (Blok 3) -----------------------------
-                                // BIG:    Rotate (selected entities around pivot)
-                                // STACK:  Scale · Mirror · Copy (Ctrl+D duplicate)
-                                ribbon_group(ui, "Modify", |ui| {
-                                    if big_icon_button(ui, IconId::Rotate, "Rotate", rot_active, true)
-                                        .on_hover_text("Rotate selected entities around a pivot\nShortcut: R")
-                                        .clicked()
-                                    {
-                                        requested_tool_mode = Some(ToolMode::Rotate);
-                                    }
-                                    small_label_stack(ui, |ui| {
-                                        if small_icon_label_button(ui, IconId::Scale, "Scale", sca_active, true)
-                                            .on_hover_text("Scale selected entities from a pivot\nShortcut: S")
-                                            .clicked()
-                                        {
-                                            requested_tool_mode = Some(ToolMode::Scale);
-                                        }
-                                        if small_icon_label_button(ui, IconId::Mirror, "Mirror", mir_active, true)
-                                            .on_hover_text("Mirror selection across a two-point axis\nShortcut: Shift+M")
-                                            .clicked()
-                                        {
-                                            requested_tool_mode = Some(ToolMode::Mirror);
-                                        }
-                                        if small_icon_label_button(ui, IconId::Copy, "Copy", false, true)
-                                            .on_hover_text("Duplicate selected entities in place\nShortcut: Ctrl+D")
-                                            .clicked()
-                                        {
-                                            // Route through the deferred flag so the
-                                            // work runs after the gpu borrow drops.
-                                            requested_duplicate = true;
-                                        }
-                                    });
-                                });
-                                ribbon_sep(ui);
-
-                                // ---- Measure ------------------------------------
-                                // BIG:    Measure (ruler — amber body, CAD edges)
-                                // STACK:  Linear Dim · Area · Clear
-                                ribbon_group(ui, "Measure", |ui| {
-                                    if big_icon_button(ui, IconId::Measure, "Measure", msr_active, true)
-                                        .on_hover_text("Measure distance between two points\nShortcut: M")
-                                        .clicked()
-                                    {
-                                        requested_tool_mode = Some(ToolMode::Measure);
-                                    }
-                                    small_label_stack(ui, |ui| {
-                                        if small_icon_label_button(ui, IconId::Dim, "Linear Dim", dim_active, true)
-                                            .on_hover_text("Draw a linear dimension. Click two points. (D key)")
-                                            .clicked()
-                                        {
-                                            requested_tool_mode = Some(ToolMode::Dimension);
-                                        }
-                                        if small_icon_label_button(ui, IconId::Area, "Area", area_active, true)
-                                            .on_hover_text("Measure an enclosed polygon area. Click vertices, Enter or double-click to close. (A key)")
-                                            .clicked()
-                                        {
-                                            requested_tool_mode = Some(ToolMode::Area);
-                                        }
-                                        if small_icon_label_button(ui, IconId::Clear, "Clear", false, true)
-                                            .on_hover_text("Clear measurements and annotations on the active tab")
-                                            .clicked()
-                                        {
-                                            requested_clear_measurement = true;
-                                            requested_clear_annotations = true;
-                                        }
-                                        // Live readout — sits under Clear so it
-                                        // sits visually inside the Measure group.
-                                        if let Some((_, _, dist)) = last_measurement_snapshot {
-                                            ui.label(
-                                                egui::RichText::new(format!("{:.3}", dist))
-                                                    .size(10.0)
-                                                    .color(egui::Color32::from_rgb(255, 206, 84)),
-                                            );
-                                        } else if msr_active {
-                                            ui.label(
-                                                egui::RichText::new("pick p1…")
-                                                    .size(10.0)
-                                                    .color(RIBBON.label),
-                                            );
-                                        }
-                                    });
-                                });
-                                ribbon_sep(ui);
-
-                                // ---- View (2x2 grid, TrueView "Object Snap" style) -
-                                // Two rows of two small-icon-label buttons each.
-                                let (vsync_label, vsync_on) = match present_mode_snapshot {
-                                    wgpu::PresentMode::Fifo => ("VSync On", true),
-                                    wgpu::PresentMode::Immediate => ("VSync Off", false),
-                                    wgpu::PresentMode::Mailbox => ("Mailbox", false),
-                                    _ => ("VSync ?", false),
-                                };
-                                ribbon_group(ui, "View", |ui| {
-                                    small_label_grid(ui, |ui| {
-                                        ui.horizontal(|ui| {
-                                            ui.spacing_mut().item_spacing.x = 4.0;
-                                            if small_icon_label_button(ui, IconId::Layers, "Layers", layer_panel_open, true)
-                                                .on_hover_text("Toggle Layer Manager panel\nShortcut: F3")
-                                                .clicked()
-                                            {
-                                                requested_toggle_layer_panel = true;
-                                            }
-                                            if small_icon_label_button(ui, IconId::Properties, "Properties", properties_panel_open, true)
-                                                .on_hover_text("Toggle Properties panel\nShortcut: F4")
-                                                .clicked()
-                                            {
-                                                requested_toggle_props_panel = true;
-                                            }
-                                        });
-                                        ui.horizontal(|ui| {
-                                            ui.spacing_mut().item_spacing.x = 4.0;
-                                            if small_icon_label_button(ui, IconId::Samples, "Samples", samples_open, true)
-                                                .on_hover_text("Toggle Samples browser\nShortcut: F2")
-                                                .clicked()
-                                            {
-                                                requested_toggle_samples_panel = true;
-                                            }
-                                            if small_icon_label_button(ui, IconId::PerfHud, "Perf HUD", show_perf_hud_snapshot, true)
-                                                .on_hover_text("Toggle performance HUD overlay\nShortcut: F12")
-                                                .clicked()
-                                            {
-                                                requested_toggle_perf_hud = true;
-                                            }
-                                        });
-                                        // Third row with a single Vsync toggle,
-                                        // using the dropdown chevron variant to
-                                        // hint at the "cycle present mode" nature.
-                                        ui.horizontal(|ui| {
-                                            ui.spacing_mut().item_spacing.x = 4.0;
-                                            if small_icon_label_button_ex(ui, IconId::VSync, vsync_label, vsync_on, true, true)
-                                                .on_hover_text(format!("{} — click to toggle VSync / present mode\nShortcut: F11", vsync_label))
-                                                .clicked()
-                                            {
-                                                requested_toggle_present_mode = true;
-                                            }
-                                        });
-                                    });
-                                });
-                                ribbon_sep(ui);
-
-                                // ---- Layout --------------------------------------
-                                // Pure small-label stack — no big button, matches
-                                // TrueView's "workspace switcher" group.
-                                let is_split = current_split_snapshot.is_some();
-                                let can_split = n_tabs >= 2;
-                                let h_active = matches!(current_split_snapshot, Some(SplitKind::HorizontalPair(_)));
-                                let v_active = matches!(current_split_snapshot, Some(SplitKind::VerticalPair(_)));
-                                ribbon_group(ui, "Layout", |ui| {
-                                    small_label_stack(ui, |ui| {
-                                        if small_icon_label_button(ui, IconId::SplitH, "Split H", h_active, can_split)
-                                            .on_hover_text("Split the canvas left / right\nPairs active tab with next tab\nShortcut: Ctrl+Shift+H")
-                                            .clicked() && can_split
-                                        {
-                                            let other = (active_tab_idx + 1) % n_tabs.max(1);
-                                            requested_split_h_with = Some(other);
-                                        }
-                                        if small_icon_label_button(ui, IconId::SplitV, "Split V", v_active, can_split)
-                                            .on_hover_text("Split the canvas top / bottom\nPairs active tab with next tab\nShortcut: Ctrl+Shift+V")
-                                            .clicked() && can_split
-                                        {
-                                            let other = (active_tab_idx + 1) % n_tabs.max(1);
-                                            requested_split_v_with = Some(other);
-                                        }
-                                        if small_icon_label_button(ui, IconId::Unsplit, "Unsplit", false, is_split)
-                                            .on_hover_text("Unsplit the canvas\nShortcut: Ctrl+Shift+S")
-                                            .clicked() && is_split
-                                        {
-                                            requested_unsplit = true;
-                                        }
-                                    });
-                                });
-                                ribbon_sep(ui);
-
-                                // ---- Help ---------------------------------------
-                                // Single small-label row — red-circle "i" icon.
-                                ribbon_group(ui, "Help", |ui| {
-                                    small_label_stack(ui, |ui| {
-                                        if small_icon_label_button(ui, IconId::About, "About", false, true)
-                                            .on_hover_text("Show About dialog & keyboard shortcuts")
-                                            .clicked()
-                                        {
-                                            requested_toggle_about = true;
-                                        }
-                                    });
-                                });
-                            });
-                        });
+                                "unsplit"       => { requested_unsplit = true; }
+                                "about"         => { requested_toggle_about = true; }
+                                _ => {}
+                            },
+                        }
+                    }
                 });
+
 
             // ---- About dialog ---------------------------------------
             let mut about_open = about_dialog_open_snapshot;
@@ -3307,284 +2102,68 @@ impl App {
             }
 
             // ---- File-tab strip -------------------------------------
-            // Custom-drawn tab chrome — rounded corners on top, subtle
-            // gradient-free fill, active tab lifts slightly toward the
-            // canvas below. Matches the ribbon background so the top
-            // region reads as one contiguous dark slab.
-            let tabbar_frame = egui::Frame::none()
-                .fill(RIBBON.bg)
-                .inner_margin(egui::Margin { left: 6.0, right: 6.0, top: 2.0, bottom: 0.0 })
-                .stroke(egui::Stroke::NONE);
+            // Data-driven `superui::FileTabBar` widget — Chrome-style
+            // sloped tabs with active accent line, close × per tab and a
+            // "+" new-tab button.
             egui::TopBottomPanel::top("tabbar")
-                .exact_height(28.0)
-                .frame(tabbar_frame)
                 .show(ctx, |ui| {
-                    // 1 px top hair-line to detach from the ribbon above.
-                    let strip = ui.max_rect();
-                    ui.painter().line_segment(
-                        [egui::pos2(strip.left(), strip.top()),
-                         egui::pos2(strip.right(), strip.top())],
-                        egui::Stroke::new(1.0, egui::Color32::from_rgb(22, 25, 28)),
-                    );
-                    egui::ScrollArea::horizontal()
-                        .auto_shrink([false, true])
-                        .show(ui, |ui| {
-                            ui.horizontal(|ui| {
-                                ui.spacing_mut().item_spacing.x = 2.0;
-                                for i in 0..n_tabs {
-                                    let is_active = i == active_tab_idx;
-                                    let label = &tab_labels[i];
-
-                                    // Measure label.
-                                    let font = egui::FontId::proportional(11.5);
-                                    let text_w = ui
-                                        .fonts(|f| f.layout_no_wrap(
-                                            label.clone(),
-                                            font.clone(),
-                                            egui::Color32::WHITE,
-                                        ))
-                                        .size().x;
-                                    let tab_w = (text_w + 34.0).min(220.0).max(90.0);
-                                    let (rect, resp) = ui.allocate_exact_size(
-                                        egui::vec2(tab_w, 26.0),
-                                        egui::Sense::click(),
-                                    );
-                                    let painter = ui.painter_at(rect);
-
-                                    // Chrome fill.
-                                    let fill = if is_active {
-                                        egui::Color32::from_rgb(28, 31, 35)
-                                    } else if resp.hovered() {
-                                        egui::Color32::from_rgb(48, 52, 58)
-                                    } else {
-                                        egui::Color32::from_rgb(36, 40, 44)
-                                    };
-                                    let rounding = egui::Rounding {
-                                        nw: 5.0, ne: 5.0, sw: 0.0, se: 0.0,
-                                    };
-                                    painter.rect_filled(rect, rounding, fill);
-                                    // Active tab gets a blue top accent bar.
-                                    if is_active {
-                                        painter.rect_filled(
-                                            egui::Rect::from_min_max(
-                                                egui::pos2(rect.left() + 6.0, rect.top()),
-                                                egui::pos2(rect.right() - 6.0, rect.top() + 2.0),
-                                            ),
-                                            1.0,
-                                            egui::Color32::from_rgb(60, 160, 235),
-                                        );
-                                    }
-
-                                    // Elide label if too wide.
-                                    let max_text = tab_w - 26.0;
-                                    let mut display = label.clone();
-                                    if text_w > max_text {
-                                        // Binary-search shortest fitting prefix.
-                                        while display.len() > 4 {
-                                            display.pop();
-                                            let w = ui.fonts(|f| f.layout_no_wrap(
-                                                format!("{}…", display),
-                                                font.clone(),
-                                                egui::Color32::WHITE,
-                                            )).size().x;
-                                            if w <= max_text {
-                                                display.push('…');
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    let label_col = if is_active {
-                                        egui::Color32::from_rgb(230, 234, 238)
-                                    } else {
-                                        egui::Color32::from_rgb(170, 176, 184)
-                                    };
-                                    let galley = painter.layout_no_wrap(display, font, label_col);
-                                    painter.galley(
-                                        egui::pos2(
-                                            rect.left() + 10.0,
-                                            rect.center().y - galley.size().y * 0.5,
-                                        ),
-                                        galley,
-                                        label_col,
-                                    );
-
-                                    // Close "×" — painter-drawn, only visible
-                                    // on hover of the tab (or always for active).
-                                    let close_rect = egui::Rect::from_center_size(
-                                        egui::pos2(rect.right() - 10.0, rect.center().y),
-                                        egui::vec2(14.0, 14.0),
-                                    );
-                                    let show_close = is_active || resp.hovered();
-                                    let close_resp = ui.interact(
-                                        close_rect,
-                                        ui.id().with(("tab_close", i)),
-                                        egui::Sense::click(),
-                                    );
-                                    if show_close || close_resp.hovered() {
-                                        if close_resp.hovered() {
-                                            painter.rect_filled(
-                                                close_rect,
-                                                2.0,
-                                                egui::Color32::from_rgb(200, 60, 60),
-                                            );
-                                        }
-                                        let xc = close_rect.center();
-                                        let xs = 3.5;
-                                        let xcol = if close_resp.hovered() {
-                                            egui::Color32::WHITE
-                                        } else {
-                                            egui::Color32::from_rgb(160, 166, 172)
-                                        };
-                                        let xstroke = egui::Stroke::new(1.3, xcol);
-                                        painter.line_segment(
-                                            [egui::pos2(xc.x - xs, xc.y - xs),
-                                             egui::pos2(xc.x + xs, xc.y + xs)],
-                                            xstroke,
-                                        );
-                                        painter.line_segment(
-                                            [egui::pos2(xc.x + xs, xc.y - xs),
-                                             egui::pos2(xc.x - xs, xc.y + xs)],
-                                            xstroke,
-                                        );
-                                    }
-                                    if close_resp.clicked() {
-                                        requested_close_tab = Some(i);
-                                    } else if resp.clicked() && !close_resp.hovered() {
-                                        requested_activate_tab = Some(i);
-                                    }
-                                }
-
-                                // "+" new-tab button.
-                                let (plus_rect, plus_resp) = ui.allocate_exact_size(
-                                    egui::vec2(26.0, 26.0),
-                                    egui::Sense::click(),
-                                );
-                                let plus_painter = ui.painter_at(plus_rect);
-                                if plus_resp.hovered() {
-                                    plus_painter.rect_filled(
-                                        plus_rect.shrink(3.0),
-                                        4.0,
-                                        RIBBON.accent_soft,
-                                    );
-                                }
-                                let pc = plus_rect.center();
-                                let pl = 5.0;
-                                let pstroke = egui::Stroke::new(
-                                    1.5,
-                                    if plus_resp.hovered() {
-                                        RIBBON.icon
-                                    } else {
-                                        RIBBON.label
-                                    },
-                                );
-                                plus_painter.line_segment(
-                                    [egui::pos2(pc.x - pl, pc.y), egui::pos2(pc.x + pl, pc.y)],
-                                    pstroke,
-                                );
-                                plus_painter.line_segment(
-                                    [egui::pos2(pc.x, pc.y - pl), egui::pos2(pc.x, pc.y + pl)],
-                                    pstroke,
-                                );
-                                if plus_resp.on_hover_text("Open a file in a new tab").clicked() {
-                                    requested_new_tab = true;
-                                }
-                            });
-                        });
+                    let tab_defs: Vec<FileTabDef> = (0..n_tabs)
+                        .map(|i| FileTabDef {
+                            id: i,
+                            label: tab_labels[i].clone(),
+                            modified: false,
+                        })
+                        .collect();
+                    let actions = FileTabBar::new(&tab_defs)
+                        .active(active_tab_idx)
+                        .show(ui);
+                    for a in actions {
+                        match a {
+                            FileTabAction::Activate(i) => { requested_activate_tab = Some(i); }
+                            FileTabAction::Close(i) => { requested_close_tab = Some(i); }
+                            FileTabAction::NewTab => { requested_new_tab = true; }
+                        }
+                    }
                 });
 
             // ---- Bottom: Status bar (coords + zoom + layers) ----------
-            // 22 px tall, monospace coords on the left, zoom in the middle,
-            // layer count + active tab on the right. Replaces the old
-            // "ctrls" panel which crowded the bottom with tips.
-            let statusbar_frame = egui::Frame::none()
-                .fill(egui::Color32::from_rgb(28, 31, 35))
-                .inner_margin(egui::Margin { left: 8.0, right: 8.0, top: 2.0, bottom: 2.0 })
-                .stroke(egui::Stroke::NONE);
+            // Built from data-driven `StatusSection`s — superui::StatusBar
+            // owns the painting, padding and layout.
             egui::TopBottomPanel::bottom("statusbar")
-                .exact_height(22.0)
-                .frame(statusbar_frame)
                 .show(ctx, |ui| {
-                    ui.horizontal_centered(|ui| {
-                        // Left: cursor world coords.
-                        let coords_str = match status_cursor_world {
-                            Some(p) => format!("x:{:>11.3}   y:{:>11.3}", p[0], p[1]),
-                            None => "x:     ——.———   y:     ——.———".to_string(),
-                        };
-                        ui.label(
-                            egui::RichText::new(coords_str)
-                                .monospace()
-                                .size(11.0)
-                                .color(egui::Color32::from_rgb(200, 206, 212)),
-                        );
-                        ui.add_space(12.0);
-                        ui.label(
-                            egui::RichText::new("│")
-                                .color(egui::Color32::from_rgb(60, 66, 72)),
-                        );
-                        ui.add_space(12.0);
-                        // Zoom factor (relative).
-                        ui.label(
-                            egui::RichText::new(format!("zoom: {:>7.3}×", status_zoom))
-                                .monospace()
-                                .size(11.0)
-                                .color(egui::Color32::from_rgb(200, 206, 212)),
-                        );
-                        ui.add_space(12.0);
-                        ui.label(
-                            egui::RichText::new("│")
-                                .color(egui::Color32::from_rgb(60, 66, 72)),
-                        );
-                        ui.add_space(12.0);
-                        // Tool mode indicator.
-                        let tool_str = match current_tool_mode {
-                            ToolMode::Select => "Select",
-                            ToolMode::Measure => "Measure",
-                            ToolMode::Move => "Move",
-                            ToolMode::Dimension => "Dim",
-                            ToolMode::Area => "Area",
-                            // Blok 3 — Modify tools.
-                            ToolMode::Rotate => "Rotate",
-                            ToolMode::Scale => "Scale",
-                            ToolMode::Mirror => "Mirror",
-                        };
-                        ui.label(
-                            egui::RichText::new(format!("tool: {}", tool_str))
-                                .monospace()
-                                .size(11.0)
-                                .color(egui::Color32::from_rgb(180, 210, 255)),
-                        );
-
-                        // Right: layer count + active tab.
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            let short_label = if status_tab_label.len() > 36 {
-                                format!("…{}", &status_tab_label[status_tab_label.len()-35..])
-                            } else {
-                                status_tab_label.clone()
-                            };
-                            ui.label(
-                                egui::RichText::new(short_label)
-                                    .size(11.0)
-                                    .color(egui::Color32::from_rgb(160, 170, 180)),
-                            );
-                            ui.add_space(12.0);
-                            ui.label(
-                                egui::RichText::new("│")
-                                    .color(egui::Color32::from_rgb(60, 66, 72)),
-                            );
-                            ui.add_space(12.0);
-                            let layer_txt = if status_hidden_layers > 0 {
-                                format!("layers: {} ({} hidden)", status_total_layers, status_hidden_layers)
-                            } else {
-                                format!("layers: {}", status_total_layers)
-                            };
-                            ui.label(
-                                egui::RichText::new(layer_txt)
-                                    .monospace()
-                                    .size(11.0)
-                                    .color(egui::Color32::from_rgb(200, 206, 212)),
-                            );
-                        });
-                    });
+                    let coords_str = match status_cursor_world {
+                        Some(p) => format!("x: {:>11.3}   y: {:>11.3}", p[0], p[1]),
+                        None => "x:     ——.———   y:     ——.———".to_string(),
+                    };
+                    let tool_str = match current_tool_mode {
+                        ToolMode::Select    => "Select",
+                        ToolMode::Measure   => "Measure",
+                        ToolMode::Move      => "Move",
+                        ToolMode::Dimension => "Dim",
+                        ToolMode::Area      => "Area",
+                        ToolMode::Rotate    => "Rotate",
+                        ToolMode::Scale     => "Scale",
+                        ToolMode::Mirror    => "Mirror",
+                    };
+                    let short_label = if status_tab_label.len() > 36 {
+                        format!("…{}", &status_tab_label[status_tab_label.len() - 35..])
+                    } else {
+                        status_tab_label.clone()
+                    };
+                    let layer_txt = if status_hidden_layers > 0 {
+                        format!("layers: {} ({} hidden)", status_total_layers, status_hidden_layers)
+                    } else {
+                        format!("layers: {}", status_total_layers)
+                    };
+                    let sections = vec![
+                        StatusSection::Text(coords_str),
+                        StatusSection::Text(format!("zoom: {:>7.3}×", status_zoom)),
+                        StatusSection::Text(format!("tool: {}", tool_str)),
+                        StatusSection::Spacer,
+                        StatusSection::Text(layer_txt),
+                        StatusSection::Text(short_label),
+                    ];
+                    let _actions = StatusBar::new(sections).show(ui);
                 });
 
             // ---- Bottom (above statusbar): Model/Layout tabs -----------
@@ -4096,6 +2675,25 @@ impl App {
         }
         if requested_toggle_about { self.about_dialog_open = !self.about_dialog_open; }
         if requested_about_close { self.about_dialog_open = false; }
+        if let Some(tab) = requested_ribbon_tab { self.active_ribbon_tab = tab; }
+
+        // ---- Title-bar action dispatch -------------------------------
+        // The hamburger app-menu currently has no destination — Phase B
+        // will wire it to a popup. For now, the click is silently
+        // dropped so the button is still functional visually.
+        let _ = requested_toggle_app_menu;
+        if requested_window_minimize {
+            if let Some(w) = self.window.as_ref() { w.set_minimized(true); }
+        }
+        if requested_window_toggle_max {
+            if let Some(w) = self.window.as_ref() {
+                let cur = w.is_maximized();
+                w.set_maximized(!cur);
+            }
+        }
+        if requested_window_close {
+            std::process::exit(0);
+        }
         if let Some(m) = requested_tool_mode {
             self.tool_mode = m;
             if m != ToolMode::Measure { self.measure_p1 = None; }
@@ -6806,6 +5404,179 @@ fn save_recent_files(list: &[String]) {
         }
         Err(e) => eprintln!("[recent] serialize failed: {:?}", e),
     }
+}
+
+/// Build the Ribbon tab definitions for the current frame. Pure
+/// function — takes only the state slices it needs so it can be called
+/// from inside the egui closure without holding `&mut App`. The button
+/// `id` strings are matched against in the action dispatch above.
+///
+/// Phase 1 only ships a handful of `IconKind` variants — many CAD ribbon
+/// actions reuse `IconKind::Rectangle` as a placeholder until Phase B
+/// swaps in proper phosphor icons.
+fn build_ribbon_tabs(
+    tool: ToolMode,
+    layers_open: bool,
+    properties_open: bool,
+    samples_open: bool,
+    perf_hud: bool,
+    split: Option<SplitKind>,
+) -> Vec<RibbonTabDef> {
+    let split_h = matches!(split, Some(SplitKind::HorizontalPair(_)));
+    let split_v = matches!(split, Some(SplitKind::VerticalPair(_)));
+    vec![
+        RibbonTabDef {
+            id: "files".into(),
+            label: "Files".into(),
+            groups: vec![
+                RibbonGroup::new("Files")
+                    .button(RibbonButtonDef {
+                        id: "open".into(), label: "Open".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Large,
+                        selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "new_tab".into(), label: "New Tab".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "save_as_dxf".into(), label: "Save As DXF".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "save_as_ifcx".into(), label: "Save As IFCX".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    }),
+            ],
+        },
+        RibbonTabDef {
+            id: "tools".into(),
+            label: "Tools".into(),
+            groups: vec![
+                RibbonGroup::new("Tools")
+                    .button(RibbonButtonDef {
+                        id: "fit_extents".into(), label: "Fit".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Large,
+                        selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "select".into(), label: "Select".into(),
+                        icon: IconKind::Move, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Select), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "move".into(), label: "Move".into(),
+                        icon: IconKind::Move, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Move), enabled: true,
+                    }),
+                RibbonGroup::new("Modify")
+                    .button(RibbonButtonDef {
+                        id: "rotate".into(), label: "Rotate".into(),
+                        icon: IconKind::Arc, size: ButtonSize::Large,
+                        selected: matches!(tool, ToolMode::Rotate), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "scale".into(), label: "Scale".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Scale), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "mirror".into(), label: "Mirror".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Mirror), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "duplicate".into(), label: "Copy".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    }),
+                RibbonGroup::new("Measure")
+                    .button(RibbonButtonDef {
+                        id: "measure".into(), label: "Measure".into(),
+                        icon: IconKind::Dimension, size: ButtonSize::Large,
+                        selected: matches!(tool, ToolMode::Measure), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "dim".into(), label: "Dim".into(),
+                        icon: IconKind::Dimension, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Dimension), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "area".into(), label: "Area".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Area), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "clear".into(), label: "Clear".into(),
+                        icon: IconKind::Delete, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    }),
+            ],
+        },
+        RibbonTabDef {
+            id: "view".into(),
+            label: "View".into(),
+            groups: vec![
+                RibbonGroup::new("Panels")
+                    .button(RibbonButtonDef {
+                        id: "layers".into(), label: "Layers".into(),
+                        icon: IconKind::Hatch, size: ButtonSize::Small,
+                        selected: layers_open, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "properties".into(), label: "Properties".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: properties_open, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "samples".into(), label: "Samples".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: samples_open, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "perf_hud".into(), label: "Perf HUD".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: perf_hud, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "vsync".into(), label: "VSync".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    }),
+                RibbonGroup::new("Layout")
+                    .button(RibbonButtonDef {
+                        id: "split_h".into(), label: "Split H".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: split_h, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "split_v".into(), label: "Split V".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: split_v, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "unsplit".into(), label: "Unsplit".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: split.is_some(),
+                    }),
+            ],
+        },
+        RibbonTabDef {
+            id: "help".into(),
+            label: "Help".into(),
+            groups: vec![
+                RibbonGroup::new("Help")
+                    .button(RibbonButtonDef {
+                        id: "about".into(), label: "About".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    }),
+            ],
+        },
+    ]
 }
 
 fn main() -> anyhow::Result<()> {
