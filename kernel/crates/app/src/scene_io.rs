@@ -2974,6 +2974,183 @@ pub(crate) fn tessellate_text(
     }
 }
 
+/// Captured state from a re-tessellate operation. Returned to the caller
+/// so it can be pushed into an EditOp::EditText for undo.
+#[derive(Clone)]
+pub struct TextEntityDelta {
+    pub eid: u32,
+    pub old_text: String,
+    pub new_text: String,
+    /// (original index in scene.segments, the segment) — kept in
+    /// sequence-order so undo can reinsert at original positions.
+    pub old_segments: Vec<(usize, Segment)>,
+    pub old_triangles: Vec<(usize, Triangle)>,
+}
+
+/// Replace the rendered glyphs of an entity with newly tessellated ones
+/// from `new_text`, preserving the entity's existing style (font, height,
+/// rotation, anchor, attachment, color, paper-flag).
+///
+/// Returns the delta so the caller can push EditOp::EditText for undo.
+/// Errors on entities that aren't text or don't exist.
+pub fn re_tessellate_text_entity(
+    scene: &mut Scene,
+    eid: u32,
+    new_text: &str,
+) -> anyhow::Result<TextEntityDelta> {
+    let eid_us = eid as usize;
+    // Pick BEFORE mutation, while the original segs/tris are still in scene.
+    let color = pick_color_for_eid(scene, eid);
+    let is_paper = pick_paper_for_eid(scene, eid);
+    let layer_idx = pick_layer_for_eid(scene, eid);
+
+    // Update entity_text.raw to new_text, capture old_text.
+    let et = scene.entity_text.get_mut(eid_us)
+        .and_then(|o| o.as_mut())
+        .ok_or_else(|| anyhow::anyhow!("entity {} has no text", eid))?;
+    let old_text = std::mem::replace(&mut et.raw, new_text.to_string());
+    let et_clone = et.clone();
+
+    // Snapshot + remove old segments owned by eid.
+    let mut old_segments: Vec<(usize, Segment)> = Vec::new();
+    let mut new_segments: Vec<Segment> = Vec::with_capacity(scene.segments.len());
+    let mut new_seg_eid: Vec<u32> = Vec::with_capacity(scene.segment_entity_idx.len());
+    let mut new_seg_layer: Vec<u16> = Vec::with_capacity(scene.segment_layer_idx.len());
+    for i in 0..scene.segments.len() {
+        if scene.segment_entity_idx[i] == eid {
+            old_segments.push((i, scene.segments[i].clone()));
+        } else {
+            new_segments.push(scene.segments[i].clone());
+            new_seg_eid.push(scene.segment_entity_idx[i]);
+            new_seg_layer.push(scene.segment_layer_idx[i]);
+        }
+    }
+    scene.segments = new_segments;
+    scene.segment_entity_idx = new_seg_eid;
+    scene.segment_layer_idx = new_seg_layer;
+
+    // Same for triangles.
+    let mut old_triangles: Vec<(usize, Triangle)> = Vec::new();
+    let mut new_triangles: Vec<Triangle> = Vec::with_capacity(scene.triangles.len());
+    let mut new_tri_eid: Vec<u32> = Vec::with_capacity(scene.triangle_entity_idx.len());
+    let mut new_tri_layer: Vec<u16> = Vec::with_capacity(scene.triangle_layer_idx.len());
+    for i in 0..scene.triangles.len() {
+        if scene.triangle_entity_idx[i] == eid {
+            old_triangles.push((i, scene.triangles[i].clone()));
+        } else {
+            new_triangles.push(scene.triangles[i].clone());
+            new_tri_eid.push(scene.triangle_entity_idx[i]);
+            new_tri_layer.push(scene.triangle_layer_idx[i]);
+        }
+    }
+    scene.triangles = new_triangles;
+    scene.triangle_entity_idx = new_tri_eid;
+    scene.triangle_layer_idx = new_tri_layer;
+
+    // Re-tessellate the new text in place.
+    let seg_before = scene.segments.len();
+    let tri_before = scene.triangles.len();
+    tessellate_text(&et_clone, color, is_paper,
+        &mut scene.segments, &mut scene.triangles, &mut scene.bbox);
+    let seg_added = scene.segments.len() - seg_before;
+    let tri_added = scene.triangles.len() - tri_before;
+
+    // Extend entity_idx + layer_idx for new segs/tris.
+    scene.segment_entity_idx.extend(std::iter::repeat(eid).take(seg_added));
+    scene.segment_layer_idx.extend(std::iter::repeat(layer_idx).take(seg_added));
+    scene.triangle_entity_idx.extend(std::iter::repeat(eid).take(tri_added));
+    scene.triangle_layer_idx.extend(std::iter::repeat(layer_idx).take(tri_added));
+
+    Ok(TextEntityDelta {
+        eid,
+        old_text,
+        new_text: new_text.to_string(),
+        old_segments,
+        old_triangles,
+    })
+}
+
+/// Reverse of re_tessellate_text_entity for undo. Removes any
+/// segments/triangles currently owned by `delta.eid`, restores the
+/// snapshotted ones, and reverts entity_text.
+pub fn restore_text_entity(scene: &mut Scene, delta: &TextEntityDelta) -> anyhow::Result<()> {
+    let eid = delta.eid;
+    let eid_us = eid as usize;
+    let layer_idx = pick_layer_for_eid(scene, eid);
+
+    // Revert raw text.
+    if let Some(Some(et)) = scene.entity_text.get_mut(eid_us) {
+        et.raw = delta.old_text.clone();
+    }
+
+    // Remove current segs owned by eid.
+    let mut new_seg_eid: Vec<u32> = Vec::new();
+    let mut new_segments: Vec<Segment> = Vec::new();
+    let mut new_seg_layer: Vec<u16> = Vec::new();
+    for i in 0..scene.segments.len() {
+        if scene.segment_entity_idx[i] != eid {
+            new_segments.push(scene.segments[i].clone());
+            new_seg_eid.push(scene.segment_entity_idx[i]);
+            new_seg_layer.push(scene.segment_layer_idx[i]);
+        }
+    }
+    let mut new_tri_eid: Vec<u32> = Vec::new();
+    let mut new_triangles: Vec<Triangle> = Vec::new();
+    let mut new_tri_layer: Vec<u16> = Vec::new();
+    for i in 0..scene.triangles.len() {
+        if scene.triangle_entity_idx[i] != eid {
+            new_triangles.push(scene.triangles[i].clone());
+            new_tri_eid.push(scene.triangle_entity_idx[i]);
+            new_tri_layer.push(scene.triangle_layer_idx[i]);
+        }
+    }
+    // Re-insert snapshotted segs/tris (append; original render order
+    // within the eid is preserved by the snapshot Vec's own order).
+    for (_orig_idx, seg) in &delta.old_segments {
+        new_segments.push(seg.clone());
+        new_seg_eid.push(eid);
+        new_seg_layer.push(layer_idx);
+    }
+    for (_orig_idx, tri) in &delta.old_triangles {
+        new_triangles.push(tri.clone());
+        new_tri_eid.push(eid);
+        new_tri_layer.push(layer_idx);
+    }
+    scene.segments = new_segments;
+    scene.segment_entity_idx = new_seg_eid;
+    scene.segment_layer_idx = new_seg_layer;
+    scene.triangles = new_triangles;
+    scene.triangle_entity_idx = new_tri_eid;
+    scene.triangle_layer_idx = new_tri_layer;
+    Ok(())
+}
+
+fn pick_color_for_eid(scene: &Scene, eid: u32) -> u32 {
+    for (i, s) in scene.segments.iter().enumerate() {
+        if scene.segment_entity_idx.get(i).copied() == Some(eid) { return s.color; }
+    }
+    for (i, t) in scene.triangles.iter().enumerate() {
+        if scene.triangle_entity_idx.get(i).copied() == Some(eid) { return t.color; }
+    }
+    0xFF_FF_FF_FF
+}
+
+fn pick_paper_for_eid(scene: &Scene, eid: u32) -> bool {
+    for (i, s) in scene.segments.iter().enumerate() {
+        if scene.segment_entity_idx.get(i).copied() == Some(eid) { return s.is_paper; }
+    }
+    false
+}
+
+fn pick_layer_for_eid(scene: &Scene, eid: u32) -> u16 {
+    for (i, _) in scene.segments.iter().enumerate() {
+        if scene.segment_entity_idx.get(i).copied() == Some(eid) {
+            return scene.segment_layer_idx.get(i).copied().unwrap_or(0);
+        }
+    }
+    0
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_dxf_text(
     text: &str,
