@@ -1682,6 +1682,19 @@ impl PaneCam {
 /// per pane — matches the old TL (green) for familiarity.
 const DEFAULT_LINE_COLOR: u32 = 0xFFE0E0E0;   // near-white
 
+/// In-flight text-edit session: tracks which entity in which tab is being
+/// edited, plus the live `buffer` (typed-into) and the `last_committed`
+/// snapshot used to revert on cancel. `debounce_at` reserved for Task 10
+/// (live-preview re-tessellation throttle).
+#[derive(Clone)]
+struct EditTextState {
+    tab_idx: usize,
+    eid: u32,
+    buffer: String,
+    last_committed: String,
+    debounce_at: Option<std::time::Instant>,
+}
+
 /// Tiled split mode for a single `FileTab`. When present, the tab's canvas
 /// area is divided 50/50 and two tabs (self + `other_tab_idx`) render
 /// side-by-side with independent cameras. Keeps the tab model flat — no
@@ -2040,6 +2053,17 @@ struct App {
     /// selected entities into fresh ids with a small offset. Reuses the
     /// Paste undo variant since semantics are identical.
     requested_duplicate: bool,
+
+    // --- Text editor (F2 / double-click) -----------------------------
+    /// Active in-flight text-edit session, if any. See `EditTextState`.
+    /// Set by `enter_text_edit`, cleared by `commit_text_edit` /
+    /// `cancel_text_edit`.
+    edit_mode: Option<EditTextState>,
+    /// Previous LMB-release time + pos for double-click detection. Both
+    /// updated on every LMB release; a click counts as a double when the
+    /// next release is within 400 ms and 6 px of these.
+    last_lmb_click_time: Option<std::time::Instant>,
+    last_lmb_click_pos: (f32, f32),
 }
 
 /// Per-section render timings — one frame.
@@ -2146,6 +2170,10 @@ impl App {
             scale_ref: None,
             mirror_a: None,
             requested_duplicate: false,
+            // Text editor (Task 9): no edit in flight, no prior click.
+            edit_mode: None,
+            last_lmb_click_time: None,
+            last_lmb_click_pos: (0.0, 0.0),
         }
     }
 
@@ -4754,6 +4782,65 @@ impl App {
         }
     }
 
+    /// Begin an interactive text-edit session for `eid` in `tab_idx`. No-op
+    /// if the entity has no `EntityText`. Snapshots the current `raw` into
+    /// both `buffer` (mutated by the overlay/key handler) and
+    /// `last_committed` (used to revert on cancel).
+    fn enter_text_edit(&mut self, tab_idx: usize, eid: u32) {
+        let Some(tab) = self.tabs.get(tab_idx) else { return; };
+        let Some(et) = tab.scene.entity_text.get(eid as usize).and_then(|o| o.as_ref()) else {
+            return;
+        };
+        self.edit_mode = Some(EditTextState {
+            tab_idx,
+            eid,
+            buffer: et.raw.clone(),
+            last_committed: et.raw.clone(),
+            debounce_at: None,
+        });
+    }
+
+    /// Drop the current edit session without recording undo. If the live
+    /// preview already mutated the rendered glyphs (debounce path, Task
+    /// 10), re-tessellate back to `last_committed` so the cancel really
+    /// erases the in-flight changes.
+    fn cancel_text_edit(&mut self) {
+        if let Some(state) = self.edit_mode.take() {
+            // If buffer was modified mid-typing, restore via re_tessellate
+            // to last_committed so the rendered glyphs match the original.
+            if state.buffer != state.last_committed {
+                if let Some(tab) = self.tabs.get_mut(state.tab_idx) {
+                    let _ = kernel_app::scene_io::re_tessellate_text_entity(
+                        &mut tab.scene, state.eid, &state.last_committed,
+                    );
+                    self.reupload_tab_buffers(state.tab_idx);
+                }
+            }
+        }
+    }
+
+    /// Commit the in-flight buffer: re-tessellate the entity, push an
+    /// `EditOp::EditText` for undo, and refresh GPU buffers. No-op when
+    /// the buffer matches the last committed text (no real change).
+    fn commit_text_edit(&mut self) {
+        let Some(state) = self.edit_mode.take() else { return; };
+        if state.buffer == state.last_committed {
+            return;  // no-op
+        }
+        let tab_idx = state.tab_idx;
+        if let Some(tab) = self.tabs.get_mut(tab_idx) {
+            match kernel_app::scene_io::re_tessellate_text_entity(
+                &mut tab.scene, state.eid, &state.buffer,
+            ) {
+                Ok(delta) => {
+                    push_undo(&mut tab.undo_stack, EditOp::EditText { text_delta: delta });
+                    self.reupload_tab_buffers(tab_idx);
+                }
+                Err(e) => eprintln!("[text-edit] commit failed: {}", e),
+            }
+        }
+    }
+
     #[allow(dead_code)]
     fn reupload_active_buffers(&mut self) {
         self.reupload_tab_buffers(self.active_tab);
@@ -5831,7 +5918,12 @@ impl ApplicationHandler for App {
                     // then selection, then finally exits the app. CAD UX.
                     // Blok 3 — Esc also cancels in-progress Rotate/Scale/Mirror
                     // pivots before touching selection.
-                    if !self.area_in_progress.is_empty() {
+                    // Task 9 — Esc during text-edit cancels the edit first
+                    // (highest priority so typing into the buffer can be
+                    // backed out without disturbing other state).
+                    if self.edit_mode.is_some() {
+                        self.cancel_text_edit();
+                    } else if !self.area_in_progress.is_empty() {
                         self.area_in_progress.clear();
                     } else if self.dim_p1.is_some() {
                         self.dim_p1 = None;
@@ -5900,6 +5992,12 @@ impl ApplicationHandler for App {
                     self.tool_mode = ToolMode::Select;
                 }
                 KeyCode::Enter | KeyCode::NumpadEnter => {
+                    // Task 9 — Enter during text-edit commits the buffer.
+                    // Takes precedence over Area-polygon commit so the edit
+                    // session can finish without leaving stale state.
+                    if self.edit_mode.is_some() {
+                        self.commit_text_edit();
+                    } else
                     // Annotate tools — per user request: linear maatlijn + area measurement, per-tab persistence
                     // Commit in-progress Area polygon (needs >= 3 verts).
                     if self.tool_mode == ToolMode::Area && self.area_in_progress.len() >= 3 {
@@ -5913,7 +6011,30 @@ impl ApplicationHandler for App {
                         }
                     }
                 }
-                KeyCode::F2 => { self.samples_panel_open = !self.samples_panel_open; }
+                KeyCode::F2 => {
+                    // Text-edit trigger: in Select mode with no edit in flight
+                    // and a text entity selected, open the inline editor.
+                    // Otherwise fall back to the legacy panel toggle.
+                    let mut entered = false;
+                    if self.tool_mode == ToolMode::Select && self.edit_mode.is_none() {
+                        let active_tab = self.active_tab;
+                        let eids = self.selected_entity_ids_in(active_tab);
+                        if let Some(tab) = self.tabs.get(active_tab) {
+                            for eid in eids {
+                                if tab.scene.entity_text.get(eid as usize)
+                                    .and_then(|o| o.as_ref()).is_some()
+                                {
+                                    entered = true;
+                                    self.enter_text_edit(active_tab, eid);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                    if !entered {
+                        self.samples_panel_open = !self.samples_panel_open;
+                    }
+                }
                 KeyCode::F3 => { self.layer_panel_open = !self.layer_panel_open; }
                 KeyCode::F4 => { self.properties_panel_open = !self.properties_panel_open; }
                 KeyCode::F11 => {
@@ -6384,6 +6505,38 @@ impl ApplicationHandler for App {
                                     }
                                 }
                             }
+                            // Task 9 — double-click to enter text-edit. We
+                            // check AFTER the click has been processed (so
+                            // a click-on-text first selects, then the second
+                            // click promotes it to an edit). 400 ms / 6 px
+                            // window matches the OS norm for double-clicks.
+                            let now = std::time::Instant::now();
+                            let is_double = if let Some(prev) = self.last_lmb_click_time {
+                                let elapsed = now.duration_since(prev);
+                                let ddx = self.mouse_pos.0 - self.last_lmb_click_pos.0;
+                                let ddy = self.mouse_pos.1 - self.last_lmb_click_pos.1;
+                                let drift_dbl = (ddx*ddx + ddy*ddy).sqrt();
+                                elapsed.as_millis() < 400 && drift_dbl < 6.0
+                            } else { false };
+                            if is_double
+                                && self.tool_mode == ToolMode::Select
+                                && self.edit_mode.is_none()
+                            {
+                                let active_tab = self.active_tab;
+                                let eids = self.selected_entity_ids_in(active_tab);
+                                if let Some(tab) = self.tabs.get(active_tab) {
+                                    for eid in eids {
+                                        if tab.scene.entity_text.get(eid as usize)
+                                            .and_then(|o| o.as_ref()).is_some()
+                                        {
+                                            self.enter_text_edit(active_tab, eid);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            self.last_lmb_click_time = Some(now);
+                            self.last_lmb_click_pos = self.mouse_pos;
                         }
                     }
                 }
