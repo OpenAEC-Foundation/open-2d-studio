@@ -2692,6 +2692,98 @@ fn fill_glyph_contours(
 /// Returns the advance width used for the measurement pass so the caller
 /// can reuse it for anchor-offset computation instead of paying for a
 /// second round-trip through the TTF cache.
+
+/// Resolve the FINAL TTF filename a DWG text entity will render with at
+/// load-time. Mirrors EXACTLY the candidate-list construction in
+/// `render_dwg_text` — but instead of rendering, returns the first
+/// candidate that `crate::ttf_font::resolve_font_file` accepts, falling
+/// back to "arial.ttf" when nothing else resolves.
+///
+/// Used at populate time (DWG TEXT / MTEXT / ATTRIB / DIMENSION arms in
+/// `tessellate_one`) so `EntityText.font_path` carries the SAME final
+/// filename that the load-time render used. Without this, the in-place
+/// text editor's `tessellate_text` re-resolves the bare STYLE name
+/// through a different fallback path and picks a different font (e.g.
+/// "Segoe UI_1" vs the load-time "segoeui.ttf"), which has a different
+/// cap-height ratio and visibly resizes the glyphs after Enter.
+fn resolve_dwg_text_font_path(
+    style_handle: Option<u64>,
+    style_name: Option<&str>,
+    mtext_inline: Option<&(bool, bool, Option<String>)>,
+) -> String {
+    let style = dwg_lookup_style(style_handle, style_name);
+    let mut tried: Vec<String> = Vec::with_capacity(4);
+    if let Some((bold, italic, family_opt)) = mtext_inline {
+        if let Some(fam) = family_opt {
+            tried.push(font_family_to_file(fam, *bold, *italic));
+        } else if let Some(info) = &style {
+            let base = if info.primary_font_file.is_empty() {
+                "arial.ttf".to_string()
+            } else { info.primary_font_file.clone() };
+            let suffix_sn = match (*bold, *italic) {
+                (true, true) => "_B_I",
+                (true, false) => "_B",
+                (false, true) => "_I",
+                (false, false) => "",
+            };
+            if !suffix_sn.is_empty() {
+                let fake = format!("x{}", suffix_sn);
+                let w = resolve_weighted_font_file(&base, &fake);
+                if w != base { tried.push(w); }
+            }
+            tried.push(base);
+        }
+    }
+    if let Some(info) = &style {
+        let weighted = resolve_weighted_font_file(&info.primary_font_file, &info.style_name);
+        if weighted != info.primary_font_file && !tried.contains(&weighted) {
+            tried.push(weighted);
+        }
+        if !info.primary_font_file.is_empty() && !tried.contains(&info.primary_font_file) {
+            tried.push(info.primary_font_file.clone());
+        }
+    }
+    if !tried.iter().any(|s| s.eq_ignore_ascii_case("arial.ttf")) {
+        tried.push("arial.ttf".to_string());
+    }
+    for cand in &tried {
+        if crate::ttf_font::resolve_font_file(cand).is_some() {
+            return cand.clone();
+        }
+    }
+    "arial.ttf".to_string()
+}
+
+/// DXF analogue of `resolve_dwg_text_font_path`. Mirrors the candidate
+/// list inside `render_dxf_text`: weighted style-name variant, then the
+/// raw STYLE primary_font_file. Returns the first candidate that
+/// `resolve_font_file` accepts; falls back to "arial.ttf".
+fn resolve_dxf_text_font_path(
+    style_name: &str,
+    style_map: &HashMap<String, DxfStyleInfo>,
+) -> String {
+    let key = style_name.to_ascii_uppercase();
+    let mut tried: Vec<String> = Vec::with_capacity(3);
+    if let Some(info) = style_map.get(&key) {
+        let weighted = resolve_weighted_font_file(&info.primary_font_file, &info.style_name);
+        if weighted != info.primary_font_file {
+            tried.push(weighted);
+        }
+        if !info.primary_font_file.is_empty() {
+            tried.push(info.primary_font_file.clone());
+        }
+    }
+    if !tried.iter().any(|s| s.eq_ignore_ascii_case("arial.ttf")) {
+        tried.push("arial.ttf".to_string());
+    }
+    for cand in &tried {
+        if crate::ttf_font::resolve_font_file(cand).is_some() {
+            return cand.clone();
+        }
+    }
+    "arial.ttf".to_string()
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_dwg_text(
     text: &str,
@@ -3705,17 +3797,20 @@ fn tessellate_dxf_entity(
                     // Only the top-level entity loop passes Some(...) here;
                     // INSERT child recursion passes None so we don't double-
                     // write or fight the borrow-checker. font_path stores
-                    // the STYLE name (re_tessellate_text_entity re-resolves
-                    // it at edit time via style_map).
+                    // the FINAL resolved TTF filename (same chain as
+                    // render_dxf_text) so the editor's tessellate_text
+                    // picks the identical font on commit.
                     if let Some(et_out) = entity_text_out {
                         let idx = entity_idx_for_text as usize;
                         if idx < et_out.len() {
+                            let resolved_font =
+                                resolve_dxf_text_font_path(&t.text_style_name, style_map);
                             et_out[idx] = Some(EntityText {
                                 raw: decoded,
                                 anchor: world_origin,
                                 height: h_world,
                                 rotation: rot,
-                                font_path: t.text_style_name.clone(),
+                                font_path: resolved_font,
                                 bold: false,
                                 italic: false,
                                 attachment: anchor,
@@ -3816,17 +3911,19 @@ fn tessellate_dxf_entity(
                     // editor sees real Unicode codepoints, but we DO keep
                     // MTEXT formatting codes (`\fArial|b1;`, `\P`, `^I`,
                     // `{...}` groupings) intact — the editor needs those
-                    // for round-trip fidelity. font_path stores the STYLE
-                    // name; re-tessellation re-resolves it via style_map.
+                    // for round-trip fidelity. font_path stores the FINAL
+                    // resolved TTF filename (same chain as render_dxf_text).
                     if let Some(et_out) = entity_text_out {
                         let idx = entity_idx_for_text as usize;
                         if idx < et_out.len() {
+                            let resolved_font =
+                                resolve_dxf_text_font_path(&m.text_style_name, style_map);
                             et_out[idx] = Some(EntityText {
                                 raw: decoded,
                                 anchor: world_origin,
                                 height: h_world,
                                 rotation: rot,
-                                font_path: m.text_style_name.clone(),
+                                font_path: resolved_font,
                                 bold: false,
                                 italic: false,
                                 attachment: anchor,
@@ -6211,17 +6308,21 @@ fn tessellate_one(
                             segments, triangles, bbox,
                         );
                         // Capture DIMENSION label payload for the in-place
-                        // editor. font_path stores the resolved STYLE name
-                        // (or empty); re-tessellation re-resolves the file.
+                        // editor. font_path stores the FINAL resolved TTF
+                        // filename (same chain as render_dwg_text) so the
+                        // editor's tessellate_text picks the identical font
+                        // — preventing visible glyph-size shifts (different
+                        // cap-height ratios) on edit.
                         if let Some(et_out) = entity_text_out {
                             let idx = entity_idx_for_text as usize;
                             if idx < et_out.len() {
+                                let resolved_font = resolve_dwg_text_font_path(sh, sn, None);
                                 et_out[idx] = Some(EntityText {
                                     raw: label.clone(),
                                     anchor: mid_w,
                                     height: h,
                                     rotation: text_rot,
-                                    font_path: sn.map(|s| s.to_string()).unwrap_or_default(),
+                                    font_path: resolved_font,
                                     bold: false,
                                     italic: false,
                                     attachment: 5,
@@ -6323,18 +6424,21 @@ fn tessellate_one(
                     // Capture raw TEXT/ATTRIB/ATTDEF payload for the
                     // in-place editor. Mirrors the DXF TEXT arm at line
                     // ~3394: store world-space anchor (xform-applied)
-                    // and post-decode string. font_path stores the STYLE
-                    // name; re-tessellation re-resolves the font file.
+                    // and post-decode string. font_path stores the FINAL
+                    // resolved TTF filename (same chain as render_dwg_text)
+                    // so the editor's tessellate_text picks the identical
+                    // font.
                     if let Some(et_out) = entity_text_out {
                         let idx = entity_idx_for_text as usize;
                         if idx < et_out.len() {
                             let world_anchor = xform.apply(origin);
                             let parent_rot = xform.sin.atan2(xform.cos);
                             let stored_h = h * xform.sx.abs().max(xform.sy.abs());
+                            let resolved_font = resolve_dwg_text_font_path(sh, sn, None);
                             if std::env::var_os("O2D_TEXT_EDIT_DBG").is_some() {
                                 eprintln!(
-                                    "[text-pop-dwg-text] eid={} h_local={} xform.sx={} xform.sy={} stored_h={} world_anchor={:?} attach={}",
-                                    entity_idx_for_text, h, xform.sx, xform.sy, stored_h, world_anchor, eff_anchor
+                                    "[text-pop-dwg-text] eid={} h_local={} xform.sx={} xform.sy={} stored_h={} world_anchor={:?} attach={} font_path={:?}",
+                                    entity_idx_for_text, h, xform.sx, xform.sy, stored_h, world_anchor, eff_anchor, resolved_font
                                 );
                             }
                             et_out[idx] = Some(EntityText {
@@ -6342,7 +6446,7 @@ fn tessellate_one(
                                 anchor: world_anchor,
                                 height: stored_h,
                                 rotation: rot + parent_rot,
-                                font_path: sn.map(|s| s.to_string()).unwrap_or_default(),
+                                font_path: resolved_font,
                                 bold: false,
                                 italic: false,
                                 attachment: eff_anchor,
@@ -6463,6 +6567,10 @@ fn tessellate_one(
                     // strip) so the editor can round-trip MTEXT formatting
                     // codes (\fArial|b1;, \P, etc.). Bold/italic come from
                     // the first `\f...;` inline override when present.
+                    // font_path stores the FINAL resolved TTF filename
+                    // (same chain as render_dwg_text — including the
+                    // mtext_inline override) so the editor's
+                    // tessellate_text picks the identical font on commit.
                     if let Some(et_out) = entity_text_out {
                         let idx = entity_idx_for_text as usize;
                         if idx < et_out.len() {
@@ -6473,10 +6581,13 @@ fn tessellate_one(
                                 .map(|(b, i, _)| (*b, *i))
                                 .unwrap_or((false, false));
                             let stored_h = h * xform.sx.abs().max(xform.sy.abs());
+                            let resolved_font = resolve_dwg_text_font_path(
+                                sh, sn, mtext_inline.as_ref(),
+                            );
                             if std::env::var_os("O2D_TEXT_EDIT_DBG").is_some() {
                                 eprintln!(
-                                    "[text-pop-dwg-mtext] eid={} h_local={} xform.sx={} xform.sy={} stored_h={} world_anchor={:?} attach={}",
-                                    entity_idx_for_text, h, xform.sx, xform.sy, stored_h, world_anchor, attach
+                                    "[text-pop-dwg-mtext] eid={} h_local={} xform.sx={} xform.sy={} stored_h={} world_anchor={:?} attach={} font_path={:?}",
+                                    entity_idx_for_text, h, xform.sx, xform.sy, stored_h, world_anchor, attach, resolved_font
                                 );
                             }
                             et_out[idx] = Some(EntityText {
@@ -6484,7 +6595,7 @@ fn tessellate_one(
                                 anchor: world_anchor,
                                 height: stored_h,
                                 rotation: rot + parent_rot,
-                                font_path: sn.map(|s| s.to_string()).unwrap_or_default(),
+                                font_path: resolved_font,
                                 bold: mt_bold,
                                 italic: mt_italic,
                                 attachment: attach,
