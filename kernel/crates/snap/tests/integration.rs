@@ -104,3 +104,54 @@ fn perpendicular_drops_from_last_pick() {
     assert!((r.point[0] - 0.0).abs() < 1e-9);
     assert!((r.point[1] - 0.0).abs() < 1e-9);
 }
+
+#[test]
+fn alignment_horizontal_via_keypoint() {
+    let (idx, segs) = build_scene_2segs();
+    let key_points = vec![[20.0_f64, 3.0]];
+    let ctx = SnapContext {
+        index: &idx, segments: &segs,
+        modes: SnapModeSet::ALIGNMENT,
+        tolerance_world: 0.5,
+        last_pick: None, ortho_anchor: None,
+        polar_increment_deg: 45.0,
+        key_points: &key_points,
+        grid_size: 100.0,
+    };
+    let r = SnapEngine::query([7.0, 3.05], &ctx).expect("horizontal alignment");
+    assert_eq!(r.kind, SnapMode::Alignment);
+    assert!((r.point[1] - 3.0).abs() < 1e-9);
+    assert!((r.point[0] - 7.0).abs() < 1e-9);
+}
+
+#[test]
+fn nearest_finds_closest_point_on_segment() {
+    let (idx, segs) = build_scene_2segs();
+    let ctx = SnapContext {
+        index: &idx, segments: &segs,
+        modes: SnapModeSet::NEAREST,
+        tolerance_world: 0.5,
+        last_pick: None, ortho_anchor: None,
+        polar_increment_deg: 45.0, key_points: &[], grid_size: 100.0,
+    };
+    let r = SnapEngine::query([3.0, 0.3], &ctx).expect("nearest on horizontal");
+    assert_eq!(r.kind, SnapMode::Nearest);
+    assert!((r.point[0] - 3.0).abs() < 1e-9);
+    assert!((r.point[1] - 0.0).abs() < 1e-9);
+}
+
+#[test]
+fn grid_rounds_cursor_to_nearest_cell() {
+    let (idx, segs) = build_scene_2segs();
+    let ctx = SnapContext {
+        index: &idx, segments: &segs,
+        modes: SnapModeSet::GRID,
+        tolerance_world: 0.5,
+        last_pick: None, ortho_anchor: None,
+        polar_increment_deg: 45.0, key_points: &[], grid_size: 10.0,
+    };
+    let r = SnapEngine::query([23.7, 17.2], &ctx).expect("grid always snaps");
+    assert_eq!(r.kind, SnapMode::Grid);
+    assert!((r.point[0] - 20.0).abs() < 1e-9);
+    assert!((r.point[1] - 20.0).abs() < 1e-9);
+}

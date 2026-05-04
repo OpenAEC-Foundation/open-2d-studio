@@ -36,7 +36,18 @@ pub fn dispatch(cursor: [f64; 2], ctx: &SnapContext<'_>) -> Option<SnapResult> {
     if ctx.modes.contains_mode(SnapMode::Parallel) {
         if let Some(r) = parallel(cursor, ctx, tol2) { return Some(r); }
     }
-    // Task 5 adds the rest.
+    if ctx.modes.contains_mode(SnapMode::Alignment) {
+        if let Some(r) = alignment(cursor, ctx, tol2) { return Some(r); }
+    }
+    if ctx.modes.contains_mode(SnapMode::Nearest) {
+        if let Some(r) = nearest(cursor, ctx, tol2) { return Some(r); }
+    }
+    if ctx.modes.contains_mode(SnapMode::Origin) {
+        if let Some(r) = origin(cursor, ctx, tol2) { return Some(r); }
+    }
+    if ctx.modes.contains_mode(SnapMode::Grid) {
+        if let Some(r) = grid(cursor, ctx) { return Some(r); }
+    }
     None
 }
 
@@ -196,5 +207,76 @@ fn parallel(cursor: [f64; 2], ctx: &SnapContext<'_>, tol2: f64) -> Option<SnapRe
     }
     best.map(|(_, point, eid, ang)| SnapResult {
         point, kind: SnapMode::Parallel, source_eid: Some(eid), source_angle: Some(ang),
+    })
+}
+
+/// Alignment: cursor lies along a horizontal or vertical line through
+/// any of the tracked key points.
+fn alignment(cursor: [f64; 2], ctx: &SnapContext<'_>, tol2: f64) -> Option<SnapResult> {
+    let mut best: Option<(f64, [f64; 2])> = None;
+    for &kp in ctx.key_points.iter() {
+        // Horizontal alignment: snap cursor.y → kp.y
+        let snapped_h = [cursor[0], kp[1]];
+        let d = dist2(snapped_h, cursor);
+        if d <= tol2 && best.map_or(true, |(bd, _)| d < bd) {
+            best = Some((d, snapped_h));
+        }
+        // Vertical alignment: snap cursor.x → kp.x
+        let snapped_v = [kp[0], cursor[1]];
+        let d = dist2(snapped_v, cursor);
+        if d <= tol2 && best.map_or(true, |(bd, _)| d < bd) {
+            best = Some((d, snapped_v));
+        }
+    }
+    best.map(|(_, point)| SnapResult {
+        point, kind: SnapMode::Alignment, source_eid: None, source_angle: None,
+    })
+}
+
+/// Nearest: closest point on any nearby segment.
+fn nearest(cursor: [f64; 2], ctx: &SnapContext<'_>, tol2: f64) -> Option<SnapResult> {
+    let candidates = ctx.index.query_point(cursor, ctx.tolerance_world);
+    let mut best: Option<(f64, [f64; 2], u32)> = None;
+    for seg_id in candidates {
+        let Some(&(p1, p2)) = ctx.segments.get(seg_id as usize) else { continue; };
+        let dx = p2[0] - p1[0];
+        let dy = p2[1] - p1[1];
+        let len2 = dx * dx + dy * dy;
+        if len2 < 1e-12 { continue; }
+        let t = (((cursor[0] - p1[0]) * dx + (cursor[1] - p1[1]) * dy) / len2).clamp(0.0, 1.0);
+        let pt = [p1[0] + t * dx, p1[1] + t * dy];
+        let d = dist2(pt, cursor);
+        if d <= tol2 && best.map_or(true, |(bd, _, _)| d < bd) {
+            best = Some((d, pt, seg_id));
+        }
+    }
+    best.map(|(_, point, eid)| SnapResult {
+        point, kind: SnapMode::Nearest, source_eid: Some(eid), source_angle: None,
+    })
+}
+
+/// Origin: world origin (0,0). Snaps when cursor is within tolerance.
+fn origin(cursor: [f64; 2], _ctx: &SnapContext<'_>, tol2: f64) -> Option<SnapResult> {
+    let d = dist2([0.0, 0.0], cursor);
+    if d <= tol2 {
+        Some(SnapResult {
+            point: [0.0, 0.0], kind: SnapMode::Origin, source_eid: None, source_angle: None,
+        })
+    } else {
+        None
+    }
+}
+
+/// Grid: round cursor to nearest grid_size multiple. Always returns a
+/// result (lowest priority — only fires if everything else missed).
+fn grid(cursor: [f64; 2], ctx: &SnapContext<'_>) -> Option<SnapResult> {
+    let g = ctx.grid_size;
+    if g <= 0.0 { return None; }
+    let snapped = [
+        (cursor[0] / g).round() * g,
+        (cursor[1] / g).round() * g,
+    ];
+    Some(SnapResult {
+        point: snapped, kind: SnapMode::Grid, source_eid: None, source_angle: None,
     })
 }
