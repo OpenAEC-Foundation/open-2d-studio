@@ -1816,6 +1816,11 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
     let mut segment_entity_idx: Vec<u32> = Vec::new();
     let mut triangle_entity_idx: Vec<u32> = Vec::new();
     let mut entity_names: Vec<String> = Vec::new();
+    // Per-entity raw text payload — populated inline by the TEXT/MTEXT
+    // branches in tessellate_dxf_entity. Grown alongside entity_names so
+    // index alignment is preserved. INSERT recursion passes None to avoid
+    // re-borrow + duplicate writes (children share the parent slot).
+    let mut entity_text: Vec<Option<EntityText>> = Vec::new();
 
     for entity in drawing.entities() {
         // DXF §19 (Header Variables) / §18 (Entity Common Group Codes): group 67 = 1
@@ -1883,6 +1888,9 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
             }
         };
         entity_names.push(entity_desc);
+        // Grow entity_text in lockstep so the TEXT/MTEXT branches in
+        // tessellate_dxf_entity can write into entity_text[entity_idx].
+        entity_text.push(None);
         tessellate_dxf_entity(
             entity,
             &identity,
@@ -1898,6 +1906,8 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
             &mut bbox,
             &mut counts,
             0,
+            Some(&mut entity_text),
+            entity_idx,
         );
         // Fill layer_idx + entity_idx for all segments / triangles
         // emitted by this entity (incl. any INSERT recursion).
@@ -2053,6 +2063,8 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
                 &mut triangles,
                 &mut bbox,
                 &mut counts,
+                0,
+                None,
                 0,
             );
             let seg_delta = segments.len() - e_seg_before;
@@ -2220,6 +2232,8 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
                 &mut scratch_bbox,
                 &mut counts,
                 0,
+                None,
+                0,
             );
         }
         for s in scratch_segs {
@@ -2356,10 +2370,21 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
             triangle_entity_idx.push(tail_eid);
         }
     }
-    // Pad entity_text to match entity_names.len(). TEXT/MTEXT branches
-    // populate Some(EntityText); other entities stay None for now.
-    let mut entity_text: Vec<Option<EntityText>> = Vec::with_capacity(entity_names.len());
-    entity_text.resize(entity_names.len(), None);
+    // Pad entity_text to match entity_names.len(). TEXT branch in
+    // tessellate_dxf_entity already populated slots for top-level TEXT
+    // entities; later passes (HATCH, paper-space, viewport sheet/tail)
+    // append entity_names entries without growing entity_text — top up
+    // here with None so indices stay aligned.
+    if entity_text.len() < entity_names.len() {
+        entity_text.resize(entity_names.len(), None);
+    }
+    if std::env::var_os("O2D_TEXT_DBG").is_some() {
+        eprintln!(
+            "[entity_text-dxf] {} total entities, {} have text",
+            entity_text.len(),
+            entity_text.iter().filter(|t| t.is_some()).count(),
+        );
+    }
     Ok(Scene {
         segments, triangles, bbox, source: "DXF", count_label: label, layouts,
         layer_names: layer_names_ordered,
@@ -2979,6 +3004,7 @@ fn expand_dimension_block(
                 layer_color_map, layer_ltype_map, linetype_map,
                 hidden_layers, hatches_by_block,
                 segments, triangles, bbox, counts, depth + 1,
+                None, 0,
             );
         }
     }
@@ -3003,6 +3029,13 @@ fn tessellate_dxf_entity(
     bbox: &mut [f64; 4],
     counts: &mut [u32; 6],
     depth: u32,
+    // Per-entity raw text capture for the in-place text editor. The top-
+    // level entity loop in `load_dxf` passes `Some(&mut entity_text)` +
+    // the entity_idx allocated for this entity; INSERT child / dim block
+    // recursion passes `None` (children share the parent's slot, no
+    // duplicate write needed).
+    entity_text_out: Option<&mut Vec<Option<EntityText>>>,
+    entity_idx_for_text: u32,
 ) {
     use dxf::entities::EntityType;
     // Honour layer plot / on flags. Entity is skipped if its layer is
@@ -3160,7 +3193,7 @@ fn tessellate_dxf_entity(
                 };
                 let combined = Xform::combine(xform, &ins_xform);
                 for sub in &block_entities {
-                    tessellate_dxf_entity(sub, &combined, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth + 1);
+                    tessellate_dxf_entity(sub, &combined, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth + 1, None, 0);
                 }
                 // Emit block-scoped HATCH fills defined INSIDE this
                 // BLOCK. dxf-0.5 drops HATCHes from the BLOCKS section;
@@ -3352,6 +3385,28 @@ fn tessellate_dxf_entity(
                     // backslash-mapped fonts, a row of .notdef rectangles).
                     let decoded = decode_dxf_text_escapes(&t.value);
                     render_dxf_text(&decoded, &t.text_style_name, world_origin, h_world, rot, color, anchor, style_map, segments, triangles, bbox);
+                    // Capture raw TEXT payload for the in-place editor.
+                    // Only the top-level entity loop passes Some(...) here;
+                    // INSERT child recursion passes None so we don't double-
+                    // write or fight the borrow-checker. font_path stores
+                    // the STYLE name (re_tessellate_text_entity re-resolves
+                    // it at edit time via style_map).
+                    if let Some(et_out) = entity_text_out {
+                        let idx = entity_idx_for_text as usize;
+                        if idx < et_out.len() {
+                            et_out[idx] = Some(EntityText {
+                                raw: decoded,
+                                anchor: world_origin,
+                                height: h_world,
+                                rotation: rot,
+                                font_path: t.text_style_name.clone(),
+                                bold: false,
+                                italic: false,
+                                attachment: anchor,
+                                kind: TextKind::Text,
+                            });
+                        }
+                    }
                 }
                 counts[5] += 1;
             }
