@@ -2118,6 +2118,42 @@ struct SampleEntry {
     kind:  &'static str,  // "DWG" or "DXF"
 }
 
+/// Convert world-space X to screen-pixel X (PHYSICAL px). Inverse of the
+/// X branch of `App::screen_to_world_in`. Used by the floating text-edit
+/// overlay to anchor itself at the entity's on-screen position.
+///
+/// Mirrors the forward transform exactly: subtract pan + origin, apply
+/// forward camera rotation by +theta, divide by world-per-pixel, add the
+/// canvas centre.
+fn world_to_screen_x_helper(wx: f64, wy: f64, cam: &PaneCam, rect: (f32, f32, f32, f32)) -> f32 {
+    let (cx, _cy, cw, ch) = rect;
+    let centre_x = cx + cw * 0.5;
+    let h = ch.max(1.0) as f64;
+    let wpp = (2.0 / cam.zoom) / h;
+    let wx_off = wx - cam.pan_x - cam.origin[0];
+    let wy_off = wy - cam.pan_y - cam.origin[1];
+    let th = cam.rotation;
+    let (ct, st) = (th.cos(), th.sin());
+    let ex = ct * wx_off - st * wy_off;
+    centre_x + (ex / wpp) as f32
+}
+
+/// Convert world-space Y to screen-pixel Y (PHYSICAL px). Inverse of the
+/// Y branch of `App::screen_to_world_in` (note the y-flip: world +Y up,
+/// screen +Y down).
+fn world_to_screen_y_helper(wx: f64, wy: f64, cam: &PaneCam, rect: (f32, f32, f32, f32)) -> f32 {
+    let (_cx, cy, _cw, ch) = rect;
+    let centre_y = cy + ch * 0.5;
+    let h = ch.max(1.0) as f64;
+    let wpp = (2.0 / cam.zoom) / h;
+    let wx_off = wx - cam.pan_x - cam.origin[0];
+    let wy_off = wy - cam.pan_y - cam.origin[1];
+    let th = cam.rotation;
+    let (ct, st) = (th.cos(), th.sin());
+    let ey = st * wx_off + ct * wy_off;
+    centre_y - (ey / wpp) as f32
+}
+
 impl App {
     fn new(tabs: Vec<FileTab>) -> Self {
         let tabs = if tabs.is_empty() {
@@ -2711,6 +2747,11 @@ impl App {
         // folded into self.requested_duplicate at the end of the frame so
         // the deferred editor block picks it up alongside Ctrl+D presses.
         let mut requested_duplicate = false;
+        // Text-editor overlay buttons (Task 10). Set when the user clicks
+        // Commit / Cancel in the floating overlay; processed AFTER the
+        // egui closure so the &mut self borrow on tabs/edit_mode is free.
+        let mut commit_pending = false;
+        let mut cancel_pending = false;
 
         let Some(gpu) = self.gpu.as_mut() else { return; };
         let Some(win) = self.window.as_ref() else { return; };
@@ -2759,6 +2800,28 @@ impl App {
         } else { None };
 
         // --- egui run --------------------------------------------------
+        // ---- Debounced text-edit live preview (Task 10) -----------------
+        // 50 ms after the last keystroke in the floating overlay, re-
+        // tessellate the entity and refresh GPU buffers so the canvas
+        // shows the in-progress edit. We split the borrow: copy state
+        // fields out FIRST, then mutate `self.tabs` / call rebuild.
+        let debounce_check = if let Some(state) = self.edit_mode.as_mut() {
+            if let Some(at) = state.debounce_at {
+                if std::time::Instant::now() >= at {
+                    state.debounce_at = None;
+                    Some((state.tab_idx, state.eid, state.buffer.clone()))
+                } else { None }
+            } else { None }
+        } else { None };
+        if let Some((tab_idx, eid, buffer)) = debounce_check {
+            if let Some(tab) = self.tabs.get_mut(tab_idx) {
+                let _ = kernel_app::scene_io::re_tessellate_text_entity(
+                    &mut tab.scene, eid, &buffer,
+                );
+                tab.rebuild_buffers(gpu);
+            }
+        }
+
         let t_egui_run_start = std::time::Instant::now();
         let raw_input = gpu.egui_state.take_egui_input(win);
         let mut canvas_rect_logical: Option<egui::Rect> = None;
@@ -3894,6 +3957,53 @@ impl App {
                 &mut requested_home,
             );
 
+            // ---- Text editor overlay ---------------------------------
+            // Anchored at the entity's screen position. Live preview re-
+            // tessellates with 50 ms debounce after typing stops (handled
+            // before the next egui run, see top of `render`). Commit /
+            // cancel buttons just flip locals which are processed once
+            // the egui closure unborrows `self`.
+            if let Some(state) = self.edit_mode.as_mut() {
+                let screen_anchor: Option<egui::Pos2> = self.tabs.get(state.tab_idx)
+                    .and_then(|tab| tab.scene.entity_text.get(state.eid as usize)
+                        .and_then(|o| o.as_ref())
+                        .map(|et| {
+                            let cam = &tab.cam;
+                            let rect = self.canvas_rect;
+                            let px = world_to_screen_x_helper(et.anchor[0], et.anchor[1], cam, rect);
+                            let py = world_to_screen_y_helper(et.anchor[0], et.anchor[1], cam, rect);
+                            let ppp = ctx.pixels_per_point();
+                            egui::pos2(px / ppp, py / ppp)
+                        }));
+                if let Some(anchor) = screen_anchor {
+                    egui::Area::new("text_edit_overlay".into())
+                        .order(egui::Order::Foreground)
+                        .fixed_pos(anchor)
+                        .show(ctx, |ui| {
+                            egui::Frame::popup(ui.style())
+                                .fill(egui::Color32::from_rgba_unmultiplied(20, 24, 32, 245))
+                                .show(ui, |ui| {
+                                    let resp = ui.add_sized(
+                                        [400.0, 80.0],
+                                        egui::TextEdit::multiline(&mut state.buffer)
+                                            .desired_rows(4)
+                                            .lock_focus(true),
+                                    );
+                                    if resp.changed() {
+                                        state.debounce_at = Some(
+                                            std::time::Instant::now()
+                                                + std::time::Duration::from_millis(50),
+                                        );
+                                    }
+                                    ui.horizontal(|ui| {
+                                        if ui.button("Commit (Enter)").clicked() { commit_pending = true; }
+                                        if ui.button("Cancel (Esc)").clicked() { cancel_pending = true; }
+                                    });
+                                });
+                        });
+                }
+            }
+
             // ---- Perf HUD --------------------------------------------
             if let Some(text) = &hud_text {
                 egui::Area::new("perf_hud".into())
@@ -4357,6 +4467,12 @@ impl App {
                 tab.cam.rotation = new_rot;
             }
         }
+
+        // Text-editor overlay button presses (Task 10). Both call into
+        // `&mut self` paths that need the gpu borrow released — this
+        // section runs after `Post-present actions`, where gpu is free.
+        if commit_pending { self.commit_text_edit(); }
+        if cancel_pending { self.cancel_text_edit(); }
 
         // ---- Deferred editor work (gpu borrow safely dropped) ---------
         // These can mutate scene + GPU buffers freely, then trigger a
