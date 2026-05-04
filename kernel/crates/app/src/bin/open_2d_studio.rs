@@ -1,17 +1,19 @@
-//! split_compare — tabbed DWG/DXF viewer (browser-style file tabs).
+//! Open 2D Studio — tabbed DWG/DXF viewer (browser-style file tabs).
 //!
-//! Refactored 2026-04-21 from a fixed 4-pane TL/TR/BL/BR grid into a
-//! single-canvas viewer with an arbitrary number of open-file tabs,
-//! TrueView-style. Each tab owns its own Scene + camera + GPU line /
-//! triangle pipelines + selection + hidden-layer set + per-tab Move-tool
-//! undo stack. Opening a new file always creates a new tab (Ctrl+O / File
-//! menu / Samples panel all push). Close with the × button on the tab or
-//! Ctrl+W. Cycle with Ctrl+Tab / Ctrl+Shift+Tab.
+//! (Bin renamed 2026-05-01 from split_compare to open_2d_studio. The
+//! split-pane comparison binary lineage stays in git history.) Refactored
+//! 2026-04-21 from a fixed 4-pane TL/TR/BL/BR grid into a single-canvas
+//! viewer with an arbitrary number of open-file tabs, TrueView-style.
+//! Each tab owns its own Scene + camera + GPU line / triangle pipelines +
+//! selection + hidden-layer set + per-tab Move-tool undo stack. Opening a
+//! new file always creates a new tab (Ctrl+O / File menu / Samples panel
+//! all push). Close with the × button on the tab or Ctrl+W. Cycle with
+//! Ctrl+Tab / Ctrl+Shift+Tab.
 //!
 //! Usage:
-//!   split_compare                     # no args — start with a blank tab
-//!   split_compare <base>              # legacy "base" mode: open <base>.dxf + <base>.dwg as two tabs
-//!   split_compare file.dxf file.dwg … # each arg becomes a tab
+//!   open_2d_studio                     # no args — start with a blank tab
+//!   open_2d_studio <base>              # legacy "base" mode: open <base>.dxf + <base>.dwg as two tabs
+//!   open_2d_studio file.dxf file.dwg … # each arg becomes a tab
 
 use bytemuck::{Pod, Zeroable};
 use egui_wgpu::ScreenDescriptor;
@@ -1621,7 +1623,7 @@ impl GpuCtx {
             force_fallback_adapter: false,
         }).await.ok_or_else(|| anyhow::anyhow!("no adapter"))?;
         let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("split_compare"),
+            label: Some("open_2d_studio"),
             required_features: wgpu::Features::empty(),
             required_limits: wgpu::Limits::default(),
             memory_hints: wgpu::MemoryHints::Performance,
@@ -2213,7 +2215,7 @@ impl App {
     fn title_for(tabs: &[FileTab], active: usize) -> String {
         let active_label = tabs.get(active).map(|t| t.label.as_str()).unwrap_or("—");
         let total: usize = tabs.iter().map(|t| t.scene.segments.len()).sum();
-        format!("split_compare — {} tab(s) · active: {} · {} segs total [Ctrl+O new tab · Ctrl+W close · Ctrl+Tab cycle]",
+        format!("Open 2D Studio — {} tab(s) · active: {} · {} segs total [Ctrl+O new tab · Ctrl+W close · Ctrl+Tab cycle]",
             tabs.len(), active_label, total)
     }
 
@@ -3169,12 +3171,12 @@ impl App {
             // ---- About dialog ---------------------------------------
             let mut about_open = about_dialog_open_snapshot;
             if about_open {
-                egui::Window::new("About — split_compare")
+                egui::Window::new("About — Open 2D Studio")
                     .collapsible(false)
                     .resizable(false)
                     .open(&mut about_open)
                     .show(ctx, |ui| {
-                        ui.heading("Open 2D Studio — split_compare");
+                        ui.heading("Open 2D Studio");
                         ui.label("Tabbed DWG/DXF viewer + benchmarking harness.");
                         ui.separator();
                         ui.label(egui::RichText::new("Keyboard shortcuts").strong());
@@ -5685,49 +5687,85 @@ fn rebuild_sel_pipe(tab_opt: Option<&mut FileTab>, gpu: &GpuCtx) {
 
 /// Build a 64×64 RGBA window/taskbar icon programmatically — avoids the
 /// extra dependency on `image` + a shipped .ico file. Design: warm-dark
-/// (#242830) background, cyan-blue (#007ACC) stylised set-square outline
-/// with a diagonal ruler marking. Matches the ribbon's colour language.
+/// (#242830) background, cyan-blue (#007ACC) stylised "2D" letters (the
+/// logo) drawn from a 5×7 pixel font scaled 4×4. Matches the ribbon's
+/// colour language.
 fn make_window_icon() -> Option<winit::window::Icon> {
     const W: u32 = 64;
     const H: u32 = 64;
     let mut rgba = vec![0u8; (W * H * 4) as usize];
-    // Fill background + outer rounded border.
     let bg = [0x24, 0x28, 0x30, 0xFF];
     let border = [0x3A, 0x3E, 0x44, 0xFF];
     let accent = [0x00, 0x7A, 0xCC, 0xFF];
-    let accent_light = [0xDC, 0xE0, 0xE4, 0xFF];
+    let accent_glow = [0x33, 0x9D, 0xE6, 0xFF];
     for y in 0..H {
         for x in 0..W {
             let off = ((y * W + x) * 4) as usize;
-            // 3-pixel outer border.
             let edge = x < 3 || x >= W - 3 || y < 3 || y >= H - 3;
             let color = if edge { border } else { bg };
             rgba[off..off + 4].copy_from_slice(&color);
         }
     }
-    // Draw a "set square" — a right-angle triangle with hypotenuse.
     let plot = |rgba: &mut Vec<u8>, x: i32, y: i32, c: [u8; 4]| {
         if x >= 0 && x < W as i32 && y >= 0 && y < H as i32 {
             let off = ((y as u32 * W + x as u32) * 4) as usize;
             rgba[off..off + 4].copy_from_slice(&c);
         }
     };
-    // Horizontal leg (bottom).
-    for x in 12..52 { for t in 0..2 { plot(&mut rgba, x, 48 + t, accent); } }
-    // Vertical leg (left).
-    for y in 12..48 { for t in 0..2 { plot(&mut rgba, 12 + t, y, accent); } }
-    // Hypotenuse (TL → BR).
-    for i in 0..40 {
-        let x = 12 + i;
-        let y = 48 - i;
-        for t in 0..2 { plot(&mut rgba, x + t, y, accent); }
-    }
-    // Tick marks along the hypotenuse.
-    for k in 1..=4 {
-        let step = 40 * k / 5;
-        let bx = 12 + step;
-        let by = 48 - step;
-        for t in -2..=2 { plot(&mut rgba, bx + t, by - t, accent_light); }
+    // 5×7 pixel-font glyph for "2" (1 = filled).
+    let glyph_2: [[u8; 5]; 7] = [
+        [0,1,1,1,0],
+        [1,0,0,0,1],
+        [0,0,0,0,1],
+        [0,0,0,1,0],
+        [0,0,1,0,0],
+        [0,1,0,0,0],
+        [1,1,1,1,1],
+    ];
+    // 5×7 pixel-font glyph for "D" (1 = filled).
+    let glyph_d: [[u8; 5]; 7] = [
+        [1,1,1,1,0],
+        [1,0,0,0,1],
+        [1,0,0,0,1],
+        [1,0,0,0,1],
+        [1,0,0,0,1],
+        [1,0,0,0,1],
+        [1,1,1,1,0],
+    ];
+    // Render a 5×7 glyph at (origin_x, origin_y), scaled 5× per cell so
+    // each letter is 25w × 35h. Two letters spaced 4 px apart fit
+    // centred in the 64×64 canvas (total width 25+4+25 = 54, leaves 5 px
+    // padding each side).
+    let scale: i32 = 5;
+    let render_glyph = |rgba: &mut Vec<u8>, glyph: &[[u8; 5]; 7], origin_x: i32, origin_y: i32| {
+        for (gy, row) in glyph.iter().enumerate() {
+            for (gx, &cell) in row.iter().enumerate() {
+                if cell == 0 { continue; }
+                let px0 = origin_x + (gx as i32) * scale;
+                let py0 = origin_y + (gy as i32) * scale;
+                for dy in 0..scale {
+                    for dx in 0..scale {
+                        plot(rgba, px0 + dx, py0 + dy, accent);
+                    }
+                }
+            }
+        }
+    };
+    let letter_w = 5 * scale;
+    let total_w = letter_w * 2 + 4;
+    let origin_x = (W as i32 - total_w) / 2;
+    let origin_y = (H as i32 - 7 * scale) / 2;
+    render_glyph(&mut rgba, &glyph_2, origin_x, origin_y);
+    render_glyph(&mut rgba, &glyph_d, origin_x + letter_w + 4, origin_y);
+    // Subtle highlight on the top edge of each filled stroke for a hint
+    // of dimensionality (matches accent-glow used elsewhere).
+    for gx in 0..(letter_w * 2 + 4) {
+        let x = origin_x + gx;
+        let y = origin_y;
+        let off = ((y as u32 * W + x.max(0) as u32) * 4) as usize;
+        if x >= 0 && x < W as i32 && off + 3 < rgba.len() && rgba[off..off + 4] == accent {
+            rgba[off..off + 4].copy_from_slice(&accent_glow);
+        }
     }
     winit::window::Icon::from_rgba(rgba, W, H).ok()
 }
@@ -5763,8 +5801,12 @@ impl ApplicationHandler for App {
             WindowEvent::Resized(size) => {
                 if let Some(gpu) = self.gpu.as_mut() {
                     if size.width > 0 && size.height > 0 {
-                        gpu.config.width = size.width;
-                        gpu.config.height = size.height;
+                        // Clamp to wgpu's max texture dimension (default 8192).
+                        // Multi-monitor maximize on a 3-screen setup can produce
+                        // 9000+px which panics Surface::configure validation.
+                        let max_dim = gpu.device.limits().max_texture_dimension_2d;
+                        gpu.config.width = size.width.min(max_dim);
+                        gpu.config.height = size.height.min(max_dim);
                         gpu.surface.configure(&gpu.device, &gpu.config);
                     }
                 }
@@ -6504,7 +6546,7 @@ fn main() -> anyhow::Result<()> {
         let base = args[0].trim_end_matches(".dxf").trim_end_matches(".dwg").to_string();
         let dxf_path = format!("{}.dxf", base);
         let dwg_path = format!("{}.dwg", base);
-        eprintln!("[split_compare] base={}  tab 1 ← DXF, tab 2 ← DWG", base);
+        eprintln!("[open_2d_studio] base={}  tab 1 ← DXF, tab 2 ← DWG", base);
         let dxf_scene = load_any(&dxf_path, "dxf");
         tabs.push(FileTab::new(dxf_scene, Some(dxf_path)));
         let dwg_scene = load_any(&dwg_path, "dwg");
