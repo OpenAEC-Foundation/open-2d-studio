@@ -120,17 +120,27 @@ impl Ribbon {
             });
         });
 
-        // Group strip — render only the active tab's groups
+        // Group strip — render only the active tab's groups.
+        // 1.0's ribbon-content-container is transparent over the body
+        // brown (verified via computed styles), so we paint the same
+        // bg here as the tab strip for visual continuity.
         let group_h = metrics::RIBBON_CONTENT_HEIGHT;
         let (group_rect, _) = ui.allocate_exact_size(Vec2::new(avail_w, group_h), Sense::hover());
         ui.painter().rect_filled(group_rect, 0.0, palette.ribbon_tab_active_bg);
+        // Track each group's painted rect so we can stamp the title
+        // (centred, uppercase, dim) along the bottom and draw a 1px
+        // separator at the right edge.
+        let mut group_rects: Vec<(egui::Rect, String)> = Vec::new();
         ui.allocate_ui_at_rect(group_rect, |ui| {
             ui.horizontal(|ui| {
                 if let Some(active_tab) = self.tabs.iter().find(|t| t.id == self.active) {
                     for group in &active_tab.groups {
                         ui.add_space(8.0);
+                        let g_left = ui.cursor().left();
                         ui.vertical(|ui| {
+                            // Buttons row — leave room for the group title.
                             ui.horizontal(|ui| {
+                                ui.add_space(2.0);
                                 for b in &group.buttons {
                                     let resp = match b.size {
                                         crate::primitives::button::ButtonSize::Large =>
@@ -148,26 +158,44 @@ impl Ribbon {
                                         actions.push(RibbonAction::ButtonClicked(b.id.clone()));
                                     }
                                 }
+                                ui.add_space(2.0);
                             });
-                            // Group title at bottom
-                            ui.label(
-                                egui::RichText::new(&group.title)
-                                    .size(10.0)
-                                    .color(palette.fg_dim),
-                            );
                         });
-                        ui.add_space(4.0);
-                        // 1 px separator after group
-                        let sep_x = ui.cursor().left();
-                        ui.painter().line_segment(
-                            [egui::pos2(sep_x, group_rect.top() + 4.0),
-                             egui::pos2(sep_x, group_rect.bottom() - 4.0)],
-                            egui::Stroke::new(1.0, palette.border),
-                        );
+                        let g_right = ui.cursor().left();
+                        group_rects.push((
+                            egui::Rect::from_min_max(
+                                egui::pos2(g_left, group_rect.top()),
+                                egui::pos2(g_right, group_rect.bottom()),
+                            ),
+                            group.title.clone(),
+                        ));
+                        ui.add_space(8.0);
                     }
                 }
             });
         });
+
+        // Pass 2 — overlay the group titles centred along the bottom,
+        // and a thin vertical separator between adjacent groups (1.0's
+        // Ribbon.css uses `--cad-border` between `.ribbon-group`).
+        let title_y = group_rect.bottom() - 9.0;
+        for (i, (g_rect, title)) in group_rects.iter().enumerate() {
+            ui.painter().text(
+                egui::pos2(g_rect.center().x, title_y),
+                egui::Align2::CENTER_CENTER,
+                title.to_uppercase(),
+                egui::FontId::proportional(9.0),
+                palette.fg_dim,
+            );
+            if i + 1 < group_rects.len() {
+                let sx = g_rect.right() + 4.0;
+                ui.painter().line_segment(
+                    [egui::pos2(sx, group_rect.top() + 6.0),
+                     egui::pos2(sx, group_rect.bottom() - 18.0)],
+                    egui::Stroke::new(1.0, palette.border),
+                );
+            }
+        }
         actions
     }
 }
