@@ -1,0 +1,19 @@
+[package]
+name = "kernel-snap"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "OSNAP (object snap) engine for Open 2D Studio — Endpoint/Midpoint/Center/etc."
+
+[dependencies]
+kernel-spatial = { path = "../spatial" }
+glam = "0.27"
+bitflags = "2"
+serde = { workspace = true }
+
+[dev-dependencies]
+criterion = "0.5"
+
+[[bench]]
+name = "query_bench"
+harness = false
