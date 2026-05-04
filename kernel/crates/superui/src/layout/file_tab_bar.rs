@@ -39,7 +39,9 @@ impl<'a> FileTabBar<'a> {
         let h = metrics::FILETAB_HEIGHT;
         let avail_w = ui.available_width();
         let (bar_rect, _) = ui.allocate_exact_size(Vec2::new(avail_w, h), Sense::hover());
-        ui.painter().rect_filled(bar_rect, 0.0, palette.bg);
+        // 1.0's FileTabBar lives on cad-surface (#4A4242), not the brown
+        // body bg — verified via computed styles on the live web app.
+        ui.painter().rect_filled(bar_rect, 0.0, palette.titlebar_bg);
 
         ui.allocate_ui_at_rect(bar_rect, |ui| {
             ui.horizontal_centered(|ui| {
@@ -52,12 +54,15 @@ impl<'a> FileTabBar<'a> {
                         Vec2::new(tab_w, h),
                         Sense::click(),
                     );
+                    // Active tab pulls down from titlebar onto the body
+                    // brown — visually it "leaks" into the ribbon area.
+                    // Inactive tabs share the bar's surface tone.
                     let fill = if is_active {
-                        palette.panel_bg
+                        palette.bg
                     } else if tresp.hovered() {
                         palette.button_hover
                     } else {
-                        palette.bg
+                        palette.titlebar_bg
                     };
                     // Sloped right edge — convex polygon
                     let slope = 8.0_f32;

@@ -1,0 +1,351 @@
+{
+  "rootTheme": null,
+  "rootCs": {
+    "tag": "body",
+    "cls": "",
+    "id": "",
+    "text": "Untitled - Open 2D StudioSend Feedb",
+    "rect": {
+      "x": 0,
+      "y": 0,
+      "w": 1920,
+      "h": 1200
+    },
+    "bg": "rgba(0, 0, 0, 0)",
+    "color": "rgb(245, 240, 235)",
+    "fontSize": "16px",
+    "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+    "fontWeight": "400",
+    "padding": "0px",
+    "margin": "0px",
+    "border": "0px solid rgb(229, 231, 235)",
+    "borderRadius": "0px"
+  },
+  "children": [
+    {
+      "depth": 3,
+      "tag": "div",
+      "cls": "h-8 bg-cad-surface border-b border-cad-border flex items-center select-none",
+      "id": "",
+      "text": "Untitled - Open 2D StudioSend Feedback",
+      "rect": {
+        "x": 0,
+        "y": 0,
+        "w": 1920,
+        "h": 32
+      },
+      "bg": "rgb(74, 66, 66)",
+      "color": "rgb(245, 240, 235)",
+      "fontSize": "16px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px",
+      "margin": "0px",
+      "border": "0px solid rgba(217, 119, 6, 0.25)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 4,
+      "tag": "div",
+      "cls": "flex items-center gap-0.5 px-2",
+      "id": "",
+      "text": "",
+      "rect": {
+        "x": 0,
+        "y": 3,
+        "w": 315,
+        "h": 26
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(245, 240, 235)",
+      "fontSize": "16px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px 8px",
+      "margin": "0px",
+      "border": "0px solid rgb(229, 231, 235)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 4,
+      "tag": "div",
+      "cls": "flex-1 h-full flex items-center justify-center cursor-default",
+      "id": "",
+      "text": "Untitled - Open 2D Studio",
+      "rect": {
+        "x": 315,
+        "y": 0,
+        "w": 1509,
+        "h": 31
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(245, 240, 235)",
+      "fontSize": "16px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px",
+      "margin": "0px",
+      "border": "0px solid rgb(229, 231, 235)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 5
+    },
+    {
+      "depth": 3,
+      "tag": "div",
+      "cls": "ribbon-container",
+      "id": "",
+      "text": "FileHomeModifyViewIFCSelectPanSelect All",
+      "rect": {
+        "x": 0,
+        "y": 32,
+        "w": 1920,
+        "h": 123
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(245, 240, 235)",
+      "fontSize": "16px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px",
+      "margin": "0px",
+      "border": "0px solid rgb(229, 231, 235)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 4,
+      "tag": "div",
+      "cls": "ribbon-tabs",
+      "id": "",
+      "text": "FileHomeModifyViewIFC",
+      "rect": {
+        "x": 0,
+        "y": 32,
+        "w": 1920,
+        "h": 28
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(245, 240, 235)",
+      "fontSize": "16px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px 8px",
+      "margin": "0px",
+      "border": "0px solid rgb(229, 231, 235)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 4,
+      "tag": "div",
+      "cls": "ribbon-content-container",
+      "id": "",
+      "text": "SelectPanSelect AllDeselectFind/ReplaceS",
+      "rect": {
+        "x": 0,
+        "y": 60,
+        "w": 1920,
+        "h": 94
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgb(245, 240, 235)",
+      "fontSize": "16px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px",
+      "margin": "0px",
+      "border": "0px solid rgb(229, 231, 235)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 5
+    },
+    {
+      "depth": 6
+    },
+    {
+      "depth": 3,
+      "tag": "div",
+      "cls": "h-7 bg-cad-surface border-b border-cad-border flex items-center px-3 gap-4 text-",
+      "id": "",
+      "text": "",
+      "rect": {
+        "x": 0,
+        "y": 155,
+        "w": 1920,
+        "h": 28
+      },
+      "bg": "rgb(74, 66, 66)",
+      "color": "rgb(245, 240, 235)",
+      "fontSize": "12px",
+      "fontFamily": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Libe",
+      "fontWeight": "400",
+      "padding": "0px 12px",
+      "margin": "0px",
+      "border": "0px solid rgba(217, 119, 6, 0.25)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 6
+    },
+    {
+      "depth": 6
+    },
+    {
+      "depth": 5
+    },
+    {
+      "depth": 6
+    },
+    {
+      "depth": 5
+    },
+    {
+      "depth": 6
+    },
+    {
+      "depth": 5
+    },
+    {
+      "depth": 6
+    },
+    {
+      "depth": 5
+    },
+    {
+      "depth": 3,
+      "tag": "div",
+      "cls": "h-6 bg-cad-surface border-t border-cad-border flex items-center px-3 text-xs tex",
+      "id": "",
+      "text": "X:-8,333Y:5,556Cursor:00Zoom:7%Grid:10Sc",
+      "rect": {
+        "x": 0,
+        "y": 1176,
+        "w": 1920,
+        "h": 24
+      },
+      "bg": "rgb(74, 66, 66)",
+      "color": "rgba(245, 240, 235, 0.6)",
+      "fontSize": "12px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px 12px",
+      "margin": "0px",
+      "border": "1px solid rgba(217, 119, 6, 0.25)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 4,
+      "tag": "div",
+      "cls": "flex items-center gap-2",
+      "id": "",
+      "text": "X:-8,333Y:5,556",
+      "rect": {
+        "x": 12,
+        "y": 1181,
+        "w": 203,
+        "h": 16
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgba(245, 240, 235, 0.6)",
+      "fontSize": "12px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px",
+      "margin": "0px",
+      "border": "0px solid rgb(229, 231, 235)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 4,
+      "tag": "div",
+      "cls": "flex items-center gap-2",
+      "id": "",
+      "text": "Cursor:00",
+      "rect": {
+        "x": 239,
+        "y": 1181,
+        "w": 213,
+        "h": 16
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgba(245, 240, 235, 0.6)",
+      "fontSize": "12px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px",
+      "margin": "0px",
+      "border": "0px solid rgb(229, 231, 235)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 4,
+      "tag": "div",
+      "cls": "flex items-center gap-2",
+      "id": "",
+      "text": "Scale:1:11:21:51:101:201:501:1001:2001:5",
+      "rect": {
+        "x": 625,
+        "y": 1180,
+        "w": 117,
+        "h": 18
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgba(245, 240, 235, 0.6)",
+      "fontSize": "12px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px",
+      "margin": "0px",
+      "border": "0px solid rgb(229, 231, 235)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 4,
+      "tag": "div",
+      "cls": "relative",
+      "id": "",
+      "text": "Layer 0",
+      "rect": {
+        "x": 766,
+        "y": 1179,
+        "w": 107,
+        "h": 20
+      },
+      "bg": "rgba(0, 0, 0, 0)",
+      "color": "rgba(245, 240, 235, 0.6)",
+      "fontSize": "12px",
+      "fontFamily": "Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+      "fontWeight": "400",
+      "padding": "0px",
+      "margin": "0px",
+      "border": "0px solid rgb(229, 231, 235)",
+      "borderRadius": "0px"
+    },
+    {
+      "depth": 5
+    },
+    {
+      "depth": 4,
+      "tag": "select",
+      "cls": "px-1 py-0.5 rounded text-xs font-mono bg-cad-surface border border-cad-border te",
+      "id": "",
+      "text": "Hidden LineWhite BackgroundTransparent",
+      "rect": {
+        "x": 966,
+        "y": 1178,
+        "w": 136,
+        "h": 22
+      },
+      "bg": "rgb(74, 66, 66)",
+      "color": "rgb(245, 240, 235)",
+      "fontSize": "12px",
+      "fontFamily": "ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, \"Libe",
+      "fontWeight": "400",
+      "padding": "2px 4px",
+      "margin": "0px",
+      "border": "1px solid rgba(217, 119, 6, 0.25)",
+      "borderRadius": "4px"
+    }
+  ]
+}

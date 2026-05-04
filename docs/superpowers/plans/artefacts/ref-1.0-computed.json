@@ -1,0 +1,27 @@
+{
+  "themeAttr": null,
+  "bodyBg": "rgba(0, 0, 0, 0)",
+  "bodyColor": "rgb(245, 240, 235)",
+  "bodyFont": "16px / 24px Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+  "titlebar": null,
+  "ribbon": null,
+  "ribbonTabs": {
+    "sel": "[data-testid=\"ribbon-tabs\"], .ribbon-tabs",
+    "rect": {
+      "x": 0,
+      "y": 32,
+      "w": 1920,
+      "h": 28
+    },
+    "bg": "rgba(0, 0, 0, 0)",
+    "color": "rgb(245, 240, 235)",
+    "border": "",
+    "font": "16px / 24px Inter, system-ui, Avenir, Helvetica, Arial, sans-serif",
+    "padding": "0px 8px",
+    "gap": "2px",
+    "height": "28px",
+    "width": "1920px"
+  },
+  "tabbar": null,
+  "statusbar": null
+}

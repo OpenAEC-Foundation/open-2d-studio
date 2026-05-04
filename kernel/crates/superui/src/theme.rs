@@ -58,6 +58,15 @@ impl Theme {
         // titlebar/status/close-red have no dedicated tokens in 1.0;
         // we derive them: titlebar = surface-elevated, status = bg
         // (slightly darker variant), close_red = standard close red.
+        // Verified against live 1.0 (https://open-2d-studio.open-aec.com/)
+        // computed styles:
+        //   --cad-surface  = rgb(74, 66, 66)  = #4A4242   (titlebar, file-tab bar,
+        //                                                   status bar background)
+        //   --cad-bg       = #3E3636                       (body / ribbon area)
+        // The ribbon tab strip and content area are TRANSPARENT in 1.0 — they
+        // show the body brown through. Inactive ribbon tabs and the active tab
+        // both sit on this body background; the active tab gets only an orange
+        // bottom accent line, no separate fill.
         Palette {
             bg:                   Color32::from_rgb(0x3E, 0x36, 0x36),
             fg:                   Color32::from_rgb(0xF5, 0xF0, 0xEB),
@@ -69,10 +78,14 @@ impl Theme {
             button_bg:            Color32::from_rgb(0x4A, 0x42, 0x42),
             button_hover:         Color32::from_rgb(0x56, 0x4E, 0x4E),
             button_active:        Color32::from_rgb(0xD9, 0x77, 0x06),
-            ribbon_tab_bg:        Color32::from_rgb(0x44, 0x3C, 0x3C),
-            ribbon_tab_active_bg: Color32::from_rgb(0x4A, 0x42, 0x42),
-            status_bg:            Color32::from_rgb(0x33, 0x2D, 0x2D),
-            titlebar_bg:          Color32::from_rgb(0x56, 0x4E, 0x4E),
+            // Ribbon tab strip + content background match the body `bg`
+            // (transparent over body in the React app).
+            ribbon_tab_bg:        Color32::from_rgb(0x3E, 0x36, 0x36),
+            ribbon_tab_active_bg: Color32::from_rgb(0x3E, 0x36, 0x36),
+            // Status bar uses the cad-surface tone (h-6 bg-cad-surface).
+            status_bg:            Color32::from_rgb(0x4A, 0x42, 0x42),
+            // Title bar uses cad-surface (h-8 bg-cad-surface in TitleBar.tsx).
+            titlebar_bg:          Color32::from_rgb(0x4A, 0x42, 0x42),
             close_red:            Color32::from_rgb(0xE8, 0x1C, 0x3C),
         }
     }
