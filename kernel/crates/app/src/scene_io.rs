@@ -4162,6 +4162,12 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     let mut segment_entity_idx: Vec<u32> = Vec::new();
     let mut triangle_entity_idx: Vec<u32> = Vec::new();
     let mut entity_names: Vec<String> = Vec::new();
+    // Per-entity raw text payload — populated inline by the TEXT/MTEXT/
+    // ATTRIB/DIMENSION-text branches in tessellate_one. Grown alongside
+    // entity_names so index alignment is preserved. INSERT / viewport
+    // recursion passes None to avoid duplicate writes (children share
+    // the parent's slot). Mirrors load_dxf's entity_text plumbing.
+    let mut entity_text: Vec<Option<EntityText>> = Vec::new();
     // Per-entity LAYER idx — was stubbed to all-zero (user reported
     // "bij dwg staat alles in laag 0 dat klopt niet"). Now populated
     // alongside entity_idx during the entity loop, so Scene.segment_layer_idx
@@ -4659,6 +4665,9 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         // selection can find all segments/triangles sharing this idx.
         let entity_idx = entity_names.len() as u32;
         entity_names.push(format!("{} h={:#X}", obj.type_name, obj.handle));
+        // Grow entity_text in lockstep so the TEXT/MTEXT/ATTRIB/DIMENSION
+        // branches in tessellate_one can write into entity_text[entity_idx].
+        entity_text.push(None);
         // Resolve the DWG entity's layer → idx in layer_name_to_idx.
         // dv["layer"] is populated by resolve_handles from the entity's
         // layer handle → LAYER.name. Fallback to "0" (idx 0) if missing.
@@ -4685,6 +4694,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
             if let Some(cat) = tessellate_one(
                 &obj.type_name, &dv, &identity,
                 &mut segments, &mut triangles, &mut bbox, entity_color, &entity_ltype,
+                Some(&mut entity_text), entity_idx,
             ) {
                 counts[cat] += 1;
             } else {
@@ -4944,6 +4954,10 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                     &src.type_name, &src_dv, &vp_xform,
                     &mut scratch_segs, &mut scratch_tris, &mut scratch_bbox,
                     src_color, &src_ltype,
+                    // Viewport projection re-renders source entities into
+                    // paper space; no entity_text capture (the model-space
+                    // pass already wrote into entity_text for these).
+                    None, 0,
                 );
             }
         }
@@ -5088,10 +5102,21 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     if entity_names.is_empty() {
         entity_names.push("(empty DWG)".to_string());
     }
-    // Pad entity_text to match entity_names.len(). TEXT/MTEXT branches
-    // populate Some(EntityText); other entities stay None for now.
-    let mut entity_text: Vec<Option<EntityText>> = Vec::with_capacity(entity_names.len());
-    entity_text.resize(entity_names.len(), None);
+    // Pad entity_text to match entity_names.len(). TEXT/MTEXT/ATTRIB
+    // branches populate Some(EntityText) inline during the loop; this
+    // safety net catches the empty-scene sentinel pushed above and any
+    // synthetic entries (VIEWPORT/SHEET tail_eid) so the Vec stays
+    // index-aligned with entity_names.
+    if entity_text.len() < entity_names.len() {
+        entity_text.resize(entity_names.len(), None);
+    }
+    if std::env::var_os("O2D_TEXT_DBG").is_some() {
+        eprintln!(
+            "[entity_text-dwg] {} total entities, {} have text",
+            entity_text.len(),
+            entity_text.iter().filter(|t| t.is_some()).count(),
+        );
+    }
     Ok(Scene {
         segments, triangles, bbox, source: "DWG", count_label: label, layouts,
         layer_names: layer_names_ordered,
@@ -5122,6 +5147,13 @@ fn tessellate_one(
     bbox: &mut [f64; 4],
     color: u32,
     ltype_pattern: &[f64],
+    // Per-entity raw text capture for the in-place text editor. The top-
+    // level entity loop in `load_dwg` passes `Some(&mut entity_text)` +
+    // the entity_idx allocated for this entity; INSERT child / viewport
+    // recursion passes `None` (children share the parent's slot, no
+    // duplicate write needed). Mirrors tessellate_dxf_entity's threading.
+    entity_text_out: Option<&mut Vec<Option<EntityText>>>,
+    entity_idx_for_text: u32,
 ) -> Option<usize> {
     let get_xy = |v: &serde_json::Value| -> Option<[f64; 2]> {
         if let Some(arr) = v.as_array() {
@@ -5855,6 +5887,25 @@ fn tessellate_one(
                             &Xform::identity(),
                             segments, triangles, bbox,
                         );
+                        // Capture DIMENSION label payload for the in-place
+                        // editor. font_path stores the resolved STYLE name
+                        // (or empty); re-tessellation re-resolves the file.
+                        if let Some(et_out) = entity_text_out {
+                            let idx = entity_idx_for_text as usize;
+                            if idx < et_out.len() {
+                                et_out[idx] = Some(EntityText {
+                                    raw: label.clone(),
+                                    anchor: mid_w,
+                                    height: h,
+                                    rotation: text_rot,
+                                    font_path: sn.map(|s| s.to_string()).unwrap_or_default(),
+                                    bold: false,
+                                    italic: false,
+                                    attachment: 5,
+                                    kind: TextKind::Text,
+                                });
+                            }
+                        }
                     }
                 }
             }
@@ -5946,6 +5997,32 @@ fn tessellate_one(
                         xform,
                         segments, triangles, bbox,
                     );
+                    // Capture raw TEXT/ATTRIB/ATTDEF payload for the
+                    // in-place editor. Mirrors the DXF TEXT arm at line
+                    // ~3394: store world-space anchor (xform-applied)
+                    // and post-decode string. font_path stores the STYLE
+                    // name; re-tessellation re-resolves the font file.
+                    if let Some(et_out) = entity_text_out {
+                        let idx = entity_idx_for_text as usize;
+                        if idx < et_out.len() {
+                            let world_anchor = xform.apply(origin);
+                            let parent_rot = xform.sin.atan2(xform.cos);
+                            et_out[idx] = Some(EntityText {
+                                raw: text.clone(),
+                                anchor: world_anchor,
+                                height: h * xform.sx.abs().max(xform.sy.abs()),
+                                rotation: rot + parent_rot,
+                                font_path: sn.map(|s| s.to_string()).unwrap_or_default(),
+                                bold: false,
+                                italic: false,
+                                attachment: eff_anchor,
+                                kind: match type_name {
+                                    "TEXT" => TextKind::Text,
+                                    _ => TextKind::Attrib,
+                                },
+                            });
+                        }
+                    }
                 }
             }
             Some(5) // count as "other" bucket — no dedicated TEXT counter
@@ -6045,11 +6122,39 @@ fn tessellate_one(
                     let sh = d.get("textStyleHandle").and_then(|v| v.as_u64());
                     let sn = d.get("textStyleName").and_then(|v| v.as_str());
                     render_dwg_text(
-                        &text, sh, sn, mtext_inline,
+                        &text, sh, sn, mtext_inline.clone(),
                         origin, h, rot, attach, color,
                         xform,
                         segments, triangles, bbox,
                     );
+                    // Capture raw MTEXT payload for the in-place editor.
+                    // Mirrors the DXF MTEXT arm at line ~3505: store
+                    // `raw_decoded` (post-`\U+`/`%%c` decode but PRE-format-
+                    // strip) so the editor can round-trip MTEXT formatting
+                    // codes (\fArial|b1;, \P, etc.). Bold/italic come from
+                    // the first `\f...;` inline override when present.
+                    if let Some(et_out) = entity_text_out {
+                        let idx = entity_idx_for_text as usize;
+                        if idx < et_out.len() {
+                            let world_anchor = xform.apply(origin);
+                            let parent_rot = xform.sin.atan2(xform.cos);
+                            let (mt_bold, mt_italic) = mtext_inline
+                                .as_ref()
+                                .map(|(b, i, _)| (*b, *i))
+                                .unwrap_or((false, false));
+                            et_out[idx] = Some(EntityText {
+                                raw: raw_decoded.clone(),
+                                anchor: world_anchor,
+                                height: h * xform.sx.abs().max(xform.sy.abs()),
+                                rotation: rot + parent_rot,
+                                font_path: sn.map(|s| s.to_string()).unwrap_or_default(),
+                                bold: mt_bold,
+                                italic: mt_italic,
+                                attachment: attach,
+                                kind: TextKind::MText,
+                            });
+                        }
+                    }
                 }
             }
             Some(5)
@@ -6418,6 +6523,9 @@ fn expand_insert(
                 if let Some(cat) = tessellate_one(
                     &child.type_name, &child_data, &combined,
                     segments, triangles, bbox, child_color, &child_ltype,
+                    // INSERT child geometry shares the parent INSERT's
+                    // entity_idx slot — no per-child entity_text capture.
+                    None, 0,
                 ) {
                     counts[cat] += 1;
                 } else {
@@ -6476,6 +6584,9 @@ fn expand_insert(
             let child_ltype = dwg_resolve_ltype_pattern(be, layer_ltype_map, ltype_dashes_map, global_ltscale);
             if let Some(cat) = tessellate_one(
                 bt, be, &combined, segments, triangles, bbox, child_color, &child_ltype,
+                // blockEntities fallback path — INSERT children share
+                // the parent's entity_idx slot, no entity_text capture.
+                None, 0,
             ) {
                 counts[cat] += 1;
             }
