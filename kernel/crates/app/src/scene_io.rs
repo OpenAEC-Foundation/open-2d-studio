@@ -2776,6 +2776,12 @@ fn render_dwg_text(
             tried, text.len()
         );
     });
+    if std::env::var_os("O2D_TEXT_EDIT_DBG").is_some() {
+        eprintln!(
+            "[render_dwg_text] height={} origin={:?} rot={} anchor={} xform.sx={} xform.sy={} text={:?}",
+            height, origin, rotation, anchor, xform.sx, xform.sy, text
+        );
+    }
     // Try each candidate in order. First one that returns non-empty
     // outlines wins — emit outline segments + fill triangles.
     for font_file in &tried {
@@ -2979,6 +2985,13 @@ pub(crate) fn tessellate_text(
     let rotation = et.rotation;
     let origin = et.anchor;
     let anchor = et.attachment;
+
+    if std::env::var_os("O2D_TEXT_EDIT_DBG").is_some() {
+        eprintln!(
+            "[text-tess] kind={:?} height={} anchor={:?} rot={} attach={} font={:?} raw={:?}",
+            et.kind, height, origin, rotation, anchor, et.font_path, et.raw
+        );
+    }
 
     for font_file in &tried {
         let (ttf_segs, ttf_contours, adv) = crate::ttf_font::render_string_with_contours(
@@ -6317,10 +6330,17 @@ fn tessellate_one(
                         if idx < et_out.len() {
                             let world_anchor = xform.apply(origin);
                             let parent_rot = xform.sin.atan2(xform.cos);
+                            let stored_h = h * xform.sx.abs().max(xform.sy.abs());
+                            if std::env::var_os("O2D_TEXT_EDIT_DBG").is_some() {
+                                eprintln!(
+                                    "[text-pop-dwg-text] eid={} h_local={} xform.sx={} xform.sy={} stored_h={} world_anchor={:?} attach={}",
+                                    entity_idx_for_text, h, xform.sx, xform.sy, stored_h, world_anchor, eff_anchor
+                                );
+                            }
                             et_out[idx] = Some(EntityText {
                                 raw: text.clone(),
                                 anchor: world_anchor,
-                                height: h * xform.sx.abs().max(xform.sy.abs()),
+                                height: stored_h,
                                 rotation: rot + parent_rot,
                                 font_path: sn.map(|s| s.to_string()).unwrap_or_default(),
                                 bold: false,
@@ -6452,10 +6472,17 @@ fn tessellate_one(
                                 .as_ref()
                                 .map(|(b, i, _)| (*b, *i))
                                 .unwrap_or((false, false));
+                            let stored_h = h * xform.sx.abs().max(xform.sy.abs());
+                            if std::env::var_os("O2D_TEXT_EDIT_DBG").is_some() {
+                                eprintln!(
+                                    "[text-pop-dwg-mtext] eid={} h_local={} xform.sx={} xform.sy={} stored_h={} world_anchor={:?} attach={}",
+                                    entity_idx_for_text, h, xform.sx, xform.sy, stored_h, world_anchor, attach
+                                );
+                            }
                             et_out[idx] = Some(EntityText {
                                 raw: raw_decoded.clone(),
                                 anchor: world_anchor,
-                                height: h * xform.sx.abs().max(xform.sy.abs()),
+                                height: stored_h,
                                 rotation: rot + parent_rot,
                                 font_path: sn.map(|s| s.to_string()).unwrap_or_default(),
                                 bold: mt_bold,
