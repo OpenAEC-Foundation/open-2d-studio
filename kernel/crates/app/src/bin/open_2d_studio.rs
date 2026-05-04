@@ -1794,6 +1794,9 @@ enum EditOp {
     Rotate { eids: Vec<u32>, pivot: [f64; 2], angle: f64 },
     Scale  { eids: Vec<u32>, pivot: [f64; 2], factor: f64 },
     Mirror { eids: Vec<u32>, axis_a: [f64; 2], axis_b: [f64; 2] },
+    /// Re-tessellation of a text entity (F2 edit). Inverse: restore the
+    /// previous segments/triangles snapshot via `restore_text_entity`.
+    EditText { text_delta: kernel_app::scene_io::TextEntityDelta },
 }
 
 impl FileTab {
@@ -5022,6 +5025,12 @@ impl App {
             EditOp::Mirror { eids, axis_a, axis_b } => {
                 // Mirror twice == identity, so we just re-apply the same axis.
                 self.apply_mirror_in(tab_idx, &eids, axis_a, axis_b);
+                self.reupload_tab_buffers(tab_idx);
+            }
+            EditOp::EditText { text_delta } => {
+                if let Some(tab) = self.tabs.get_mut(tab_idx) {
+                    let _ = kernel_app::scene_io::restore_text_entity(&mut tab.scene, &text_delta);
+                }
                 self.reupload_tab_buffers(tab_idx);
             }
         }
