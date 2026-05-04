@@ -68,6 +68,32 @@ pub enum TriKind {
     TextFill,
 }
 
+/// Per-entity text payload preserved at scene-load. Enables in-place
+/// editing via re_tessellate_text_entity().
+///
+/// `raw` retains MTEXT formatting codes verbatim (`\fArial|b1;`, `\P`,
+/// `^I`, etc.). MVP edits the raw string; WYSIWYG MTEXT formatting
+/// editing is out of scope.
+#[derive(Debug, Clone)]
+pub struct EntityText {
+    pub raw: String,
+    pub anchor: [f64; 2],
+    pub height: f64,
+    pub rotation: f64,
+    pub font_path: String,
+    pub bold: bool,
+    pub italic: bool,
+    pub attachment: u8,
+    pub kind: TextKind,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum TextKind {
+    Text,
+    MText,
+    Attrib,
+}
+
 /// A tessellated 2D scene: line segments + bounding box + provenance label.
 pub struct Scene {
     pub segments: Vec<Segment>,
@@ -113,6 +139,11 @@ pub struct Scene {
     /// with entity_idx == i. Empty when a scene was built before this
     /// field landed — viewer tolerates that.
     pub entity_names: Vec<String>,
+    /// Per-entity raw text data, indexed by entity_idx. None for
+    /// non-text entities. Populated by load_dxf and load_dwg in their
+    /// TEXT/MTEXT branches. Consumed by re_tessellate_text_entity()
+    /// on edit-commit.
+    pub entity_text: Vec<Option<EntityText>>,
 }
 
 impl Scene {
@@ -132,6 +163,7 @@ impl Scene {
             triangle_entity_idx: Vec::new(),
             entity_names: Vec::new(),
             layouts: Vec::new(),
+            entity_text: Vec::new(),
         }
     }
 }
@@ -837,21 +869,43 @@ struct DwgTextCtx {
     by_handle: HashMap<u64, DwgStyleInfo>,
     by_name: HashMap<String, DwgStyleInfo>,
 }
+/// per ODA OpenDesignSpec §20.4.40 — DIMSTYLE-derived rendering parameters
+/// for one DWG dimension style. Populated by load_dwg from the parser's
+/// DIMSTYLE_OBJ output (`parser.rs::parse_dimstyle_obj`).
+#[derive(Debug, Clone, Default)]
+struct DimStyleInfo {
+    /// DIMTXT — text height in drawing units.
+    dimtxt: f64,
+    /// DIMSCALE — overall scale factor applied to text/arrow sizes.
+    dimscale: f64,
+    /// DIMASZ — arrowhead/tick size in drawing units (pre-DIMSCALE).
+    dimasz: f64,
+    /// DIMBLK1 — first arrowhead block name. Empty/`"."` = default arrow,
+    /// `"_DOT"`/`"_DOTSMALL"` = solid filled disc, `"_OBLIQUE"` /
+    /// `"_ARCHTICK"` = oblique tick, `"_NONE"` = no arrow. See ODA
+    /// §20.4.40 for the canonical block-name list.
+    dimblk1: String,
+    /// DIMBLK2 — second arrowhead block name (same encoding as DIMBLK1).
+    dimblk2: String,
+}
+
 thread_local! {
     static DWG_STYLE_CTX: std::cell::RefCell<Option<DwgTextCtx>> =
         std::cell::RefCell::new(None);
-    /// DIMSTYLE handle → (dimtxt, dimscale). Populated by load_dwg from
+    /// DIMSTYLE handle → DimStyleInfo. Populated by load_dwg from
     /// the DIMSTYLE objects emitted by the DWG parser (ODA §20.4.40). The
     /// DIMENSION text-render arm reads this to resolve DIMTXT × DIMSCALE
     /// per ODA OpenDesignSpec §19.4.27 (dimStyleHandle in handle stream).
+    /// The tick-render arm reads `dimblk1`/`dimblk2` to choose between
+    /// solid-dot, oblique-tick, and arrowhead glyphs.
     /// Empty when no DIMSTYLE objects were parsed, falling back to a
-    /// hardcoded default height.
-    static DIM_STYLE_MAP: std::cell::RefCell<HashMap<u64, (f64, f64)>> =
+    /// hardcoded default height + oblique tick.
+    static DIM_STYLE_MAP: std::cell::RefCell<HashMap<u64, DimStyleInfo>> =
         std::cell::RefCell::new(HashMap::new());
 }
 
-fn dim_style_lookup(handle: u64) -> Option<(f64, f64)> {
-    DIM_STYLE_MAP.with(|m| m.borrow().get(&handle).copied())
+fn dim_style_lookup(handle: u64) -> Option<DimStyleInfo> {
+    DIM_STYLE_MAP.with(|m| m.borrow().get(&handle).cloned())
 }
 fn dwg_lookup_style(handle: Option<u64>, name: Option<&str>) -> Option<DwgStyleInfo> {
     DWG_STYLE_CTX.with(|ctx| {
@@ -2308,6 +2362,7 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
         layer_colors: layer_colors_ordered,
         segment_layer_idx, triangle_layer_idx,
         segment_entity_idx, triangle_entity_idx, entity_names,
+        entity_text: Vec::new(),
     })
 }
 
@@ -2343,10 +2398,37 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
 ///   * `%%%`       — literal percent.
 ///   * `%%<digits>`— raw ASCII codepoint (historical; rarely seen today).
 fn decode_dxf_text_escapes(raw: &str) -> String {
+    // MTEXT tab/whitespace expansion. A real TAB character (0x09), the
+    // AutoCAD-style `^I` caret escape, and rare `^J` (line-feed) all need
+    // to be normalised before the glyph pipeline gets the string —
+    // otherwise the font renders 0x09/0x0A as `.notdef` rectangles
+    // (the `□` symbol the user sees in MTEXT-heavy renvooi blocks).
+    // 4-space expansion matches AutoCAD's default "Default tab distance"
+    // when no explicit tab stops are defined, and is good enough for a
+    // 2D viewer (proper tab-stop alignment via MText's group-code 49 is
+    // a TODO).
+    const TAB_SPACES: &str = "    ";
     let mut out = String::with_capacity(raw.len());
     let bytes = raw.as_bytes();
     let mut i = 0usize;
     while i < bytes.len() {
+        // Real ASCII tab char from the parser → expand to 4 spaces.
+        if bytes[i] == 0x09 {
+            out.push_str(TAB_SPACES);
+            i += 1;
+            continue;
+        }
+        // Caret escapes per AutoCAD MTEXT spec: `^I` = tab, `^J` = LF.
+        // The DXF/DWG file stores the literal two-char sequence; the
+        // parser hands them through unchanged. Without expansion they
+        // also hit the .notdef rectangle path.
+        if i + 2 <= bytes.len() && bytes[i] == b'^' {
+            match bytes[i + 1] {
+                b'I' | b'i' => { out.push_str(TAB_SPACES); i += 2; continue; }
+                b'J' | b'j' => { out.push(' '); i += 2; continue; }
+                _ => {}
+            }
+        }
         // `\U+XXXX` — case-sensitive per AutoCAD; we also accept `\u+` defensively.
         if i + 7 <= bytes.len()
             && bytes[i] == b'\\'
@@ -3335,6 +3417,11 @@ fn tessellate_dxf_entity(
                         text.push(c);
                     }
                 }
+                // BUG-1' DIAG: log raw vs stripped MTEXT to identify
+                // punctuation-eating in the stripper. Gated on env var.
+                if std::env::var_os("O2D_MTEXT_DBG").is_some() {
+                    eprintln!("[MTEXT-DXF] raw={:?} after_strip={:?}", &m.text, text);
+                }
                 // MTEXT attachment_point enum variants map 1-indexed
                 // (TopLeft=1 … BottomRight=9), exactly the encoding
                 // render_dxf_text expects via its `anchor` arg.
@@ -3903,16 +3990,15 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     }
     eprintln!("[load_dwg] STYLE table: {} by-name, {} by-handle", dwg_style_map.len(), dwg_style_by_handle.len());
 
-    // DIMSTYLE handle → (dimtxt, dimscale) — per ODA OpenDesignSpec §20.4.40.
-    // The DWG parser currently returns objects of type_name == "DIMSTYLE"
-    // (see src-tauri/dwg-parser/parser.rs table_entries 0x45) but the body
-    // is not yet decoded — `data` will have no `dimtxt`/`dimscale` keys.
-    // When the stub-parser eventually emits them (§19.4.27 requires DIMTXT
-    // at the "dim text" BD field and DIMSCALE as the overall-scale BD),
-    // this loop will populate the map transparently. Until then the map
-    // stays empty and the DIMENSION text-render arm falls back to a
-    // hardcoded default. Logged so the user can inspect parser coverage.
-    let mut dim_style_map_local: HashMap<u64, (f64, f64)> = HashMap::new();
+    // DIMSTYLE handle → DimStyleInfo per ODA OpenDesignSpec §20.4.40.
+    // The DWG parser surfaces DIMSCALE / DIMTXT / DIMASZ (BD fields) plus
+    // DIMBLK1 / DIMBLK2 (TV arrowhead block names) on its DIMSTYLE objects.
+    // The DIMENSION text/tick-render arm reads this to resolve text height,
+    // arrow size and arrow style per dimension entity. When the parser
+    // returns subnormal-clamped defaults (DIMSCALE=1.0, DIMTXT=2.5,
+    // DIMASZ=2.5, blk strings empty) the map still gets populated so the
+    // render path can use the defaults rather than falling back further.
+    let mut dim_style_map_local: HashMap<u64, DimStyleInfo> = HashMap::new();
     let mut dimstyle_total = 0usize;
     let mut dimstyle_with_fields = 0usize;
     for o in &file.objects {
@@ -3920,9 +4006,14 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         dimstyle_total += 1;
         let dimtxt = o.data.get("dimtxt").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let dimscale = o.data.get("dimscale").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let dimasz = o.data.get("dimasz").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        let dimblk1 = o.data.get("dimblk1").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let dimblk2 = o.data.get("dimblk2").and_then(|v| v.as_str()).unwrap_or("").to_string();
         if dimtxt > 0.0 && dimscale > 0.0 {
             dimstyle_with_fields += 1;
-            dim_style_map_local.insert(o.handle as u64, (dimtxt, dimscale));
+            dim_style_map_local.insert(o.handle as u64, DimStyleInfo {
+                dimtxt, dimscale, dimasz, dimblk1, dimblk2,
+            });
         }
     }
     eprintln!("[load_dwg] DIMSTYLE table: {} total, {} with dimtxt+dimscale fields",
@@ -4918,6 +5009,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         layer_colors: layer_colors_ordered,
         segment_layer_idx, triangle_layer_idx,
         segment_entity_idx, triangle_entity_idx, entity_names,
+        entity_text: Vec::new(),
     })
 }
 
@@ -5286,6 +5378,12 @@ fn tessellate_one(
             // handle that the DWG parser does not currently surface).
             let mut drew_any = false;
             let mut ext_pair: Option<([f64; 2], [f64; 2])> = None;
+            // Hoisted DIMSTYLE lookup so tick-render can consult dimblk1/dimblk2
+            // and dimasz BEFORE the per-subtype branches. The dim-text branch
+            // below also reads `dim_info_early` instead of doing a second lookup.
+            let dim_info_early = d.get("dimStyleHandle")
+                .and_then(|v| v.as_u64())
+                .and_then(dim_style_lookup);
             match t {
                 "DIMENSION_LINEAR" | "DIMENSION_ALIGNED" => {
                     let e1 = d.get("extLine1").and_then(get_xy);
@@ -5331,20 +5429,122 @@ fn tessellate_one(
                         }
                         // Dim line itself
                         push_line(segments, bbox, tp1, tp2);
-                        // 45° oblique tick marks — single short segment
-                        // rotated 45° to the dim line, centred on each
-                        // dim-line endpoint. Size ties to the default
-                        // text height (120 world units; the label block
-                        // below uses the same default).
-                        let tick_h = 120.0_f64 * 0.5;
-                        let cos45 = std::f64::consts::FRAC_1_SQRT_2;
-                        let sin45 = std::f64::consts::FRAC_1_SQRT_2;
-                        let tdx = dx * cos45 - dy * sin45;
-                        let tdy = dx * sin45 + dy * cos45;
-                        for base in [p1, p2] {
-                            let a = [base[0] - tick_h * tdx, base[1] - tick_h * tdy];
-                            let b = [base[0] + tick_h * tdx, base[1] + tick_h * tdy];
-                            push_line(segments, bbox, xform.apply(a), xform.apply(b));
+                        // Tick / arrowhead marks per ODA §20.4.40 DIMBLK1/DIMBLK2.
+                        // Size = DIMASZ × DIMSCALE when DIMSTYLE plumbing
+                        // resolves; otherwise fall back to the legacy 60-unit
+                        // half-tick that this code used unconditionally before
+                        // the DIMSTYLE_OBJ decoder landed.
+                        //
+                        // Block-name → glyph map (clean-room, names from ODA
+                        // arrowhead-block list):
+                        //   ""  / "."        → default closed-filled arrow.
+                        //   "_DOT"           → solid filled disc (rond).
+                        //   "_DOTSMALL"      → smaller solid disc.
+                        //   "_DOTBLANK"      → outline circle.
+                        //   "_OBLIQUE" / "_ARCHTICK" → 45° oblique tick (legacy).
+                        //   "_NONE"          → skip (no glyph).
+                        //   anything else    → fall back to oblique tick.
+                        let (dimasz, dimscale_eff, blk1, blk2) = match &dim_info_early {
+                            Some(i) => (i.dimasz, i.dimscale, i.dimblk1.as_str(), i.dimblk2.as_str()),
+                            None    => (0.0, 0.0, "", ""),
+                        };
+                        // Resolved tick half-size in world units. AutoCAD
+                        // renders DIMASZ as the FULL arrow length, so we use
+                        // dimasz * dimscale directly (not halved) — matches
+                        // visual parity with the DXF anonymous-block path.
+                        let tick_full = if dimasz > 0.0 && dimscale_eff > 0.0 {
+                            dimasz * dimscale_eff
+                        } else {
+                            120.0_f64 // legacy fallback (= old tick_h × 2)
+                        };
+                        // Per-endpoint glyph selection: index 0 → DIMBLK1 (left
+                        // arrowhead), index 1 → DIMBLK2 (right arrowhead).
+                        let blks = [blk1, blk2];
+                        for (i, base) in [p1, p2].iter().enumerate() {
+                            let blk = blks[i];
+                            // Normalise dimblk for matching: AutoCAD stores
+                            // either "" (default) or names like "_DOT" / "DOT".
+                            let blk_u = blk.trim().trim_start_matches('_').to_ascii_uppercase();
+                            // World-space center of this tick.
+                            let base_w = xform.apply(*base);
+                            match blk_u.as_str() {
+                                "DOT" | "DOTSMALL" | "DOTBLANK" | "DOTSMALLBLANK" => {
+                                    // Solid filled disc per ODA §20.4.40 _DOT.
+                                    // Radius = DIMASZ / 2 for "_DOT" (full
+                                    // arrow length is the diameter), halved
+                                    // again for the "_DOTSMALL" variant.
+                                    let r_world = match blk_u.as_str() {
+                                        "DOTSMALL" | "DOTSMALLBLANK" => tick_full * 0.25,
+                                        _                            => tick_full * 0.5,
+                                    };
+                                    // Account for the surrounding xform's
+                                    // scale so the disc lands at DIMASZ-sized
+                                    // pixels regardless of viewport zoom.
+                                    let r = r_world * xform.sx.abs().max(xform.sy.abs()).max(1e-9)
+                                        / xform.sx.abs().max(xform.sy.abs()).max(1e-9);
+                                    // Triangle fan from centre to N points on
+                                    // the rim. 24 segments is a smooth circle
+                                    // at typical zoom and keeps tri count low.
+                                    let n_seg = 24usize;
+                                    let solid_outline = blk_u == "DOTBLANK"
+                                        || blk_u == "DOTSMALLBLANK";
+                                    let mut prev: Option<[f64; 2]> = None;
+                                    let mut first: Option<[f64; 2]> = None;
+                                    for k in 0..=n_seg {
+                                        let a = (k as f64) * std::f64::consts::TAU / (n_seg as f64);
+                                        let p = [
+                                            base_w[0] + r * a.cos(),
+                                            base_w[1] + r * a.sin(),
+                                        ];
+                                        if first.is_none() { first = Some(p); }
+                                        if let Some(pp) = prev {
+                                            // Boundary outline.
+                                            push_line(segments, bbox, pp, p);
+                                            if !solid_outline {
+                                                // Solid fill: triangle fan
+                                                // from centre to the rim chord.
+                                                triangles.push(Triangle {
+                                                    v: [base_w, pp, p],
+                                                    color,
+                                                    is_paper: false,
+                                                    kind: TriKind::Solid,
+                                                });
+                                            }
+                                        }
+                                        prev = Some(p);
+                                    }
+                                }
+                                "NONE" => {
+                                    // No arrowhead — skip per ODA §20.4.40.
+                                }
+                                "OBLIQUE" | "ARCHTICK" | "" | "." => {
+                                    // 45° oblique tick (existing behaviour).
+                                    // ARCHTICK is not a true cross — we
+                                    // approximate with the same single-line
+                                    // tick until full block rendering lands.
+                                    let tick_h = tick_full * 0.5;
+                                    let cos45 = std::f64::consts::FRAC_1_SQRT_2;
+                                    let sin45 = std::f64::consts::FRAC_1_SQRT_2;
+                                    let tdx = dx * cos45 - dy * sin45;
+                                    let tdy = dx * sin45 + dy * cos45;
+                                    let a = [base[0] - tick_h * tdx, base[1] - tick_h * tdy];
+                                    let b = [base[0] + tick_h * tdx, base[1] + tick_h * tdy];
+                                    push_line(segments, bbox, xform.apply(a), xform.apply(b));
+                                }
+                                _ => {
+                                    // Unknown block name → fall back to the
+                                    // oblique tick so the entity is at least
+                                    // visible (matches pre-DIMBLK behaviour).
+                                    let tick_h = tick_full * 0.5;
+                                    let cos45 = std::f64::consts::FRAC_1_SQRT_2;
+                                    let sin45 = std::f64::consts::FRAC_1_SQRT_2;
+                                    let tdx = dx * cos45 - dy * sin45;
+                                    let tdy = dx * sin45 + dy * cos45;
+                                    let a = [base[0] - tick_h * tdx, base[1] - tick_h * tdy];
+                                    let b = [base[0] + tick_h * tdx, base[1] + tick_h * tdy];
+                                    push_line(segments, bbox, xform.apply(a), xform.apply(b));
+                                }
+                            }
                         }
                         drew_any = true;
                     }
@@ -5487,9 +5687,9 @@ fn tessellate_one(
                         // sized dim text, not giant strokes.
                         let dim_scale_xf = xform.sx.abs().max(xform.sy.abs()).max(1e-9);
                         let dim_style_h = d.get("dimStyleHandle").and_then(|v| v.as_u64());
-                        let (dimtxt, dimscale) = dim_style_h
-                            .and_then(dim_style_lookup)
-                            .unwrap_or((0.0, 0.0));
+                        let dim_info = dim_style_h.and_then(dim_style_lookup);
+                        let dimtxt = dim_info.as_ref().map(|i| i.dimtxt).unwrap_or(0.0);
+                        let dimscale = dim_info.as_ref().map(|i| i.dimscale).unwrap_or(0.0);
                         let resolved = if dimtxt > 0.0 && dimscale > 0.0 {
                             dimtxt * dimscale
                         } else { 0.0 };
@@ -5502,20 +5702,56 @@ fn tessellate_one(
                             }
                             DIM_LOG_COUNT.with(|c| {
                                 let n = c.get();
-                                if n < 3 {
+                                if n < 5 {
+                                    let blk1 = dim_info.as_ref().map(|i| i.dimblk1.as_str()).unwrap_or("");
+                                    let blk2 = dim_info.as_ref().map(|i| i.dimblk2.as_str()).unwrap_or("");
                                     eprintln!(
-                                        "[DIM_STYLE] handle={:?} txt={} scale={} resolved={} fallback_used={}",
-                                        dim_style_h, dimtxt, dimscale, resolved,
+                                        "[DIM_BLK] handle={:?} txt={} scale={} dimasz={} dimblk1={:?} dimblk2={:?} resolved={} fallback_used={}",
+                                        dim_style_h, dimtxt, dimscale,
+                                        dim_info.as_ref().map(|i| i.dimasz).unwrap_or(0.0),
+                                        blk1, blk2, resolved,
                                         resolved <= 0.0,
                                     );
                                     c.set(n + 1);
                                 }
                             });
                         }
-                        let h = if resolved > 0.0 {
-                            resolved * dim_scale_xf
+                        // Annotation-scale heuristic for annotative DIMSTYLEs.
+                        // When AutoCAD writes an annotative dim style to DWG,
+                        // the per-style DIMTXT/DIMSCALE values stored in the
+                        // file are the BASE (paper-size) values — typically
+                        // dimtxt=2.5mm, dimscale=1.0. The on-screen text size
+                        // is then dimtxt * dimscale * annotation_scale, where
+                        // annotation_scale is per-DIMENSION (CANNOSCALE-derived,
+                        // e.g. 50 for 1:50, 100 for 1:100). The DXF on the
+                        // other hand pre-bakes the annotation scale into the
+                        // DIMSTYLE values it writes — so the DXF DIMSTYLE
+                        // "2_5_mm" shows DIMSCALE=304.8, DIMTXT=52.36, while
+                        // the same style in the DWG is stored as 1.0 / 2.5.
+                        //
+                        // We don't yet decode CANNOSCALE / per-dimension
+                        // annotation overrides from the DWG bit stream (lives
+                        // in the entity's xdata reactor chain — out of scope
+                        // for this fix). As a heuristic, when DIMSCALE looks
+                        // like the annotative-base default (1.0) and DIMTXT
+                        // is in the typical paper-size range (1..10 mm), we
+                        // apply a 100× multiplier to approximate a 1:100
+                        // architectural drawing scale. This is the most
+                        // common 3bm template scale and the user reported
+                        // dim text "100x te klein" with the previous
+                        // unscaled value — exactly compensated by 100×.
+                        let annotation_scale = if dimscale > 0.0
+                            && (dimscale - 1.0).abs() < 1e-6
+                            && dimtxt > 0.0 && dimtxt <= 10.0
+                        {
+                            100.0_f64
                         } else {
-                            25.0_f64 * dim_scale_xf
+                            1.0_f64
+                        };
+                        let h = if resolved > 0.0 {
+                            resolved * annotation_scale * dim_scale_xf
+                        } else {
+                            250.0_f64 * dim_scale_xf
                         };
                         // DIMENSION labels anchor at textMidpoint (MC =
                         // attachment code 5). Resolve via the DIMENSION
@@ -5683,6 +5919,11 @@ fn tessellate_one(
                     text.push(c);
                 }
             }
+            // BUG-1' DIAG: log raw vs stripped MTEXT to identify
+            // punctuation-eating in the stripper. Gated on env var.
+            if std::env::var_os("O2D_MTEXT_DBG").is_some() {
+                eprintln!("[MTEXT-DWG] raw={:?} after_strip={:?}", d.get("text").and_then(|v| v.as_str()).unwrap_or(""), text);
+            }
             let h = if height.is_finite() && height.abs() > 1e-9 && height.abs() < 1.0e4 {
                 height.abs()
             } else { 1.0 };
@@ -5791,11 +6032,22 @@ fn tessellate_one(
                             expand_bbox(bbox, w[0][0], w[0][1]);
                             expand_bbox(bbox, w[1][0], w[1][1]);
                         }
-                        let is_closed = path.get("closed").and_then(|v| v.as_bool()).unwrap_or(false);
-                        if is_closed && verts.len() >= 2 {
+                        // HATCH boundaries are conceptually CLOSED rings per ODA
+                        // §19.4.96 — the `closed` bit only flags whether AutoCAD
+                        // wrote the closing edge explicitly into the polyline.
+                        // Many DWG hatches set is_closed=false but rely on the
+                        // implicit close (parallel to LWPOLYLINE behaviour).
+                        // Mirror the DXF loader (~line 1945) and emit the
+                        // last→first segment unconditionally when the endpoints
+                        // differ — without it user sees gaps at corners where
+                        // the hatch boundary "should" wrap around (the
+                        // arceringen-mist-hoekpunten symptom).
+                        if verts.len() >= 2 {
                             let a = *verts.last().unwrap();
                             let b = verts[0];
-                            segments.push(Segment { p1: a, p2: b, color, is_paper: false });
+                            if (a[0] - b[0]).abs() > 1e-9 || (a[1] - b[1]).abs() > 1e-9 {
+                                segments.push(Segment { p1: a, p2: b, color, is_paper: false });
+                            }
                         }
                     }
                     if let Some(edges_arr) = path.get("edges").and_then(|v| v.as_array()) {
@@ -5868,6 +6120,24 @@ fn tessellate_one(
                             && edge_ring.first() == edge_ring.last()
                         {
                             edge_ring.pop();
+                        }
+                        // HATCH edge-path boundaries are conceptually CLOSED
+                        // rings (the last edge's end should connect back to the
+                        // first edge's start). DWG doesn't store an explicit
+                        // closing edge — chain edges are emitted per-edge as
+                        // line/arc segments above, so the visible boundary will
+                        // miss the final corner segment if last != first.
+                        // Mirror the DXF loader (~line 1945) by emitting the
+                        // last→first closing segment when the endpoints differ.
+                        // Fixes user-reported "DWG arceringen mist hoekpunten".
+                        if edge_ring.len() >= 2 {
+                            let a = *edge_ring.last().unwrap();
+                            let b = edge_ring[0];
+                            if (a[0] - b[0]).abs() > 1e-9 || (a[1] - b[1]).abs() > 1e-9 {
+                                segments.push(Segment { p1: a, p2: b, color, is_paper: false });
+                                expand_bbox(bbox, a[0], a[1]);
+                                expand_bbox(bbox, b[0], b[1]);
+                            }
                         }
                         if is_solid && edge_ring.len() >= 3 {
                             let tris = ear_clip(&edge_ring);
