@@ -2356,13 +2356,17 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
             triangle_entity_idx.push(tail_eid);
         }
     }
+    // Pad entity_text to match entity_names.len(). TEXT/MTEXT branches
+    // populate Some(EntityText); other entities stay None for now.
+    let mut entity_text: Vec<Option<EntityText>> = Vec::with_capacity(entity_names.len());
+    entity_text.resize(entity_names.len(), None);
     Ok(Scene {
         segments, triangles, bbox, source: "DXF", count_label: label, layouts,
         layer_names: layer_names_ordered,
         layer_colors: layer_colors_ordered,
         segment_layer_idx, triangle_layer_idx,
         segment_entity_idx, triangle_entity_idx, entity_names,
-        entity_text: Vec::new(),
+        entity_text,
     })
 }
 
@@ -5003,13 +5007,17 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     if entity_names.is_empty() {
         entity_names.push("(empty DWG)".to_string());
     }
+    // Pad entity_text to match entity_names.len(). TEXT/MTEXT branches
+    // populate Some(EntityText); other entities stay None for now.
+    let mut entity_text: Vec<Option<EntityText>> = Vec::with_capacity(entity_names.len());
+    entity_text.resize(entity_names.len(), None);
     Ok(Scene {
         segments, triangles, bbox, source: "DWG", count_label: label, layouts,
         layer_names: layer_names_ordered,
         layer_colors: layer_colors_ordered,
         segment_layer_idx, triangle_layer_idx,
         segment_entity_idx, triangle_entity_idx, entity_names,
-        entity_text: Vec::new(),
+        entity_text,
     })
 }
 
