@@ -69,3 +69,38 @@ fn no_modes_no_snap() {
     };
     assert!(SnapEngine::query([5.0, 0.0], &ctx).is_none());
 }
+
+#[test]
+fn intersection_finds_crossing() {
+    let (idx, segs) = build_scene_2segs();
+    let ctx = SnapContext {
+        index: &idx, segments: &segs,
+        modes: SnapModeSet::INTERSECTION,
+        tolerance_world: 0.5,
+        last_pick: None, ortho_anchor: None,
+        polar_increment_deg: 45.0, key_points: &[], grid_size: 100.0,
+    };
+    let r = SnapEngine::query([5.1, 0.1], &ctx).expect("intersection at [5,0]");
+    assert_eq!(r.kind, SnapMode::Intersection);
+    assert!((r.point[0] - 5.0).abs() < 1e-9);
+    assert!((r.point[1] - 0.0).abs() < 1e-9);
+}
+
+#[test]
+fn perpendicular_drops_from_last_pick() {
+    let (idx, segs) = build_scene_2segs();
+    // last_pick at [0, 5]. Drop perpendicular to horizontal segment
+    // [0,0]-[10,0] → foot at [0, 0]. Cursor near [0, 0.1].
+    let ctx = SnapContext {
+        index: &idx, segments: &segs,
+        modes: SnapModeSet::PERPENDICULAR,
+        tolerance_world: 0.5,
+        last_pick: Some([0.0, 5.0]),
+        ortho_anchor: None,
+        polar_increment_deg: 45.0, key_points: &[], grid_size: 100.0,
+    };
+    let r = SnapEngine::query([0.05, 0.1], &ctx).expect("perp foot at [0,0]");
+    assert_eq!(r.kind, SnapMode::Perpendicular);
+    assert!((r.point[0] - 0.0).abs() < 1e-9);
+    assert!((r.point[1] - 0.0).abs() < 1e-9);
+}
