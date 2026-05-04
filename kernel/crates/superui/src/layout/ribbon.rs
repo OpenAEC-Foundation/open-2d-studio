@@ -69,6 +69,12 @@ impl Ribbon {
             ui.horizontal_centered(|ui| {
                 for tab in &self.tabs {
                     let is_active = tab.id == self.active;
+                    // The "File" tab is special in 1.0: solid orange button,
+                    // matching `File-tab` in Ribbon.css. Detected by id.
+                    let is_file_special = {
+                        let lc = tab.id.to_ascii_lowercase();
+                        lc == "file" || lc == "files"
+                    };
                     let label_w = ui.painter().layout_no_wrap(
                         tab.label.clone(),
                         egui::FontId::proportional(12.0),
@@ -78,12 +84,19 @@ impl Ribbon {
                         Vec2::new(label_w + 24.0, tab_h),
                         Sense::click(),
                     );
-                    let bg = if is_active {
-                        palette.ribbon_tab_active_bg
+                    let (bg, label_color) = if is_file_special {
+                        let fill = if tresp.hovered() { palette.accent_hover }
+                                   else                { palette.accent };
+                        (fill, palette.fg)
+                    } else if is_active {
+                        // 1.0's active ribbon tab has NO fill — it's
+                        // transparent over the body brown, marked only by
+                        // the orange bottom accent line.
+                        (palette.ribbon_tab_active_bg, palette.fg)
                     } else if tresp.hovered() {
-                        palette.button_hover
+                        (palette.button_hover, palette.fg)
                     } else {
-                        palette.ribbon_tab_bg
+                        (palette.ribbon_tab_bg, palette.fg_dim)
                     };
                     ui.painter().rect_filled(trect, 0.0, bg);
                     ui.painter().text(
@@ -91,9 +104,10 @@ impl Ribbon {
                         egui::Align2::CENTER_CENTER,
                         &tab.label,
                         egui::FontId::proportional(12.0),
-                        palette.fg,
+                        label_color,
                     );
-                    if is_active {
+                    // Bottom accent line marks the active non-File tab.
+                    if is_active && !is_file_special {
                         ui.painter().line_segment(
                             [trect.left_bottom(), trect.right_bottom()],
                             egui::Stroke::new(2.0, palette.accent),
