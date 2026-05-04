@@ -902,6 +902,24 @@ thread_local! {
     /// hardcoded default height + oblique tick.
     static DIM_STYLE_MAP: std::cell::RefCell<HashMap<u64, DimStyleInfo>> =
         std::cell::RefCell::new(HashMap::new());
+    /// DXF STYLE-name (UPPERCASE) → DxfStyleInfo. Mirrors `DWG_STYLE_CTX`
+    /// for the DXF loader. Populated once at the top of `load_dxf` from
+    /// the same `style_map` that's threaded through the entity loop, so
+    /// `tessellate_text` (the shared text-emission helper) can resolve a
+    /// STYLE → font-file without needing the map passed as an extra arg.
+    /// The wrapper `render_dxf_text` keeps its `style_map` parameter for
+    /// API stability — this thread-local is purely a side-channel for the
+    /// shared helper and the future `re_tessellate_text_entity()` path
+    /// (Task 7), which has no ambient style_map at edit time.
+    static DXF_STYLE_CTX: std::cell::RefCell<HashMap<String, DxfStyleInfo>> =
+        std::cell::RefCell::new(HashMap::new());
+}
+
+/// Look up a DXF STYLE record by case-insensitive name. Returns None when
+/// the style isn't in the map (fallback path = arial.ttf / stroke font).
+fn dxf_style_lookup(style_name: &str) -> Option<DxfStyleInfo> {
+    let key = style_name.to_ascii_uppercase();
+    DXF_STYLE_CTX.with(|m| m.borrow().get(&key).cloned())
 }
 
 fn dim_style_lookup(handle: u64) -> Option<DimStyleInfo> {
@@ -1661,6 +1679,15 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
             oblique_angle: st.oblique_angle,
         });
     }
+    // Mirror style_map into the DXF_STYLE_CTX thread-local so the shared
+    // tessellate_text helper (used by both render_dxf_text and the future
+    // re_tessellate_text_entity edit path) can resolve a STYLE name to a
+    // font file without the caller having to pass `style_map` through.
+    DXF_STYLE_CTX.with(|c| {
+        let mut b = c.borrow_mut();
+        b.clear();
+        for (k, v) in &style_map { b.insert(k.clone(), v.clone()); }
+    });
 
     // Layer-color map: entities with color=BYLAYER (the CAD default)
     // inherit from their layer. Without this lookup every by-layer entity
@@ -2818,6 +2845,135 @@ fn render_dwg_text(
     }
 }
 
+/// Tessellate a text entity into segments + triangles. Used by initial
+/// scene load (via `render_dxf_text`) AND by the future
+/// `re_tessellate_text_entity()` for edit-time updates (Task 7).
+///
+/// Inputs are taken from `EntityText` so the renderer is content-agnostic
+/// (works for TEXT, MTEXT, ATTRIB, DIM-label, edit-time replacements).
+/// Output: appends to `segments` and `triangles` and expands `bbox`. The
+/// caller is responsible for entity_idx / layer_idx bookkeeping.
+///
+/// Font resolution chain (matches `render_dxf_text`):
+///   1. Try `et.font_path` directly via `resolve_font_file` — handles the
+///      Task 7 case where the editor stores a resolved font filename.
+///   2. Treat `et.font_path` as a STYLE name and query `DXF_STYLE_CTX` →
+///      apply `resolve_weighted_font_file` for the bold/italic variant
+///      based on Revit's `_B`/`_I` style-name convention; then the
+///      primary_font_file unchanged.
+///   3. Fall through to the Hershey stroke font.
+///
+/// NOTE: The DWG render path (`render_dwg_text`) does NOT delegate here.
+/// Its rotation+shift+`xform` math is structurally different (glyphs are
+/// rendered at local origin then projected by the parent INSERT's xform)
+/// and re-routing it through a world-space EntityText helper is not
+/// trivially equivalent for non-uniform xforms — the conservative choice
+/// for Task 6 is to refactor only the DXF side and keep DWG inline.
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn tessellate_text(
+    et: &EntityText,
+    color: u32,
+    is_paper: bool,
+    segments: &mut Vec<Segment>,
+    triangles: &mut Vec<Triangle>,
+    bbox: &mut [f64; 4],
+) {
+    fn anchor_offset(a: u8, tw: f64, th: f64) -> [f64; 2] {
+        let dx = match a {
+            2 | 5 | 8 => -tw * 0.5,
+            3 | 6 | 9 => -tw,
+            _ => 0.0,
+        };
+        let dy = match a {
+            1..=3 => -th,
+            4..=6 => -th * 0.5,
+            _ => 0.0,
+        };
+        [dx, dy]
+    }
+
+    if et.raw.is_empty() || !et.anchor[0].is_finite() || !et.anchor[1].is_finite() {
+        return;
+    }
+
+    // Build the ordered list of font-file candidates to try. Mirrors
+    // render_dxf_text's resolution chain so visual output is bit-equal.
+    let mut tried: Vec<String> = Vec::with_capacity(2);
+    if !et.font_path.is_empty() {
+        // Direct font-file path: when font_path looks like an actual
+        // ttf/otf/ttc file (Task 7 use), try it first. resolve_font_file
+        // returns Some(...) only for known font extensions.
+        if crate::ttf_font::resolve_font_file(&et.font_path).is_some() {
+            tried.push(et.font_path.clone());
+        }
+        // STYLE-name lookup: match the DXF wrapper's logic — apply the
+        // weighted-variant remap, then the primary font file unchanged.
+        if let Some(info) = dxf_style_lookup(&et.font_path) {
+            let weighted = resolve_weighted_font_file(&info.primary_font_file, &info.style_name);
+            if weighted != info.primary_font_file
+                && crate::ttf_font::resolve_font_file(&weighted).is_some()
+                && !tried.iter().any(|s| s.eq_ignore_ascii_case(&weighted))
+            {
+                tried.push(weighted);
+            }
+            if !info.primary_font_file.is_empty()
+                && crate::ttf_font::resolve_font_file(&info.primary_font_file).is_some()
+                && !tried.iter().any(|s| s.eq_ignore_ascii_case(&info.primary_font_file))
+            {
+                tried.push(info.primary_font_file.clone());
+            }
+        }
+    }
+
+    let height = et.height;
+    let rotation = et.rotation;
+    let origin = et.anchor;
+    let anchor = et.attachment;
+
+    for font_file in &tried {
+        let (ttf_segs, ttf_contours, adv) = crate::ttf_font::render_string_with_contours(
+            font_file,
+            &et.raw,
+            origin,
+            height,
+            rotation,
+        );
+        if ttf_segs.is_empty() { continue; }
+        let off = anchor_offset(anchor, adv, height);
+        let (c, s) = (rotation.cos(), rotation.sin());
+        let dx = off[0] * c - off[1] * s;
+        let dy = off[0] * s + off[1] * c;
+        for (p1, p2) in ttf_segs {
+            let a = [p1[0] + dx, p1[1] + dy];
+            let b = [p2[0] + dx, p2[1] + dy];
+            segments.push(Segment { p1: a, p2: b, color, is_paper });
+            expand_bbox(bbox, a[0], a[1]);
+            expand_bbox(bbox, b[0], b[1]);
+        }
+        // Solid-fill triangulation for filled glyphs. fill_glyph_contours
+        // hard-codes is_paper=false on the emitted triangles; preserve
+        // that exact behaviour to keep visual parity with the pre-refactor
+        // render_dxf_text. The `is_paper` flag passed in here only affects
+        // outline segments (matching how render_dxf_text tagged them).
+        fill_glyph_contours(ttf_contours, [dx, dy], color, triangles);
+        return;
+    }
+
+    // Hershey stroke-font fallback. Matches render_dxf_text's tail.
+    let (segs, adv) = crate::stroke_font::render_string(&et.raw, origin, height, rotation);
+    let off = anchor_offset(anchor, adv, height);
+    let (c, s) = (rotation.cos(), rotation.sin());
+    let dx = off[0] * c - off[1] * s;
+    let dy = off[0] * s + off[1] * c;
+    for (p1, p2) in segs {
+        let a = [p1[0] + dx, p1[1] + dy];
+        let b = [p2[0] + dx, p2[1] + dy];
+        segments.push(Segment { p1: a, p2: b, color, is_paper });
+        expand_bbox(bbox, a[0], a[1]);
+        expand_bbox(bbox, b[0], b[1]);
+    }
+}
+
 #[allow(clippy::too_many_arguments)]
 fn render_dxf_text(
     text: &str,
@@ -2837,60 +2993,26 @@ fn render_dxf_text(
     triangles: &mut Vec<Triangle>,
     bbox: &mut [f64; 4],
 ) {
+    // Diagnostic one-shot — preserved from the pre-extraction version so
+    // first-render font resolution is still observable on stderr. The
+    // actual emit logic now lives in `tessellate_text` (Task 6) so
+    // initial-load and edit-time re-tessellation share one code path.
+    //
+    // STYLE fixed_height override INTENTIONALLY not applied here. Per
+    // DXF §20.4.57 the STYLE's text_height (code 40) should override the
+    // entity's own height when non-zero. HOWEVER — applying that override
+    // here breaks viewport / INSERT xform scaling: the caller passes
+    // `height = entity_h * xform.scale`, so for VIEWPORT-projected text
+    // the incoming height is already the correctly scaled paper-space
+    // value (e.g. 4.5 mm). Replacing it with the raw STYLE.fixed_height
+    // (90 mm) bypasses the scale and inflates text 20× — this was the
+    // iter18 regression. The entity's own height is authoritative.
     let key = style_name.to_ascii_uppercase();
-    let info = style_map.get(&key);
-    // STYLE fixed_height override INTENTIONALLY not applied here.
-    //
-    // Per DXF §20.4.57 the STYLE's text_height (code 40) should override
-    // the entity's own height when non-zero. HOWEVER — applying that
-    // override inside render_dxf_text breaks viewport / INSERT xform
-    // scaling: the caller passes `height = entity_h * xform.scale`, so
-    // for VIEWPORT-projected text the incoming height is already the
-    // correctly scaled paper-space value (e.g. 4.5 mm). Replacing it
-    // with the raw STYLE.fixed_height (90 mm) bypasses the scale and
-    // inflates text 20× — this was the iter18 regression.
-    //
-    // In well-formed DXFs the ENTITY text_height already matches the
-    // STYLE fixed_height for top-level text (verified across the 3bm
-    // training set: 0 mismatches on 501 top-level MTEXTs). For block-
-    // internal texts (dimension blocks, title-block MTEXTs) AutoCAD
-    // writes the scale-baked value into the entity, so the entity's
-    // own height is the authoritative one. Using it directly matches
-    // DWG TrueView / AutoCAD plot output.
-    let effective_height = height;
-    fn anchor_offset(a: u8, tw: f64, th: f64) -> [f64; 2] {
-        let dx = match a {
-            2 | 5 | 8 => -tw * 0.5,
-            3 | 6 | 9 => -tw,
-            _ => 0.0,
-        };
-        let dy = match a {
-            1..=3 => -th,
-            4..=6 => -th * 0.5,
-            _ => 0.0,
-        };
-        [dx, dy]
-    }
-
-    // TTF path: resolve style → font_file → render glyph outlines.
-    //
-    // Font-file resolution:
-    //   1. primary_font_file from STYLE table (group 3), e.g. "segoeui.ttf"
-    //   2. Apply Revit's suffix convention on STYLE name ("_B" = Bold, etc.)
-    //      via resolve_weighted_font_file(), giving "segoeuib.ttf" for bold.
-    //   3. ttf_font::resolve_font_file() checks for a .ttf/.otf/.ttc extension
-    //      and returns None for bare SHX names ("txt", "romans") — caller
-    //      falls back to stroke font.
-    if let Some(info) = info {
+    if let Some(info) = style_map.get(&key) {
         let weighted = resolve_weighted_font_file(&info.primary_font_file, &info.style_name);
-        // Try the bold/italic-variant filename first; if it isn't installed
-        // on this machine the cache load returns None and we fall through
-        // to the regular file.
         let mut tried = Vec::with_capacity(2);
         if weighted != info.primary_font_file {
-            if let Some(ff) = crate::ttf_font::resolve_font_file(&weighted) {
-                tried.push(ff);
-            }
+            if let Some(ff) = crate::ttf_font::resolve_font_file(&weighted) { tried.push(ff); }
         }
         if let Some(ff) = crate::ttf_font::resolve_font_file(&info.primary_font_file) {
             tried.push(ff);
@@ -2902,74 +3024,28 @@ fn render_dxf_text(
                 info.style_name, info.primary_font_file, weighted, tried
             );
         });
-        for font_file in &tried {
-            // Render glyphs WITH contours so we can emit both outline
-            // segments AND filled triangles (ear-clipped contours) for
-            // solid-filled text — matches plotter / TrueView output
-            // where letters are solid, not hollow-stroke.
-            let (ttf_segs, ttf_contours, adv) = crate::ttf_font::render_string_with_contours(
-                font_file,
-                text,
-                origin,
-                effective_height,
-                rotation,
-            );
-            static TTF_DBG_ONCE: std::sync::Once = std::sync::Once::new();
-            TTF_DBG_ONCE.call_once(|| {
-                eprintln!(
-                    "[txt-dbg] first render_string: font_file='{}' text_len={} segs={} contours={} adv={}",
-                    font_file, text.len(), ttf_segs.len(), ttf_contours.len(), adv
-                );
-            });
-            if !ttf_segs.is_empty() {
-                let off = anchor_offset(anchor, adv, effective_height);
-                let (c, s) = (rotation.cos(), rotation.sin());
-                let dx =  off[0] * c - off[1] * s;
-                let dy =  off[0] * s + off[1] * c;
-                // Outline segments (gives crisp edge on top of fill).
-                for (p1, p2) in ttf_segs {
-                    let a = [p1[0] + dx, p1[1] + dy];
-                    let b = [p2[0] + dx, p2[1] + dy];
-                    segments.push(Segment { p1: a, p2: b, color, is_paper: false });
-                    expand_bbox(bbox, a[0], a[1]);
-                    expand_bbox(bbox, b[0], b[1]);
-                }
-                // Solid fill with proper HOLE handling. Multi-contour
-                // glyphs (O, B, D, P, R, Q, A) have one CCW outer ring
-                // plus one or more CW inner rings (the holes). We group
-                // contours into (outer, [holes...]) bundles: every hole
-                // lives inside exactly one outer. Then earcutr produces
-                // a triangulation that respects the even-odd fill rule,
-                // so the hole-interior is NOT filled.
-                //
-                // Classification: signed area sign determines orientation.
-                // Positive (CCW) = outer, Negative (CW) = hole.
-                //
-                // Assignment of hole → outer: we test ONE hole vertex
-                // against each outer via point-in-polygon; the first
-                // outer containing it wins. For characters with simple
-                // topology (one outer + 0..2 holes) this is sufficient
-                // and fast.
-                fill_glyph_contours(ttf_contours, [dx, dy], color, triangles);
-                return;
-            }
-        }
     }
-    // Fallback: Hershey stroke font. Use the same effective_height and
-    // anchor-offset pipeline as the TTF path so SHX-styled MTEXT (e.g.
-    // "Standard" → txt.shx) aligns consistently with its anchor.
-    let (segs, adv) = crate::stroke_font::render_string(text, origin, effective_height, rotation);
-    let off = anchor_offset(anchor, adv, effective_height);
-    let (c, s) = (rotation.cos(), rotation.sin());
-    let dx = off[0] * c - off[1] * s;
-    let dy = off[0] * s + off[1] * c;
-    for (p1, p2) in segs {
-        let a = [p1[0] + dx, p1[1] + dy];
-        let b = [p2[0] + dx, p2[1] + dy];
-        segments.push(Segment { p1: a, p2: b, color, is_paper: false });
-        expand_bbox(bbox, a[0], a[1]);
-        expand_bbox(bbox, b[0], b[1]);
-    }
+
+    // Build an EntityText shim and delegate to the shared helper. Note
+    // `font_path` carries the STYLE NAME — `tessellate_text` resolves it
+    // through DXF_STYLE_CTX (mirrored from the same style_map at the top
+    // of load_dxf), then through the regular font-file resolution chain.
+    // Bold/italic flags don't apply to plain TEXT/MTEXT here; the MTEXT
+    // inline `\f...|bN|iN;` override is already baked into `style_name`
+    // by the entity loop, OR the caller falls back to STYLE-level weight
+    // (handled by resolve_weighted_font_file inside tessellate_text).
+    let et = EntityText {
+        raw: text.to_string(),
+        anchor: origin,
+        height,
+        rotation,
+        font_path: style_name.to_string(),
+        bold: false,
+        italic: false,
+        attachment: anchor,
+        kind: TextKind::Text, // unused by tessellate_text
+    };
+    tessellate_text(&et, color, false, segments, triangles, bbox);
 }
 
 /// Expand a DIMENSION entity's anonymous block (`*D<N>`). AutoCAD pre-
