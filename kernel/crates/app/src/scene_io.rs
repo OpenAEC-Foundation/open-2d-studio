@@ -1710,8 +1710,10 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
     // manually switched the layer off in AutoCAD — off layers are
     // neither displayed nor plotted per AutoCAD convention).
     let mut hidden_layers: std::collections::HashSet<String> = std::collections::HashSet::new();
-    for l in drawing.layers() {
+    let layer_color_dbg = std::env::var("O2D_LAYER_COLOR_DBG").is_ok();
+    for (li, l) in drawing.layers().enumerate() {
         let key = l.name.to_ascii_uppercase();
+        let aci_for_dbg: i16 = l.color.index().map(|i| i as i16).unwrap_or(0);
         let rgba = if let Some(idx) = l.color.index() {
             aci_to_rgba(idx as i16)
         } else { 0 };
@@ -1719,6 +1721,10 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
         layer_ltype_map.insert(key.clone(), l.line_type_name.clone());
         if !l.is_layer_plotted || !l.is_layer_on {
             hidden_layers.insert(key);
+        }
+        if layer_color_dbg {
+            eprintln!("[LAYER] DXF src=DXF idx={} name={:?} aci={} rgba=0x{:08x}",
+                li, l.name, aci_for_dbg, rgba);
         }
     }
 
@@ -2898,16 +2904,31 @@ pub(crate) fn tessellate_text(
 
     // Build the ordered list of font-file candidates to try. Mirrors
     // render_dxf_text's resolution chain so visual output is bit-equal.
-    let mut tried: Vec<String> = Vec::with_capacity(2);
+    //
+    // Edit-time hot-path: `EntityText.font_path` carries the STYLE NAME at
+    // load time (NOT a resolved file path) — see the populate sites for DXF
+    // TEXT/MTEXT (~line 3656/3767) and DWG TEXT/MTEXT/ATTRIB/DIMENSION
+    // (~line 6162/6276/6411). We resolve it through BOTH the DXF and the
+    // DWG style contexts, so the in-place text editor preserves the
+    // original entity font on commit regardless of whether the source was
+    // loaded via load_dxf or load_dwg. Without the DWG fallback every
+    // edited text in a DWG drawing fell back to the Hershey stroke font
+    // (the user-visible "wrong default font" bug after Enter).
+    let mut tried: Vec<String> = Vec::with_capacity(3);
     if !et.font_path.is_empty() {
+        let edit_dbg = std::env::var_os("O2D_TEXT_EDIT_DBG").is_some();
+        if edit_dbg {
+            eprintln!("[text-edit] tessellate_text: font_path={:?} kind={:?}",
+                et.font_path, et.kind);
+        }
         // Direct font-file path: when font_path looks like an actual
-        // ttf/otf/ttc file (Task 7 use), try it first. resolve_font_file
-        // returns Some(...) only for known font extensions.
+        // ttf/otf/ttc file, try it first. resolve_font_file returns
+        // Some(...) only for known font extensions.
         if crate::ttf_font::resolve_font_file(&et.font_path).is_some() {
             tried.push(et.font_path.clone());
         }
-        // STYLE-name lookup: match the DXF wrapper's logic — apply the
-        // weighted-variant remap, then the primary font file unchanged.
+        // DXF STYLE-name lookup: apply the weighted-variant remap, then
+        // the primary font file unchanged.
         if let Some(info) = dxf_style_lookup(&et.font_path) {
             let weighted = resolve_weighted_font_file(&info.primary_font_file, &info.style_name);
             if weighted != info.primary_font_file
@@ -2922,6 +2943,35 @@ pub(crate) fn tessellate_text(
             {
                 tried.push(info.primary_font_file.clone());
             }
+        }
+        // DWG STYLE-name lookup (by-name only — no handle available at
+        // edit time). Mirrors `render_dwg_text`'s resolution chain so
+        // edited DWG text keeps its original font instead of falling
+        // back to stroke / arial. The DWG_STYLE_CTX outlives load_dwg
+        // because it's a thread_local, so this works at edit time.
+        if let Some(info) = dwg_lookup_style(None, Some(&et.font_path)) {
+            let weighted = resolve_weighted_font_file(&info.primary_font_file, &info.style_name);
+            if weighted != info.primary_font_file
+                && crate::ttf_font::resolve_font_file(&weighted).is_some()
+                && !tried.iter().any(|s| s.eq_ignore_ascii_case(&weighted))
+            {
+                tried.push(weighted);
+            }
+            if !info.primary_font_file.is_empty()
+                && crate::ttf_font::resolve_font_file(&info.primary_font_file).is_some()
+                && !tried.iter().any(|s| s.eq_ignore_ascii_case(&info.primary_font_file))
+            {
+                tried.push(info.primary_font_file.clone());
+            }
+        }
+        // Last-chance arial fallback so DWG-loaded text without resolvable
+        // STYLE still renders with FILLED glyphs (matching render_dwg_text's
+        // tail at ~line 2767), not stroke outlines.
+        if !tried.iter().any(|s| s.eq_ignore_ascii_case("arial.ttf")) {
+            tried.push("arial.ttf".to_string());
+        }
+        if edit_dbg {
+            eprintln!("[text-edit] tessellate_text: tried={:?}", tried);
         }
     }
 
@@ -4217,6 +4267,8 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     let mut layer_colors_ordered: Vec<u32> = vec![0xFFFFFFFF];
     let mut layer_name_to_idx: HashMap<String, u16> = HashMap::new();
     layer_name_to_idx.insert("0".to_string(), 0);
+    let dwg_layer_color_dbg = std::env::var("O2D_LAYER_COLOR_DBG").is_ok();
+    let mut dwg_layer_idx_dbg = 0usize;
     for o in &file.objects {
         if o.type_name != "LAYER" { continue; }
         let name = match o.data.get("name").and_then(|v| v.as_str()) {
@@ -4235,6 +4287,11 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
             layer_names_ordered.push(name.clone());
             layer_colors_ordered.push(rgba);
             layer_name_to_idx.insert(up, idx);
+        }
+        if dwg_layer_color_dbg {
+            eprintln!("[LAYER] DWG src=DWG idx={} name={:?} raw_color={} aci={} rgba=0x{:08x}",
+                dwg_layer_idx_dbg, name, col, aci, rgba);
+            dwg_layer_idx_dbg += 1;
         }
     }
 
