@@ -355,6 +355,26 @@ impl<'a> DwgBitReader<'a> {
     /// state historically signalled via negative index is preserved by
     /// callers that want it via the sign of the original BL.
     pub fn read_cmc_r2004(&mut self, is_unicode: bool) -> Result<i16, DwgError> {
+        Ok(self.read_cmc_r2004_full(is_unicode)?.0)
+    }
+
+    /// Same decode as `read_cmc_r2004` but returns extra information for
+    /// callers that need to look up the actual ACI from a Color-handle
+    /// reference in the handle stream (ODA §2.11 + §20.4.53 LAYER):
+    ///
+    /// Returns `(aci, raw_bs, sentinel)` where:
+    ///   * `aci`        — the decoded ACI (palette index 0..255 or 256
+    ///                    for ByLayer); see body below for fallback rules.
+    ///   * `raw_bs`     — the raw BS color_value before any sentinel
+    ///                    interpretation (passed through for diagnostics).
+    ///   * `sentinel`   — true when either nibble of the BS held a
+    ///                    method-sentinel byte (0xC0..0xC8). When set,
+    ///                    the on-disk encoding indicates a method form
+    ///                    and the actual ACI may need to be resolved
+    ///                    via a Color object handle in the handle stream.
+    pub fn read_cmc_r2004_full(&mut self, is_unicode: bool)
+        -> Result<(i16, i16, bool), DwgError>
+    {
         // Per libredwg `bit_read_ENC` / `bit_read_CMC` (src/bits.c) for R2004+
         // table-object CMC fields (LAYER, MLINESTYLE, etc.), the on-disk
         // layout is:
@@ -427,16 +447,22 @@ impl<'a> DwgBitReader<'a> {
         // CP-21 fixture (AC1024 / R2010): clean-ACI layers have no trailing
         // RC; sentinel-form layers do.
         let has_sentinel = high_is_sentinel || low_is_sentinel || bs_raw < 0 || bs_raw > 255;
+        // Per ODA §2.11 (CmColor) for R2004+ table-object CMCs the RC
+        // color_byte_flag is read only when the BS held a method-sentinel
+        // form (0xC0..0xC8). Reading it for clean-ACI layers shifts the
+        // cursor 8 bits forward and breaks downstream alignment of
+        // post-color LAYER body fields and the handle-stream end position.
+        // Empirically verified on the 3bm Funderingsherstel CP-21 fixture
+        // (AC1024 / R2010): always-RC builds left a `c3 00` window in
+        // post-color hex, but that's actually content of the next post-
+        // CMC field, not a CMC RC. Sentinel-only RC keeps the handle
+        // stream `hs_size_bits=78` accounting consistent for every layer.
         let mut color_byte_flag: u8 = 0;
         if has_sentinel {
-            // Consume color_byte_flag (RC). Errors are non-fatal here —
-            // a short body is more likely than a real I/O failure.
             color_byte_flag = self.read_byte().unwrap_or(0);
-            // R2007+ TVs live in the string stream (read_tv handles that
-            // transparently via the string-stream pointer). For older
-            // versions the TVs are inline. If the spec ever needs the
-            // names we should consume them here; for now we don't expose
-            // them upstream so just discard.
+            // R2007+ TVs live in the string stream (read_tv handles
+            // that transparently via the string-stream pointer). For
+            // older versions the TVs are inline.
             if (color_byte_flag & 0x01) != 0 {
                 let _ = self.read_tv(is_unicode);
             }
@@ -476,7 +502,7 @@ impl<'a> DwgBitReader<'a> {
         };
 
         let _ = color_byte_flag; // currently unused — kept for future TV decode
-        Ok(aci)
+        Ok((aci, bs_raw, has_sentinel))
     }
 
     /// Read an Extended NamedColor (ENC) as used by R2004+ entities.

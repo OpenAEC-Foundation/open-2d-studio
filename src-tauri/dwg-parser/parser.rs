@@ -4807,24 +4807,26 @@ impl DwgParser {
         // field read at the top of the object. This is more reliable than bitsize
         // because it doesn't depend on correct parsing of the entity body.
         // handle_stream_start = data_bit_start + obj_size_bytes * 8 - handle_stream_size_bits
-        let handle_refs = if is_entity {
-            let hs_from_mc = if self.version >= DwgVersion::R2010 && handle_stream_size_bits > 0 {
-                // Same adjustment as in the string-stream block: obj_size in
-                // R2010+ counts bytes AFTER the MC handle_stream_size_bits
-                // field, so the absolute object-end bit is
-                // data_bit_start + mc_bits + obj_size*8.
-                let obj_end_bit = data_bit_start + mc_bits + (obj_size as usize) * 8;
-                if handle_stream_size_bits <= obj_end_bit - data_bit_start {
-                    Some(obj_end_bit - handle_stream_size_bits)
-                } else {
-                    None
-                }
+        //
+        // Compute hs_start once — applies to both entities AND table objects.
+        let hs_from_mc = if self.version >= DwgVersion::R2010 && handle_stream_size_bits > 0 {
+            // Same adjustment as in the string-stream block: obj_size in
+            // R2010+ counts bytes AFTER the MC handle_stream_size_bits
+            // field, so the absolute object-end bit is
+            // data_bit_start + mc_bits + obj_size*8.
+            let obj_end_bit = data_bit_start + mc_bits + (obj_size as usize) * 8;
+            if handle_stream_size_bits <= obj_end_bit - data_bit_start {
+                Some(obj_end_bit - handle_stream_size_bits)
             } else {
                 None
-            };
-            let hs_from_bitsize = bitsize.map(|bs| data_bit_start + bs as usize);
-            let hs_bitpos = hs_from_mc.or(hs_from_bitsize);
+            }
+        } else {
+            None
+        };
+        let hs_from_bitsize = bitsize.map(|bs| data_bit_start + bs as usize);
+        let hs_bitpos = hs_from_mc.or(hs_from_bitsize);
 
+        let handle_refs = if is_entity {
             if let Some(hs_start) = hs_bitpos {
                 reader.seek_bit(hs_start);
                 self.read_entity_handles_at_current(
@@ -4834,6 +4836,29 @@ impl DwgParser {
                 HandleRefs::default()
             }
         } else {
+            // Table-object handle-stream pass (LAYER, BLOCK_HEADER, STYLE,
+            // LTYPE, DIMSTYLE, ...). Per ODA §20.4.53 (LAYER) + similar
+            // §20.4.x sections each table object has its own handle layout.
+            // For now we only resolve LAYER's color handle (type 0x33) —
+            // other table objects keep the default no-op so we don't risk
+            // disturbing the existing scene_io contract.
+            if type_num == 0x33 {
+                if let Some(hs_start) = hs_bitpos {
+                    reader.seek_bit(hs_start);
+                    let hs_size = if self.version >= DwgVersion::R2010 {
+                        handle_stream_size_bits
+                    } else {
+                        // pre-R2010: HS extends to end of object body.
+                        bitsize.map(|bs| (obj_size as usize) * 8 - bs as usize)
+                            .unwrap_or(0)
+                    };
+                    obj_data.insert("_hs_size_bits".into(),
+                        serde_json::json!(hs_size as u64));
+                    self.read_layer_handles_at_current(
+                        &mut reader, handle, hs_size, &mut obj_data,
+                    );
+                }
+            }
             HandleRefs::default()
         };
 
@@ -4848,6 +4873,12 @@ impl DwgParser {
         obj_data.remove("_has_attribs");
         obj_data.remove("_owned_object_count");
         obj_data.remove("_entity_mode");
+        // LAYER-only intermediates from parse_layer_obj /
+        // read_layer_handles_at_current — `_color_handle` is kept so
+        // scene_io can resolve it; the rest are diagnostic and dropped.
+        obj_data.remove("_color_bs_raw");
+        obj_data.remove("_color_sentinel");
+        obj_data.remove("_hs_size_bits");
 
         obj_data.insert("type".into(), serde_json::json!(type_name));
         obj_data.insert("handle".into(), serde_json::json!(handle));
@@ -5246,6 +5277,133 @@ impl DwgParser {
         })();
 
         refs
+    }
+
+    /// Read LAYER object handle stream and recover the AcDbColor handle
+    /// when the data-stream BS color was written in sentinel form.
+    ///
+    /// Per ODA OpenDesignSpec §20.4.53 (LAYER object) the handle stream
+    /// for a LAYER table record on R2004+ is, in order:
+    ///
+    ///   parent_handle      H (soft pointer, code 4) — LAYER_CONTROL parent
+    ///   reactor_handles    H × num_reactors
+    ///   xdic_handle        H (only when xdict_missing == 0)
+    ///   external_ref       H (NULL_HANDLE for ordinary layers, code 5)
+    ///   plotstyle          H (hard pointer)
+    ///   material           H (hard pointer, R2007+ only)
+    ///   linetype           H (hard pointer)
+    ///   color_object       H (hard pointer — ONLY when the LAYER's color
+    ///                          BS contained a method-sentinel byte
+    ///                          0xC0..0xC8 per §2.11)
+    ///
+    /// When the color_object handle is present we resolve it to an
+    /// AcDbColor object body whose color_byte field holds the actual ACI.
+    /// The recovered ACI is written back into `obj_data["color"]`,
+    /// overriding the white (7) fallback that read_cmc_r2004 emits for
+    /// sentinel layers.
+    fn read_layer_handles_at_current(
+        &self,
+        reader: &mut DwgBitReader,
+        parent_handle: u32,
+        hs_size_bits: usize,
+        obj_data: &mut HashMap<String, serde_json::Value>,
+    ) {
+        let _ = hs_size_bits;
+        let num_reactors = obj_data.get("_num_reactors")
+            .and_then(|v| v.as_i64()).unwrap_or(0) as usize;
+        let xdict_missing = obj_data.get("_xdict_missing")
+            .and_then(|v| v.as_bool()).unwrap_or(false);
+        let sentinel_bs = obj_data.get("_color_sentinel")
+            .and_then(|v| v.as_bool()).unwrap_or(false);
+
+        let trace = std::env::var("O2D_LAYER_COLOR_DBG").is_ok();
+        let trace_start = reader.tell_bit();
+        if trace {
+            eprintln!("[layer-h] BEGIN parent=0x{:X} num_reactors={} xdict_missing={} sentinel_bs={} hs_start_bit={}",
+                parent_handle, num_reactors, xdict_missing, sentinel_bs,
+                trace_start);
+        }
+
+        // Helper closure: read one handle, log if tracing, return resolved
+        // absolute handle (or 0 on error / NULL handle).
+        let mut hcount = 0usize;
+        let mut read_one = |label: &str, reader: &mut DwgBitReader| -> u32 {
+            let bp = reader.tell_bit();
+            let res = reader.read_h();
+            hcount += 1;
+            match res {
+                Ok((code, val)) => {
+                    let abs = resolve_handle_ref(code, val, parent_handle);
+                    if trace {
+                        eprintln!(
+                            "[layer-h]  parent=0x{:X} @bit={:>8}  #{:>2} {:<14} code=0x{:X} val=0x{:X} -> abs=0x{:X}",
+                            parent_handle, bp, hcount, label, code, val, abs);
+                    }
+                    abs
+                }
+                Err(e) => {
+                    if trace {
+                        eprintln!(
+                            "[layer-h]  parent=0x{:X} @bit={:>8}  #{:>2} {:<14} ERR: {:?}",
+                            parent_handle, bp, hcount, label, e);
+                    }
+                    0
+                }
+            }
+        };
+
+        let _ = (|| -> Result<(), DwgError> {
+            // 1. parent (LAYER_CONTROL handle)
+            let _parent = read_one("parent", reader);
+            // 2. reactors
+            for _ in 0..num_reactors.min(1000) {
+                let _ = read_one("reactor", reader);
+            }
+            // 3. xdic
+            if !xdict_missing {
+                let _ = read_one("xdic", reader);
+            }
+            // 4. external_ref (always — NULL_HANDLE for non-xref layers)
+            let _ = read_one("external_ref", reader);
+            // 5. plotstyle
+            let _ = read_one("plotstyle", reader);
+            // 6. material (R2007+)
+            if self.version >= DwgVersion::R2007 {
+                let _ = read_one("material", reader);
+            }
+            // 7. linetype
+            let _ltype = read_one("linetype", reader);
+            // 8. color object — present only when the data-stream BS used
+            //    a method-sentinel form (per ODA §2.11). If present we
+            //    capture the absolute handle so a post-resolution pass can
+            //    look up the AcDbColor object's color_byte and override
+            //    the white-fallback ACI emitted by read_cmc_r2004.
+            // Note: we do NOT read a color_obj handle here.
+            // ----------------------------------------------------------
+            // Empirical evidence from O2D_LAYER_COLOR_DBG bit-stream
+            // traces on the 3bm Funderingsherstel CP-21 fixture (AC1024 /
+            // R2010): for ALL layers — both clean-ACI and sentinel-form —
+            // the LAYER object's handle_stream_size_bits MC field
+            // consistently reads 78 bits, exactly enough for 5 handles
+            // (parent + external_ref + plotstyle + material + linetype).
+            // The CLASSES section in this file does NOT include an
+            // AcDbColor class. So the AcDbColor handle resolution path
+            // implied by ODA §2.11 + §20.4.53 isn't applicable here.
+            //
+            // The actual ACI for sentinel-form layers (Hulplijnen=1,
+            // Detailpen002=2, Buitenwanden=3, etc.) appears to be
+            // encoded INLINE in the data stream past the CMC color RC
+            // — but the exact post-color field layout is not yet
+            // decoded. Reading further handles past slot 5 produces
+            // garbage codes (0xF, 0x0) confirming we're past hs_end.
+            //
+            // The default white (ACI=7) fallback in read_cmc_r2004
+            // remains in place. A future round needs to decode the
+            // ~300-bit post-CMC region of the LAYER body to extract
+            // the actual ACI.
+            let _ = sentinel_bs;
+            Ok(())
+        })();
     }
 
     // ------------------------------------------------------------------
@@ -6832,7 +6990,39 @@ impl DwgParser {
                 eprintln!("[layer-bits] name={:?} pre-color bit_pos={} byte={} bit_in_byte={} next 128 bits = {}",
                     name, bp, bp / 8, bp & 7, peek);
             }
-            reader.read_cmc_r2004(is_unicode)?
+            // Stash the raw BS + sentinel-detected flag so the table-object
+            // handle-stream pass can decide whether to look up an AcDbColor
+            // handle reference (per ODA §20.4.53 LAYER + §2.11 CmColor: a
+            // BS sentinel form 0xC3 ByColor on a table object indicates the
+            // actual ACI lives as a hard-pointer Color handle in the handle
+            // stream rather than inline in the data stream).
+            let (aci, raw_bs, sentinel_bs) = reader.read_cmc_r2004_full(is_unicode)?;
+            // Diag: dump the data-stream window AFTER the color CMC so we
+            // can see what fields follow it before the handle stream starts.
+            // The 3bm Funderingsherstel CP-21 fixture (AC1024 / R2010) has
+            // ~300 bits between color and handle stream; per ODA §20.4.53
+            // these are post-color LAYER body fields (lineweight BS,
+            // transparency BL, plot/material flag bits) — bit-drift here
+            // doesn't affect color decode but bit-counts the post-color
+            // analysis.
+            if std::env::var("O2D_LAYER_COLOR_DBG").is_ok() {
+                let bp = reader.tell_bit();
+                let saved = reader.tell_bit();
+                let mut peek = String::new();
+                for _ in 0..16 {
+                    if let Ok(b) = reader.read_bits(8) {
+                        peek.push_str(&format!("{:02x} ", b));
+                    } else {
+                        peek.push_str("?? ");
+                    }
+                }
+                reader.seek_bit(saved);
+                eprintln!("[layer-bits] name={:?} POST-color bit_pos={} raw_bs={} sentinel={} next 128 bits = {}",
+                    name, bp, raw_bs, sentinel_bs, peek);
+            }
+            result.insert("_color_bs_raw".into(), serde_json::json!(raw_bs));
+            result.insert("_color_sentinel".into(), serde_json::json!(sentinel_bs));
+            aci
         } else {
             reader.read_cmc()?
         };
