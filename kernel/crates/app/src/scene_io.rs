@@ -3492,6 +3492,32 @@ fn tessellate_dxf_entity(
                 };
                 if !text.is_empty() && world_origin[0].is_finite() && world_origin[1].is_finite() {
                     render_dxf_text(&text, &m.text_style_name, world_origin, h_world, rot, color, anchor, style_map, segments, triangles, bbox);
+                    // Capture raw MTEXT payload for the in-place editor.
+                    // Mirrors the TEXT branch: only the top-level entity
+                    // loop passes Some(...); INSERT child recursion passes
+                    // None to avoid double-writes. We store `decoded` (i.e.
+                    // post-`\U+XXXX`/`%%c`/`%%d`/`%%p` decode) so the
+                    // editor sees real Unicode codepoints, but we DO keep
+                    // MTEXT formatting codes (`\fArial|b1;`, `\P`, `^I`,
+                    // `{...}` groupings) intact — the editor needs those
+                    // for round-trip fidelity. font_path stores the STYLE
+                    // name; re-tessellation re-resolves it via style_map.
+                    if let Some(et_out) = entity_text_out {
+                        let idx = entity_idx_for_text as usize;
+                        if idx < et_out.len() {
+                            et_out[idx] = Some(EntityText {
+                                raw: decoded,
+                                anchor: world_origin,
+                                height: h_world,
+                                rotation: rot,
+                                font_path: m.text_style_name.clone(),
+                                bold: false,
+                                italic: false,
+                                attachment: anchor,
+                                kind: TextKind::MText,
+                            });
+                        }
+                    }
                 }
                 counts[5] += 1;
             }
