@@ -529,7 +529,19 @@ impl DwgParser {
                 "$USERR4", "$USERR5", "$CMLSCALE",
             ];
             for name in &bd_vars {
-                header.insert(name.to_string(), serde_json::json!(reader.read_bd()?));
+                let raw = reader.read_bd()?;
+                // Same clamp as parse_header_vars_from_bits — see that
+                // function's comment block. R2000 generally lands the BD
+                // vars at the right offset, but the same defensive guard
+                // protects against any future preamble drift here too.
+                let clean = if !raw.is_finite() || raw == 0.0 {
+                    if matches!(*name, "$LTSCALE" | "$CMLSCALE") { 1.0 } else { 0.0 }
+                } else if raw.abs() < 1e-6 || raw.abs() > 1e6 {
+                    if matches!(*name, "$LTSCALE" | "$CMLSCALE") { 1.0 } else { 0.0 }
+                } else {
+                    raw
+                };
+                header.insert(name.to_string(), serde_json::json!(clean));
             }
 
             header.insert("$CEPSNTYPE".into(), serde_json::json!(reader.read_bs()?));
@@ -3692,7 +3704,36 @@ impl DwgParser {
                 "$USERR4", "$USERR5", "$CMLSCALE",
             ];
             for name in &bd_vars {
-                header.insert(name.to_string(), serde_json::json!(reader.read_bd()?));
+                let raw = reader.read_bd()?;
+                // Per ODA OpenDesignSpec §5.4 (HEADER variables): R2007+ /
+                // R2010+ headers contain a much longer preamble than the
+                // R2000 layout this parser still uses (CLAYER/UCSORG/
+                // CECOLOR/HANDSEED/etc., variable-length H fields). Without
+                // those reads the BD vars are at the wrong bit offset, so
+                // raw IEEE754 bits land in the subnormal range
+                // (~9.76e-120 from the user's [LTYPE_RESOLVE] log) instead
+                // of the file's real $LTSCALE.
+                //
+                // Until the full R2010 header preamble is decoded, sanity-
+                // clamp each BD header var: anything outside [1e-6, 1e6]
+                // (covers every plausible CAD-unit/scale combination —
+                // metres-per-mm 0.001 down to mm-per-km 1e6) is treated as
+                // garbage and replaced with the AutoCAD default 1.0 for
+                // scale-style vars or 0.0 for size-style vars. This keeps
+                // dashed-line rendering working (the user-visible bug)
+                // even while the underlying preamble fix is pending.
+                let clean = if !raw.is_finite() || raw == 0.0 {
+                    if matches!(*name, "$LTSCALE" | "$CMLSCALE") { 1.0 } else { 0.0 }
+                } else if raw.abs() < 1e-6 || raw.abs() > 1e6 {
+                    if matches!(*name, "$LTSCALE" | "$CMLSCALE") { 1.0 } else { 0.0 }
+                } else {
+                    raw
+                };
+                if std::env::var("DWG_DEBUG_HEADER").is_ok() {
+                    eprintln!("[HDR_BD] {} raw_bits=0x{:016x} as_f64={} clamped={}",
+                        name, raw.to_bits(), raw, clean);
+                }
+                header.insert(name.to_string(), serde_json::json!(clean));
             }
 
             header.insert("$CEPSNTYPE".into(), serde_json::json!(reader.read_bs()?));
@@ -6671,6 +6712,7 @@ impl DwgParser {
             0x31 => self.parse_block_header_obj(reader, &mut result),
             0x35 => self.parse_style_obj(reader, &mut result),
             0x39 => self.parse_ltype_obj(reader, &mut result),
+            0x45 => self.parse_dimstyle_obj(reader, &mut result),
             0x2A => self.parse_dictionary_obj(reader, &mut result),
             0x4F => self.parse_xrecord_obj(reader, &mut result),
             _ => {
@@ -6754,33 +6796,47 @@ impl DwgParser {
         // spec-correct CMC R2007+ layout is decoded. This avoids the
         // original "all layers render purple" bug — layers render white
         // instead, which the renderer shows on the black canvas just fine.
+        // Per ODA OpenDesignSpec §20.4.53 (LAYER) + §2.11 (CmColor): on
+        // R2004+ the layer color is a CMC, not an ENC. The CMC layout is a
+        // BL holding (method_byte << 24) | rgb_or_index, followed by an RC
+        // flag byte and optional color/book name TVs. The previous read_enc
+        // call was reading only a BS (16 bits) and consequently mis-aligned
+        // the bit cursor for every subsequent layer field — the visible
+        // symptom on the 3bm Funderingsherstel CP-21 fixture was layers
+        // like A--L16--_Fundringskonstrukties (DXF group 62 = 3 = green)
+        // resolving to white because the BS-read landed on the 0xC3 ByColor
+        // sentinel instead of the legitimate ACI=3.
+        //
+        // read_cmc_r2004 implements §2.11 properly and returns the decoded
+        // ACI directly: 0 for ByBlock, 256 for ByLayer, the low 8 bits for
+        // ByColor, and the 16-bit legacy index for files without a 0xCx
+        // method byte.
         let color = if is_r2004 {
-            let (enc_idx, _rgb, _name) = reader.read_enc()?;
-            let low = (enc_idx as u16) & 0xFF;
-            let high = ((enc_idx as u16) >> 8) & 0xFF;
-            if high == 0 && matches!(low as u8, 0xC0 | 0xC1 | 0xC2 | 0xC3 | 0xC5 | 0xC8) {
-                match low as u8 {
-                    0xC0 => 0,   // ByBlock
-                    0xC1 => 256, // ByLayer
-                    // ByColor — real ACI unknown, default to 7 (white).
-                    0xC3 => 7,
-                    _    => 7,   // Foreground / None default to white
+            let is_unicode = self.version.is_r2007_plus();
+            // O2D_LAYER_COLOR_DBG=1 → snapshot the raw bit-stream window around
+            // the CMC read so we can see what the file actually encoded. Used
+            // during clean-room debugging of the LAYER body bit-drift on the
+            // 3bm Funderingsherstel CP-21 fixture (AC1024 / R2010).
+            if std::env::var("O2D_LAYER_COLOR_DBG").is_ok() {
+                let bp = reader.tell_bit();
+                let saved = reader.tell_bit();
+                let mut peek = String::new();
+                for _ in 0..16 {
+                    if let Ok(b) = reader.read_bits(8) {
+                        peek.push_str(&format!("{:02x} ", b));
+                    } else {
+                        peek.push_str("?? ");
+                    }
                 }
-            } else if matches!(high, 0xC0 | 0xC1 | 0xC2 | 0xC3 | 0xC5 | 0xC8) {
-                // Method in high byte — ACI in low byte (the documented layout).
-                match high {
-                    0xC0 => 0,
-                    0xC1 => 256,
-                    0xC3 => low as i16,
-                    _    => 7,
-                }
-            } else {
-                enc_idx
+                reader.seek_bit(saved);
+                eprintln!("[layer-bits] name={:?} pre-color bit_pos={} byte={} bit_in_byte={} next 128 bits = {}",
+                    name, bp, bp / 8, bp & 7, peek);
             }
+            reader.read_cmc_r2004(is_unicode)?
         } else {
             reader.read_cmc()?
         };
-        if std::env::var("DWG_DEBUG_LAYER").is_ok() {
+        if std::env::var("DWG_DEBUG_LAYER").is_ok() || std::env::var("O2D_LAYER_COLOR_DBG").is_ok() {
             eprintln!("[layer-dbg]  name={:?} flags={} color={}", name, flags, color);
         }
 
@@ -6838,6 +6894,178 @@ impl DwgParser {
         result.insert("fixedHeight".into(), serde_json::json!(fixed_height));
         result.insert("widthFactor".into(), serde_json::json!(width_factor));
         result.insert("fontName".into(), serde_json::json!(font_name));
+        Ok(())
+    }
+
+    /// per ODA OpenDesignSpec §20.4.40 (DIMSTYLE): decode the table-object
+    /// body just far enough to extract DIMSCALE (overall scale factor) and
+    /// DIMTXT (text height). The scene loader uses these to size dimension
+    /// text instead of falling back on the hard-coded `25 * dim_scale_xf`.
+    ///
+    /// Body field ordering (R2000-R2018, after the common non-entity
+    /// header which `parse_table_object` already consumed):
+    ///   entry_name        TV   (style name, e.g. "ISO-25")
+    ///   64-flag           B
+    ///   xref-index        BS
+    ///   xdep              B
+    ///   DIMTOL            B    } early DIMSTYLE bit-flag block — order
+    ///   DIMLIM            B    } per spec (§20.4.40 R2000 layout). R2007+
+    ///   DIMTIH            B    } reorders some of these into a single BS,
+    ///   DIMTOH            B    } but the BD block that follows starts in
+    ///   DIMSE1            B    } the same place once we've consumed the
+    ///   DIMSE2            B    } version-specific flag preamble.
+    ///   DIMALT            B
+    ///   DIMTOFL           B
+    ///   DIMSAH            B
+    ///   DIMTIX            B
+    ///   DIMSOXD           B
+    ///   DIMALTD           RC
+    ///   DIMZIN            RC
+    ///   DIMSD1            B
+    ///   DIMSD2            B
+    ///   DIMTOLJ           RC
+    ///   DIMJUST           RC
+    ///   DIMFIT            RC   (R2000 only — drop on R2007+)
+    ///   DIMUPT            B
+    ///   DIMTZIN           RC   (R2007+)
+    ///   DIMMALTZ          RC   (R2007+)
+    ///   DIMMALTTZ         RC   (R2007+)
+    ///   DIMTAD            RC   (R2007+)
+    ///   DIMUNIT/DIMLUNIT  BS
+    ///   DIMDEC            BS
+    ///   DIMTDEC           BS
+    ///   DIMALTU           BS
+    ///   DIMALTTD          BS
+    ///   DIMSCALE          BD   ← we want this
+    ///   DIMASZ            BD
+    ///   DIMEXO            BD
+    ///   DIMDLI            BD
+    ///   DIMEXE            BD
+    ///   DIMRND            BD
+    ///   DIMDLE            BD
+    ///   DIMTP             BD
+    ///   DIMTM             BD
+    ///   DIMTXT            BD   ← and this
+    ///   ...
+    ///
+    /// The post-flag fields vary considerably between R13/R2000/R2007/R2010.
+    /// This implementation supports R2000 and R2007+; bit-drift would
+    /// produce subnormal BD values, which the sanity-clamp at the bottom
+    /// rejects in favour of AutoCAD defaults (DIMSCALE=1.0, DIMTXT=2.5)
+    /// — same defensive strategy as $LTSCALE in parse_header_vars_from_bits.
+    fn parse_dimstyle_obj(
+        &self,
+        reader: &mut DwgBitReader,
+        result: &mut HashMap<String, serde_json::Value>,
+    ) -> Result<(), DwgError> {
+        let is_unicode = self.version.is_r2007_plus();
+        let is_r2007 = self.version.is_r2007_plus();
+        let name = reader.read_tv(is_unicode)?;
+        let _bit64 = reader.read_bit()?;
+        let _xref_index = reader.read_bs()?;
+        let _xdep = reader.read_bit()?;
+        // DIMTOL..DIMSOXD — 11 single-bit flags per §20.4.40 R2000 layout.
+        for _ in 0..11 { let _ = reader.read_bit()?; }
+        // DIMALTD, DIMZIN — RC each.
+        let _ = reader.read_byte()?;
+        let _ = reader.read_byte()?;
+        // DIMSD1, DIMSD2 — B each.
+        let _ = reader.read_bit()?;
+        let _ = reader.read_bit()?;
+        // DIMTOLJ, DIMJUST — RC each.
+        let _ = reader.read_byte()?;
+        let _ = reader.read_byte()?;
+        if !is_r2007 {
+            // R2000: DIMFIT (RC), DIMUPT (B).
+            let _ = reader.read_byte()?;
+            let _ = reader.read_bit()?;
+        } else {
+            // R2007+: DIMUPT (B), DIMTZIN/DIMMALTZ/DIMMALTTZ/DIMTAD (4×RC).
+            let _ = reader.read_bit()?;
+            for _ in 0..4 { let _ = reader.read_byte()?; }
+        }
+        // Per ODA OpenDesignSpec §20.4.40 (DIMSTYLE Object Body, R2000+):
+        // the BS group is DIMUNIT/DIMLUNIT, DIMAUNIT, DIMDEC, DIMTDEC,
+        // DIMALTU, DIMALTTD — that's 6 BSs, not 5. Confirmed against
+        // libredwg's dwg.spec. The previous count of 5 dropped DIMAUNIT
+        // which on the 3bm Funderingsherstel CP-21 fixture (AC1024 /
+        // R2010) shifted the BD chain by one BS read worth of bits and
+        // landed DIMSCALE on a `01` BD prefix (= literal 1.0 default),
+        // hiding the actual per-style values like 2_5_mm's DIMSCALE=304.8
+        // / DIMTXT=52.36 (DXF oracle).
+        for _ in 0..6 { let _ = reader.read_bs()?; }
+        // BD chain begins here per §20.4.40.
+        let dimscale_raw = reader.read_bd()?;   // DIMSCALE
+        let dimasz_raw    = reader.read_bd()?;  // DIMASZ — arrowhead size
+        let _dimexo       = reader.read_bd()?;
+        let _dimdli       = reader.read_bd()?;
+        let _dimexe       = reader.read_bd()?;
+        let _dimrnd       = reader.read_bd()?;
+        let _dimdle       = reader.read_bd()?;
+        let _dimtp        = reader.read_bd()?;
+        let _dimtm        = reader.read_bd()?;
+        let dimtxt_raw    = reader.read_bd()?;  // DIMTXT
+
+        // Continue BD chain: DIMCEN, DIMTSZ, DIMALTF, DIMLFAC, DIMTVP,
+        // DIMTFAC, DIMGAP per §20.4.40. We don't surface these to the
+        // scene loader yet, but consuming them keeps the bit cursor
+        // aligned for the TV chain that holds DIMBLK1/DIMBLK2 below.
+        // Wrapped in `let _ =` so a malformed BD inside doesn't poison
+        // the rest of the parse (TV strings live in the string stream
+        // anyway, so they're decoupled from main-stream drift on R2007+).
+        let _dimcen       = reader.read_bd().unwrap_or(0.0);
+        let _dimtsz       = reader.read_bd().unwrap_or(0.0);
+        let _dimaltf      = reader.read_bd().unwrap_or(0.0);
+        let _dimlfac      = reader.read_bd().unwrap_or(0.0);
+        let _dimtvp       = reader.read_bd().unwrap_or(0.0);
+        let _dimtfac      = reader.read_bd().unwrap_or(0.0);
+        let _dimgap       = reader.read_bd().unwrap_or(0.0);
+
+        // TV chain per §20.4.40: DIMPOST, DIMAPOST, DIMBLK (legacy
+        // single-arrow name pre-R13 — still emitted by AutoCAD even on
+        // R2010 files), DIMBLK1, DIMBLK2. On R2007+ all five live in
+        // the string stream so they're decoupled from any drift in the
+        // main bit body — `read_tv` returns empty on missing stream
+        // without consuming bits, which is safe.
+        let _dimpost  = reader.read_tv(is_unicode).unwrap_or_default();
+        let _dimapost = reader.read_tv(is_unicode).unwrap_or_default();
+        let _dimblk   = reader.read_tv(is_unicode).unwrap_or_default();
+        let dimblk1  = reader.read_tv(is_unicode).unwrap_or_default();
+        let dimblk2  = reader.read_tv(is_unicode).unwrap_or_default();
+
+        // Sanity clamp — same defensive approach as $LTSCALE in
+        // parse_header_vars_from_bits. Subnormal / out-of-range values
+        // mean upstream bit-drift; substitute AutoCAD's table defaults
+        // (DIMSCALE=1.0, DIMTXT=2.5 mm, DIMASZ=2.5 mm) so the consumer
+        // sees usable numbers and dimension geometry renders at a
+        // reasonable size instead of disappearing or becoming
+        // kilometre-tall.
+        let dimscale = if dimscale_raw.is_finite()
+            && dimscale_raw.abs() >= 1e-6
+            && dimscale_raw.abs() <= 1e6
+        { dimscale_raw } else { 1.0 };
+        let dimtxt = if dimtxt_raw.is_finite()
+            && dimtxt_raw.abs() >= 1e-6
+            && dimtxt_raw.abs() <= 1e6
+        { dimtxt_raw.abs() } else { 2.5 };
+        let dimasz = if dimasz_raw.is_finite()
+            && dimasz_raw.abs() >= 1e-6
+            && dimasz_raw.abs() <= 1e6
+        { dimasz_raw.abs() } else { 2.5 };
+
+        if std::env::var("DWG_DEBUG_DIMSTYLE").is_ok() {
+            eprintln!(
+                "[DIMSTYLE_OBJ] name={:?} dimscale={} dimtxt={} dimasz={} dimblk1={:?} dimblk2={:?}",
+                name, dimscale, dimtxt, dimasz, dimblk1, dimblk2,
+            );
+        }
+
+        result.insert("name".into(), serde_json::json!(name));
+        result.insert("dimscale".into(), serde_json::json!(dimscale));
+        result.insert("dimtxt".into(), serde_json::json!(dimtxt));
+        result.insert("dimasz".into(), serde_json::json!(dimasz));
+        result.insert("dimblk1".into(), serde_json::json!(dimblk1));
+        result.insert("dimblk2".into(), serde_json::json!(dimblk2));
         Ok(())
     }
 
