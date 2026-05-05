@@ -1681,3 +1681,46 @@ two pipelines now agree on text and arrow size.
   TV reads; default dimblk1/dimblk2 to empty per §20.4.40.
 - `kernel/crates/app/src/scene_io.rs` — DimStyleInfo gains `name`
   field; DIMENSION text-render uses name-based annotation scale.
+
+---
+
+## Session 2026-05-05 — Cleanup pass (no behaviour changes)
+
+Atomic refactor pass over the parser crate. Each commit verified
+byte-identical stdout (sans `parse time:`, sorted to neutralise
+HashMap iteration order) on the four canonical fixtures: `pair.dwg`,
+`circle_2010.dwg`, `line_2010.dwg`, `arc_2010.dwg`. Verification
+harness lives at `src-tauri/dwg-parser/.verify.sh` (gitignored —
+local-only because the baseline md5s are captured per-machine).
+
+### Findings still open (carried forward)
+
+- **`best_object_map` lost between pipelines.** The R2010+ retry path
+  in `parse_r2018` keeps the `best_objects` Vec from whichever
+  pipeline parsed the most objects, but the corresponding
+  `best_object_map` is taken from `dwg.object_map` only for the
+  side-effect of clearing the slot — never restored. If the *first*
+  pipeline produces the best object set but a *later* pipeline runs
+  (and clears the map), downstream code that reads `dwg.object_map`
+  for handle→offset lookups loses the link. Currently masked because
+  the RS pipeline almost always produces the best result on the first
+  try and we early-return. See parser.rs SPEC NOTE around L2886 /
+  L2910.
+
+- **`_data_size` in `parse_section_map_r2018`** (r2007.rs L1044). The
+  RLL header field is read but never used as a bound on the per-page
+  data slice — the loop strides by `pe_size` instead. Adding a
+  bound-check candidate for the next round.
+
+- **XOR-decrypted page-header fallback (r2007.rs L223).**
+  Re-introduction gated to AC1032 only after the previous attempt
+  produced 2-of-2³² mask collisions; tracked here so the next
+  AC1032 fixture triage finds the breadcrumb.
+
+- (Carried from §DIMSTYLE 2026-05-05) raw DIMSCALE/DIMTXT/DIMASZ on
+  R2007+ remain mis-aligned by ~148 bits; sanity-clamp + name-based
+  annotation scale workaround in place.
+
+- (Carried from §DIMSTYLE 2026-05-05) DIMBLK1/DIMBLK2 are now empty
+  even for non-default arrowheads (e.g. `_OBLIQUE`). Resolution
+  requires walking the trailing handle stream at positions 343/344.

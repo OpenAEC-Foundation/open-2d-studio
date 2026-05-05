@@ -220,7 +220,7 @@ pub fn read_page_map(
         // NOTE: XOR-decrypted fallback was REMOVED Ã¢â‚¬â€ it produced too many false
         // positives (2-of-2^32 mask collisions made random data look like
         // sec_type Ã¢Ë†Ë† {1, 2}), causing total regression. Team-lead revert.
-        // TODO(insert-expander): re-add under strict version gate (AC1032 only).
+        // SPEC NOTE: re-introduction gated to AC1032 only — see SPEC_NOTES.md "Findings still open".
         if addr < 0x100 || addr + 32 > data.len() { return false; }
         let sec_type = i32::from_le_bytes([
             data[addr], data[addr + 1], data[addr + 2], data[addr + 3],
