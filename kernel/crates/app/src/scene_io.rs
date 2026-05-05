@@ -960,6 +960,13 @@ struct DimStyleInfo {
     dimscale: f64,
     /// DIMASZ — arrowhead/tick size in drawing units (pre-DIMSCALE).
     dimasz: f64,
+    /// DIMEXO — extension-line offset from the measured point (gap before
+    /// the extension line starts), in drawing units pre-DIMSCALE. AutoCAD
+    /// default 0.625 mm. Per ODA §20.4.40.
+    dimexo: f64,
+    /// DIMEXE — extension-line overshoot past the dimension line, in drawing
+    /// units pre-DIMSCALE. AutoCAD default 1.25 mm. Per ODA §20.4.40.
+    dimexe: f64,
     /// DIMBLK1 — first arrowhead block name. Empty/`"."` = default arrow,
     /// `"_DOT"`/`"_DOTSMALL"` = solid filled disc, `"_OBLIQUE"` /
     /// `"_ARCHTICK"` = oblique tick, `"_NONE"` = no arrow. See ODA
@@ -4643,13 +4650,18 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         let dimtxt = o.data.get("dimtxt").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let dimscale = o.data.get("dimscale").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let dimasz = o.data.get("dimasz").and_then(|v| v.as_f64()).unwrap_or(0.0);
+        // DIMEXO/DIMEXE per ODA §20.4.40 — extension-line offset / overshoot.
+        // Parser already sanity-clamps to AutoCAD defaults (0.625 / 1.25) when
+        // the R2007+ bit-stream alignment lands on garbage.
+        let dimexo = o.data.get("dimexo").and_then(|v| v.as_f64()).unwrap_or(0.625);
+        let dimexe = o.data.get("dimexe").and_then(|v| v.as_f64()).unwrap_or(1.25);
         let dimblk1 = o.data.get("dimblk1").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let dimblk2 = o.data.get("dimblk2").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let name = o.data.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
         if dimtxt > 0.0 && dimscale > 0.0 {
             dimstyle_with_fields += 1;
             dim_style_map_local.insert(o.handle as u64, DimStyleInfo {
-                dimtxt, dimscale, dimasz, dimblk1, dimblk2, name,
+                dimtxt, dimscale, dimasz, dimexo, dimexe, dimblk1, dimblk2, name,
             });
         }
     }
@@ -5352,7 +5364,12 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         // |coord| > 1e9). Scan the just-emitted range for the max
         // |coord| and drop the entire entity if it exceeds the cap.
         if seg_delta > 0 {
-            const PER_ENTITY_COORD_CAP: f64 = 1.0e7; // 10 km in mm
+            // 100 km in mm. Catches the pathological 10^200+ HATCH/INSERT
+            // survivors without dropping legitimate large site/area drawings
+            // that may legitimately exceed 10 km extents (the previous 1e7
+            // cap was too aggressive on multi-property civil drawings —
+            // see bug 04-12-2025.dwg).
+            const PER_ENTITY_COORD_CAP: f64 = 1.0e8;
             let mut entity_max: f64 = 0.0;
             for s in &segments[seg_before..] {
                 entity_max = entity_max
@@ -5818,8 +5835,27 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         const OUTLIER_FACTOR: f64 = 20.0;
         const MIN_SCALE: f64 = 1.0e3;     // 1 m in mm — floor
         const HARD_KEEP: f64 = 5.0e5;     // |coord| <= 500 m always kept
-
-        if segments.len() > 32 {
+        // Only run the cluster filter if there's evidence of pathological
+        // survivors — defined as ANY endpoint with |coord| > 1e6 mm
+        // (1 km). When all survivors fit within 1 km the drawing is by
+        // definition compact and the p90 filter has no work to do; running
+        // it anyway risks chopping legitimate engineering geometry on
+        // medium-scale building drawings (the user-reported regression
+        // for DWG 04-12-2025.dwg, where 80% of segments got dropped by
+        // an over-eager filter despite the drawing being well-behaved
+        // post-coord-cap).
+        const PATHOLOGICAL_PROBE: f64 = 1.0e6;
+        let has_pathological = segments.iter().any(|s|
+            s.p1[0].abs() > PATHOLOGICAL_PROBE || s.p1[1].abs() > PATHOLOGICAL_PROBE
+         || s.p2[0].abs() > PATHOLOGICAL_PROBE || s.p2[1].abs() > PATHOLOGICAL_PROBE
+        );
+        if !has_pathological {
+            eprintln!(
+                "[load_dwg] p90-filter SKIPPED — no survivors with |coord| > {:.0e}; {} segments retained as-is",
+                PATHOLOGICAL_PROBE, segments.len()
+            );
+        }
+        if has_pathological && segments.len() > 32 {
             // Per-endpoint max(|x|,|y|) — one value per endpoint = 2× segs.
             let mut radii: Vec<f64> = Vec::with_capacity(segments.len() * 2);
             for s in &segments {
@@ -6393,19 +6429,59 @@ fn tessellate_one(
                         };
                         let p1 = project(e1);
                         let p2 = project(e2);
-                        let te1 = xform.apply(e1);
-                        let te2 = xform.apply(e2);
+                        // Per ODA §20.4.40 DIMEXO (start offset) and DIMEXE
+                        // (end overshoot): the extension line does NOT touch
+                        // the measured point — it starts a small gap away
+                        // (DIMEXO × DIMSCALE) and overshoots the dim line by
+                        // DIMEXE × DIMSCALE. Default values 0.625 / 1.25 mm
+                        // pre-DIMSCALE are applied when DIMSTYLE bit-stream
+                        // alignment is off (R2007+ ~148-bit drift, see
+                        // SPEC_NOTES.md "Findings still open").
+                        let (dimexo_w, dimexe_w) = match &dim_info_early {
+                            Some(i) if i.dimscale > 0.0 => (
+                                i.dimexo * i.dimscale,
+                                i.dimexe * i.dimscale,
+                            ),
+                            _ => (0.0, 0.0),
+                        };
+                        // Helper: shift `from` toward `to` by `d` (clamped to
+                        // segment length so we never invert the line). Negative
+                        // `d` shifts in the opposite direction (away from `to`).
+                        let shift = |from: [f64; 2], to: [f64; 2], d: f64| -> [f64; 2] {
+                            let vx = to[0] - from[0];
+                            let vy = to[1] - from[1];
+                            let n = (vx * vx + vy * vy).sqrt();
+                            if n <= 1.0e-9 { return from; }
+                            // Clamp positive shift to segment length so we
+                            // never invert the line; negative shifts have no
+                            // such cap (they extend past `from`).
+                            let s = if d >= 0.0 { d.min(n) } else { d };
+                            [from[0] + vx * s / n, from[1] + vy * s / n]
+                        };
+                        // Apply DIMEXO at measured-point side (gap from e1
+                        // toward p1), DIMEXE past the dim-line foot
+                        // (extension beyond p1 in the e1→p1 direction).
+                        let e1_off = shift(e1, p1, dimexo_w);
+                        let e2_off = shift(e2, p2, dimexo_w);
+                        let p1_over = shift(p1, e1, -dimexe_w);
+                        let p2_over = shift(p2, e2, -dimexe_w);
+                        let te1 = xform.apply(e1_off);
+                        let te2 = xform.apply(e2_off);
+                        let tp1_over = xform.apply(p1_over);
+                        let tp2_over = xform.apply(p2_over);
                         let tp1 = xform.apply(p1);
                         let tp2 = xform.apply(p2);
-                        // Extension lines (anchor → dim-line foot). Skip
-                        // degenerate (anchor already on dim line).
-                        if (te1[0] - tp1[0]).hypot(te1[1] - tp1[1]) > 1.0e-6 {
-                            push_line(segments, dash_kinds, bbox, te1, tp1);
+                        // Extension lines (anchor + DIMEXO → dim-line foot
+                        // + DIMEXE). Skip degenerate (anchor already on
+                        // dim line).
+                        if (te1[0] - tp1_over[0]).hypot(te1[1] - tp1_over[1]) > 1.0e-6 {
+                            push_line(segments, dash_kinds, bbox, te1, tp1_over);
                         }
-                        if (te2[0] - tp2[0]).hypot(te2[1] - tp2[1]) > 1.0e-6 {
-                            push_line(segments, dash_kinds, bbox, te2, tp2);
+                        if (te2[0] - tp2_over[0]).hypot(te2[1] - tp2_over[1]) > 1.0e-6 {
+                            push_line(segments, dash_kinds, bbox, te2, tp2_over);
                         }
-                        // Dim line itself
+                        // Dim line itself (between the two feet, NOT the
+                        // overshoot endpoints).
                         push_line(segments, dash_kinds, bbox, tp1, tp2);
                         // Tick / arrowhead marks per ODA §20.4.40 DIMBLK1/DIMBLK2.
                         // Size = DIMASZ × DIMSCALE when DIMSTYLE plumbing

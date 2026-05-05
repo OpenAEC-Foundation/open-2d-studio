@@ -7243,9 +7243,9 @@ impl DwgParser {
         // BD chain begins here per §20.4.40.
         let dimscale_raw = reader.read_bd()?;   // DIMSCALE
         let dimasz_raw    = reader.read_bd()?;  // DIMASZ — arrowhead size
-        let _dimexo       = reader.read_bd()?;
+        let dimexo_raw    = reader.read_bd()?;  // DIMEXO — extension-line offset from origin
         let _dimdli       = reader.read_bd()?;
-        let _dimexe       = reader.read_bd()?;
+        let dimexe_raw    = reader.read_bd()?;  // DIMEXE — extension-line overshoot past dim line
         let _dimrnd       = reader.read_bd()?;
         let _dimdle       = reader.read_bd()?;
         let _dimtp        = reader.read_bd()?;
@@ -7265,7 +7265,7 @@ impl DwgParser {
         let _dimlfac      = reader.read_bd().unwrap_or(0.0);
         let _dimtvp       = reader.read_bd().unwrap_or(0.0);
         let _dimtfac      = reader.read_bd().unwrap_or(0.0);
-        let _dimgap       = reader.read_bd().unwrap_or(0.0);
+        let dimgap_raw    = reader.read_bd().unwrap_or(0.0);  // DIMGAP — text-to-dim-line gap
 
         // TV chain per ODA OpenDesignSpec §20.4.40: in R2000+, only DIMPOST
         // and DIMAPOST are TVs in the dimstyle body. DIMBLK/DIMBLK1/DIMBLK2
@@ -7300,6 +7300,26 @@ impl DwgParser {
             && dimasz_raw.abs() >= 1e-6
             && dimasz_raw.abs() <= 1e6
         { dimasz_raw.abs() } else { 2.5 };
+        // DIMEXO/DIMEXE/DIMGAP — same defensive sanity-clamp as above. AutoCAD
+        // table defaults per ODA §20.4.40: DIMEXO=0.625, DIMEXE=1.25, DIMGAP=0.625.
+        // R2007+ bit-stream alignment is still off (~148 bits, see SPEC_NOTES.md
+        // "Findings still open"), so most reads land subnormal and fall back to
+        // these defaults — which is what AutoCAD itself uses for any style that
+        // doesn't override them, and visually correct enough that extension lines
+        // get a proper start gap + tip overshoot rather than terminating exactly
+        // on the measured points.
+        let dimexo = if dimexo_raw.is_finite()
+            && dimexo_raw.abs() >= 1e-6
+            && dimexo_raw.abs() <= 1e6
+        { dimexo_raw.abs() } else { 0.625 };
+        let dimexe = if dimexe_raw.is_finite()
+            && dimexe_raw.abs() >= 1e-6
+            && dimexe_raw.abs() <= 1e6
+        { dimexe_raw.abs() } else { 1.25 };
+        let dimgap = if dimgap_raw.is_finite()
+            && dimgap_raw.abs() >= 1e-6
+            && dimgap_raw.abs() <= 1e6
+        { dimgap_raw.abs() } else { 0.625 };
 
         if std::env::var("DWG_DEBUG_DIMSTYLE").is_ok() {
             eprintln!(
@@ -7312,6 +7332,9 @@ impl DwgParser {
         result.insert("dimscale".into(), serde_json::json!(dimscale));
         result.insert("dimtxt".into(), serde_json::json!(dimtxt));
         result.insert("dimasz".into(), serde_json::json!(dimasz));
+        result.insert("dimexo".into(), serde_json::json!(dimexo));
+        result.insert("dimexe".into(), serde_json::json!(dimexe));
+        result.insert("dimgap".into(), serde_json::json!(dimgap));
         result.insert("dimblk1".into(), serde_json::json!(dimblk1));
         result.insert("dimblk2".into(), serde_json::json!(dimblk2));
         Ok(())
