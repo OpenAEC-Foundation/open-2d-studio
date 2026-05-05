@@ -221,13 +221,18 @@ impl Ribbon {
 
         // --------------------- Title baseline + separators ---------------------
         let title_y = group_rect.bottom() - (rg::TITLE_BAND_H * 0.5);
+        // 1.0 renders group separators as a single 1 px line in
+        // `--theme-border-light` — clearly visible against the brown
+        // strip. Earlier rounds blended border + bg which produced an
+        // almost-invisible line; bump the alpha by lifting toward `fg`.
         let sep_color = {
             let b = palette.border;
-            let g = palette.ribbon_tab_active_bg;
-            egui::Color32::from_rgb(
-                ((b.r() as u16 + g.r() as u16) / 2) as u8,
-                ((b.g() as u16 + g.g() as u16) / 2) as u8,
-                ((b.b() as u16 + g.b() as u16) / 2) as u8,
+            let f = palette.fg;
+            egui::Color32::from_rgba_unmultiplied(
+                ((b.r() as u16 * 2 + f.r() as u16) / 3) as u8,
+                ((b.g() as u16 * 2 + f.g() as u16) / 3) as u8,
+                ((b.b() as u16 * 2 + f.b() as u16) / 3) as u8,
+                160,
             )
         };
         for (i, (g_rect, title)) in group_rects.iter().enumerate() {
