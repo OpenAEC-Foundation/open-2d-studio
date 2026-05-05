@@ -5477,9 +5477,27 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                 if entity_max > PER_ENTITY_COORD_CAP { break; }
             }
             if entity_max > PER_ENTITY_COORD_CAP {
+                // Locate worst-offending segment for diagnostics: which p1/p2
+                // pushed entity_max past the cap. Helps pinpoint whether the
+                // bad coord came from the INSERT's translation or a single
+                // block-internal entity.
+                let mut worst: (f64, [f64; 2], [f64; 2]) = (0.0, [0.0; 2], [0.0; 2]);
+                for s in &segments[seg_before..] {
+                    let m = s.p1[0].abs().max(s.p1[1].abs())
+                        .max(s.p2[0].abs()).max(s.p2[1].abs());
+                    if m > worst.0 { worst = (m, s.p1, s.p2); }
+                }
+                let extra = if obj.type_name == "INSERT" || obj.type_name == "MINSERT" {
+                    let block_name = obj.data.get("blockName").and_then(|v| v.as_str())
+                        .unwrap_or("?");
+                    let block_h = obj.data.get("blockHeaderHandle")
+                        .and_then(|v| v.as_u64()).unwrap_or(0);
+                    format!(" block=\"{}\" blockHandle=0x{:X}", block_name, block_h)
+                } else { String::new() };
                 eprintln!(
-                    "[load_dwg] WARN entity h=0x{:X} type={} max|coord|={:.2e} > {:.0e} — DROPPING all {} segs (likely pathological hatch / corrupt INSERT)",
+                    "[load_dwg] WARN entity h=0x{:X} type={} max|coord|={:.2e} > {:.0e} — DROPPING all {} segs (worst seg p1=[{:.2e},{:.2e}] p2=[{:.2e},{:.2e}]{})",
                     obj.handle, obj.type_name, entity_max, PER_ENTITY_COORD_CAP, seg_delta,
+                    worst.1[0], worst.1[1], worst.2[0], worst.2[1], extra,
                 );
                 segments.truncate(seg_before);
                 if segment_dash_kind.len() > seg_before {
@@ -5943,7 +5961,18 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         // for DWG 04-12-2025.dwg, where 80% of segments got dropped by
         // an over-eager filter despite the drawing being well-behaved
         // post-coord-cap).
-        const PATHOLOGICAL_PROBE: f64 = 1.0e6;
+        // Lowered from 1e6 → 1e5 (100 km) per night-shift corpus inspection
+        // (2026-05-06): bbox-dominated drawings like Nieuwe-toestand 121224
+        // have surviving outliers at 5e5..1e6 — finite, below the previous
+        // 1e6 trigger, but still 10000× larger than the legitimate building
+        // cluster (~50 m). 1e5 is well above any single-building drawing
+        // (typical max site plan: 200×200 m = ±100 m), and the >50%-drop
+        // safety net below still protects multi-km civil/cadastral plans.
+        // ODA reference: per AcDbDimension §20.4.51 and AcDbInsert §20.4.42,
+        // legitimate world coordinates are bounded by the model-space limits
+        // (LIMMAX/LIMMIN); files exceeding 100 km of span almost always
+        // carry decode-misalignment outliers.
+        const PATHOLOGICAL_PROBE: f64 = 1.0e5;
         let has_pathological = segments.iter().any(|s|
             s.p1[0].abs() > PATHOLOGICAL_PROBE || s.p1[1].abs() > PATHOLOGICAL_PROBE
          || s.p2[0].abs() > PATHOLOGICAL_PROBE || s.p2[1].abs() > PATHOLOGICAL_PROBE
