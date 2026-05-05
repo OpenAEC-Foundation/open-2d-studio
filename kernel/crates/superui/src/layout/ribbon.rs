@@ -107,10 +107,13 @@ impl Ribbon {
                         label_color,
                     );
                     // Bottom accent line marks the active non-File tab.
+                    // Inset 4 px from each side and use a 1.5 px stroke so
+                    // the underline reads as a tab marker, not a heavy bar.
                     if is_active && !is_file_special {
                         ui.painter().line_segment(
-                            [trect.left_bottom(), trect.right_bottom()],
-                            egui::Stroke::new(2.0, palette.accent),
+                            [egui::pos2(trect.left() + 4.0, trect.bottom() - 0.5),
+                             egui::pos2(trect.right() - 4.0, trect.bottom() - 0.5)],
+                            egui::Stroke::new(1.5, palette.accent),
                         );
                     }
                     if tresp.clicked() && !is_active {
@@ -218,7 +221,21 @@ impl Ribbon {
         // Pass 2 — overlay the group titles centred along the bottom,
         // and a thin vertical separator between adjacent groups (1.0's
         // Ribbon.css uses `--cad-border` between `.ribbon-group`).
-        let title_y = group_rect.bottom() - 9.0;
+        // Round 8 polish: pull the title baseline 2 px closer to the
+        // bottom edge so it stops crowding the buttons; centre-inset the
+        // separators and soften them by mixing border with bg so they
+        // read as a hairline rather than a hard bar.
+        let title_y = group_rect.bottom() - 7.0;
+        let sep_color = {
+            let b = palette.border;
+            let g = palette.ribbon_tab_active_bg;
+            // 50 % blend toward the body background.
+            egui::Color32::from_rgb(
+                ((b.r() as u16 + g.r() as u16) / 2) as u8,
+                ((b.g() as u16 + g.g() as u16) / 2) as u8,
+                ((b.b() as u16 + g.b() as u16) / 2) as u8,
+            )
+        };
         for (i, (g_rect, title)) in group_rects.iter().enumerate() {
             ui.painter().text(
                 egui::pos2(g_rect.center().x, title_y),
@@ -229,10 +246,13 @@ impl Ribbon {
             );
             if i + 1 < group_rects.len() {
                 let sx = g_rect.right() + 3.0;
+                // Centre-inset the separator: pull it in 12 px from top
+                // and 20 px from bottom so it sits inside the title-row
+                // baseline, matching 1.0's `.ribbon-group + .ribbon-group`.
                 ui.painter().line_segment(
-                    [egui::pos2(sx, group_rect.top() + 4.0),
-                     egui::pos2(sx, group_rect.bottom() - 16.0)],
-                    egui::Stroke::new(1.0, palette.border),
+                    [egui::pos2(sx, group_rect.top() + 12.0),
+                     egui::pos2(sx, group_rect.bottom() - 20.0)],
+                    egui::Stroke::new(1.0, sep_color),
                 );
             }
         }
