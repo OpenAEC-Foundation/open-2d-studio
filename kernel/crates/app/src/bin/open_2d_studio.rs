@@ -1887,6 +1887,10 @@ impl App {
         let mut requested_window_toggle_max = false;
         let mut requested_window_close = false;
         let mut requested_window_drag = false;
+        // Edge-resize for borderless window. Captured inside the egui closure
+        // (we know pointer pos + button press there); applied after the closure
+        // via `Window::drag_resize_window`. See Task 1 / borderless-resize.
+        let mut requested_resize_dir: Option<winit::window::ResizeDirection> = None;
         // Text-editor overlay buttons (Task 10). Set when the user clicks
         // Commit / Cancel in the floating overlay; processed AFTER the
         // egui closure so the &mut self borrow on tabs/edit_mode is free.
@@ -1966,10 +1970,61 @@ impl App {
         let raw_input = gpu.egui_state.take_egui_input(win);
         let mut canvas_rect_logical: Option<egui::Rect> = None;
 
+        // Snapshot for borderless edge-resize. Compute inner-size in logical
+        // px (egui hover_pos is in logical units). Skip detection entirely
+        // when the window is maximised — resizing a maximised window is a
+        // no-op on every platform we ship to.
+        let win_inner_phys = win.inner_size();
+        let win_scale = win.scale_factor() as f32;
+        let win_w_logical = (win_inner_phys.width as f32 / win_scale).max(1.0);
+        let win_h_logical = (win_inner_phys.height as f32 / win_scale).max(1.0);
+        let win_can_resize = !win.is_maximized();
+
         let full_output = gpu.egui_ctx.run(raw_input, |ctx| {
             // Apply the warm-dark superui theme to every widget egui draws
             // this frame. Equivalent to 1.0's [data-theme="default"] tokens.
             apply_theme(ctx, Theme::Default);
+
+            // ---- Borderless edge-resize hot-zones ----------------------
+            // We removed native chrome (`with_decorations(false)`) so the OS
+            // resize-edges are gone. Re-emulate them by detecting a 6 px
+            // perimeter band, painting the right cursor icon, and on
+            // primary-press, asking winit to drive a system-modal resize.
+            if win_can_resize {
+                const EDGE: f32 = 6.0;
+                if let Some(p) = ctx.input(|i| i.pointer.hover_pos()) {
+                    let near_l = p.x <= EDGE;
+                    let near_r = p.x >= win_w_logical - EDGE;
+                    let near_t = p.y <= EDGE;
+                    let near_b = p.y >= win_h_logical - EDGE;
+                    use winit::window::ResizeDirection as RD;
+                    let dir_cursor = if near_t && near_l {
+                        Some((RD::NorthWest, egui::CursorIcon::ResizeNwSe))
+                    } else if near_t && near_r {
+                        Some((RD::NorthEast, egui::CursorIcon::ResizeNeSw))
+                    } else if near_b && near_l {
+                        Some((RD::SouthWest, egui::CursorIcon::ResizeNeSw))
+                    } else if near_b && near_r {
+                        Some((RD::SouthEast, egui::CursorIcon::ResizeNwSe))
+                    } else if near_t {
+                        Some((RD::North, egui::CursorIcon::ResizeVertical))
+                    } else if near_b {
+                        Some((RD::South, egui::CursorIcon::ResizeVertical))
+                    } else if near_l {
+                        Some((RD::West, egui::CursorIcon::ResizeHorizontal))
+                    } else if near_r {
+                        Some((RD::East, egui::CursorIcon::ResizeHorizontal))
+                    } else {
+                        None
+                    };
+                    if let Some((dir, cursor)) = dir_cursor {
+                        ctx.set_cursor_icon(cursor);
+                        if ctx.input(|i| i.pointer.primary_pressed()) {
+                            requested_resize_dir = Some(dir);
+                        }
+                    }
+                }
+            }
 
             // ---- Title bar ------------------------------------------
             // superui::TitleBar paints app icon, title, and Windows-style
@@ -2731,6 +2786,12 @@ impl App {
                 // Best-effort — fails silently if the OS rejects (e.g.
                 // already in another window-manager modal interaction).
                 let _ = w.drag_window();
+            }
+        }
+        if let Some(dir) = requested_resize_dir {
+            if let Some(w) = self.window.as_ref() {
+                // Best-effort — winit returns a Result we deliberately drop.
+                let _ = w.drag_resize_window(dir);
             }
         }
         if let Some(m) = requested_tool_mode {
