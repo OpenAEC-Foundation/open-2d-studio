@@ -132,15 +132,22 @@ impl Ribbon {
                         let lc = tab.id.to_ascii_lowercase();
                         lc == "file" || lc == "files"
                     };
+                    // Match 1.0 `Ribbon.css` line 22: padding 6px 16px,
+                    // font-size 12px, weight 500. We use 32 px horizontal
+                    // padding (≈ 2 × 16) so the click-target matches the
+                    // CSS box.
+                    let font = egui::FontId::proportional(12.0);
                     let label_w = ui.painter().layout_no_wrap(
-                        tab.label.clone(),
-                        egui::FontId::proportional(12.0),
-                        palette.fg,
+                        tab.label.clone(), font.clone(), palette.fg,
                     ).rect.width();
                     let (trect, tresp) = ui.allocate_exact_size(
-                        Vec2::new(label_w + 24.0, tab_h),
+                        Vec2::new(label_w + 32.0, tab_h),
                         Sense::click(),
                     );
+                    // 1.0 active tab uses content-bg fill (blends into
+                    // the strip below); inactive tabs are tab-bg + dim
+                    // text; hover lifts to fg + hover-bg. The File tab is
+                    // a special always-orange affordance.
                     let (bg, label_color) = if is_file_special {
                         let fill = if tresp.hovered() { palette.accent_hover }
                                    else                { palette.accent };
@@ -152,21 +159,20 @@ impl Ribbon {
                     } else {
                         (palette.ribbon_tab_bg, palette.fg_dim)
                     };
-                    ui.painter().rect_filled(trect, 0.0, bg);
+                    // Match 1.0's `border-radius: 4px 4px 0 0` — round
+                    // top corners only so the active tab visually merges
+                    // into the content strip at its bottom edge.
+                    let rounding = egui::Rounding {
+                        nw: 4.0, ne: 4.0, sw: 0.0, se: 0.0,
+                    };
+                    ui.painter().rect_filled(trect, rounding, bg);
                     ui.painter().text(
                         trect.center(),
                         egui::Align2::CENTER_CENTER,
                         &tab.label,
-                        egui::FontId::proportional(12.0),
+                        font,
                         label_color,
                     );
-                    if is_active && !is_file_special {
-                        ui.painter().line_segment(
-                            [egui::pos2(trect.left() + 4.0, trect.bottom() - 0.5),
-                             egui::pos2(trect.right() - 4.0, trect.bottom() - 0.5)],
-                            egui::Stroke::new(1.5, palette.accent),
-                        );
-                    }
                     if tresp.clicked() && !is_active {
                         actions.push(RibbonAction::TabChanged(tab.id.clone()));
                     }
