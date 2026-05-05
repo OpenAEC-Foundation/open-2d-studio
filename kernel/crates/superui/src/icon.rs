@@ -36,9 +36,11 @@ pub enum IconKind {
 pub fn paint_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32) {
     let center = rect.center();
     let r = rect.width().min(rect.height()) * 0.45;
-    // 1.0's lucide icons render with stroke-width: 2 at 24×24 → 1/12 ratio;
-    // we land slightly above that floor so 14 px Small icons stay legible.
-    let stroke = Stroke::new((r * 0.13).max(1.4), color);
+    // 1.0's lucide icons render with stroke-width: 2 at 24×24 → 1/12 ratio.
+    // Round 8 polish: bump the floor to 1.7 px so Small (14 px) icons read
+    // as solid glyphs instead of hairlines on the warm-dark body. Larger
+    // ratio (0.16) keeps Large (24 px) icons appropriately bold.
+    let stroke = Stroke::new((r * 0.16).max(1.7), color);
     match kind {
         IconKind::Line => {
             painter.line_segment(
