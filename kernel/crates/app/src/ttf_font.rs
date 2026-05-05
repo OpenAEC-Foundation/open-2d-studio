@@ -77,32 +77,112 @@ fn with_glyph_cache<R>(f: impl FnOnce(&mut GlyphCache) -> R) -> R {
 
 struct FontCache {
     fonts: HashMap<String, Option<FontArc>>,
-    fonts_dir: PathBuf,
+    fonts_dirs: Vec<PathBuf>,
+    /// Cached embedded fallback font. Loaded once on first miss so we never
+    /// return None for any non-empty font request — text always renders
+    /// even when the requested font is missing from the system.
+    embedded: Option<FontArc>,
+    /// Set of font filenames we've already warned about as "missing,
+    /// fell back to embedded". Prevents log spam.
+    warned_missing: std::collections::HashSet<String>,
 }
+
+/// Embedded fallback TTF — DejaVuSans. Bistream Vera license (free /
+/// permissive). Used when the system fonts directory doesn't have the
+/// requested font and not even arial.ttf is available, e.g. on Linux/Mac
+/// hosts or stripped Windows installs. Guarantees text always renders
+/// instead of producing empty rectangles.
+const EMBEDDED_FALLBACK_TTF: &[u8] =
+    include_bytes!("../assets/DejaVuSans.ttf");
 
 impl FontCache {
     fn new() -> Self {
-        // On Windows this is always C:\Windows\Fonts. On non-Windows we use
-        // a best-guess path so the code still compiles; the TTF lookup will
-        // simply miss, and the caller falls back to the stroke font.
-        let fonts_dir = std::env::var_os("WINDIR")
-            .map(|w| PathBuf::from(w).join("Fonts"))
-            .unwrap_or_else(|| PathBuf::from("C:/Windows/Fonts"));
-        Self { fonts: HashMap::new(), fonts_dir }
+        // Build the search list. Order matters: we hit %WINDIR%\Fonts
+        // first (covers the bulk of real installs), then any AutoCAD /
+        // Autodesk Fonts directory (catches CAD-specific fonts like
+        // swissc.ttf that AutoCAD ships but Windows doesn't), then a
+        // hard-coded `C:/Windows/Fonts` so non-Windows hosts at least
+        // try the canonical Windows path.
+        let mut dirs: Vec<PathBuf> = Vec::new();
+        if let Some(w) = std::env::var_os("WINDIR") {
+            dirs.push(PathBuf::from(w).join("Fonts"));
+        }
+        // AutoCAD's per-version Fonts dir holds shipped TTFs (swissc.ttf,
+        // simplex.ttf etc.) that aren't installed system-wide. Probe a
+        // handful of common locations; missing dirs are silently skipped.
+        for prog in ["ProgramFiles", "ProgramFiles(x86)", "ProgramW6432"] {
+            if let Some(p) = std::env::var_os(prog) {
+                let base = PathBuf::from(p);
+                for sub in [
+                    "Autodesk/AutoCAD 2025/Fonts",
+                    "Autodesk/AutoCAD 2024/Fonts",
+                    "Autodesk/AutoCAD 2023/Fonts",
+                    "Autodesk/AutoCAD 2022/Fonts",
+                    "Autodesk/AutoCAD 2021/Fonts",
+                    "Autodesk/AutoCAD 2020/Fonts",
+                    "Common Files/Autodesk Shared/Fonts",
+                ] {
+                    dirs.push(base.join(sub));
+                }
+            }
+        }
+        if !dirs.iter().any(|d| d == &PathBuf::from("C:/Windows/Fonts")) {
+            dirs.push(PathBuf::from("C:/Windows/Fonts"));
+        }
+        Self {
+            fonts: HashMap::new(),
+            fonts_dirs: dirs,
+            embedded: None,
+            warned_missing: std::collections::HashSet::new(),
+        }
     }
 
-    /// Load a TTF by file-name (relative to the fonts dir). Cached; returns
-    /// None on failure (file missing, unreadable, or not a valid TTF).
+    /// Load a TTF by file-name. Walks the configured fonts directories in
+    /// order. Cached; returns None on failure (file missing in every dir,
+    /// unreadable, or not a valid TTF).
     fn load(&mut self, file_name: &str) -> Option<&FontArc> {
         let key = file_name.to_ascii_lowercase();
         if !self.fonts.contains_key(&key) {
-            let path = self.fonts_dir.join(&key);
-            let font = std::fs::read(&path)
-                .ok()
-                .and_then(|data| FontArc::try_from_vec(data).ok());
-            self.fonts.insert(key.clone(), font);
+            let mut loaded: Option<FontArc> = None;
+            for dir in &self.fonts_dirs {
+                let path = dir.join(&key);
+                if let Ok(data) = std::fs::read(&path) {
+                    if let Ok(f) = FontArc::try_from_vec(data) {
+                        loaded = Some(f);
+                        break;
+                    }
+                }
+            }
+            self.fonts.insert(key.clone(), loaded);
         }
         self.fonts.get(&key).and_then(|f| f.as_ref())
+    }
+
+    /// Load `file_name` if available; otherwise fall back to the embedded
+    /// DejaVuSans TTF so callers always get a usable font and text never
+    /// silently disappears or renders as empty rectangles. Logs ONCE per
+    /// missing font name to keep the console quiet on subsequent renders.
+    fn load_or_fallback(&mut self, file_name: &str) -> FontArc {
+        if let Some(f) = self.load(file_name) {
+            return f.clone();
+        }
+        // Build embedded font on first miss.
+        if self.embedded.is_none() {
+            self.embedded = FontArc::try_from_vec(EMBEDDED_FALLBACK_TTF.to_vec()).ok();
+        }
+        let key = file_name.to_ascii_lowercase();
+        if self.warned_missing.insert(key.clone()) {
+            eprintln!(
+                "[ttf_font] WARN font {:?} not found in any fonts dir — using embedded DejaVuSans fallback",
+                file_name
+            );
+        }
+        // The embedded font is built from a vendored TTF that we control,
+        // so try_from_vec must succeed; if it doesn't (corrupt include),
+        // panic is the right behaviour — the binary is broken.
+        self.embedded
+            .clone()
+            .expect("embedded DejaVuSans fallback failed to parse")
     }
 }
 
@@ -236,10 +316,13 @@ pub fn render_string_with_contours(
     }
     // Pull the FontArc out of the cache under a *short* lock: we clone (cheap,
     // FontArc is Arc-backed) so subsequent font-ops don't hold the mutex.
-    let font_arc = with_cache(|c| c.load(font_file).cloned());
-    let Some(font) = font_arc else {
-        return (Vec::new(), Vec::new(), 0.0);
-    };
+    // load_or_fallback always returns SOME font: if the requested file is
+    // missing on this system, it returns the embedded DejaVuSans fallback
+    // so text renders rather than silently disappearing or showing as
+    // empty rectangles (the user-visible "boxes-instead-of-glyphs" bug
+    // when the DWG references CAD-only fonts like swissc.ttf that
+    // AutoCAD ships but Windows doesn't).
+    let font: FontArc = with_cache(|c| c.load_or_fallback(font_file));
 
     // DXF/DWG text-height semantics: `height` is the cap-height — the
     // distance from baseline to the top of an uppercase letter (e.g.

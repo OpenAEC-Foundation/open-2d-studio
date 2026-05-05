@@ -5303,22 +5303,76 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         // CAD entities never legitimately emit more than ~1M segments;
         // anything above that is a parser/tessellation glitch and we
         // truncate with a warning so the rest of the drawing still loads.
-        const PER_ENTITY_SEG_CAP: usize = 1_000_000;
+        // 250K is a generous upper bound — even very dense architectural
+        // hatch patterns over a building footprint top out around 50-100K
+        // segments. Anything above 250K from a single entity is a parser
+        // / tessellation glitch (bad pattern offset, infinite-loop hatch
+        // boundary, runaway INSERT recursion). Lowering this from 1M
+        // catches the additional bad hatches in DWG 04-12-2025.dwg
+        // (h=0x69CFC=966K, h=0x7B70C=715K, h=0x68EE1=200K) that
+        // individually slipped under the old cap but collectively
+        // swamped the bbox with sky-spanning diagonals.
+        const PER_ENTITY_SEG_CAP: usize = 250_000;
         if seg_delta > PER_ENTITY_SEG_CAP {
+            // Pathological emission. The truncation-only path keeps the
+            // first 1M segments which are just as bogus as the rest
+            // (HATCH offset bug emits a million parallel diagonals all
+            // sharing the same bad scale). DROP all segments for this
+            // entity instead — losing one corrupt hatch is far better
+            // than swamping the bbox + viewer with sky-spanning lines
+            // (see DWG 04-12-2025.dwg). Per-entity tris dropped too.
             eprintln!(
-                "[load_dwg] WARN entity h=0x{:X} type={} produced {} segs — truncating to {} (likely pathological hatch / INSERT recursion)",
+                "[load_dwg] WARN entity h=0x{:X} type={} produced {} segs — DROPPING all (likely pathological hatch / INSERT recursion; cap={})",
                 obj.handle, obj.type_name, seg_delta, PER_ENTITY_SEG_CAP,
             );
-            segments.truncate(seg_before + PER_ENTITY_SEG_CAP);
-            if segment_dash_kind.len() > seg_before + PER_ENTITY_SEG_CAP {
-                segment_dash_kind.truncate(seg_before + PER_ENTITY_SEG_CAP);
+            segments.truncate(seg_before);
+            if segment_dash_kind.len() > seg_before {
+                segment_dash_kind.truncate(seg_before);
             }
-            seg_delta = PER_ENTITY_SEG_CAP;
+            seg_delta = 0;
+            // Drop tris emitted by this entity in lockstep so the
+            // parallel arrays stay aligned.
+            triangles.truncate(tri_before);
+            tri_delta = 0;
         }
         const PER_ENTITY_TRI_CAP: usize = 200_000;
         if tri_delta > PER_ENTITY_TRI_CAP {
             triangles.truncate(tri_before + PER_ENTITY_TRI_CAP);
             tri_delta = PER_ENTITY_TRI_CAP;
+        }
+        // Per-entity coordinate-sanity check. A single legitimate CAD
+        // entity should fit within reasonable extents (a building site
+        // is rarely > 1 km / 1e6 mm across; engineering drawings sit
+        // well below that). Hatches with degenerate offsets, INSERTs
+        // with corrupt scale, and similar parser glitches emit a small-
+        // ish number of segments at huge coordinates (1e6..1e8 range)
+        // — they slip under the per-entity SEG_CAP but produce the
+        // sky-spanning diagonals visible in DWG 04-12-2025.dwg
+        // (h=0x6A61A, h=0x7B64D each emit ~99K segs but with >50% at
+        // |coord| > 1e9). Scan the just-emitted range for the max
+        // |coord| and drop the entire entity if it exceeds the cap.
+        if seg_delta > 0 {
+            const PER_ENTITY_COORD_CAP: f64 = 1.0e7; // 10 km in mm
+            let mut entity_max: f64 = 0.0;
+            for s in &segments[seg_before..] {
+                entity_max = entity_max
+                    .max(s.p1[0].abs()).max(s.p1[1].abs())
+                    .max(s.p2[0].abs()).max(s.p2[1].abs());
+                if entity_max > PER_ENTITY_COORD_CAP { break; }
+            }
+            if entity_max > PER_ENTITY_COORD_CAP {
+                eprintln!(
+                    "[load_dwg] WARN entity h=0x{:X} type={} max|coord|={:.2e} > {:.0e} — DROPPING all {} segs (likely pathological hatch / corrupt INSERT)",
+                    obj.handle, obj.type_name, entity_max, PER_ENTITY_COORD_CAP, seg_delta,
+                );
+                segments.truncate(seg_before);
+                if segment_dash_kind.len() > seg_before {
+                    segment_dash_kind.truncate(seg_before);
+                }
+                seg_delta = 0;
+                triangles.truncate(tri_before);
+                tri_delta = 0;
+            }
         }
         segment_entity_idx.extend(std::iter::repeat(entity_idx).take(seg_delta));
         triangle_entity_idx.extend(std::iter::repeat(entity_idx).take(tri_delta));
@@ -5740,6 +5794,100 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                 expand_bbox(&mut new_bbox, s.p2[0], s.p2[1]);
             }
             if new_bbox[0].is_finite() { bbox = new_bbox; }
+        }
+    }
+
+    // ----- Second pass: percentile-based outlier filter -----
+    // The 1e9 hard cap above kills 10^200-scale astronomical values, but
+    // pathological HATCH/INSERT survivors often land at e.g. 1e5..1e8 —
+    // finite but well above real drawing extents (~10^4..10^5 mm for
+    // buildings). On heavily contaminated files (DWG 04-12-2025.dwg has
+    // 2.5M dropped + 1.2M survivors where 50%+ of survivors are still
+    // bad), the median of |coord| is itself dominated by outliers, so a
+    // straightforward median × N filter can't tighten the bbox.
+    //
+    // Robust criterion: take the 90th percentile of MAX(|x|,|y|) over
+    // segment endpoints — that's the smallest radius enclosing 90% of
+    // the geometry mass. The legitimate drawing dominates the lower
+    // percentiles even when outliers are numerous, because real drawings
+    // pack many short edges. We then accept anything within
+    // OUTLIER_FACTOR (=20) × p90, which is generous enough to keep the
+    // legitimate drawing intact while excising any segments that escape
+    // the cluster by orders of magnitude. Floors keep tiny drawings safe.
+    {
+        const OUTLIER_FACTOR: f64 = 20.0;
+        const MIN_SCALE: f64 = 1.0e3;     // 1 m in mm — floor
+        const HARD_KEEP: f64 = 5.0e5;     // |coord| <= 500 m always kept
+
+        if segments.len() > 32 {
+            // Per-endpoint max(|x|,|y|) — one value per endpoint = 2× segs.
+            let mut radii: Vec<f64> = Vec::with_capacity(segments.len() * 2);
+            for s in &segments {
+                radii.push(s.p1[0].abs().max(s.p1[1].abs()));
+                radii.push(s.p2[0].abs().max(s.p2[1].abs()));
+            }
+            radii.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            let p90 = radii[(radii.len() as f64 * 0.90) as usize];
+            let median = radii[radii.len() / 2];
+            let cap = (p90 * OUTLIER_FACTOR).max(MIN_SCALE * OUTLIER_FACTOR).max(HARD_KEEP);
+
+            let n_before = segments.len();
+            let mut keep: Vec<bool> = Vec::with_capacity(n_before);
+            for s in &segments {
+                let ok = s.p1[0].abs() < cap && s.p1[1].abs() < cap
+                      && s.p2[0].abs() < cap && s.p2[1].abs() < cap;
+                keep.push(ok);
+            }
+            let n_drop = keep.iter().filter(|k| !**k).count();
+            if n_drop > 0 && n_drop < n_before / 2 {
+                let mut by_entity: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+                let mut max_x: f64 = 0.0;
+                let mut max_y: f64 = 0.0;
+                for (i, k) in keep.iter().enumerate() {
+                    if !*k {
+                        let eid = segment_entity_idx.get(i).copied().unwrap_or(u32::MAX);
+                        *by_entity.entry(eid).or_insert(0) += 1;
+                        let s = &segments[i];
+                        max_x = max_x.max(s.p1[0].abs()).max(s.p2[0].abs());
+                        max_y = max_y.max(s.p1[1].abs()).max(s.p2[1].abs());
+                    }
+                }
+                let mut idx = 0;
+                segments.retain(|_| { let k = keep[idx]; idx += 1; k });
+                if segment_layer_idx.len() == n_before {
+                    idx = 0;
+                    segment_layer_idx.retain(|_| { let k = keep[idx]; idx += 1; k });
+                }
+                if segment_entity_idx.len() == n_before {
+                    idx = 0;
+                    segment_entity_idx.retain(|_| { let k = keep[idx]; idx += 1; k });
+                }
+                if segment_dash_kind.len() == n_before {
+                    idx = 0;
+                    segment_dash_kind.retain(|_| { let k = keep[idx]; idx += 1; k });
+                }
+                let mut sources: Vec<(u32, usize)> = by_entity.into_iter().collect();
+                sources.sort_by(|a, b| b.1.cmp(&a.1));
+                let top: Vec<String> = sources.iter().take(5).map(|(eid, n)| {
+                    let name = entity_names.get(*eid as usize).map(|s| s.as_str()).unwrap_or("?");
+                    format!("{}×{}", n, name)
+                }).collect();
+                eprintln!(
+                    "[load_dwg] WARN p90-filter dropped {} of {} segments (p90={:.1}, median={:.1}, cap={:.1}, max_dropped=[{:.1},{:.1}]); top sources: {}",
+                    n_drop, n_before, p90, median, cap, max_x, max_y, top.join(", ")
+                );
+                let mut new_bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+                for s in &segments {
+                    expand_bbox(&mut new_bbox, s.p1[0], s.p1[1]);
+                    expand_bbox(&mut new_bbox, s.p2[0], s.p2[1]);
+                }
+                if new_bbox[0].is_finite() { bbox = new_bbox; }
+            } else if n_drop >= n_before / 2 {
+                eprintln!(
+                    "[load_dwg] p90-filter SKIPPED — would drop {}/{} segments (>50%); p90={:.1} median={:.1} cap={:.1}",
+                    n_drop, n_before, p90, median, cap
+                );
+            }
         }
     }
 
