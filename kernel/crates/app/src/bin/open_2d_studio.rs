@@ -1175,6 +1175,174 @@ impl FileTab {
     }
 }
 
+// =============================================================================
+// Structure-tree builders — feed the superui::StructureTree widget.
+//
+// One builder per scene-source. The DXF/DWG path groups segments by layer
+// and counts how many distinct entity ids of each visual type
+// (Lines / Polylines / Text / Hatches / Other) live on that layer. The
+// IFCDRAW path is currently a stub — we'll populate Project/Site/
+// Building/Storey hierarchy once load_dxf parses cached IFC metadata.
+// =============================================================================
+
+/// Visual entity-type bucket used for layer roll-ups in the model browser.
+#[derive(Copy, Clone, Eq, PartialEq, Hash)]
+enum EntityBucket { Line, Polyline, Text, Hatch, Other }
+
+impl EntityBucket {
+    fn label(self) -> &'static str {
+        match self {
+            EntityBucket::Line => "Lines",
+            EntityBucket::Polyline => "Polylines",
+            EntityBucket::Text => "Text",
+            EntityBucket::Hatch => "Hatches",
+            EntityBucket::Other => "Other",
+        }
+    }
+}
+
+/// Classify a single entity id by its segment / triangle / text fingerprint.
+fn classify_entity(scene: &Scene, eid: u32, segs_for_eid: &[u32]) -> EntityBucket {
+    let eid_us = eid as usize;
+    if scene.entity_text.get(eid_us).and_then(|o| o.as_ref()).is_some() {
+        return EntityBucket::Text;
+    }
+    // Anything contributing triangles is treated as a Hatch (covers SOLID
+    // / 3DFACE / TRACE / pattern HATCH — close enough for a browser).
+    if scene.triangle_entity_idx.iter().any(|e| *e == eid) {
+        return EntityBucket::Hatch;
+    }
+    let n = segs_for_eid.len();
+    if n == 0 {
+        EntityBucket::Other
+    } else if n == 1 {
+        EntityBucket::Line
+    } else {
+        // Multi-segment entities default to Polyline (LWPOLYLINE / POLYLINE /
+        // dashed LINE expanded into pieces). DIMENSIONs and INSERTs also land
+        // here; we don't try to disambiguate beyond the bucket label.
+        EntityBucket::Polyline
+    }
+}
+
+/// Build a layer-grouped tree for DXF / DWG scenes.
+fn build_dxf_dwg_tree(scene: &Scene, file_label: &str) -> TreeNode {
+    use std::collections::HashMap;
+
+    // 1. Map entity_idx → list of seg indices (cheap re-walk of the
+    //    parallel array; SceneIndex isn't always built yet at first paint).
+    let mut entity_to_segs: HashMap<u32, Vec<u32>> = HashMap::new();
+    for (i, eid) in scene.segment_entity_idx.iter().enumerate() {
+        entity_to_segs.entry(*eid).or_default().push(i as u32);
+    }
+
+    // 2. For each entity: pick its layer (mode of seg layer indices) and
+    //    its bucket. Roll up into per-layer per-bucket counts.
+    //    layer_eids[layer_idx][bucket] = count
+    let n_layers = scene.layer_names.len().max(1);
+    let mut layer_buckets: Vec<HashMap<EntityBucket, usize>> =
+        (0..n_layers).map(|_| HashMap::new()).collect();
+    let mut layer_total: Vec<usize> = vec![0; n_layers];
+
+    for (eid, segs) in &entity_to_segs {
+        // Layer = first seg's layer (entity is single-layer in practice).
+        let layer_idx = segs.first()
+            .and_then(|si| scene.segment_layer_idx.get(*si as usize).copied())
+            .map(|l| l as usize)
+            .unwrap_or(0);
+        let layer_idx = layer_idx.min(n_layers.saturating_sub(1));
+        let bucket = classify_entity(scene, *eid, segs);
+        *layer_buckets[layer_idx].entry(bucket).or_insert(0) += 1;
+        layer_total[layer_idx] += 1;
+    }
+
+    // 3. Build tree.
+    let mut layer_nodes: Vec<TreeNode> = Vec::with_capacity(n_layers);
+    for (li, name) in scene.layer_names.iter().enumerate().take(n_layers) {
+        if layer_total.get(li).copied().unwrap_or(0) == 0 { continue; }
+        let mut bucket_nodes: Vec<TreeNode> = Vec::new();
+        let mut buckets: Vec<(EntityBucket, usize)> =
+            layer_buckets[li].iter().map(|(b, c)| (*b, *c)).collect();
+        buckets.sort_by(|a, b| b.1.cmp(&a.1));
+        for (bucket, count) in buckets {
+            bucket_nodes.push(
+                TreeNode::leaf(
+                    format!("layer:{}/{}", name, bucket.label()),
+                    bucket.label(),
+                    NodeKind::EntityType,
+                ).with_count(count)
+            );
+        }
+        layer_nodes.push(
+            TreeNode::leaf(
+                format!("layer:{}", name),
+                name.clone(),
+                NodeKind::Layer,
+            )
+            .with_count(layer_total[li])
+            .with_children(bucket_nodes)
+        );
+    }
+
+    // Edge case: scene has no parsed layer table — fall back to a single
+    // synthetic root containing all entities.
+    if layer_nodes.is_empty() && !entity_to_segs.is_empty() {
+        let mut bucket_counts: HashMap<EntityBucket, usize> = HashMap::new();
+        for (eid, segs) in &entity_to_segs {
+            let b = classify_entity(scene, *eid, segs);
+            *bucket_counts.entry(b).or_insert(0) += 1;
+        }
+        let mut bucket_nodes: Vec<TreeNode> = bucket_counts.iter()
+            .map(|(b, c)| TreeNode::leaf(
+                format!("synthetic/{}", b.label()),
+                b.label(),
+                NodeKind::EntityType,
+            ).with_count(*c))
+            .collect();
+        bucket_nodes.sort_by(|a, b| b.count.cmp(&a.count));
+        layer_nodes.push(
+            TreeNode::leaf("layer:0", "0", NodeKind::Layer)
+                .with_count(entity_to_segs.len())
+                .with_children(bucket_nodes)
+        );
+    }
+
+    TreeNode::leaf(
+        "root",
+        format!("{} — {}", file_label, scene.source),
+        NodeKind::Project,
+    )
+    .with_count(entity_to_segs.len())
+    .with_children(layer_nodes)
+}
+
+/// Build a (currently stub) IFC structure tree. Once load_ifcdraw caches
+/// Project/Site/Building/Storey metadata on the Scene we can populate
+/// these levels from that — for now we render a placeholder so the panel
+/// still lights up on .ifcdraw files.
+fn build_ifcdraw_tree(scene: &Scene, file_label: &str) -> TreeNode {
+    let placeholder = TreeNode::leaf(
+        "ifcdraw:soon",
+        "IFC hierarchy: import metadata not yet captured",
+        NodeKind::Other,
+    );
+    TreeNode::leaf(
+        "ifcdraw_root",
+        format!("{} — IFCDRAW", file_label),
+        NodeKind::Project,
+    )
+    .with_count(scene.segments.len())
+    .with_children(vec![placeholder])
+}
+
+/// Top-level entry: pick the right builder based on the scene's source tag.
+fn build_structure_tree(scene: &Scene, file_label: &str) -> TreeNode {
+    match scene.source {
+        "IFCDRAW" | "IFCX" => build_ifcdraw_tree(scene, file_label),
+        _ => build_dxf_dwg_tree(scene, file_label),
+    }
+}
+
 struct App {
     window: Option<Arc<Window>>,
     gpu: Option<GpuCtx>,
@@ -1973,6 +2141,16 @@ impl App {
         let samples_open = self.samples_panel_open;
         let samples_snapshot: Vec<SampleEntry> = if samples_open { self.samples.clone() } else { Vec::new() };
 
+        // Structure-tree snapshot: build the model browser tree for the
+        // active tab's scene when the panel is open. Cheap to rebuild per
+        // frame at typical scene sizes; revisit with caching on
+        // FileTab if perf becomes an issue.
+        let structure_panel_open = self.structure_panel_open;
+        let structure_root: Option<TreeNode> = if structure_panel_open {
+            self.tabs.get(active_tab_idx).map(|t|
+                build_structure_tree(&t.scene, &t.label))
+        } else { None };
+
         // Properties snapshot. With multi-select, `prop_selection_idx`
         // is the FIRST picked segment (used to drive the legacy
         // single-segment view). `prop_selection_count` is the unique
@@ -2053,6 +2231,8 @@ impl App {
         let mut requested_menu_save_as_dxf = false;
         let mut requested_toggle_layer_panel = false;
         let mut requested_toggle_props_panel = false;
+        let mut requested_toggle_structure_panel = false;
+        let mut requested_structure_select: Option<String> = None;
         let mut requested_toggle_samples_panel = false;
         let mut requested_close_samples = false;
         let mut requested_tool_mode: Option<ToolMode> = None;
@@ -2822,6 +3002,38 @@ impl App {
                     });
             }
 
+            // ---- Right: Structure tree (IFC / DXF model browser) ----
+            // Toggle with F5 or the ribbon "Structure" button.
+            if structure_panel_open {
+                if let Some(root) = structure_root.as_ref() {
+                    let mut expanded = std::mem::take(&mut self.structure_expanded);
+                    let mut selected = self.structure_selected.clone();
+                    let mut tree_actions: Vec<StructureTreeAction> = Vec::new();
+                    egui::SidePanel::right("structure_tree")
+                        .default_width(280.0)
+                        .min_width(220.0)
+                        .resizable(true)
+                        .show(ctx, |ui| {
+                            tree_actions = StructureTree::new(
+                                "STRUCTURE", root, &mut expanded, &mut selected,
+                            ).show(ui);
+                        });
+                    self.structure_expanded = expanded;
+                    self.structure_selected = selected;
+                    for a in tree_actions {
+                        match a {
+                            StructureTreeAction::Toggle(_) => {}
+                            StructureTreeAction::Select(id) => {
+                                requested_structure_select = Some(id);
+                            }
+                            StructureTreeAction::DoubleClick(id) => {
+                                eprintln!("[structure_tree] double-click on {} — zoom-to TODO", id);
+                            }
+                        }
+                    }
+                }
+            }
+
             // ---- Samples browser (right side panel when open) --------
             if samples_open {
                 egui::SidePanel::right("samples").default_width(380.0).show(ctx, |ui| {
@@ -3117,6 +3329,12 @@ impl App {
         if requested_close_samples { self.samples_panel_open = false; }
         if requested_toggle_layer_panel { self.layer_panel_open = !self.layer_panel_open; }
         if requested_toggle_props_panel { self.properties_panel_open = !self.properties_panel_open; }
+        if requested_toggle_structure_panel { self.structure_panel_open = !self.structure_panel_open; }
+        if let Some(id) = requested_structure_select {
+            // Selection only — no-op beyond storing it. We have no
+            // entity-id-to-bbox lookup wired up yet.
+            self.structure_selected = Some(id);
+        }
         if requested_toggle_samples_panel { self.samples_panel_open = !self.samples_panel_open; }
         if requested_toggle_perf_hud { self.show_perf_hud = !self.show_perf_hud; }
         if requested_toggle_present_mode {
@@ -5220,6 +5438,7 @@ impl ApplicationHandler for App {
                 }
                 KeyCode::F3 => { self.layer_panel_open = !self.layer_panel_open; }
                 KeyCode::F4 => { self.properties_panel_open = !self.properties_panel_open; }
+                KeyCode::F5 => { self.structure_panel_open = !self.structure_panel_open; }
                 KeyCode::F11 => {
                     self.pending_present_mode = Some(match self.present_mode {
                         wgpu::PresentMode::Fifo => wgpu::PresentMode::Immediate,
