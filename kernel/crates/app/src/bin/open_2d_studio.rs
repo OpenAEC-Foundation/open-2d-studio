@@ -1582,6 +1582,15 @@ struct App {
     dim_p1: Option<[f64; 2]>,
     /// In-progress vertex list for the Area polygon tool.
     area_in_progress: Vec<[f64; 2]>,
+    /// Pending key-chord state. Holds the first key of a 2-key chord
+    /// (e.g. `Z` for the `ZR` Zoom-Region chord). Cleared after 1 s or
+    /// when the second key is recognised / a different key is pressed.
+    key_chord_pending: Option<winit::keyboard::KeyCode>,
+    key_chord_at: Option<std::time::Instant>,
+    /// First corner of the active Zoom-Region drag (world space). Set
+    /// on LMB-press while `tool_mode == ToolMode::ZoomRegion`, consumed
+    /// on LMB-release to fit the camera.
+    zoom_region_p1: Option<[f64; 2]>,
     /// Cached last-seen world-space cursor position, used to draw the
     /// "rubber band" from last vertex to cursor in Area mode. Updated on
     /// CursorMoved.
@@ -1764,6 +1773,10 @@ enum ToolMode {
     Rotate,
     Scale,
     Mirror,
+    /// "ZR" chord — drag a rectangle on the canvas, camera fits to it
+    /// on release, then mode reverts to Select. Engaged by typing Z
+    /// then R within a 1-second window (see `key_chord_pending`).
+    ZoomRegion,
 }
 
 // Annotate tools — per user request: linear maatlijn + area measurement, per-tab persistence
@@ -1882,6 +1895,9 @@ impl App {
             // Annotate tools — per user request: linear maatlijn + area measurement, per-tab persistence
             dim_p1: None,
             area_in_progress: Vec::new(),
+            key_chord_pending: None,
+            key_chord_at: None,
+            zoom_region_p1: None,
             cursor_world: None,
             recent_files: load_recent_files(),
             show_perf_hud: false,
@@ -3010,6 +3026,7 @@ impl App {
                         ToolMode::Rotate    => "ROTATE",
                         ToolMode::Scale     => "SCALE",
                         ToolMode::Mirror    => "MIRROR",
+                        ToolMode::ZoomRegion => "ZOOM-REGION",
                     };
                     let layer_str = if status_hidden_layers > 0 {
                         format!("Layer 0  ({}/{} hidden)", status_hidden_layers, status_total_layers)
