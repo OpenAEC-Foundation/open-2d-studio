@@ -25,7 +25,10 @@ pub mod metrics {
     pub const RIBBON_TAB_HEIGHT: f32 = 28.0;
 
     /// Ribbon content area height — `Ribbon.css` lines 69, 77.
-    pub const RIBBON_CONTENT_HEIGHT: f32 = 94.0;
+    /// 1.0 reserves ~24 px below the buttons for the uppercase group
+    /// label; we keep that gap so 66 px Large buttons don't crowd the
+    /// title.
+    pub const RIBBON_CONTENT_HEIGHT: f32 = 100.0;
 
     /// File tab bar height — `FileTabBar.tsx` line 217 (`h-[30px]`).
     pub const FILETAB_HEIGHT: f32 = 30.0;

@@ -7238,6 +7238,21 @@ impl DwgParser {
         // hiding the actual per-style values like 2_5_mm's DIMSCALE=304.8
         // / DIMTXT=52.36 (DXF oracle).
         for _ in 0..6 { let _ = reader.read_bs()?; }
+        // CALIBRATION: scan ahead to find a BD that decodes near 304.8 (DIMSCALE
+        // for the 1_8_mm_0_ style per DXF oracle). Logs offsets when env set.
+        if std::env::var("DWG_DIMSTYLE_SCAN").is_ok() && name == "1_8_mm_0_" {
+            let saved = reader.tell_bit();
+            for skip in 0..200i32 {
+                reader.seek_bit(saved);
+                for _ in 0..skip { let _ = reader.read_bit(); }
+                if let Ok(v) = reader.read_bd() {
+                    if v.is_finite() && (v - 304.8).abs() < 0.5 {
+                        eprintln!("[SCAN] name={} skip_bits={} dimscale_candidate={}", name, skip, v);
+                    }
+                }
+            }
+            reader.seek_bit(saved);
+        }
         // BD chain begins here per §20.4.40.
         let dimscale_raw = reader.read_bd()?;   // DIMSCALE
         let dimasz_raw    = reader.read_bd()?;  // DIMASZ — arrowhead size

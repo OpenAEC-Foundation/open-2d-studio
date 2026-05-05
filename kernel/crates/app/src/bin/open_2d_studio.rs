@@ -2142,37 +2142,49 @@ impl App {
             // owns the painting, padding and layout.
             egui::TopBottomPanel::bottom("statusbar")
                 .show(ctx, |ui| {
-                    let coords_str = match status_cursor_world {
-                        Some(p) => format!("x: {:>11.3}   y: {:>11.3}", p[0], p[1]),
-                        None => "x:     ——.———   y:     ——.———".to_string(),
+                    // 1.0 reference layout (left → right):
+                    //   X: …  Y: …  Cursor: 0 0  Zoom: 150%  Grid: 10
+                    //   Scale: 1:100  ☐ Layer 0 ▾  ORTHO  White Background ▾
+                    //   Tool: SELECT  …  IFC  Selected: 0  Objects: N
+                    let (x_str, y_str) = match status_cursor_world {
+                        Some(p) => (format!("X: {:>5.0}", p[0]), format!("Y: {:>5.0}", p[1])),
+                        None => ("X:    —".to_string(), "Y:    —".to_string()),
                     };
+                    let cursor_str = match status_cursor_world {
+                        Some(p) => format!("Cursor: {:.0} {:.0}", p[0], p[1]),
+                        None => "Cursor: — —".to_string(),
+                    };
+                    let zoom_pct = (status_zoom * 100.0).round() as i32;
                     let tool_str = match current_tool_mode {
-                        ToolMode::Select    => "Select",
-                        ToolMode::Measure   => "Measure",
-                        ToolMode::Move      => "Move",
-                        ToolMode::Dimension => "Dim",
-                        ToolMode::Area      => "Area",
-                        ToolMode::Rotate    => "Rotate",
-                        ToolMode::Scale     => "Scale",
-                        ToolMode::Mirror    => "Mirror",
+                        ToolMode::Select    => "SELECT",
+                        ToolMode::Measure   => "MEASURE",
+                        ToolMode::Move      => "MOVE",
+                        ToolMode::Dimension => "DIM",
+                        ToolMode::Area      => "AREA",
+                        ToolMode::Rotate    => "ROTATE",
+                        ToolMode::Scale     => "SCALE",
+                        ToolMode::Mirror    => "MIRROR",
                     };
-                    let short_label = if status_tab_label.len() > 36 {
-                        format!("…{}", &status_tab_label[status_tab_label.len() - 35..])
+                    let layer_str = if status_hidden_layers > 0 {
+                        format!("Layer 0  ({}/{} hidden)", status_hidden_layers, status_total_layers)
                     } else {
-                        status_tab_label.clone()
-                    };
-                    let layer_txt = if status_hidden_layers > 0 {
-                        format!("layers: {} ({} hidden)", status_total_layers, status_hidden_layers)
-                    } else {
-                        format!("layers: {}", status_total_layers)
+                        "Layer 0".to_string()
                     };
                     let sections = vec![
-                        StatusSection::Text(coords_str),
-                        StatusSection::Text(format!("zoom: {:>7.3}×", status_zoom)),
-                        StatusSection::Text(format!("tool: {}", tool_str)),
+                        StatusSection::Text(x_str),
+                        StatusSection::Text(y_str),
+                        StatusSection::Text(cursor_str),
+                        StatusSection::Text(format!("Zoom: {}%", zoom_pct)),
+                        StatusSection::Text("Grid: 10".to_string()),
+                        StatusSection::Text("Scale: 1:100".to_string()),
+                        StatusSection::Text(layer_str),
+                        StatusSection::Text("ORTHO".to_string()),
+                        StatusSection::Text("White Background".to_string()),
+                        StatusSection::Text(format!("Tool: {}", tool_str)),
                         StatusSection::Spacer,
-                        StatusSection::Text(layer_txt),
-                        StatusSection::Text(short_label),
+                        StatusSection::Text("IFC".to_string()),
+                        StatusSection::Text(format!("Selected: {}", prop_selection_count)),
+                        StatusSection::Text(format!("Objects: {}", prop_scene_total)),
                     ];
                     let _actions = StatusBar::new(sections).show(ui);
                 });
