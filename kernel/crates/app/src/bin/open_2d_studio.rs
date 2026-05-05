@@ -6580,7 +6580,7 @@ fn build_ribbon_tabs(
     fn enable(mut x: RibbonButtonDef) -> RibbonButtonDef { x.enabled = true; x }
     fn select(mut x: RibbonButtonDef, sel: bool) -> RibbonButtonDef { x.selected = sel; x }
 
-    vec![
+    let mut tabs: Vec<RibbonTabDef> = vec![
         RibbonTabDef {
             id: "home".into(),
             label: "Home".into(),
@@ -6820,7 +6820,14 @@ fn build_ribbon_tabs(
                 }),
             ],
         },
-        RibbonTabDef {
+    ];
+
+    // Devtools tab is dev-only — hidden from end-user builds. Opt-in by
+    // setting `O2D_SHOW_DEVTOOLS=1` (or any non-empty value) in the
+    // environment. The tab content (Split H/V, Samples, Perf HUD, Clear)
+    // stays useful for development; we only hide the tab strip entry.
+    if std::env::var("O2D_SHOW_DEVTOOLS").map(|v| !v.is_empty()).unwrap_or(false) {
+        tabs.push(RibbonTabDef {
             id: "devtools".into(),
             label: "Devtools".into(),
             groups: vec![
@@ -6846,8 +6853,10 @@ fn build_ribbon_tabs(
                     ],
                 }),
             ],
-        },
-    ]
+        });
+    }
+
+    tabs
 }
 
 fn main() -> anyhow::Result<()> {
