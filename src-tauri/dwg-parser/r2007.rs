@@ -1040,8 +1040,11 @@ fn try_parse_r2018_sections(
             np
         };
 
-        // Read data_size (first 8 bytes as RLL)
-        let data_size = if entry_start + 8 <= map_data.len() {
+        // Read data_size (first 8 bytes as RLL).
+        // Currently unused — the loop below reads page entries by `pe_size`
+        // stride, not by total data_size. Kept (underscore-prefixed) as a
+        // bound-check candidate for the next round.
+        let _data_size = if entry_start + 8 <= map_data.len() {
             u64::from_le_bytes([
                 map_data[entry_start], map_data[entry_start + 1],
                 map_data[entry_start + 2], map_data[entry_start + 3],

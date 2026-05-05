@@ -602,6 +602,12 @@ impl DwgParser {
     // Object map (R2000)
     // ------------------------------------------------------------------
 
+    // Per ODA §26.5 the HANDLES section uses per-sub-section delta streams,
+    // so the outer-scope `last_handle`/`last_loc`/`pos` initial values are
+    // overwritten before the first read inside the loop. The compiler can't
+    // see that the inner loop unconditionally resets them, hence the
+    // unused_assignments suppression.
+    #[allow(unused_assignments)]
     fn parse_object_map_r2000(
         &self,
         data: &[u8],
@@ -667,6 +673,9 @@ impl DwgParser {
     /// Unlike parse_object_map_r2000, this does NOT filter locations by
     /// buffer size because the locations are section-relative offsets into
     /// the objects section, not raw file offsets.
+    // `pos` is restored before a `break` on the gap-skip path; the assignment
+    // is technically dead but documents intent.
+    #[allow(unused_assignments)]
     fn parse_object_map_r2004(&self, data: &[u8]) -> HashMap<u32, usize> {
         let mut object_map = HashMap::new();
         let mut pos = 0;
@@ -930,162 +939,6 @@ impl DwgParser {
         object_map
     }
 
-    /// Parse the object map (handles section) page-by-page.
-    ///
-    /// Unlike `parse_object_map_r2004` which operates on a single assembled buffer,
-    /// this processes each page independently to avoid reading garbage padding
-    /// between pages. The modular-char delta state (last_handle/last_loc) is
-    /// accumulated across pages, but each page's data is bounded by its data_size.
-    fn parse_object_map_paged(
-        &self,
-        file_data: &[u8],
-        page_map: &HashMap<i32, usize>,
-        page_size: usize,
-        target_section: i32,
-    ) -> HashMap<u32, usize> {
-
-        let mut object_map = HashMap::new();
-        let mut last_handle = 0i32;
-        let mut last_loc = 0i32;
-        let mut entry_count = 0usize;
-        let mut page_count = 0usize;
-
-        // Collect and sort pages for this section
-        struct PageInfo {
-            file_offset: usize,
-            data_size: usize,
-            comp_size: usize,
-            start_offset: usize,
-        }
-        let mut pages = Vec::new();
-
-        for (&_pn, &file_offset) in page_map {
-            if file_offset + 32 > file_data.len() { continue; }
-            let mask = 0x4164536Bu32 ^ (file_offset as u32);
-            let mut hdr = [0u8; 32];
-            hdr.copy_from_slice(&file_data[file_offset..file_offset + 32]);
-            for dw in 0..8 {
-                let off = dw * 4;
-                let val = u32::from_le_bytes([hdr[off], hdr[off+1], hdr[off+2], hdr[off+3]]);
-                let dec = val ^ mask;
-                hdr[off..off+4].copy_from_slice(&dec.to_le_bytes());
-            }
-            let sec_type = i32::from_le_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]);
-            let sec_number = i32::from_le_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]);
-            if sec_number != target_section { continue; }
-            if sec_type != 1 && sec_type != 2 && (sec_type as u32) < 0x41000000 { continue; }
-
-            let dsize = u32::from_le_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]) as usize;
-            let raw_csize = u32::from_le_bytes([hdr[12], hdr[13], hdr[14], hdr[15]]) as usize;
-            let start_off = u32::from_le_bytes([hdr[16], hdr[17], hdr[18], hdr[19]]) as usize;
-            // For hash-type pages (R2018), hdr[8..12] is the compressed body
-            // size (matches section map comp_size). Use it directly for the
-            // decompressor input. hdr[12..16] is the total page allocation
-            // in file (header + body + alignment padding).
-            let comp_input = if (sec_type as u32) >= 0x41000000 {
-                dsize
-            } else if raw_csize > 0 {
-                raw_csize
-            } else {
-                dsize
-            };
-            if comp_input > 0x1000000 { continue; }
-
-            pages.push(PageInfo { file_offset, data_size: dsize, comp_size: comp_input, start_offset: start_off });
-        }
-
-        pages.sort_by_key(|p| p.start_offset);
-        crate::dwg_dbg!("[dwg-dbg] objmap_paged: {} pages for sec={}", pages.len(), target_section);
-
-        for page in &pages {
-            let body_offset = page.file_offset + 32;
-            if body_offset + page.comp_size > file_data.len() { continue; }
-
-            // Decompress this page
-            let decompressed = match decompress_r2004(
-                &file_data[body_offset..body_offset + page.comp_size],
-                page_size,
-            ) {
-                Ok(d) => d,
-                Err(_) => continue,
-            };
-
-            // Process full decompressed output â€” sections are self-terminating
-            let page_data = &decompressed[..];
-
-            // Parse object map sections within this page.
-            // Per ODA spec, each section has a BE u16 header (section_size including
-            // the data + CRC). Sections end with size==2 (just header, no data).
-            let mut pos = 0;
-            let mut page_entries_before = entry_count;
-            let mut save_handle = last_handle;
-            let mut save_loc = last_loc;
-            while pos + 2 <= page_data.len() {
-                let section_size = u16::from_be_bytes([page_data[pos], page_data[pos + 1]]) as usize;
-                if section_size <= 2 { break; } // terminator
-                // Sanity: section_size should be consistent (~2030 bytes for typical DWGs).
-                // Reject sections > 4096 or that don't fit in remaining data.
-                if section_size > 4096 || pos + 2 + section_size > page_data.len() + 2 { break; }
-
-                let body_start = pos + 2;
-                let body_end = (body_start + section_size - 2).min(page_data.len());
-                let mut rpos = body_start;
-
-                while rpos < body_end {
-                    // Per ODA OpenDesignSpec Â§5.4.5: handle delta = unsigned MC,
-                    // location delta = signed MC.
-                    let (handle_delta_u, new_pos) = match DwgBitReader::read_unsigned_modular_char(page_data, rpos) {
-                        Ok(v) => v,
-                        Err(_) => break,
-                    };
-                    rpos = new_pos;
-                    let handle_delta = handle_delta_u as i32;
-                    let (loc_delta, new_pos) = match DwgBitReader::read_modular_char(page_data, rpos) {
-                        Ok(v) => v,
-                        Err(_) => break,
-                    };
-                    rpos = new_pos;
-
-                    last_handle = last_handle.wrapping_add(handle_delta);
-                    last_loc = last_loc.wrapping_add(loc_delta);
-
-                    if entry_count < 5 {
-                        crate::dwg_dbg!("[dwg-dbg] objmap_pg[{}] page={}: hdelta={} ldelta={} -> handle=0x{:X} loc={}",
-                            entry_count, page_count, handle_delta, loc_delta, last_handle, last_loc);
-                    }
-                    entry_count += 1;
-
-                    if last_handle > 0 && last_loc >= 0 {
-                        object_map.insert(last_handle as u32, last_loc as usize);
-                    }
-                }
-                pos += 2 + section_size;
-            }
-            let page_entries = entry_count - page_entries_before;
-            if page_count < 3 || page_count % 20 == 0 {
-                crate::dwg_dbg!("[dwg-dbg] objmap_paged: page {} -> {} entries (handle range 0x{:X}), stop@pos={}/{}",
-                    page_count, page_entries, last_handle, pos, page_data.len());
-            }
-            // Dump bytes around data_size boundary for first 2 pages
-            if page_count < 2 && page.data_size < page_data.len() {
-                let start = page.data_size.saturating_sub(8);
-                let end = (page.data_size + 16).min(page_data.len());
-                let hex: String = page_data[start..end].iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-                crate::dwg_dbg!("[dwg-dbg] page {} data_size boundary: [{}..{}] = {}", page_count, start, end, hex);
-            }
-            page_count += 1;
-        }
-
-        crate::dwg_dbg!("[dwg-dbg] objmap_paged: {} pages, {} entries, {} unique handles",
-            page_count, entry_count, object_map.len());
-        if !object_map.is_empty() {
-            let max_off = object_map.values().max().copied().unwrap_or(0);
-            let min_off = object_map.values().min().copied().unwrap_or(0);
-            crate::dwg_dbg!("[dwg-dbg] objmap_paged offset range: {}..{}", min_off, max_off);
-        }
-
-        object_map
-    }
 
     // ==================================================================
     // R2004 (AC1018) parsing
@@ -2922,7 +2775,7 @@ impl DwgParser {
 
         // Handles â€” use section map's per-page data_size to limit valid data
         let mut alt_object_map: HashMap<u32, usize> = HashMap::new();
-        let mut padded_map: HashMap<u32, usize> = HashMap::new();
+        let padded_map: HashMap<u32, usize>;
         if let Some(&sec_id) = section_ids.get(&SECTION_TYPE_HANDLES) {
             // Build page_number â†’ decompressed_valid_size map from section map
             let mut page_data_sizes: HashMap<i32, u32> = HashMap::new();
@@ -3030,7 +2883,13 @@ impl DwgParser {
             }
         }
         let mut best_objects: Vec<DwgObject> = std::mem::take(&mut dwg.objects);
-        let mut best_object_map = std::mem::take(&mut dwg.object_map);
+        // SPEC NOTE: `best_object_map` is taken from `dwg.object_map` to clear
+        // the slot before the next pipeline runs, but the value is never read.
+        // The side-effect of clearing dwg.object_map matters; the captured map
+        // does not. See SPEC_NOTES.md "Findings still open" — pipeline
+        // selection currently keeps `best_objects` only, so the map from the
+        // best pipeline is never restored. Tracked as a follow-up.
+        let _ = std::mem::take(&mut dwg.object_map);
         if !best_objects.is_empty() {
             self.reset_dwg_partial(dwg);
         }
@@ -3048,7 +2907,9 @@ impl DwgParser {
                     return Ok(());
                 }
                 best_objects = std::mem::take(&mut dwg.objects);
-                best_object_map = std::mem::take(&mut dwg.object_map);
+                // see SPEC NOTE above on best_object_map; we still need to
+                // clear dwg.object_map so the next pipeline starts empty.
+                let _ = std::mem::take(&mut dwg.object_map);
                 self.reset_dwg_partial(dwg);
             }
             Ok(()) => {
@@ -3918,7 +3779,11 @@ impl DwgParser {
             let endbit_data_len = cls_end_bit_cap;
             let endbit_end_byte = end_byte * 8;
 
-            let check_ss = |endbit: usize| -> bool {
+            // Diagnostic helper: probe whether a candidate `endbit` has the
+            // string-stream-present bit set. Currently unused after the
+            // string-stream search was promoted out of this scope; kept
+            // (underscore-prefixed) for resurrection during fixture triage.
+            let _check_ss = |endbit: usize| -> bool {
                 if endbit < 18 { return false; }
                 let sb = (endbit - 1) / 8;
                 let si = 7 - ((endbit - 1) % 8);
@@ -4315,80 +4180,6 @@ impl DwgParser {
         objects
     }
 
-    /// Scan the assembled objects section buffer for valid objects by walking
-    /// sequentially: read MS obj_size, validate, advance by obj_size bytes.
-    /// Skips large zero runs efficiently (page padding).
-    fn scan_objects_section(&self, data: &[u8]) -> Vec<DwgObject> {
-        let mut objects = Vec::new();
-        let mut seen_handles = std::collections::HashSet::new();
-        let mut pos = 0usize;
-        let mut sequential_ok = 0usize;
-        let mut sequential_fail = 0usize;
-        let mut scan_fallback = 0usize;
-
-        while pos + 4 < data.len() {
-            // Skip zero padding efficiently â€” jump in chunks
-            if data[pos] == 0 {
-                // Check if next 16 bytes are all zero, skip in bigger chunks
-                let chunk = 256;
-                if pos + chunk < data.len() && data[pos..pos + chunk].iter().all(|&b| b == 0) {
-                    pos += chunk;
-                    continue;
-                }
-                pos += 1;
-                continue;
-            }
-
-            // Try reading MS obj_size
-            let (obj_size, bit_start) = match DwgBitReader::read_modular_short(data, pos) {
-                Ok((s, bs)) if s > 0 && s <= 32000 && bs < data.len() => (s as usize, bs),
-                _ => { pos += 1; scan_fallback += 1; continue; }
-            };
-
-            // Object data should fit in the buffer
-            // The obj_size counts bytes from bit_start
-            let obj_end = bit_start + obj_size;
-            if obj_end > data.len() {
-                pos += 1;
-                scan_fallback += 1;
-                continue;
-            }
-
-            // Try parsing the object
-            let parse_result = std::panic::catch_unwind(
-                std::panic::AssertUnwindSafe(|| {
-                    self.parse_single_object_r2000(data, 0xFFFFFFFF, pos)
-                })
-            );
-
-            match parse_result {
-                Ok(Ok(obj)) => {
-                    if obj.handle > 0 && obj.handle < 0x100000
-                        && !seen_handles.contains(&obj.handle)
-                    {
-                        seen_handles.insert(obj.handle);
-                        objects.push(obj);
-                        sequential_ok += 1;
-                    }
-                    // Advance past this object â€” obj_size is in bytes from bit_start
-                    // Add 2 bytes for the CRC that follows each object
-                    pos = obj_end + 2;
-                }
-                _ => {
-                    // This position wasn't a valid object, skip forward
-                    pos += 1;
-                    sequential_fail += 1;
-                }
-            }
-        }
-
-        // Diagnostics: first/last non-zero positions
-        let first_nonzero = data.iter().position(|&b| b != 0).unwrap_or(data.len());
-        let last_nonzero = data.iter().rposition(|&b| b != 0).unwrap_or(0);
-        crate::dwg_dbg!("[dwg-dbg] scan_objects_section: {} objects found, {} seq_ok, {} seq_fail, {} scan_fb, data={}B first_nz={} last_nz={}",
-            objects.len(), sequential_ok, sequential_fail, scan_fallback, data.len(), first_nonzero, last_nonzero);
-        objects
-    }
 
     fn parse_objects_r2000(
         &self,
@@ -4403,8 +4194,6 @@ impl DwgParser {
 
         let mut fail_count = 0usize;
         let mut fail_inbounds = 0usize;
-        let mut success_count = 0usize;
-        let mut skip_oob = 0usize;
         let mut fail_samples: Vec<String> = Vec::new();
         let mut fail_inbounds_samples: Vec<String> = Vec::new();
         let mut fail_inbounds_offsets: Vec<usize> = Vec::new();
