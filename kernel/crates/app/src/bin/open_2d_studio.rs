@@ -810,12 +810,66 @@ impl GpuCtx {
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
         }).await.ok_or_else(|| anyhow::anyhow!("no adapter"))?;
-        let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
-            label: Some("open_2d_studio"),
-            required_features: wgpu::Features::empty(),
-            required_limits: wgpu::Limits::default(),
-            memory_hints: wgpu::MemoryHints::Performance,
-        }, None).await?;
+        // Big-scene fix: the default `wgpu::Limits` cap `max_buffer_size`
+        // at 256 MB, which is too small for the unified `scene-vb`
+        // (≈284 MB observed on a 9M-segment / 528K-tri DWG). Request
+        // the adapter's max (typically 1–2 GB on modern GPUs), never
+        // below default. If the driver rejects the elevated limits we
+        // retry with `Limits::default()` so init still succeeds; GPU-
+        // side chunking would be the next step if that ever happens.
+        let adapter_limits = adapter.limits();
+        let default_limits = wgpu::Limits::default();
+        let desired_max_buffer = adapter_limits
+            .max_buffer_size
+            .max(default_limits.max_buffer_size)
+            .max(1_073_741_824);
+        let desired_max_storage = adapter_limits
+            .max_storage_buffer_binding_size
+            .max(default_limits.max_storage_buffer_binding_size);
+        let preferred_limits = wgpu::Limits {
+            max_buffer_size: desired_max_buffer,
+            max_storage_buffer_binding_size: desired_max_storage,
+            ..default_limits.clone()
+        };
+        eprintln!(
+            "[gpu] adapter max_buffer_size = {} MB, requesting {} MB",
+            adapter_limits.max_buffer_size / 1024 / 1024,
+            desired_max_buffer / 1024 / 1024,
+        );
+        let (device, queue) = match adapter
+            .request_device(
+                &wgpu::DeviceDescriptor {
+                    label: Some("open_2d_studio"),
+                    required_features: wgpu::Features::empty(),
+                    required_limits: preferred_limits.clone(),
+                    memory_hints: wgpu::MemoryHints::Performance,
+                },
+                None,
+            )
+            .await
+        {
+            Ok(pair) => pair,
+            Err(e) => {
+                eprintln!(
+                    "[gpu] elevated limits rejected ({e}); falling back to wgpu::Limits::default()"
+                );
+                adapter
+                    .request_device(
+                        &wgpu::DeviceDescriptor {
+                            label: Some("open_2d_studio"),
+                            required_features: wgpu::Features::empty(),
+                            required_limits: default_limits,
+                            memory_hints: wgpu::MemoryHints::Performance,
+                        },
+                        None,
+                    )
+                    .await?
+            }
+        };
+        eprintln!(
+            "[gpu] device max_buffer_size = {} MB",
+            device.limits().max_buffer_size / 1024 / 1024,
+        );
         let caps = surface.get_capabilities(&adapter);
         let format = caps.formats.iter().copied()
             .find(|f| f.is_srgb()).unwrap_or(caps.formats[0]);
@@ -6206,6 +6260,11 @@ impl ApplicationHandler for App {
                                             }
                                         }
                                     }
+                                    // ZoomRegion releases are committed in
+                                    // the outer if-branch above (which always
+                                    // takes precedence for this mode), so the
+                                    // inner per-tool match never reaches here.
+                                    ToolMode::ZoomRegion => {}
                                 }
                             }
                             // Task 9 — double-click to enter text-edit. We
