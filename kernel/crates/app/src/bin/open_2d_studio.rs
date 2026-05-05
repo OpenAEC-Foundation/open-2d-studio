@@ -2574,7 +2574,11 @@ impl App {
         // mode and drift exceeds the same HiDPI-scaled threshold the
         // release path uses. Crossing direction = left-running drag.
         let drag_box_active: bool = {
-            if !self.lmb_pressed || self.tool_mode != ToolMode::Select { false }
+            // ZR — also paint the drag-box rectangle while in zoom-region
+            // mode so the user sees the area they're about to fit to.
+            let mode_ok = self.tool_mode == ToolMode::Select
+                || self.tool_mode == ToolMode::ZoomRegion;
+            if !self.lmb_pressed || !mode_ok { false }
             else {
                 let dx = self.mouse_pos.0 - self.lmb_press_pos.0;
                 let dy = self.mouse_pos.1 - self.lmb_press_pos.1;
@@ -2587,6 +2591,7 @@ impl App {
         let drag_box_p1: (f32, f32) = self.lmb_press_pos;
         let drag_box_p2: (f32, f32) = self.mouse_pos;
         let drag_box_crossing: bool = drag_box_p2.0 < drag_box_p1.0;
+        let drag_box_zoom: bool = self.tool_mode == ToolMode::ZoomRegion;
         let last_measurement_snapshot = self.last_measurement;
         let show_perf_hud_snapshot = self.show_perf_hud;
         let present_mode_snapshot = self.present_mode;
@@ -3654,7 +3659,14 @@ impl App {
                 let p1 = egui::pos2(drag_box_p1.0 / ppp, drag_box_p1.1 / ppp);
                 let p2 = egui::pos2(drag_box_p2.0 / ppp, drag_box_p2.1 / ppp);
                 let rect = egui::Rect::from_two_pos(p1, p2);
-                let (fill, stroke) = if drag_box_crossing {
+                let (fill, stroke) = if drag_box_zoom {
+                    // ZR — orange to distinguish zoom-region from
+                    // window/crossing selection.
+                    (
+                        egui::Color32::from_rgba_unmultiplied(240, 160, 60, 40),
+                        egui::Stroke::new(1.5, egui::Color32::from_rgb(240, 160, 60)),
+                    )
+                } else if drag_box_crossing {
                     (
                         egui::Color32::from_rgba_unmultiplied(120, 220, 120, 50),
                         egui::Stroke::new(1.5, egui::Color32::from_rgb(80, 200, 80)),
@@ -3666,8 +3678,8 @@ impl App {
                     )
                 };
                 painter.rect_filled(rect, 0.0, fill);
-                if drag_box_crossing {
-                    // Dashed border for crossing.
+                if drag_box_crossing || drag_box_zoom {
+                    // Dashed border for crossing-select OR zoom-region.
                     let dash = 6.0;
                     let gap = 4.0;
                     let edges = [
@@ -5903,10 +5915,24 @@ impl ApplicationHandler for App {
                     self.tool_mode = ToolMode::Mirror;
                     self.mirror_a = None;
                 }
-                // Blok 3 — R = Rotate tool.
+                // Blok 3 — R = Rotate tool. ZR — special case: if the
+                // user just pressed `Z` within 1 s we treat this as the
+                // `Z R` "zoom region" chord instead of starting Rotate.
                 KeyCode::KeyR if !self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
-                    self.tool_mode = ToolMode::Rotate;
-                    self.rotate_pivot = None;
+                    let is_chord = matches!(
+                        (self.key_chord_pending, self.key_chord_at),
+                        (Some(KeyCode::KeyZ), Some(t))
+                            if t.elapsed() < std::time::Duration::from_millis(1000)
+                    );
+                    if is_chord {
+                        self.tool_mode = ToolMode::ZoomRegion;
+                        self.zoom_region_p1 = None;
+                    } else {
+                        self.tool_mode = ToolMode::Rotate;
+                        self.rotate_pivot = None;
+                    }
+                    self.key_chord_pending = None;
+                    self.key_chord_at = None;
                 }
                 // Blok 3 — S = Scale tool. Ctrl+S was not bound previously;
                 // Ctrl+Shift+S is the unsplit shortcut handled below.
@@ -6184,6 +6210,19 @@ impl ApplicationHandler for App {
                             self.lmb_press_rect = self.focused_canvas_rect();
                             eprintln!("[LMB Press] latched tab={} rect={:?} dragging={}",
                                 self.lmb_press_tab, self.lmb_press_rect, self.dragging);
+                            if self.tool_mode == ToolMode::ZoomRegion {
+                                // ZR — latch world-space anchor for the
+                                // zoom-region rectangle. Release commits
+                                // the camera fit (see LMB-release path).
+                                if let Some(w) = self.screen_to_world_in(
+                                    self.lmb_press_tab,
+                                    self.lmb_press_rect,
+                                    self.mouse_pos.0,
+                                    self.mouse_pos.1,
+                                ) {
+                                    self.zoom_region_p1 = Some(w);
+                                }
+                            }
                             if self.tool_mode == ToolMode::Move {
                                 let t_idx = self.lmb_press_tab;
                                 let rect = self.lmb_press_rect;
@@ -6238,6 +6277,34 @@ impl ApplicationHandler for App {
                                         .map(|t| t.pending_move_offset).unwrap_or([0.0, 0.0]);
                                     self.commit_move_multi_in(focus_tab, eids, off[0], off[1]);
                                 }
+                            } else if self.tool_mode == ToolMode::ZoomRegion {
+                                // ZR — commit the zoom-region rectangle.
+                                // Need a valid press anchor + non-degenerate
+                                // rect (drift threshold guards against a
+                                // stray click fitting to a near-zero bbox).
+                                let p1 = self.zoom_region_p1.take();
+                                let p2 = self.screen_to_world_in(
+                                    focus_tab, focus_rect,
+                                    self.mouse_pos.0, self.mouse_pos.1);
+                                if drift >= drift_threshold {
+                                    if let (Some(p1), Some(p2)) = (p1, p2) {
+                                        let bbox = [
+                                            p1[0].min(p2[0]),
+                                            p1[1].min(p2[1]),
+                                            p1[0].max(p2[0]),
+                                            p1[1].max(p2[1]),
+                                        ];
+                                        if bbox[0] < bbox[2] && bbox[1] < bbox[3] {
+                                            if let Some(tab) = self.tabs.get_mut(focus_tab) {
+                                                tab.cam = PaneCam::fit(&bbox);
+                                            }
+                                        }
+                                    }
+                                }
+                                // Always revert to Select after a release
+                                // in zoom-region mode (chord is one-shot).
+                                self.tool_mode = ToolMode::Select;
+                                self.zoom_region_p1 = None;
                             } else if drift >= drift_threshold && self.tool_mode == ToolMode::Select {
                                 // Drag-box select. Window vs crossing decided
                                 // by drag direction (left→right = window).
