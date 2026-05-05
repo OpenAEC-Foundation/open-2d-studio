@@ -18,6 +18,78 @@
 //! `expand_bbox`) stay private to this module.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+
+// =============================================================================
+// Cancellation support
+// =============================================================================
+//
+// Long-running loaders (`load_dwg`, `load_dxf`) consult a thread-local
+// `Arc<AtomicBool>` flag at hot-path boundaries (entity loops, INSERT
+// expansion). If a worker thread has installed a flag via
+// `set_load_cancel(...)` and the UI thread flips it to `true`, the next
+// `check_load_cancel()` call returns true and the loader can bail out
+// early with a `LoadCancelled` error.
+//
+// Threading model: the loader runs on a worker thread; the UI thread
+// only writes the flag. The thread-local lives on the worker. Other
+// callers (headless / mockup binaries) that don't install a flag pay
+// only one TLS lookup + one `Option::is_none` per check — negligible.
+
+thread_local! {
+    static LOAD_CANCEL: std::cell::RefCell<Option<Arc<AtomicBool>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+/// RAII guard that clears the per-thread cancel flag on drop. Returned by
+/// `set_load_cancel` so the caller can `let _g = set_load_cancel(...)`
+/// and forget about it.
+pub struct LoadCancelGuard;
+impl Drop for LoadCancelGuard {
+    fn drop(&mut self) {
+        LOAD_CANCEL.with(|c| *c.borrow_mut() = None);
+    }
+}
+
+/// Install a cancel flag on the current thread. Subsequent loader calls
+/// on this thread will check it at convenient points.
+pub fn set_load_cancel(flag: Arc<AtomicBool>) -> LoadCancelGuard {
+    LOAD_CANCEL.with(|c| *c.borrow_mut() = Some(flag));
+    LoadCancelGuard
+}
+
+/// Returns true iff a cancel flag is installed on the current thread
+/// AND it has been set to true by another thread. Cheap enough to call
+/// once per entity in the inner loops.
+#[inline]
+pub fn check_load_cancel() -> bool {
+    LOAD_CANCEL.with(|c| {
+        c.borrow().as_ref().map_or(false, |f| f.load(Ordering::Relaxed))
+    })
+}
+
+/// Sentinel error type returned when a load is cancelled mid-flight.
+/// Wrapped in `anyhow::Error` by the loader so call-sites can downcast
+/// to distinguish cancellation from a real failure.
+#[derive(Debug)]
+pub struct LoadCancelled;
+impl std::fmt::Display for LoadCancelled {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "load cancelled by user")
+    }
+}
+impl std::error::Error for LoadCancelled {}
+
+/// Helper: bail with `LoadCancelled` if the thread-local flag is set.
+#[inline]
+fn bail_if_cancelled() -> anyhow::Result<()> {
+    if check_load_cancel() {
+        Err(anyhow::Error::new(LoadCancelled))
+    } else {
+        Ok(())
+    }
+}
 
 // =============================================================================
 // Public types
@@ -1737,7 +1809,9 @@ fn parse_viewports_from_dxf(path: &str) -> Vec<ViewportParsed> {
 }
 
 pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
+    bail_if_cancelled()?;
     let drawing = dxf::Drawing::load_file(path)?;
+    bail_if_cancelled()?;
     // Manual HATCH pass — dxf-0.5 drops HATCH entities silently.
     let hatches = parse_hatches_from_dxf(path);
     // Manual VIEWPORT pass — dxf-0.5 drops VIEWPORT silently. We use
@@ -1953,7 +2027,15 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
     // re-borrow + duplicate writes (children share the parent slot).
     let mut entity_text: Vec<Option<EntityText>> = Vec::new();
 
+    let mut _dxf_cancel_counter: usize = 0;
     for entity in drawing.entities() {
+        // Cancel-check every ~256 entities — keeps the per-iter cost
+        // negligible on small files while still bailing out within a
+        // second or so on multi-million-entity DXFs.
+        _dxf_cancel_counter = _dxf_cancel_counter.wrapping_add(1);
+        if _dxf_cancel_counter & 0xFF == 0 {
+            bail_if_cancelled()?;
+        }
         // DXF §19 (Header Variables) / §18 (Entity Common Group Codes): group 67 = 1
         // marks an entity as paper-space. Revit-exported DXFs, however,
         // often flatten sheet content (legends, viewport masks, title-
@@ -2334,7 +2416,12 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
         let mut scratch_tris: Vec<Triangle> = Vec::new();
         let mut scratch_bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
         let mut scratch_dash_kind: Vec<u8> = Vec::new();
+        let mut _vp_cancel_counter: usize = 0;
         for entity in drawing.entities() {
+            _vp_cancel_counter = _vp_cancel_counter.wrapping_add(1);
+            if _vp_cancel_counter & 0xFF == 0 {
+                bail_if_cancelled()?;
+            }
             // Skip paper-space entities in viewport pass — they'd push
             // title-block geometry through the model→paper transform.
             // Matches the heuristic in the main entity loop so Revit-
@@ -4452,9 +4539,11 @@ fn dwg_resolve_ltype_pattern(
 
 pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     use dwg_parser::DwgParser;
+    bail_if_cancelled()?;
     let _t_total = std::time::Instant::now();
     let mut t_phase = std::time::Instant::now();
     let bytes = std::fs::read(path)?;
+    bail_if_cancelled()?;
     eprintln!("[load_dwg] phase read_file: {:.3}s ({} bytes)",
         t_phase.elapsed().as_secs_f64(), bytes.len());
     t_phase = std::time::Instant::now();
@@ -4463,6 +4552,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         .map_err(|e| anyhow::anyhow!("DWG parse failed: {:?}", e))?;
     eprintln!("[load_dwg] phase parse: {:.3}s ({} objects)",
         t_phase.elapsed().as_secs_f64(), file.objects.len());
+    bail_if_cancelled()?;
     let t_after_parse = std::time::Instant::now();
 
     // Diagnostic trace: print first 5 LAYER table objects and their parsed names.
@@ -5180,7 +5270,16 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     // O2D_LOAD_PROFILE=1 to keep production logs quiet.
     let profile_load = std::env::var("O2D_LOAD_PROFILE").is_ok();
     let mut top_emitters: Vec<(usize, u64, String)> = Vec::new();
+    let mut _dwg_cancel_counter: usize = 0;
     for obj in &file.objects {
+        // Cancel-check every ~512 objects in the main entity loop. This
+        // is the dominant phase on big DWGs (the 1 GB Kralingseweg file
+        // spends ~minutes here), so frequent checks let the user bail
+        // out within ~1s of clicking Cancel.
+        _dwg_cancel_counter = _dwg_cancel_counter.wrapping_add(1);
+        if _dwg_cancel_counter & 0x1FF == 0 {
+            bail_if_cancelled()?;
+        }
         if !obj.is_entity { continue; }
         // Skip BLOCK / ENDBLK sentinels and any entity living inside a block —
         // the latter are drawn via INSERT instances, not at their local origin.

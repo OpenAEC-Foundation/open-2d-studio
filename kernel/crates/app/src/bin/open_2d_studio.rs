@@ -19,6 +19,7 @@ use bytemuck::{Pod, Zeroable};
 use egui_wgpu::ScreenDescriptor;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
@@ -1717,6 +1718,12 @@ struct LoadingJob {
     /// Wall-clock when the worker thread was spawned. Reported once at
     /// completion for diagnostics.
     started_at: Instant,
+    /// Cancel flag shared with the worker thread. Flipped to true by
+    /// the UI thread when the user clicks the Cancel button on the
+    /// loading overlay; the worker polls it at hot-path boundaries
+    /// (entity loops, INSERT expansion) and returns `LoadCancelled`
+    /// early when it observes the flag.
+    cancel: Arc<AtomicBool>,
 }
 
 /// Message posted from the loader worker thread to the UI thread.
@@ -1725,6 +1732,9 @@ enum LoadingMsg {
     Done(Box<Scene>),
     /// Final result — load failed; carries the human-readable error.
     Failed(String),
+    /// Final result — user clicked Cancel and the worker bailed out.
+    /// The placeholder tab is dropped silently (no error overlay).
+    Cancelled,
 }
 
 /// Per-section render timings — one frame.
@@ -1995,6 +2005,40 @@ impl App {
                             format!("load FAILED: {}", err),
                         );
                         tab.scene_index = None;
+                    }
+                }
+                Ok(LoadingMsg::Cancelled) => {
+                    let job = self.loading_jobs.swap_remove(i);
+                    eprintln!("[load] '{}' cancelled by user after {:.2}s",
+                        short_path(&job.path), job.started_at.elapsed().as_secs_f64());
+                    if job.tab_idx < self.tabs.len() {
+                        if self.tabs.len() == 1 {
+                            if let Some(tab) = self.tabs.get_mut(0) {
+                                tab.loading = None;
+                                tab.scene = Scene::empty(
+                                    "(empty)",
+                                    "Press Ctrl+O to open".to_string(),
+                                );
+                                tab.path = None;
+                                tab.label = "(empty)".to_string();
+                                tab.scene_index = None;
+                            }
+                        } else {
+                            self.tabs.remove(job.tab_idx);
+                            for other in &mut self.loading_jobs {
+                                if other.tab_idx > job.tab_idx {
+                                    other.tab_idx -= 1;
+                                }
+                            }
+                            if self.active_tab >= self.tabs.len() {
+                                self.active_tab = self.tabs.len().saturating_sub(1);
+                            } else if self.active_tab > job.tab_idx {
+                                self.active_tab -= 1;
+                            }
+                        }
+                        if let Some(win) = self.window.as_ref() {
+                            win.set_title(&Self::title_for(&self.tabs, self.active_tab));
+                        }
                     }
                 }
                 Err(mpsc::TryRecvError::Empty) => { i += 1; }
@@ -3568,11 +3612,16 @@ impl App {
                     // name + an animated spinner + elapsed seconds.
                     if let Some(active) = self.tabs.get(self.active_tab) {
                         if let Some(loading) = active.loading.clone() {
+                            let active_idx = self.active_tab;
+                            let cancel_flag = self.loading_jobs.iter()
+                                .find(|j| j.tab_idx == active_idx)
+                                .map(|j| j.cancel.clone());
                             paint_loading_overlay(
-                                ui.painter(),
+                                ui,
                                 rect,
                                 active.label.as_str(),
                                 &loading,
+                                cancel_flag.as_ref(),
                             );
                         }
                     }
@@ -6527,19 +6576,37 @@ fn discover_samples() -> Vec<SampleEntry> {
 fn spawn_load_job(path: String, tab_idx: usize) -> LoadingJob {
     let (tx, rx) = mpsc::channel();
     let path_for_thread = path.clone();
+    let cancel = Arc::new(AtomicBool::new(false));
+    let cancel_for_worker = cancel.clone();
     std::thread::Builder::new()
         .name(format!("load:{}", short_path(&path)))
         .spawn(move || {
+            // Install the cancel flag as a thread-local that the loaders
+            // (`load_dwg` / `load_dxf`) consult at hot-path boundaries.
+            // The guard restores the previous (None) value on drop.
+            let _cancel_guard =
+                kernel_app::scene_io::set_load_cancel(cancel_for_worker.clone());
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                load_any(&path_for_thread, "tab")
+                load_any_result(&path_for_thread)
             }));
             let msg = match result {
-                Ok(scene) => LoadingMsg::Done(Box::new(scene)),
+                Ok(Ok(scene)) => LoadingMsg::Done(Box::new(scene)),
+                Ok(Err(e)) => {
+                    if e.downcast_ref::<kernel_app::scene_io::LoadCancelled>().is_some() {
+                        LoadingMsg::Cancelled
+                    } else {
+                        LoadingMsg::Failed(format!("{}", e))
+                    }
+                }
                 Err(panic) => {
-                    let what = panic.downcast_ref::<&'static str>().map(|s| (*s).to_string())
-                        .or_else(|| panic.downcast_ref::<String>().cloned())
-                        .unwrap_or_else(|| "panic in loader".to_string());
-                    LoadingMsg::Failed(format!("loader panic: {}", what))
+                    if cancel_for_worker.load(Ordering::Relaxed) {
+                        LoadingMsg::Cancelled
+                    } else {
+                        let what = panic.downcast_ref::<&'static str>().map(|s| (*s).to_string())
+                            .or_else(|| panic.downcast_ref::<String>().cloned())
+                            .unwrap_or_else(|| "panic in loader".to_string());
+                        LoadingMsg::Failed(format!("loader panic: {}", what))
+                    }
                 }
             };
             let _ = tx.send(msg);
@@ -6550,6 +6617,7 @@ fn spawn_load_job(path: String, tab_idx: usize) -> LoadingJob {
         path,
         tab_idx,
         started_at: Instant::now(),
+        cancel,
     }
 }
 
@@ -6558,20 +6626,22 @@ fn spawn_load_job(path: String, tab_idx: usize) -> LoadingJob {
 /// the CentralPanel painter, after the inset border, so it sits on top
 /// of the (mostly empty) wgpu placeholder scene.
 fn paint_loading_overlay(
-    painter: &egui::Painter,
+    ui: &mut egui::Ui,
     canvas: egui::Rect,
     file_label: &str,
     state: &LoadingState,
+    cancel_flag: Option<&Arc<AtomicBool>>,
 ) {
+    let painter = ui.painter().clone();
     // Soft scrim behind the card so the (likely empty) canvas behind
     // doesn't visually compete with the loading text.
     painter.rect_filled(
         canvas, 0.0,
         egui::Color32::from_rgba_unmultiplied(15, 18, 22, 140),
     );
-    // Card. ~360x120 logical px, clamped if the canvas is smaller.
+    // Card. ~360x160 logical px (taller for Cancel button).
     let card_w = 360.0_f32.min(canvas.width() - 24.0).max(160.0);
-    let card_h = 130.0_f32.min(canvas.height() - 24.0).max(80.0);
+    let card_h = 160.0_f32.min(canvas.height() - 24.0).max(100.0);
     let center = canvas.center();
     let card = egui::Rect::from_center_size(center, egui::vec2(card_w, card_h));
     painter.rect_filled(card, 8.0,
@@ -6626,19 +6696,38 @@ fn paint_loading_overlay(
     // coarse phase boundaries) but the spinner gives "alive" feedback
     // and the bar gradually advances based on wall-clock as a fallback
     // (saturates at 90% so it never falsely claims completion).
-    let bar_top = card.bottom() - 18.0;
+    let bar_top = card.bottom() - 50.0;
     let bar_rect = egui::Rect::from_min_size(
         egui::pos2(card.left() + 16.0, bar_top),
         egui::vec2(card.width() - 32.0, 4.0),
     );
     painter.rect_filled(bar_rect, 2.0,
         egui::Color32::from_rgba_unmultiplied(60, 64, 72, 220));
-    // Time-driven fallback fraction: ~50% at 5s, ~90% at 30s.
     let time_frac = (1.0 - (-elapsed / 12.0).exp()).min(0.9);
     let frac = state.fraction.max(time_frac);
     let fill_w = (bar_rect.width() * frac).clamp(0.0, bar_rect.width());
     let fill = egui::Rect::from_min_size(bar_rect.min, egui::vec2(fill_w, bar_rect.height()));
     painter.rect_filled(fill, 2.0, egui::Color32::from_rgb(80, 160, 230));
+
+    // Cancel button. Skipped when no cancel flag is supplied. When
+    // clicked we set the worker's cancel flag - the worker observes
+    // it at the next entity-loop boundary and returns LoadCancelled.
+    if let Some(flag) = cancel_flag {
+        let already = flag.load(Ordering::Relaxed);
+        let btn_w = 96.0_f32;
+        let btn_h = 28.0_f32;
+        let btn_rect = egui::Rect::from_min_size(
+            egui::pos2(card.right() - 16.0 - btn_w, card.bottom() - 16.0 - btn_h),
+            egui::vec2(btn_w, btn_h),
+        );
+        let label = if already { "Cancelling..." } else { "Cancel" };
+        let btn = egui::Button::new(label);
+        let resp = ui.put(btn_rect, btn);
+        if resp.clicked() && !already {
+            flag.store(true, Ordering::Relaxed);
+            eprintln!("[load] cancel requested by user");
+        }
+    }
 }
 
 /// Trim a path for log/UI use: keep just the file name when possible.
@@ -6650,8 +6739,21 @@ fn short_path(path: &str) -> String {
 }
 
 fn load_any(path: &str, label: &'static str) -> Scene {
+    match load_any_result(path) {
+        Ok(s) => { eprintln!("[{}] {}", label, s.count_label); s }
+        Err(e) => {
+            eprintln!("[{}] load failed for {}: {:?}", label, path, e);
+            Scene::empty(label, format!("load FAILED: {}", e))
+        }
+    }
+}
+
+/// Like `load_any` but propagates the underlying `Result` so callers
+/// (the worker thread in `spawn_load_job`) can distinguish a real
+/// failure from a `LoadCancelled` sentinel.
+fn load_any_result(path: &str) -> anyhow::Result<Scene> {
     let lower = path.to_lowercase();
-    let res = if lower.ends_with(".dwg") {
+    if lower.ends_with(".dwg") {
         load_dwg(path)
     } else if lower.ends_with(".dxf") {
         load_dxf(path)
@@ -6660,13 +6762,6 @@ fn load_any(path: &str, label: &'static str) -> Scene {
             .map_err(|e| anyhow::anyhow!("ifcdraw load: {e}"))
     } else {
         Err(anyhow::anyhow!("unsupported extension"))
-    };
-    match res {
-        Ok(s) => { eprintln!("[{}] {}", label, s.count_label); s }
-        Err(e) => {
-            eprintln!("[{}] load failed for {}: {:?}", label, path, e);
-            Scene::empty(label, format!("load FAILED: {}", e))
-        }
     }
 }
 
