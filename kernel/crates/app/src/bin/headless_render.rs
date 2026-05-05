@@ -109,12 +109,41 @@ async fn render_to_png(
         compatible_surface: None,
         force_fallback_adapter: false,
     }).await.ok_or_else(|| anyhow::anyhow!("no wgpu adapter"))?;
-    let (device, queue) = adapter.request_device(&wgpu::DeviceDescriptor {
+    // Mirror open_2d_studio's big-scene fix (commit dbf900d): the default
+    // wgpu::Limits cap max_buffer_size at 256 MB, which crashes
+    // create_buffer for the unified scene-vb on 9M-segment DWGs (~284 MB
+    // observed on Kerk aan de Haven). Request the adapter's reported max
+    // (typically 1-2 GB on modern GPUs); fall back to defaults if the
+    // driver refuses.
+    let adapter_limits = adapter.limits();
+    let default_limits = wgpu::Limits::default();
+    let desired_max_buffer = adapter_limits.max_buffer_size
+        .max(default_limits.max_buffer_size)
+        .max(1_073_741_824);
+    let desired_max_storage = adapter_limits.max_storage_buffer_binding_size
+        .max(default_limits.max_storage_buffer_binding_size);
+    let preferred_limits = wgpu::Limits {
+        max_buffer_size: desired_max_buffer,
+        max_storage_buffer_binding_size: desired_max_storage,
+        ..default_limits.clone()
+    };
+    let (device, queue) = match adapter.request_device(&wgpu::DeviceDescriptor {
         label: Some("headless_render"),
         required_features: wgpu::Features::empty(),
-        required_limits: wgpu::Limits::default(),
+        required_limits: preferred_limits.clone(),
         memory_hints: wgpu::MemoryHints::Performance,
-    }, None).await?;
+    }, None).await {
+        Ok(pair) => pair,
+        Err(e) => {
+            eprintln!("[headless_render] elevated GPU limits rejected ({e}); falling back to defaults");
+            adapter.request_device(&wgpu::DeviceDescriptor {
+                label: Some("headless_render"),
+                required_features: wgpu::Features::empty(),
+                required_limits: default_limits,
+                memory_hints: wgpu::MemoryHints::Performance,
+            }, None).await?
+        }
+    };
 
     let format = wgpu::TextureFormat::Rgba8UnormSrgb;
     let target_tex = device.create_texture(&wgpu::TextureDescriptor {
