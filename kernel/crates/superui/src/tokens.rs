@@ -55,7 +55,10 @@ pub mod metrics {
     pub const ICON_ML: f32 = 20.0;
 
     /// Large icon (used in large ribbon buttons — `Ribbon.css` line 322).
-    pub const ICON_LG: f32 = 28.0;
+    /// 1.0 reference renders the SELECTION pawn at ~24 px, not the 28 px
+    /// we previously used. Round 8 polish: shrink so it stops dominating
+    /// the group visually.
+    pub const ICON_LG: f32 = 24.0;
 }
 
 /// Typography tokens. Phase 1 uses egui's default font; sizes match 1.0.
