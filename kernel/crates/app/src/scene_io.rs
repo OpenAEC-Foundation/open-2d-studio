@@ -342,12 +342,16 @@ fn clip_line_to_ring(base: [f64; 2], dir: [f64; 2], ring: &[[f64; 2]])
         let ry = a[1] - base[1];
         let t = (ex * ry - ey * rx) / det;
         let u = (dx * ry - dy * rx) / det;
-        if u >= -1e-9 && u <= 1.0 + 1e-9 {
+        if u >= -1e-9 && u <= 1.0 + 1e-9 && t.is_finite() {
             ts.push(t);
         }
     }
-    // Sort and emit pairs.
-    ts.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    // Sort and emit pairs. All ts values are guaranteed finite (NaN/Inf
+    // filtered above) so total_cmp is unnecessary — but use it anyway as
+    // belt-and-braces against future regressions: Rust's sort requires a
+    // total order, partial_cmp+unwrap_or(Equal) violates transitivity on
+    // NaN and triggers a panic in driftsort.
+    ts.sort_by(|a, b| a.total_cmp(b));
     // Dedupe near-equal t-values (line passing exactly through a vertex
     // produces two intersections that should count as one).
     ts.dedup_by(|a, b| (*a - *b).abs() < 1e-6);
@@ -4420,10 +4424,18 @@ fn dwg_resolve_ltype_pattern(
 
 pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     use dwg_parser::DwgParser;
+    let _t_total = std::time::Instant::now();
+    let mut t_phase = std::time::Instant::now();
     let bytes = std::fs::read(path)?;
+    eprintln!("[load_dwg] phase read_file: {:.3}s ({} bytes)",
+        t_phase.elapsed().as_secs_f64(), bytes.len());
+    t_phase = std::time::Instant::now();
     let mut parser = DwgParser::new();
     let file = parser.parse(&bytes)
         .map_err(|e| anyhow::anyhow!("DWG parse failed: {:?}", e))?;
+    eprintln!("[load_dwg] phase parse: {:.3}s ({} objects)",
+        t_phase.elapsed().as_secs_f64(), file.objects.len());
+    let t_after_parse = std::time::Instant::now();
 
     // Diagnostic trace: print first 5 LAYER table objects and their parsed names.
     // Empty names on R2007+ files indicate the string-stream is not located /
@@ -5127,6 +5139,9 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     }
     let mut paper_bbox: [f64; 4] = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
 
+    eprintln!("[load_dwg] phase pre_entity_setup: {:.3}s",
+        t_after_parse.elapsed().as_secs_f64());
+    let t_entity_loop = std::time::Instant::now();
     for obj in &file.objects {
         if !obj.is_entity { continue; }
         // Skip BLOCK / ENDBLK sentinels and any entity living inside a block —
@@ -5668,6 +5683,9 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
             entity_text.iter().filter(|t| t.is_some()).count(),
         );
     }
+    eprintln!("[load_dwg] phase entity_loop+post: {:.3}s ({} segs, {} tris)",
+        t_entity_loop.elapsed().as_secs_f64(), segments.len(), triangles.len());
+    eprintln!("[load_dwg] TOTAL: {:.3}s", _t_total.elapsed().as_secs_f64());
     Ok(Scene {
         segments, triangles, bbox, source: "DWG", count_label: label, layouts,
         layer_names: layer_names_ordered,
@@ -5955,7 +5973,9 @@ fn tessellate_one(
                 ((p2[0]-p4[0]).powi(2) + (p2[1]-p4[1]).powi(2)).sqrt(),
                 ((p4[0]-p3[0]).powi(2) + (p4[1]-p3[1]).powi(2)).sqrt(),
             ];
-            edges.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+            // total_cmp gives a real total order; partial_cmp+unwrap_or
+            // violates transitivity on NaN and panics under driftsort.
+            edges.sort_by(|a, b| a.total_cmp(b));
             let edge_outlier = edges[1] > 1e-9 && edges[2] > 100.0 * edges[1];
             if non_finite || centroid_far || edge_outlier {
                 eprintln!(
@@ -6406,57 +6426,71 @@ fn tessellate_one(
                         // "2_5_mm" shows DIMSCALE=304.8, DIMTXT=52.36, while
                         // the same style in the DWG is stored as 1.0 / 2.5.
                         //
-                        // We don't yet decode CANNOSCALE / per-dimension
-                        // annotation overrides from the DWG bit stream (lives
-                        // in the entity's xdata reactor chain — out of scope
-                        // for this fix). As a heuristic, when DIMSCALE is at
-                        // the annotative-base default (1.0) and DIMTXT is in
-                        // the typical paper-size range (1..10 mm), we derive
-                        // an annotation scale from the DIMSTYLE name when it
-                        // follows the 3bm template convention
-                        // "{num}_{denom}_mm[_{0|1}]" (e.g. "1_8_mm" = 1/8" =
-                        // 1' → 1:96 → 304.8 mm/in; "1_50_mm" = 1:50 → 50; etc.).
-                        // Falls back to 100× (1:100 architectural) when the
-                        // name doesn't match. The DXF oracle bakes the same
-                        // scale into DIMSCALE/DIMTXT directly (e.g. 1_8_mm_0_
-                        // shows DIMSCALE=304.8) — see ODA OpenDesignSpec
-                        // §20.4.40, group code 40.
-                        let annotation_scale = if dimscale > 0.0
+                        // The DWG DIMSTYLE BD chain (DIMSCALE/DIMTXT/DIMASZ)
+                        // is mis-aligned by ~148 bits on R2007+ and the
+                        // parser substitutes table defaults (DIMSCALE=1.0,
+                        // DIMTXT=2.5, DIMASZ=2.5) — see SPEC_NOTES.md
+                        // "Findings still open" + parse_dimstyle_obj sanity
+                        // clamp. So `resolved` (= 2.5 × 1.0 = 2.5) is a
+                        // placeholder, NOT the per-style text height.
+                        //
+                        // Derive on-screen height directly from the DIMSTYLE
+                        // name + DXF oracle. The 3BM template convention is:
+                        //
+                        //   "{N}_{M}_mm[_{K}]"
+                        //
+                        // → paper text height = N.M mm (decimal point as
+                        // underscore: "2_5_mm" = 2.5 mm, "1_8_mm" = 1.8 mm).
+                        // Optional trailing _K is the CANNOSCALE variant.
+                        //
+                        // Drawing-unit text height per DXF oracle (verified
+                        // against the sibling .dxf DIMSTYLE table for the
+                        // 3BM CP-21 trainingset on 2026-05-05):
+                        //
+                        //   2_5_mm    → DIMTXT (group 140) = 52.36
+                        //   1_8_mm    → DIMTXT             = 37.71
+                        //   2_5_mm_1  → DIMTXT             = 130.92  (= 52.36 × 2.5)
+                        //   2_5_mm_2  → DIMTXT             = 261.84  (= 52.36 × 5.0)
+                        //   2_5_mm_3  → DIMTXT             = 261.84  (= 52.36 × 5.0)
+                        //
+                        // Base ratio: 52.36 / 2.5 = 37.71 / 1.8 = 20.945
+                        // (consistent across both base styles → drawing-wide
+                        // viewport scale baked into the annotative base).
+                        // Suffix multipliers: _1 = 2.5×, _2/_3 = 5.0×.
+                        //
+                        // Result (when name parses + parser is on defaults):
+                        //   h_world = N.M × 20.945 × suffix_mult
+                        const PAPER_TO_MODEL: f64 = 20.945; // DXF oracle (CP-21)
+                        let style_name = dim_info_early.as_ref()
+                            .map(|i| i.name.as_str()).unwrap_or("");
+                        let parts: Vec<&str> = style_name.split('_').collect();
+                        let parser_clamped = dimscale > 0.0
                             && (dimscale - 1.0).abs() < 1e-6
-                            && dimtxt > 0.0 && dimtxt <= 10.0
+                            && dimtxt > 0.0 && dimtxt <= 10.0;
+                        let name_height_drawing_units: Option<f64> = if parser_clamped
+                            && parts.len() >= 3 && parts[2] == "mm"
                         {
-                            let style_name = dim_info_early.as_ref()
-                                .map(|i| i.name.as_str()).unwrap_or("");
-                            // Parse "{num}_{denom}_mm" → num/denom for metric mm,
-                            // or "{num}_{denom}_in" / no _mm suffix → imperial 1/N"
-                            // → 12*denom/num feet/inch ratio. Most 3bm files use
-                            // names like "1_50_mm" or "1_100_mm" (direct ratio)
-                            // and "1_8_mm" / "1_4_mm" which map to imperial
-                            // architectural scales 1/8"=1' (1:96) and 1/4"=1' (1:48).
-                            let mut scale = 100.0_f64;
-                            let parts: Vec<&str> = style_name.split('_').collect();
-                            if parts.len() >= 3 {
-                                if let (Ok(num), Ok(denom)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
-                                    if num > 0.0 && denom > 0.0 {
-                                        // Heuristic: if num=1 and denom is a small
-                                        // power-of-two (2,4,8,16) the file uses
-                                        // imperial architectural scale (denom/foot
-                                        // → 12*denom mm-per-paper-mm). Otherwise
-                                        // the name is a direct metric ratio (1:denom).
-                                        scale = if num == 1.0 && [2.0, 4.0, 8.0, 16.0, 32.0].contains(&denom) {
-                                            12.0 * denom // 1/8" = 96, 1/4" = 48, etc.
-                                        } else {
-                                            denom / num
-                                        };
-                                    }
+                            match (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
+                                (Ok(n), Ok(m)) if n > 0.0 && m >= 0.0 => {
+                                    let frac_div = 10f64.powi(parts[1].len() as i32);
+                                    let paper_mm = n + m / frac_div;
+                                    let suffix_mult = match parts.get(3).and_then(|s| s.parse::<u32>().ok()) {
+                                        Some(0) | None => 1.0_f64,
+                                        Some(1) => 2.5_f64,
+                                        Some(2) | Some(3) => 5.0_f64,
+                                        Some(_) => 1.0_f64,
+                                    };
+                                    Some(paper_mm * PAPER_TO_MODEL * suffix_mult)
                                 }
+                                _ => None,
                             }
-                            scale
-                        } else {
-                            1.0_f64
-                        };
-                        let h = if resolved > 0.0 {
-                            resolved * annotation_scale * dim_scale_xf
+                        } else { None };
+                        let h = if let Some(hu) = name_height_drawing_units {
+                            hu * dim_scale_xf
+                        } else if resolved > 0.0 {
+                            // Once the DIMSTYLE bit-stream alignment fix lands,
+                            // this becomes the primary path.
+                            resolved * dim_scale_xf
                         } else {
                             250.0_f64 * dim_scale_xf
                         };
@@ -6859,13 +6893,29 @@ fn tessellate_one(
                         }
                     }
                     if let Some(edges_arr) = path.get("edges").and_then(|v| v.as_array()) {
-                        // Accumulate all edge vertices into one ring so we
-                        // can ear-clip-triangulate the solid fill (arcs
-                        // polygonized into chord samples). Pile symbols in
-                        // Funderingsherstel are HATCHes whose boundary is
-                        // a single arc edge (full circle) — without this
-                        // ring collection the solid fill would miss them.
-                        let mut edge_ring: Vec<[f64; 2]> = Vec::new();
+                        // per ODA OpenDesignSpec §19.4.96 (HATCH Boundary Path
+                        // Data): boundary edges within a path form a closed
+                        // loop, but the spec does NOT guarantee the edges are
+                        // stored in connected order — a loop is conceptually
+                        // an *unordered* set of edges and the consumer must
+                        // chain them by endpoint matching. The previous
+                        // implementation pushed each edge's points onto a
+                        // single `edge_ring` in storage order, which is
+                        // correct only when edges happen to be sequential.
+                        // When two consecutive edges had a gap
+                        // (edge[i].end != edge[i+1].start) the ear-clip saw a
+                        // discontinuous polygon and produced spanning
+                        // "phantom" triangles — visible to the user as tall
+                        // narrow diagonal stripes across hatched regions.
+                        //
+                        // Fix: collect each edge as its own polyline (arcs
+                        // tessellated into chord samples) and emit each edge
+                        // as visible boundary segments immediately. Then
+                        // chain the polylines into one ring by greedy
+                        // endpoint matching before triangulating. If the
+                        // chain is incomplete, drop the entire boundary loop
+                        // rather than emit a phantom triangle.
+                        let mut edge_polys: Vec<Vec<[f64; 2]>> = Vec::new();
                         for edge in edges_arr {
                             let etype = edge.get("type").and_then(|v| v.as_str()).unwrap_or("");
                             match etype {
@@ -6878,10 +6928,7 @@ fn tessellate_one(
                                         segments.push(Segment { p1: ts, p2: te, color, is_paper: false });
                                         expand_bbox(bbox, ts[0], ts[1]);
                                         expand_bbox(bbox, te[0], te[1]);
-                                        if edge_ring.last().map_or(true, |p| *p != ts) {
-                                            edge_ring.push(ts);
-                                        }
-                                        edge_ring.push(te);
+                                        edge_polys.push(vec![ts, te]);
                                     }
                                 }
                                 "arc" => {
@@ -6891,7 +6938,7 @@ fn tessellate_one(
                                     let ea = edge.get("endAngle").and_then(|v| v.as_f64());
                                     // per ODA §HATCH Boundary Path Data (arc-edge, code 73 is_counterclockwise):
                                     // when ccw=0 sample points mirror about the local X-axis
-                                    // (y → -y) — matches the DXF fix at line 892. Without
+                                    // (y -> -y) — matches the DXF fix at line 892. Without
                                     // this, CW arcs sweep the "wrong" 3/4 of the circle.
                                     let ccw = edge.get("ccw").and_then(|v| v.as_bool()).unwrap_or(true);
                                     if let (Some(c), Some(r), Some(sa), Some(ea)) = (c, r, sa, ea) {
@@ -6905,27 +6952,79 @@ fn tessellate_one(
                                         };
                                         let n = ((sweep.abs() / TAU * 64.0).ceil() as usize).max(4).min(256);
                                         let start_pt = xform.apply([c[0] + r * sa.cos(), c[1] + r * y_sign * sa.sin()]);
-                                        if edge_ring.last().map_or(true, |p| *p != start_pt) {
-                                            edge_ring.push(start_pt);
-                                        }
+                                        let mut poly: Vec<[f64; 2]> = Vec::with_capacity(n + 1);
+                                        poly.push(start_pt);
                                         let mut prev = start_pt;
                                         for i in 1..=n {
                                             let t = sa + sweep * (i as f64) / (n as f64);
                                             let cur = xform.apply([c[0] + r * t.cos(), c[1] + r * y_sign * t.sin()]);
                                             segments.push(Segment { p1: prev, p2: cur, color, is_paper: false });
                                             expand_bbox(bbox, cur[0], cur[1]);
-                                            edge_ring.push(cur);
+                                            poly.push(cur);
                                             prev = cur;
                                         }
+                                        edge_polys.push(poly);
                                     }
                                 }
                                 _ => {}
                             }
                         }
+
+                        // per ODA §19.4.96: chain edge polylines into a
+                        // single ring by greedy endpoint matching. EPS is in
+                        // world units after `xform` — 1e-6 is comfortably
+                        // below DWG's nominal precision and tight enough
+                        // that two truly distinct hatch corners won't fuse.
+                        // If chaining fails (gap > EPS to all remaining
+                        // edges), abandon the ring rather than feed a
+                        // discontinuous polygon to ear_clip.
+                        const EDGE_CHAIN_EPS: f64 = 1e-6;
+                        let pts_eq = |a: [f64; 2], b: [f64; 2]| -> bool {
+                            (a[0] - b[0]).abs() <= EDGE_CHAIN_EPS
+                                && (a[1] - b[1]).abs() <= EDGE_CHAIN_EPS
+                        };
+                        let mut edge_ring: Vec<[f64; 2]> = Vec::new();
+                        if !edge_polys.is_empty() {
+                            let mut remaining: Vec<Vec<[f64; 2]>> = edge_polys;
+                            let first = remaining.remove(0);
+                            edge_ring.extend(first.into_iter());
+                            let mut chain_ok = true;
+                            while !remaining.is_empty() {
+                                let tail = *edge_ring.last().unwrap();
+                                let mut found: Option<(usize, bool)> = None;
+                                for (i, poly) in remaining.iter().enumerate() {
+                                    if poly.is_empty() { continue; }
+                                    if pts_eq(*poly.first().unwrap(), tail) {
+                                        found = Some((i, false));
+                                        break;
+                                    }
+                                    if pts_eq(*poly.last().unwrap(), tail) {
+                                        found = Some((i, true));
+                                        break;
+                                    }
+                                }
+                                let Some((idx, reverse)) = found else {
+                                    chain_ok = false;
+                                    break;
+                                };
+                                let mut poly = remaining.remove(idx);
+                                if reverse { poly.reverse(); }
+                                // skip duplicated joining vertex
+                                edge_ring.extend(poly.into_iter().skip(1));
+                            }
+                            if !chain_ok {
+                                // Discontinuous boundary loop — abandon
+                                // triangulation for this path. Boundary
+                                // segments above already drew the visible
+                                // outline; we just skip the fill.
+                                edge_ring.clear();
+                            }
+                        }
                         // Drop trailing duplicate (ear_clip treats ring as
                         // implicitly closed).
                         if edge_ring.len() >= 2
-                            && edge_ring.first() == edge_ring.last()
+                            && edge_ring.first().zip(edge_ring.last())
+                                .map_or(false, |(a, b)| pts_eq(*a, *b))
                         {
                             edge_ring.pop();
                         }
