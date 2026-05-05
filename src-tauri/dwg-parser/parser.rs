@@ -2482,7 +2482,7 @@ impl DwgParser {
         // itself uses a distinct codec â€” see r2007::decrypt_file_header docs).
         let enc_hdr = match crate::r2007::decrypt_file_header(data) {
             Ok(h) => {
-                eprintln!(
+                crate::dwg_dbg!(
                     "[dwg-dbg] try_r2007_page_pipeline: decrypt OK ({}B) magic={:?}",
                     h.len(),
                     std::str::from_utf8(&h[..h.len().min(11)]).unwrap_or("<bin>")
@@ -2490,7 +2490,7 @@ impl DwgParser {
                 h
             }
             Err(e) => {
-                eprintln!(
+                crate::dwg_dbg!(
                     "[dwg-dbg] try_r2007_page_pipeline: decrypt_file_header FAILED ({:?}) â€” returning Err",
                     e
                 );
@@ -2502,7 +2502,7 @@ impl DwgParser {
         let (page_map, page_size) = match crate::r2007::read_page_map(data, &enc_hdr) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!(
+                crate::dwg_dbg!(
                     "[dwg-dbg] try_r2007_page_pipeline: read_page_map FAILED ({:?}) â€” returning Err",
                     e
                 );
@@ -2513,7 +2513,7 @@ impl DwgParser {
             crate::dwg_dbg!("[dwg-dbg] try_r2007_page_pipeline: page_map empty â€” returning Err");
             return Err(DwgError::InvalidBinary("R2007: empty page map".into()));
         }
-        eprintln!(
+        crate::dwg_dbg!(
             "[dwg-dbg] try_r2007_page_pipeline: page_map={} entries page_size=0x{:X}",
             page_map.len(),
             page_size
@@ -2591,13 +2591,13 @@ impl DwgParser {
 
         // Require some results to confirm this worked
         if dwg.objects.is_empty() && dwg.header_vars.len() <= 1 {
-            eprintln!(
+            crate::dwg_dbg!(
                 "[dwg-dbg] try_r2007_page_pipeline: EXIT Err â€” no results (objects=0, hdrs<=1)"
             );
             return Err(DwgError::InvalidBinary("R2007: page pipeline produced no results".into()));
         }
 
-        eprintln!(
+        crate::dwg_dbg!(
             "[dwg-dbg] try_r2007_page_pipeline: EXIT Ok objects={} headers={}",
             dwg.objects.len(),
             dwg.header_vars.len()
@@ -2764,7 +2764,7 @@ impl DwgParser {
             let end = (off + 16).min(enc_hdr.len());
             let hex: String = enc_hdr[off..end].iter()
                 .map(|b| format!("{:02x} ", b)).collect();
-            eprintln!("  {:04x}: {}", off, hex);
+            crate::dwg_dbg!("  {:04x}: {}", off, hex);
         }
         // Per ODA Â§4.1 R2010+ offsets:
         //   0x4C: section_page_map_addr as 8-byte RLL (+ 0x100 base)
@@ -7851,7 +7851,7 @@ fn link_polyline_vertices(
             }
         }
         if rescued > 0 {
-            eprintln!("[POLYLINE] Rescue-parsed {} vertices from object_map", rescued);
+            crate::dwg_dbg!("[POLYLINE] Rescue-parsed {} vertices from object_map", rescued);
         }
     }
 
@@ -7883,7 +7883,7 @@ fn link_polyline_vertices(
     }
 
     if linked_count > 0 {
-        eprintln!("[POLYLINE] Linked {} polylines with {} total vertices", linked_count, total_verts);
+        crate::dwg_dbg!("[POLYLINE] Linked {} polylines with {} total vertices", linked_count, total_verts);
     }
 }
 

@@ -41,8 +41,8 @@ pub const SECTION_OBJECTS: i32 = 0x41630040_u32 as i32;
 /// CORRECT for R2010+ (and is reused by `decrypt_file_header_r2010` after RS
 /// parity stripping) and works for R2010+ files when the RS wrap is absent
 /// (rare). Empirically, however, the algorithm does NOT produce the documented
-/// `"AcFssFcAJMB\0"` magic for actual R2007 (AC1021) files â€” verified on
-/// `example_2007.dwg` and `sample_AC1021.dwg`. Per ODA OpenDesignSpec Â§4.1,
+/// `"AcFssFcAJMB\0"` magic for actual R2007 (AC1021) files Ã¢â‚¬â€ verified on
+/// `example_2007.dwg` and `sample_AC1021.dwg`. Per ODA OpenDesignSpec Ã‚Â§4.1,
 /// R2007's System Section uses a distinct multi-stage codec (an LZ77-style
 /// compression layer wrapping a custom RandSeed XOR over a 0x480-byte payload)
 /// that is not yet implemented here.
@@ -69,17 +69,17 @@ pub fn decrypt_file_header(data: &[u8]) -> Result<Vec<u8>, DwgError> {
     }
 
     // R2007-specific validation: the documented magic at offset 0x00 of the
-    // decrypted block is "AcFssFcAJMB\0" per ODA Â§4.1. R2007 files that lack
+    // decrypted block is "AcFssFcAJMB\0" per ODA Ã‚Â§4.1. R2007 files that lack
     // this magic after the plain-LCG decrypt are using the R2007-specific
-    // codec (see doc-comment above) â€” return Err so the caller can dispatch
+    // codec (see doc-comment above) Ã¢â‚¬â€ return Err so the caller can dispatch
     // to a sentinel-scan or alternate pipeline rather than feed garbage to
     // `read_page_map`.
     let version_code: &[u8] = data.get(0..6).unwrap_or(&[]);
     let is_r2007 = version_code == b"AC1021";
     if is_r2007 && !decrypted.starts_with(b"AcFss") {
         return Err(DwgError::InvalidBinary(
-            "R2007 (AC1021): plain-LCG decrypt did not yield 'AcFss' magic â€” \
-             R2007 uses a distinct System Section codec (ODA Â§4.1) that is not \
+            "R2007 (AC1021): plain-LCG decrypt did not yield 'AcFss' magic Ã¢â‚¬â€ \
+             R2007 uses a distinct System Section codec (ODA Ã‚Â§4.1) that is not \
              yet implemented; falling back to sentinel scan".into(),
         ));
     }
@@ -89,9 +89,9 @@ pub fn decrypt_file_header(data: &[u8]) -> Result<Vec<u8>, DwgError> {
 
 /// Decrypt the R2010+ encrypted file header at offset 0x80.
 ///
-/// Per ODA OpenDesignSpec Â§4.1, R2010/R2013/R2018 wrap the 0x6C-byte LCG
-/// payload in a Reed-Solomon(255,239) sector block: 3 Ã— 255 bytes on disk
-/// yielding 3 Ã— 239 = 717 data bytes after stripping parity. The first
+/// Per ODA OpenDesignSpec Ã‚Â§4.1, R2010/R2013/R2018 wrap the 0x6C-byte LCG
+/// payload in a Reed-Solomon(255,239) sector block: 3 Ãƒâ€” 255 bytes on disk
+/// yielding 3 Ãƒâ€” 239 = 717 data bytes after stripping parity. The first
 /// 0x6C bytes of the RS-stripped block are then LCG-XOR-decrypted with the
 /// same algorithm as R2004/R2007.
 ///
@@ -105,7 +105,7 @@ pub fn decrypt_file_header_r2010(data: &[u8]) -> Result<Vec<u8>, DwgError> {
             "R2010+: file too short for RS-wrapped encrypted header".into(),
         ));
     }
-    // Step 1: strip RS(255,239) parity from 765 bytes â†’ 717 data bytes.
+    // Step 1: strip RS(255,239) parity from 765 bytes Ã¢â€ â€™ 717 data bytes.
     let rs_stripped = strip_rs_parity(&data[0x80..0x80 + RS_DISK]);
     if rs_stripped.len() < R2007_ENC_HDR_SIZE {
         return Err(DwgError::InvalidBinary(
@@ -187,7 +187,7 @@ pub fn read_page_map(
         let ps = u32::from_le_bytes([
             enc_hdr[0x28], enc_hdr[0x29], enc_hdr[0x2A], enc_hdr[0x2B],
         ]) as usize;
-        // Guard: R2010+ stores something else at 0x28 â€” if the value is too
+        // Guard: R2010+ stores something else at 0x28 Ã¢â‚¬â€ if the value is too
         // small (< 0x400 = 1 KB) or too big, fall back to the default page size.
         if ps >= 0x400 && ps <= 0x100000 { ps } else { R2007_PAGE_SIZE }
     } else {
@@ -196,7 +196,7 @@ pub fn read_page_map(
 
     // Candidate list of map-address interpretations, R2010+ first.
     // Each candidate is only accepted if its 32-byte header decodes to a
-    // plausible section (type âˆˆ {1,2,0x41630E3B}, comp_size fits in file).
+    // plausible section (type Ã¢Ë†Ë† {1,2,0x41630E3B}, comp_size fits in file).
     let candidates: Vec<(&str, usize)> = {
         let mut v: Vec<(&str, usize)> = Vec::new();
         if enc_hdr.len() >= 0x58 {
@@ -217,9 +217,9 @@ pub fn read_page_map(
     };
 
     let is_valid_page_header = |addr: usize| -> bool {
-        // NOTE: XOR-decrypted fallback was REMOVED â€” it produced too many false
+        // NOTE: XOR-decrypted fallback was REMOVED Ã¢â‚¬â€ it produced too many false
         // positives (2-of-2^32 mask collisions made random data look like
-        // sec_type âˆˆ {1, 2}), causing total regression. Team-lead revert.
+        // sec_type Ã¢Ë†Ë† {1, 2}), causing total regression. Team-lead revert.
         // TODO(insert-expander): re-add under strict version gate (AC1032 only).
         if addr < 0x100 || addr + 32 > data.len() { return false; }
         let sec_type = i32::from_le_bytes([
@@ -250,7 +250,7 @@ pub fn read_page_map(
         .map(|b| format!("{:02x} ", b)).collect();
     crate::dwg_dbg!("[dwg-dbg] r2007 page-hdr bytes: {}", hdr_bytes);
 
-    // Read page-map header fields. Header is 20 bytes per ODA Â§4.3.
+    // Read page-map header fields. Header is 20 bytes per ODA Ã‚Â§4.3.
     // NOTE: XOR-decrypted 32-byte variant temporarily disabled after regression.
     let section_type = i32::from_le_bytes([
         data[map_addr], data[map_addr + 1], data[map_addr + 2], data[map_addr + 3],
@@ -356,8 +356,8 @@ pub fn read_page_map(
         crate::dwg_dbg!("[dwg-dbg] r2007 map_data[..{}]: {}", n, hx);
     }
 
-    // R2010+ Section Page Map body â€” plain LE (i32 page_number, i32 page_size)
-    // pairs per ODA OpenDesignSpec Â§4.4. Positive page_number = real page,
+    // R2010+ Section Page Map body Ã¢â‚¬â€ plain LE (i32 page_number, i32 page_size)
+    // pairs per ODA OpenDesignSpec Ã‚Â§4.4. Positive page_number = real page,
     // negative = gap/deleted. Cumulative offset starts at 0x100.
     let mut page_map = HashMap::new();
     let mut cum_offset: usize = 0x100;
@@ -378,8 +378,8 @@ pub fn read_page_map(
                 entry_count - 1, page_num, psize, cum_offset);
         }
         if page_num == 0 && psize == 0 {
-            // Zero-pair â€” could be padding or end marker.
-            // For R2018 files, don't stop at zero pairs â€” more entries may follow.
+            // Zero-pair Ã¢â‚¬â€ could be padding or end marker.
+            // For R2018 files, don't stop at zero pairs Ã¢â‚¬â€ more entries may follow.
             // Only stop if multiple consecutive zero pairs are seen.
             if pos + 8 <= map_data.len() {
                 let next_pn = i32::from_le_bytes([
@@ -389,14 +389,14 @@ pub fn read_page_map(
                     map_data[pos + 4], map_data[pos + 5], map_data[pos + 6], map_data[pos + 7],
                 ]);
                 if next_pn == 0 && next_ps == 0 {
-                    break; // Two consecutive zero pairs â€” definitely end
+                    break; // Two consecutive zero pairs Ã¢â‚¬â€ definitely end
                 }
             } else {
                 break;
             }
             continue;
         }
-        // per ODA Â§4.4: gap pages with negative psize are zero-sized markers;
+        // per ODA Ã‚Â§4.4: gap pages with negative psize are zero-sized markers;
         // only positive psize consumes physical file space.
         let physical_size = if psize > 0 { psize as usize } else { 0 };
         if page_num > 0 && physical_size > 0 {
@@ -495,7 +495,7 @@ pub fn assemble_section(
         compressed: bool,
     }
 
-    // per ODA Â§4.5 XOR page-header decryption applies to R2010+ (AC1024+),
+    // per ODA Ã‚Â§4.5 XOR page-header decryption applies to R2010+ (AC1024+),
     // not only R2013+. key = file_offset ^ 0x4164536B, applied per-DWORD
     // to the 32-byte header.
     let try_xor = version_code >= "AC1024";
@@ -536,7 +536,7 @@ pub fn assemble_section(
         let (sec_type, sec_number, dsize, csize, start_off, hdr_size) = if raw_valid {
             (st, sn, ds, cs, so, 20usize)
         } else if try_xor && file_offset + 32 <= data.len() {
-            // XOR-decrypt the 32-byte data page header per ODA Â§4.6.
+            // XOR-decrypt the 32-byte data page header per ODA Ã‚Â§4.6.
             // Field layout (after XOR):
             //   hdr[0..4]   sec_type  (0x4163043B for data pages)
             //   hdr[4..8]   sec_number
@@ -554,7 +554,7 @@ pub fn assemble_section(
             }
             let xst = i32::from_le_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]);
             let xsn = i32::from_le_bytes([hdr[4], hdr[5], hdr[6], hdr[7]]);
-            // per ODA Â§4.6 for XOR 32-byte data page headers:
+            // per ODA Ã‚Â§4.6 for XOR 32-byte data page headers:
             //   hdr[8..12]  = compressed (on-disk) body size
             //   hdr[12..16] = decompressed (valid) page size
             let xcomp = u32::from_le_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]) as usize;
@@ -573,7 +573,7 @@ pub fn assemble_section(
                 // names consistently downstream.
                 (xst, xsn, xdecomp, xcomp, xso, 32usize)
             } else {
-                // XOR didn't produce valid header either â€” skip page
+                // XOR didn't produce valid header either Ã¢â‚¬â€ skip page
                 (st, sn, ds, cs, so, 20usize)
             }
         } else {
@@ -656,7 +656,7 @@ pub fn assemble_section(
 /// at that offset contains the section map data as a system page with a raw
 /// 20-byte header (NOT XOR-encrypted). The header format for sentinel
 /// 0x4163003B is: [type(4), sec_num(4), data_size(4), comp_type(4), checksum(4)].
-/// The compressed body size is NOT stored explicitly â€” we compute it from the
+/// The compressed body size is NOT stored explicitly Ã¢â‚¬â€ we compute it from the
 /// page allocation size in the page map.
 pub fn read_section_map_by_page(
     data: &[u8],
@@ -732,7 +732,7 @@ pub fn read_section_map_by_page(
         let body = &data[body_start..body_start + body_size];
 
         if compressed {
-            // per ODA Â§4.7 LZ77 may emit past declared decomp_size; use a
+            // per ODA Ã‚Â§4.7 LZ77 may emit past declared decomp_size; use a
             // generous target so END opcode terminates naturally, not the
             // size cap. The declared data_size is unreliable for the
             // section-map page on this fixture (reports 530 while the true
@@ -754,7 +754,7 @@ pub fn read_section_map_by_page(
             Ok(body[..data_size.min(body.len())].to_vec())
         }
     } else {
-        // Not a system page â€” try XOR-decrypted 32-byte data page header
+        // Not a system page Ã¢â‚¬â€ try XOR-decrypted 32-byte data page header
         if file_offset + 32 > data.len() { return Ok(Vec::new()); }
         let mask = 0x4164536Bu32 ^ (file_offset as u32);
         let mut hdr = [0u8; 32];
@@ -776,7 +776,7 @@ pub fn read_section_map_by_page(
             let body = &data[body_start..body_start + xor_cs];
             let compressed = xor_st == 2 || (xor_st as u32) >= 0x41000000;
             if compressed {
-                // per ODA Â§4.7 LZ77 terminates on END (0x11); use a generous
+                // per ODA Ã‚Â§4.7 LZ77 terminates on END (0x11); use a generous
                 // target so the section-map stream terminates naturally even
                 // when the declared data_size understates the emitted bytes.
                 let ceiling = xor_ds.max(4 * xor_cs).max(xor_cs * 16).max(0x4000);
@@ -832,7 +832,7 @@ pub const SENTINEL_SECTION_MAP: u32 = 0x4163003B;
 ///   +16: checksum (4 bytes)
 /// Followed by comp_size bytes of (possibly compressed) body.
 ///
-/// System section bodies are NOT RS-encoded â€” use raw body directly.
+/// System section bodies are NOT RS-encoded Ã¢â‚¬â€ use raw body directly.
 pub fn scan_system_section(
     data: &[u8],
     sentinel: u32,
@@ -882,7 +882,7 @@ pub fn scan_system_section(
             raw.to_vec()
         };
 
-        eprintln!(
+        crate::dwg_dbg!(
             "[dwg-dbg] sentinel 0x{:08X} found @0x{:X}: ds={} cs={} comp={} body={}B",
             sentinel, pos, data_size, comp_size, compressed, body.len()
         );
@@ -912,7 +912,7 @@ pub struct R2018SectionEntry {
     pub compressed: bool,
 }
 
-/// Parse the R2018 section map body (ODA Â§4.5 format).
+/// Parse the R2018 section map body (ODA Ã‚Â§4.5 format).
 ///
 /// Same format as R2004 but found via sentinel scan rather than page assembly.
 /// Each entry:
@@ -924,7 +924,7 @@ pub struct R2018SectionEntry {
 ///   +20: encrypted (RL)
 ///   +24: name (64 bytes, null-terminated ASCII)
 ///   +88: num_page_entries (RL)
-///   +92: page entries (page_number RL, data_size RL) Ã— N
+///   +92: page entries (page_number RL, data_size RL) Ãƒâ€” N
 pub fn parse_r2018_section_map(map_data: &[u8]) -> Vec<R2018SectionEntry> {
     // R2018 section map format (observed from test files):
     //
@@ -945,7 +945,7 @@ pub fn parse_r2018_section_map(map_data: &[u8]) -> Vec<R2018SectionEntry> {
     //   +28: section_id (RL)
     //   +32: encrypted (RL)
     //   +36: name[64] (ASCII, null-padded)
-    //   +100: page entries Ã— num_pages, each 16 bytes:
+    //   +100: page entries Ãƒâ€” num_pages, each 16 bytes:
     //      +0: page_data_offset (RLL = 8 bytes)
     //      +8: page_size (RL)
     //      +12: page_id (RL) = page number in page map
@@ -1023,7 +1023,7 @@ fn try_parse_r2018_sections(
         if *name_off < hdr_size { return Vec::new(); }
         let entry_start = name_off - hdr_size;
 
-        // Read num_pages â€” try offset +8 first, then +12
+        // Read num_pages Ã¢â‚¬â€ try offset +8 first, then +12
         let num_pages = {
             let mut np = 0u32;
             for &np_off in &[8usize, 12, 16] {
@@ -1050,7 +1050,7 @@ fn try_parse_r2018_sections(
             ])
         } else { 0 };
 
-        // Read compressed flag â€” typically at hdr_size - 12 or hdr_size - 8
+        // Read compressed flag Ã¢â‚¬â€ typically at hdr_size - 12 or hdr_size - 8
         let compressed = {
             let mut comp = 2u32; // default compressed
             for &off in &[20usize, 16, 24] {
@@ -1128,18 +1128,18 @@ fn try_parse_r2018_sections(
         });
     }
 
-    // per ODA Â§4.5 section map contains ALL section descriptors in file order;
+    // per ODA Ã‚Â§4.5 section map contains ALL section descriptors in file order;
     // name filtering belongs to the caller, not the parser. We only require
     // that descriptors are layout-aligned (i.e. the header/page-entry sizes we
     // picked produce entries that tile the buffer contiguously). Downstream
     // code re-discovers essential sections by content-probing.
     if all_aligned && !sections.is_empty() {
-        eprintln!(
+        crate::dwg_dbg!(
             "[dwg-dbg] r2018 section_map: parsed {} entries (hdr={}, pe={})",
             sections.len(), hdr_size, pe_size
         );
         for s in &sections {
-            eprintln!(
+            crate::dwg_dbg!(
                 "[dwg-dbg]   name={:?} type=0x{:08X} pages={} max_decomp=0x{:X} comp={}",
                 s.name, s.section_type as u32, s.pages.len(), s.max_decomp_size, s.compressed
             );
@@ -1205,7 +1205,7 @@ pub fn assemble_r2018_section(
             }
         };
 
-        // per ODA Â§4.6: XOR-decrypt the 32-byte page header to read the
+        // per ODA Ã‚Â§4.6: XOR-decrypt the 32-byte page header to read the
         // authoritative per-page compressed body size (dw2) and decompressed
         // valid size (dw3). The section map's comp_size approximates dw2 but
         // may differ slightly; dw3 is NOT in the section map and must come
@@ -1229,7 +1229,7 @@ pub fn assemble_r2018_section(
                 {
                     (xcomp, xdecomp, 32usize)
                 } else {
-                    // Header didn't decrypt cleanly â€” fall back to section map
+                    // Header didn't decrypt cleanly Ã¢â‚¬â€ fall back to section map
                     let cs = if page_entry.comp_size > 0 {
                         page_entry.comp_size as usize
                     } else {
@@ -1279,7 +1279,7 @@ pub fn assemble_r2018_section(
                 }
                 Err(e) => {
                     if idx < 5 || idx == entry.pages.len() - 1 {
-                        eprintln!(
+                        crate::dwg_dbg!(
                             "[dwg-dbg] r2018 assemble {:?}: page {} @0x{:X} cs={} dcs={} decompress failed: {:?}",
                             entry.name, page_num, file_offset, page_comp_size, page_decomp_size, e
                         );
@@ -1301,7 +1301,7 @@ pub fn assemble_r2018_section(
         .unwrap_or(0);
     assembled.truncate(actual_len);
 
-    eprintln!(
+    crate::dwg_dbg!(
         "[dwg-dbg] r2018 assemble {:?}: {}/{} valid, {} failed, result={}B",
         entry.name, valid_pages, entry.pages.len(), failed_pages, assembled.len()
     );
