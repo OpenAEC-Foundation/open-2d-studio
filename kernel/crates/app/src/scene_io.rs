@@ -484,6 +484,17 @@ fn emit_hatch_pattern_lines(
         let off = pl.offset;
         let off_len = off[0].hypot(off[1]);
         if off_len < 1e-9 { continue; }
+        // Sanity gate: pattern offsets above ~1km world-units, or base
+        // points above 1e9 world units, are pathological. Corrupt HATCH
+        // headers (seen on R2010+ DWGs with byte-order glitches in the
+        // pattern table) decode to 1e+200-ish values which then poison
+        // segment endpoints downstream of `base + n*offset`. Real CAD
+        // hatch patterns step by millimetres to centimetres.
+        if !off_len.is_finite() || off_len > 1.0e6 ||
+           !pl.base[0].is_finite() || !pl.base[1].is_finite() ||
+           pl.base[0].abs() > 1.0e9 || pl.base[1].abs() > 1.0e9 {
+            continue;
+        }
         let a = pl.angle_deg.to_radians();
         let dir = [a.cos(), a.sin()];
         // Perpendicular to the line direction. All parallel lines have
