@@ -2575,7 +2575,16 @@ impl App {
                             let px = world_to_screen_x_helper(et.anchor[0], et.anchor[1], cam, rect);
                             let py = world_to_screen_y_helper(et.anchor[0], et.anchor[1], cam, rect);
                             let ppp = ctx.pixels_per_point();
-                            egui::pos2(px / ppp, py / ppp)
+                            // Drop the popup BELOW the text glyphs so the live
+                            // preview stays visible while typing. Text height
+                            // is in world-Y units; convert to physical pixels
+                            // via the same wpp the camera uses, then to
+                            // logical pixels for the egui Area, plus 12 px gap.
+                            let h_phys = rect.3.max(1.0) as f64;
+                            let px_per_world = (h_phys * cam.zoom) / 2.0;
+                            let glyph_h_phys = (et.height.max(1e-6) * px_per_world) as f32;
+                            let drop = (glyph_h_phys / ppp) + 12.0;
+                            egui::pos2(px / ppp, py / ppp + drop.max(28.0))
                         }));
                 if let Some(anchor) = screen_anchor {
                     egui::Area::new("text_edit_overlay".into())
