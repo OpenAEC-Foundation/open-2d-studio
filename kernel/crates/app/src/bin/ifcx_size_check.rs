@@ -3,7 +3,7 @@
 //! vs. the source file. Used to validate the "IFC 2D B" blob is
 //! smaller than the source DWG, per the user's acceptance criterion.
 //!
-//! Usage: ifcx-size-check <path.dwg|.dxf> [out.ifcx]
+//! Usage: ifcx-size-check <path.dwg|.dxf> [out.ifcdraw]
 
 use std::path::{Path, PathBuf};
 
@@ -15,7 +15,7 @@ fn main() {
     let src = match args.next() {
         Some(s) => s,
         None => {
-            eprintln!("usage: ifcx-size-check <path.dwg|.dxf> [out.ifcx]");
+            eprintln!("usage: ifcx-size-check <path.dwg|.dxf> [out.ifcdraw]");
             std::process::exit(2);
         }
     };
@@ -23,7 +23,7 @@ fn main() {
         Some(s) => PathBuf::from(s),
         None => {
             let p = Path::new(&src);
-            p.with_extension("ifcx")
+            p.with_extension("ifcdraw")
         }
     };
 
@@ -76,7 +76,7 @@ fn main() {
         0.0
     };
     println!(
-        "SRC {:>12} bytes ({})\nIFCX {:>11} bytes ({})\nRATIO {:.2}% ({}× smaller)\nENCODE {} ms",
+        "SRC     {:>12} bytes ({})\nIFCDRAW {:>11} bytes ({})\nRATIO {:.2}% ({}× smaller)\nENCODE {} ms",
         src_bytes,
         src,
         out_bytes,

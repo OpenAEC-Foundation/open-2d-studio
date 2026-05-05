@@ -39,7 +39,8 @@ use superui::{
         StatusBar, StatusSection,
     },
     panels::{LeftDock, LeftDockAction, DrawingItem, SheetItem,
-             RightDock, RightDockAction},
+             RightDock, RightDockAction,
+             StructureTree, StructureTreeAction, TreeNode, NodeKind},
     panels::right_dock::RightDockState,
     dialogs::{AppMenu, AppMenuAction},
     icon::IconKind,
@@ -1221,6 +1222,16 @@ struct App {
     // App menu popup state.
     app_menu_open: bool,
 
+    // ---- Structure tree (IFC / DXF/DWG model browser) -----------------
+    /// Toggled via F5 or the ribbon "Structure" button. Lives on the
+    /// right side, mirrors the layer panel's footprint when open.
+    structure_panel_open: bool,
+    /// Per-id expansion set, shared across tabs (the consumer rebuilds
+    /// the tree per active scene so ids effectively scope themselves).
+    structure_expanded: HashSet<String>,
+    /// Currently selected tree node id, or None.
+    structure_selected: Option<String>,
+
     // --- Selection / click tracking ---------------------------------
     lmb_pressed: bool,
     lmb_press_pos: (f32, f32),
@@ -1462,6 +1473,9 @@ impl App {
             rd_w: 420.0,
             rd_h: 297.0,
             app_menu_open: false,
+            structure_panel_open: false,
+            structure_expanded: HashSet::new(),
+            structure_selected: None,
             lmb_pressed: false, lmb_press_pos: (0.0, 0.0),
             lmb_press_tab: 0,
             lmb_press_rect: (0.0, 0.0, 0.0, 0.0),
@@ -1582,10 +1596,14 @@ impl App {
             .find_map(|t| t.path.as_ref())
             .and_then(|p| std::path::Path::new(p).parent().map(|d| d.to_path_buf()));
         let mut dialog = rfd::FileDialog::new()
-            .set_title("Open DWG or DXF as new tab")
-            .add_filter("CAD drawings (*.dwg, *.dxf)", &["dwg", "dxf", "DWG", "DXF"])
+            .set_title("Open DWG, DXF or IFCDraw as new tab")
+            .add_filter(
+                "CAD drawings (*.dwg, *.dxf, *.ifcdraw)",
+                &["dwg", "dxf", "ifcdraw", "DWG", "DXF", "IFCDRAW"],
+            )
             .add_filter("AutoCAD DWG (*.dwg)", &["dwg", "DWG"])
             .add_filter("AutoCAD DXF (*.dxf)", &["dxf", "DXF"])
+            .add_filter("Open 2D Studio (*.ifcdraw)", &["ifcdraw", "IFCDRAW"])
             .add_filter("All files", &["*"]);
         if let Some(dir) = starting_dir {
             dialog = dialog.set_directory(dir);
@@ -1620,9 +1638,9 @@ impl App {
             .map(|s| s.to_string_lossy().into_owned())
             .unwrap_or_else(|| "untitled".to_string());
         let mut dialog = rfd::FileDialog::new()
-            .set_title("Save As IFC 2D B (binary IFCX)")
-            .set_file_name(format!("{default_name}.ifcx"))
-            .add_filter("IFCX binary (*.ifcx)", &["ifcx"]);
+            .set_title("Save As IFCDraw (binary IFCX)")
+            .set_file_name(format!("{default_name}.ifcdraw"))
+            .add_filter("IFCDraw (*.ifcdraw)", &["ifcdraw"]);
         if let Some(dir) = starting_dir {
             dialog = dialog.set_directory(dir);
         }
@@ -2274,7 +2292,7 @@ impl App {
                                 "open"          => { requested_menu_open_dialog = true; }
                                 "new_tab"       => { requested_new_tab = true; }
                                 "save_as_dxf"   => { requested_menu_save_as_dxf = true; }
-                                "save_as_ifcx"  => { requested_menu_save_as_ifcx = true; }
+                                "save_as_ifcdraw" => { requested_menu_save_as_ifcx = true; }
                                 "fit_extents"   => { requested_fit = true; }
                                 "select"        => { requested_tool_mode = Some(ToolMode::Select); }
                                 "move"          => { requested_tool_mode = Some(ToolMode::Move); }
@@ -5810,6 +5828,9 @@ fn load_any(path: &str, label: &'static str) -> Scene {
         load_dwg(path)
     } else if lower.ends_with(".dxf") {
         load_dxf(path)
+    } else if lower.ends_with(".ifcdraw") || lower.ends_with(".ifcx") {
+        kernel_app::ifcx_export::load_ifcdraw_scene(path)
+            .map_err(|e| anyhow::anyhow!("ifcdraw load: {e}"))
     } else {
         Err(anyhow::anyhow!("unsupported extension"))
     };
@@ -5909,7 +5930,7 @@ fn build_ribbon_tabs(
                         selected: false, enabled: true,
                     })
                     .button(RibbonButtonDef {
-                        id: "save_as_ifcx".into(), label: "Save IFCX".into(),
+                        id: "save_as_ifcdraw".into(), label: "Save IFCDraw".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: true,
                     }),

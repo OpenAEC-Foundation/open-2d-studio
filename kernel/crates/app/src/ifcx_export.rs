@@ -167,14 +167,99 @@ pub fn write_ifcx_binary(
 
 /// Inverse of `write_ifcx_binary` — decompress + deserialise.
 ///
-/// Used by round-trip tests; not wired into the viewer yet.
-#[allow(dead_code)]
+/// Used by round-trip tests and the IFCDraw loader.
 pub fn read_ifcx_binary(bytes: &[u8]) -> io::Result<BinaryIfcx> {
     let msgpack_bytes = zstd::stream::decode_all(bytes)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("zstd decode: {e}")))?;
     let blob: BinaryIfcx = rmp_serde::from_slice(&msgpack_bytes)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("msgpack decode: {e}")))?;
     Ok(blob)
+}
+
+/// Reconstruct a `Scene` from an IFCDraw (`.ifcdraw`) file on disk.
+///
+/// Inverse of `write_ifcx_binary` plus q16 dequantisation. Triangle kind
+/// is collapsed to `Solid` (the export side doesn't preserve TriKind), and
+/// per-entity grouping is approximated by giving every entity-batch a
+/// fresh `entity_idx`. Layer indices and colors round-trip exactly.
+pub fn load_ifcdraw_scene(path: &str) -> io::Result<crate::scene_io::Scene> {
+    use crate::scene_io::{Scene, Segment, Triangle, TriKind};
+    let bytes = std::fs::read(path)?;
+    let blob = read_ifcx_binary(&bytes)?;
+
+    let mut scene = Scene::empty("ifcdraw", format!("ifcdraw: {}", path));
+    scene.layer_names = blob.layers.iter().map(|l| l.name.clone()).collect();
+    scene.layer_colors = blob.layers.iter().map(|l| l.color).collect();
+    if scene.layer_names.is_empty() {
+        scene.layer_names.push("0".into());
+        scene.layer_colors.push(0xFF_FF_FF_FFu32);
+    }
+
+    // Bbox is f32 in the file; widen to f64 for the Scene.
+    let [xmin, ymin, xmax, ymax] = blob.header.bbox;
+    scene.bbox = [xmin as f64, ymin as f64, xmax as f64, ymax as f64];
+    let ext_x = ((xmax - xmin) as f64).max(1e-6);
+    let ext_y = ((ymax - ymin) as f64).max(1e-6);
+    let scale_x = ext_x / 65534.0;
+    let scale_y = ext_y / 65534.0;
+    let dq_x = |q: i16| -> f64 { (xmin as f64) + ((q as f64) + 32767.0) * scale_x };
+    let dq_y = |q: i16| -> f64 { (ymin as f64) + ((q as f64) + 32767.0) * scale_y };
+
+    fn read_i16_le(buf: &[u8]) -> Vec<i16> {
+        buf.chunks_exact(2)
+            .map(|c| i16::from_le_bytes([c[0], c[1]]))
+            .collect()
+    }
+
+    let mut entity_idx_counter: u32 = 0;
+    for ent in &blob.entities {
+        let q = read_i16_le(&ent.data);
+        match ent.kind.as_str() {
+            "line_batch_q16" => {
+                // 4 i16 per segment.
+                for chunk in q.chunks_exact(4) {
+                    scene.segments.push(Segment {
+                        p1: [dq_x(chunk[0]), dq_y(chunk[1])],
+                        p2: [dq_x(chunk[2]), dq_y(chunk[3])],
+                        color: ent.color,
+                        is_paper: ent.is_paper,
+                    });
+                    scene.segment_layer_idx.push(ent.layer_id as u16);
+                    scene.segment_entity_idx.push(entity_idx_counter);
+                    scene.segment_dash_kind.push(0);
+                }
+            }
+            "tri_batch_q16" => {
+                // 6 i16 per triangle.
+                for chunk in q.chunks_exact(6) {
+                    scene.triangles.push(Triangle {
+                        v: [
+                            [dq_x(chunk[0]), dq_y(chunk[1])],
+                            [dq_x(chunk[2]), dq_y(chunk[3])],
+                            [dq_x(chunk[4]), dq_y(chunk[5])],
+                        ],
+                        color: ent.color,
+                        is_paper: ent.is_paper,
+                        kind: TriKind::Solid,
+                    });
+                    scene.triangle_layer_idx.push(ent.layer_id as u16);
+                    scene.triangle_entity_idx.push(entity_idx_counter);
+                }
+            }
+            _ => {} // Unknown kind — skip, forward-compatible.
+        }
+        scene.entity_names.push(ent.path.clone());
+        scene.entity_text.push(None);
+        entity_idx_counter += 1;
+    }
+
+    scene.count_label = format!(
+        "ifcdraw: {} segs · {} tris · {} layers",
+        scene.segments.len(),
+        scene.triangles.len(),
+        scene.layer_names.len(),
+    );
+    Ok(scene)
 }
 
 // =============================================================================
