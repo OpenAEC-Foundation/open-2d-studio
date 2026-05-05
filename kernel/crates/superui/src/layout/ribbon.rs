@@ -359,10 +359,22 @@ fn paint_group_cells(
                 crate::primitives::button::ButtonSize::Large, actions);
             x += rg::LARGE_W + rg::CELL_GAP_H;
 
+            // 1.0 stack columns are usually 2 rows but can be 3 (e.g.
+            // SELECTION: Select All / Deselect / Find/Replace,
+            // ANNOTATE: Linear/Angular/Spot Coord., …). Pick the
+            // longest column (clamped to 3) and scale `cell_h` so
+            // every column shares a consistent grid.
+            let max_rows = stacks
+                .iter()
+                .map(|c| c.len().min(3))
+                .max()
+                .unwrap_or(2)
+                .max(2) as f32;
+            let inner_band = rg::INNER_H - rg::INNER_PAD_TOP;
+            let cell_h = (inner_band - (max_rows - 1.0) * rg::CELL_GAP_V) / max_rows;
             for col in stacks {
                 let cell_w = col.iter().map(cell_w_for_button).fold(0.0_f32, f32::max);
-                let cell_h = rg::SMALL_H;
-                for (i, b) in col.iter().take(2).enumerate() {
+                for (i, b) in col.iter().take(max_rows as usize).enumerate() {
                     let cy = y + i as f32 * (cell_h + rg::CELL_GAP_V);
                     let size = match b.size {
                         crate::primitives::button::ButtonSize::Large
