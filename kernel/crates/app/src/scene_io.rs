@@ -5923,6 +5923,14 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                     "[load_dwg] p90-filter SKIPPED — would drop {}/{} segments (>50%); p90={:.1} median={:.1} cap={:.1}",
                     n_drop, n_before, p90, median, cap
                 );
+            } else {
+                // n_drop == 0 — filter ran but found nothing to drop. Keep
+                // a brief note so the operator can confirm the filter is
+                // not silently chewing legitimate geometry.
+                eprintln!(
+                    "[load_dwg] p90-filter clean — 0 of {} segments outside cap ({:.1}); all retained",
+                    n_before, cap
+                );
             }
         }
     }
