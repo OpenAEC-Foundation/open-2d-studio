@@ -1438,8 +1438,14 @@ impl App {
             layer_panel_open: true,
             properties_panel_open: true,
             about_dialog_open: false,
-            left_dock_open: true,
-            right_dock_open: true,
+            // The new superui LeftDock/RightDock are scaffolds that
+            // duplicate the legacy LAYERS / PROPERTIES panels with no
+            // distinct content yet. Keep them OFF by default so the
+            // user only sees one panel per side. Once their content is
+            // genuinely additive (drawings/sheets nav, drawing-level
+            // form) flip these defaults back to true.
+            left_dock_open: false,
+            right_dock_open: false,
             drawings_open: true,
             sheets_open: true,
             drawings: vec!["Drawing 1".to_string()],
@@ -2284,15 +2290,16 @@ impl App {
                                     requested_clear_annotations = true;
                                 }
                                 "layers"        => {
-                                    // Toggle BOTH legacy panel + new
-                                    // LeftDock so the user sees a single
-                                    // consistent state.
+                                    // Single panel per side: ribbon
+                                    // toggles only the legacy LAYERS
+                                    // panel (which has real layer-list
+                                    // content). The new LeftDock is
+                                    // dormant until its dock content
+                                    // becomes genuinely additive.
                                     requested_toggle_layer_panel = true;
-                                    self.left_dock_open = !self.left_dock_open;
                                 }
                                 "properties"    => {
                                     requested_toggle_props_panel = true;
-                                    self.right_dock_open = !self.right_dock_open;
                                 }
                                 "samples"       => { requested_toggle_samples_panel = true; }
                                 "perf_hud"      => { requested_toggle_perf_hud = true; }
