@@ -2880,7 +2880,15 @@ impl App {
                     for a in actions {
                         match a {
                             RibbonAction::TabChanged(id) => {
-                                requested_ribbon_tab = Some(id);
+                                // The orange "File" tab is a special
+                                // affordance — clicking it opens the app
+                                // menu (matches 1.0 behavior) instead of
+                                // switching ribbon contents.
+                                if id == "file" {
+                                    self.app_menu_open = !self.app_menu_open;
+                                } else {
+                                    requested_ribbon_tab = Some(id);
+                                }
                             }
                             RibbonAction::ButtonClicked(id) => match id.as_str() {
                                 "open"          => { requested_menu_open_dialog = true; }
@@ -6938,6 +6946,14 @@ fn build_ribbon_tabs(
     fn select(mut x: RibbonButtonDef, sel: bool) -> RibbonButtonDef { x.selected = sel; x }
 
     let mut tabs: Vec<RibbonTabDef> = vec![
+        // The orange "File" tab is a click-only affordance: it opens the
+        // app menu rather than swapping ribbon contents. Empty groups so
+        // it never gets activated as the visible content tab.
+        RibbonTabDef {
+            id: "file".into(),
+            label: "File".into(),
+            groups: vec![],
+        },
         RibbonTabDef {
             id: "home".into(),
             label: "Home".into(),
@@ -6989,6 +7005,13 @@ fn build_ribbon_tabs(
                 RibbonGroup::with_layout("Annotate", RibbonGroupLayout::LargeLeft {
                     large: enable(select(lg("dim", "Aligned", IconKind::Dimension),
                         matches!(tool, ToolMode::Dimension))),
+                    // 1.0 layout: 3 stack columns with 3 rows each.
+                    // Columns: Linear/Angular/Spot · Radius/Diameter/Leader
+                    // · Label/Table/Cloud. Our LargeLeft renderer takes the
+                    // first 2 rows of each stack column (see ribbon.rs
+                    // `take(2)`), so we map the most important entries to
+                    // the first 2 slots and pack the 3rd into a 4th column
+                    // until we add 3-row stack support.
                     stacks: vec![
                         vec![
                             b_lbl("dim_linear", "Linear", IconKind::Dimension),
@@ -6999,44 +7022,52 @@ fn build_ribbon_tabs(
                             b_lbl("dim_diameter", "Diameter", IconKind::Circle),
                         ],
                         vec![
+                            b_lbl("dim_spot", "Spot Coord.", IconKind::Tag),
                             b_lbl("leader", "Leader", IconKind::Line),
-                            b_lbl("label", "Label", IconKind::Tag),
                         ],
                         vec![
+                            b_lbl("label", "Label", IconKind::Tag),
                             b_lbl("table", "Table", IconKind::Grid),
+                        ],
+                        vec![
                             b_lbl("cloud", "Cloud", IconKind::Spline),
                         ],
                     ],
                 }),
                 RibbonGroup::with_layout("Modify", RibbonGroupLayout::Stack {
                     rows: 2,
+                    // Column-major fill: pairs are (idx 2n, 2n+1).
+                    // 1.0 column order: Move/Mirror, Copy/Array, Rotate/Scale.
                     buttons: vec![
                         enable(select(b_lbl("move", "Move", IconKind::Move),
                             matches!(tool, ToolMode::Move))),
-                        enable(b_lbl("duplicate", "Copy", IconKind::Copy)),
-                        enable(select(b_lbl("rotate", "Rotate", IconKind::Rotate),
-                            matches!(tool, ToolMode::Rotate))),
                         enable(select(b_lbl("mirror", "Mirror", IconKind::Mirror),
                             matches!(tool, ToolMode::Mirror))),
+                        enable(b_lbl("duplicate", "Copy", IconKind::Copy)),
                         b_lbl("array", "Array", IconKind::Grid),
+                        enable(select(b_lbl("rotate", "Rotate", IconKind::Rotate),
+                            matches!(tool, ToolMode::Rotate))),
                         enable(select(b_lbl("scale", "Scale", IconKind::Scale),
                             matches!(tool, ToolMode::Scale))),
                     ],
                 }),
                 RibbonGroup::with_layout("Edit", RibbonGroupLayout::Stack {
                     rows: 2,
+                    // Column-major: 1.0 columns are Trim/Fillet,
+                    // Extend/Chamfer, Offset/Stretch, Split/Break,
+                    // Align/Join, Explode/Lengthen.
                     buttons: vec![
                         b_lbl("trim", "Trim", IconKind::Cut),
-                        b_lbl("extend", "Extend", IconKind::Line),
-                        b_lbl("offset", "Offset", IconKind::Polyline),
                         b_lbl("fillet", "Fillet", IconKind::Arc),
+                        b_lbl("extend", "Extend", IconKind::Line),
                         b_lbl("chamfer", "Chamfer", IconKind::Line),
+                        b_lbl("offset", "Offset", IconKind::Polyline),
                         b_lbl("stretch", "Stretch", IconKind::Move),
                         b_lbl("split", "Split", IconKind::Cut),
-                        b_lbl("align", "Align", IconKind::Line),
-                        b_lbl("explode", "Explode", IconKind::Ungroup),
                         b_lbl("break", "Break", IconKind::Cut),
+                        b_lbl("align", "Align", IconKind::Line),
                         b_lbl("join", "Join", IconKind::Polyline),
+                        b_lbl("explode", "Explode", IconKind::Ungroup),
                         b_lbl("lengthen", "Lengthen", IconKind::Line),
                     ],
                 }),
