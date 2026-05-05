@@ -4826,6 +4826,36 @@ impl DwgParser {
         let hs_from_bitsize = bitsize.map(|bs| data_bit_start + bs as usize);
         let hs_bitpos = hs_from_mc.or(hs_from_bitsize);
 
+        // DWG_LAYER_DUMP=1 → dump raw object body bytes for each LAYER, plus
+        // key offsets, so we can pattern-mine the bit/byte position of the ACI.
+        // The dump is keyed by (handle, name) so it can be cross-referenced to
+        // the DXF oracle (group code 62 per layer).
+        if type_num == 0x33 && std::env::var("DWG_LAYER_DUMP").is_ok() {
+            let body_start = bit_start;
+            let body_end_bit = data_bit_start + mc_bits + (obj_size as usize) * 8;
+            let body_end_byte = (body_end_bit + 7) / 8;
+            let dump_end = body_end_byte.min(data.len());
+            let raw: String = data[body_start..dump_end].iter()
+                .map(|b| format!("{:02x}", b))
+                .collect::<Vec<_>>().join("");
+            let lname = obj_data.get("name")
+                .and_then(|v| v.as_str()).unwrap_or("?").to_string();
+            let lcolor = obj_data.get("color")
+                .and_then(|v| v.as_i64()).unwrap_or(-999);
+            let bs_raw = obj_data.get("_color_bs_raw")
+                .and_then(|v| v.as_i64()).unwrap_or(-999);
+            let sentinel = obj_data.get("_color_sentinel")
+                .and_then(|v| v.as_bool()).unwrap_or(false);
+            eprintln!(
+                "[LAYER_DUMP] handle=0x{:X} name={:?} obj_size={} mc_bits={} hs_bits={} \
+                 body_start_byte={} body_end_byte={} body_len={} \
+                 cur_color={} bs_raw={} sentinel={}\n  hex={}",
+                handle, lname, obj_size, mc_bits, handle_stream_size_bits,
+                body_start, body_end_byte, dump_end - body_start,
+                lcolor, bs_raw, sentinel, raw,
+            );
+        }
+
         let handle_refs = if is_entity {
             if let Some(hs_start) = hs_bitpos {
                 reader.seek_bit(hs_start);
@@ -6908,8 +6938,32 @@ impl DwgParser {
         let is_r2004 = self.version.is_r2004_plus();
         let name = reader.read_tv(is_r2007)?;
         let _bit64 = reader.read_bit()?;
-        let _xref_index = reader.read_bs()?;
+        // Per ODA OpenDesignSpec §20.4.53 (LAYER) + libredwg's `dwg.spec`
+        // common_table_flags (entry_name): the field order on R2007+ is
+        //   name TV
+        //   64-flag B
+        //   xrefdep B          ← NOTE: xrefdep comes BEFORE xrefindex
+        //   xrefindex+1 BS
+        //   flags BS
+        //   color CMC
+        //
+        // Round 10 finding (3bm Funderingsherstel CP-21 R2010 fixture):
+        // reading xrefindex BEFORE xrefdep produced xref values like
+        // 16568=0x40B8 / 16600=0x40D8 / 16632=0x40F8 for layers with
+        // lineweight 13/18/25 — clearly the BS was consuming the LATER
+        // xrefindex+lineweight portion of the bit stream. Swapping to the
+        // correct order (xdep B → xref BS) made all 21 LAYER ACIs match
+        // the DXF (Hulplijnen=1, Buitenwanden=3, Bovenbouw=8, etc.) — the
+        // post-color CMC bit cursor lands on the actual ACI byte instead
+        // of on the raw BS dropping into the next field's bits.
         let _xdep = reader.read_bit()?;
+        let _xref_index = reader.read_bs()?;
+        if std::env::var("DWG_LAYER_DUMP").is_ok() {
+            eprintln!(
+                "[layer-pre-color-trace] name={:?} xref={} xdep={}",
+                name, _xref_index, _xdep,
+            );
+        }
         // Per ODA §20.4.53 (LAYER) + §2.11 (CmColor / ENC): on R2004+
         // the layer color is an ENC (Extended NamedColor), not a plain
         // BS index. The ENC is a BS whose top 3 bits are flags and
