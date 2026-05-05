@@ -6162,23 +6162,21 @@ fn build_ribbon_tabs(
 ) -> Vec<RibbonTabDef> {
     let split_h = matches!(split, Some(SplitKind::HorizontalPair(_)));
     let split_v = matches!(split, Some(SplitKind::VerticalPair(_)));
-    // Per user directive 2026-05-04: consolidate the entire ribbon to a
-    // SINGLE "Home" tab that mirrors 1.0's default-active layout
-    // (SELECTION / DRAW / ANNOTATE / MODIFY / EDIT). The 1.0 web app has
-    // 5 tabs (File / Home / Modify / View / IFC) but the user wants
-    // "alles zoveel mogelijk in 1 tabblad". We keep an orange File-style
-    // tab to match the visual treatment in 1.0 — it's just a stub
-    // pseudo-tab that, when clicked, currently shows the same single set
-    // of groups (no separate File menu yet in the Rust shell).
+    // 2026-05-05 — pixel-perfect mirror of 1.0's ribbon
+    // (`open-2d-studio-main/src/components/layout/Ribbon/Ribbon.tsx`).
+    // 1.0 tabs (left → right): File · Home · View · AEC · Pile Plan · IFC
+    // We add `Devtools` on the far right so engineering controls stay
+    // reachable. Each Home group mirrors the React JSX exactly: every
+    // 1.0 button is present here, with `enabled = true` only where the
+    // backing tool already exists in the Rust shell. The rest are
+    // disabled placeholders so the visual layout matches.
     vec![
         RibbonTabDef {
             id: "home".into(),
             label: "Home".into(),
             groups: vec![
-                // Round 9: split file ops into their own FILE group so
-                // they stop colliding with DRAW (1.0 reference uses a
-                // separate File cluster). DRAW now holds real drawing
-                // primitives.
+                // FILE group — replaces the old menu-bar file ops since
+                // 2.0 doesn't have a separate File menu yet.
                 RibbonGroup::new("File")
                     .button(RibbonButtonDef {
                         id: "open".into(), label: "Open".into(),
@@ -6200,10 +6198,8 @@ fn build_ribbon_tabs(
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: true,
                     }),
-                // SELECTION group — mirrors 1.0:
-                //   [Select Large] [Select All / Deselect / Find] [Pan Large]
-                // Select All / Deselect / Find are disabled placeholders
-                // until the underlying actions exist.
+                // SELECTION group — 1.0: [Select Large][Pan Large] +
+                // 3-stack small column (Select All / Deselect / Find).
                 RibbonGroup::new("Selection")
                     .button(RibbonButtonDef {
                         id: "select".into(), label: "Select".into(),
@@ -6211,93 +6207,98 @@ fn build_ribbon_tabs(
                         selected: matches!(tool, ToolMode::Select), enabled: true,
                     })
                     .button(RibbonButtonDef {
+                        id: "pan".into(), label: "Pan".into(),
+                        icon: IconKind::Hand, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
                         id: "select_all".into(), label: "Select All".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        icon: IconKind::Check, size: ButtonSize::Small,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
                         id: "deselect".into(), label: "Deselect".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        icon: IconKind::Cross, size: ButtonSize::Small,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
                         id: "find_replace".into(), label: "Find/Replace".into(),
-                        icon: IconKind::Text, size: ButtonSize::Small,
-                        selected: false, enabled: false,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "pan".into(), label: "Pan".into(),
-                        icon: IconKind::Move, size: ButtonSize::Large,
+                        icon: IconKind::Search, size: ButtonSize::Small,
                         selected: false, enabled: false,
                     }),
-                // DRAW group — 1.0 reference shows a dense 2×~5 icon grid
-                // of drawing primitives. We list all 10 here as Small
-                // buttons so the ribbon flows them across two rows; every
-                // entry is a placeholder until its tool exists.
-                //   Row 1: Line, Rectangle, Arc, Polyline, Text, File/Tpl
-                //   Row 2: Spline, Circle, Ellipse, Region, Image
+                // DRAW group — 1.0 has 13 medium buttons in 2-row pairs.
+                // Order from Ribbon.tsx: Line/Polyline, Rect/Circle,
+                // Arc/Ellipse, Spline/FilledRegion, DetailLine/L-Shape,
+                // Text/Image, PdfUnderlay.
                 RibbonGroup::new("Draw")
                     .button(RibbonButtonDef {
                         id: "draw_line".into(), label: "Line".into(),
-                        icon: IconKind::Line, size: ButtonSize::Small,
-                        selected: false, enabled: false,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "draw_rect".into(), label: "Rectangle".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: false, enabled: false,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "draw_arc".into(), label: "Arc".into(),
-                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        icon: IconKind::Line, size: ButtonSize::Medium,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
                         id: "draw_polyline".into(), label: "Polyline".into(),
-                        icon: IconKind::Polyline, size: ButtonSize::Small,
+                        icon: IconKind::Polyline, size: ButtonSize::Medium,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
-                        id: "draw_text".into(), label: "Text".into(),
-                        icon: IconKind::Text, size: ButtonSize::Small,
-                        selected: false, enabled: false,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "draw_template".into(), label: "Template".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: false, enabled: false,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "draw_spline".into(), label: "Spline".into(),
-                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        id: "draw_rect".into(), label: "Rectangle".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Medium,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
                         id: "draw_circle".into(), label: "Circle".into(),
-                        icon: IconKind::Circle, size: ButtonSize::Small,
+                        icon: IconKind::Circle, size: ButtonSize::Medium,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_arc".into(), label: "Arc".into(),
+                        icon: IconKind::Arc, size: ButtonSize::Medium,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
                         id: "draw_ellipse".into(), label: "Ellipse".into(),
-                        icon: IconKind::Circle, size: ButtonSize::Small,
+                        icon: IconKind::Ellipse, size: ButtonSize::Medium,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
-                        id: "draw_region".into(), label: "Region".into(),
-                        icon: IconKind::Hatch, size: ButtonSize::Small,
+                        id: "draw_spline".into(), label: "Spline".into(),
+                        icon: IconKind::Spline, size: ButtonSize::Medium,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_region".into(), label: "Filled Region".into(),
+                        icon: IconKind::Hatch, size: ButtonSize::Medium,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_detail_line".into(), label: "Line Comp.".into(),
+                        icon: IconKind::Line, size: ButtonSize::Medium,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_l_shape".into(), label: "L-Shape".into(),
+                        icon: IconKind::Polyline, size: ButtonSize::Medium,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_text".into(), label: "Text".into(),
+                        icon: IconKind::Text, size: ButtonSize::Medium,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
                         id: "draw_image".into(), label: "Image".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        icon: IconKind::Image, size: ButtonSize::Medium,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_pdf".into(), label: "PDF".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Medium,
                         selected: false, enabled: false,
                     }),
-                // ANNOTATE group — 1.0 layout: large `Aligned` button +
-                // small 2×2 grid (Linear / Angular / Radius / Diameter).
-                // The big Aligned button drives the existing Dimension
-                // tool (whose current behaviour is aligned-dim placement).
-                // The 4 sub-types are placeholders until the dimension
-                // tool branches per-style.
+                // ANNOTATE group — 1.0: large `Aligned` + 3 stacks of 3
+                // small (Linear/Angular/SpotCoord, Radius/Diameter/
+                // Leader, Label/Table/Cloud) + large `Measure`.
                 RibbonGroup::new("Annotate")
                     .button(RibbonButtonDef {
                         id: "dim".into(), label: "Aligned".into(),
@@ -6315,6 +6316,11 @@ fn build_ribbon_tabs(
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
+                        id: "dim_spot".into(), label: "Spot Coord.".into(),
+                        icon: IconKind::Move, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
                         id: "dim_radius".into(), label: "Radius".into(),
                         icon: IconKind::Circle, size: ButtonSize::Small,
                         selected: false, enabled: false,
@@ -6323,12 +6329,33 @@ fn build_ribbon_tabs(
                         id: "dim_diameter".into(), label: "Diameter".into(),
                         icon: IconKind::Circle, size: ButtonSize::Small,
                         selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "leader".into(), label: "Leader".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "label".into(), label: "Label".into(),
+                        icon: IconKind::Tag, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "table".into(), label: "Table".into(),
+                        icon: IconKind::Grid, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "cloud".into(), label: "Cloud".into(),
+                        icon: IconKind::Spline, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "measure".into(), label: "Measure".into(),
+                        icon: IconKind::Ruler, size: ButtonSize::Large,
+                        selected: false, enabled: false,
                     }),
-                // MODIFY group — 1.0 reference shows a 2-col × 3-row grid:
-                //   [Move][Mirror]
-                //   [Copy][Array]
-                //   [Rotate][Scale]
-                // `Array` has no underlying tool yet — disabled.
+                // MODIFY group — 1.0: 2-col × 3-row grid.
                 RibbonGroup::new("Modify")
                     .button(RibbonButtonDef {
                         id: "move".into(), label: "Move".into(),
@@ -6336,53 +6363,42 @@ fn build_ribbon_tabs(
                         selected: matches!(tool, ToolMode::Move), enabled: true,
                     })
                     .button(RibbonButtonDef {
-                        id: "mirror".into(), label: "Mirror".into(),
-                        icon: IconKind::Line, size: ButtonSize::Small,
-                        selected: matches!(tool, ToolMode::Mirror), enabled: true,
-                    })
-                    .button(RibbonButtonDef {
                         id: "duplicate".into(), label: "Copy".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        icon: IconKind::Copy, size: ButtonSize::Small,
                         selected: false, enabled: true,
                     })
                     .button(RibbonButtonDef {
-                        id: "array".into(), label: "Array".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: false, enabled: false,
-                    })
-                    .button(RibbonButtonDef {
                         id: "rotate".into(), label: "Rotate".into(),
-                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        icon: IconKind::Rotate, size: ButtonSize::Small,
                         selected: matches!(tool, ToolMode::Rotate), enabled: true,
                     })
                     .button(RibbonButtonDef {
-                        id: "scale".into(), label: "Scale".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: matches!(tool, ToolMode::Scale), enabled: true,
-                    }),
-                // EDIT group — 1.0 reference: 2-col × 3-row grid of CAD
-                // edit primitives (Trim/Fillet, Extend/Chamfer,
-                // Offset/Stretch). None of these have backing tool modes
-                // yet, so we render them as disabled placeholders so the
-                // visual layout matches.
-                RibbonGroup::new("Edit")
+                        id: "mirror".into(), label: "Mirror".into(),
+                        icon: IconKind::Mirror, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Mirror), enabled: true,
+                    })
                     .button(RibbonButtonDef {
-                        id: "trim".into(), label: "Trim".into(),
-                        icon: IconKind::Line, size: ButtonSize::Small,
+                        id: "array".into(), label: "Array".into(),
+                        icon: IconKind::Grid, size: ButtonSize::Small,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
-                        id: "fillet".into(), label: "Fillet".into(),
-                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        id: "scale".into(), label: "Scale".into(),
+                        icon: IconKind::Scale, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Scale), enabled: true,
+                    }),
+                // EDIT group — 1.0: 4 columns × 3 rows of small buttons
+                // (Trim/Fillet/Split/Break, Extend/Chamfer/Align/Join,
+                // Offset/Stretch/Explode/Lengthen). All disabled —
+                // no backing tools in 2.0 yet.
+                RibbonGroup::new("Edit")
+                    .button(RibbonButtonDef {
+                        id: "trim".into(), label: "Trim".into(),
+                        icon: IconKind::Cut, size: ButtonSize::Small,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
                         id: "extend".into(), label: "Extend".into(),
-                        icon: IconKind::Line, size: ButtonSize::Small,
-                        selected: false, enabled: false,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "chamfer".into(), label: "Chamfer".into(),
                         icon: IconKind::Line, size: ButtonSize::Small,
                         selected: false, enabled: false,
                     })
@@ -6392,29 +6408,162 @@ fn build_ribbon_tabs(
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
+                        id: "fillet".into(), label: "Fillet".into(),
+                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "chamfer".into(), label: "Chamfer".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
                         id: "stretch".into(), label: "Stretch".into(),
                         icon: IconKind::Move, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "split".into(), label: "Split".into(),
+                        icon: IconKind::Cut, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "align".into(), label: "Align".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "explode".into(), label: "Explode".into(),
+                        icon: IconKind::Ungroup, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "break".into(), label: "Break".into(),
+                        icon: IconKind::Cut, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "join".into(), label: "Join".into(),
+                        icon: IconKind::Polyline, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "lengthen".into(), label: "Lengthen".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    }),
+                // CLIPBOARD group — large Paste + 3-stack small (Cut/Copy/Delete).
+                RibbonGroup::new("Clipboard")
+                    .button(RibbonButtonDef {
+                        id: "paste".into(), label: "Paste".into(),
+                        icon: IconKind::Paste, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "cut".into(), label: "Cut".into(),
+                        icon: IconKind::Cut, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "copy".into(), label: "Copy".into(),
+                        icon: IconKind::Copy, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "delete".into(), label: "Delete".into(),
+                        icon: IconKind::Delete, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    }),
+                // COLLECTION group — large Create + small Explode.
+                RibbonGroup::new("Collection")
+                    .button(RibbonButtonDef {
+                        id: "group_create".into(), label: "Create".into(),
+                        icon: IconKind::Group, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "group_explode".into(), label: "Explode".into(),
+                        icon: IconKind::Ungroup, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    }),
+                // SETTINGS group — large Settings + Types dropdown stub.
+                RibbonGroup::new("Settings")
+                    .button(RibbonButtonDef {
+                        id: "settings".into(), label: "Settings".into(),
+                        icon: IconKind::Settings, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "types_manager".into(), label: "Types".into(),
+                        icon: IconKind::Layers, size: ButtonSize::Large,
                         selected: false, enabled: false,
                     }),
             ],
         },
-        // Devtools tab — keeps the engineering controls reachable without
-        // polluting the user-facing Home tab. View-side toggles (Layers,
-        // Properties, Fit) live here too because the Selection group on
-        // 1.0 doesn't include them.
+        // VIEW tab — 1.0: Navigate / Zoom / Display / Filter / Appearance / Panels.
         RibbonTabDef {
-            id: "devtools".into(),
-            label: "Devtools".into(),
+            id: "view".into(),
+            label: "View".into(),
             groups: vec![
-                RibbonGroup::new("View")
+                RibbonGroup::new("Navigate")
                     .button(RibbonButtonDef {
-                        id: "fit_extents".into(), label: "Fit".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        id: "pan".into(), label: "Pan".into(),
+                        icon: IconKind::Hand, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    }),
+                RibbonGroup::new("Zoom")
+                    .button(RibbonButtonDef {
+                        id: "zoom_in".into(), label: "Zoom In".into(),
+                        icon: IconKind::ZoomIn, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "zoom_out".into(), label: "Zoom Out".into(),
+                        icon: IconKind::ZoomOut, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "fit_extents".into(), label: "Fit All".into(),
+                        icon: IconKind::FitAll, size: ButtonSize::Large,
                         selected: false, enabled: true,
+                    }),
+                RibbonGroup::new("Display")
+                    .button(RibbonButtonDef {
+                        id: "grid".into(), label: "Grid".into(),
+                        icon: IconKind::Grid, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "white_bg".into(), label: "White BG".into(),
+                        icon: IconKind::Eye, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "rot_gizmo".into(), label: "Rot Gizmo".into(),
+                        icon: IconKind::Rotate, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    }),
+                RibbonGroup::new("Filter")
+                    .button(RibbonButtonDef {
+                        id: "ifc_filter".into(), label: "IFC Filter".into(),
+                        icon: IconKind::Layers, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    }),
+                RibbonGroup::new("Appearance")
+                    .button(RibbonButtonDef {
+                        id: "theme".into(), label: "Theme".into(),
+                        icon: IconKind::Settings, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    }),
+                RibbonGroup::new("Panels")
+                    .button(RibbonButtonDef {
+                        id: "ifc_panel".into(), label: "IFC Model".into(),
+                        icon: IconKind::Folder, size: ButtonSize::Large,
+                        selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
                         id: "layers".into(), label: "Layers".into(),
-                        icon: IconKind::Hatch, size: ButtonSize::Small,
+                        icon: IconKind::Layers, size: ButtonSize::Small,
                         selected: layers_open, enabled: true,
                     })
                     .button(RibbonButtonDef {
@@ -6422,6 +6571,131 @@ fn build_ribbon_tabs(
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: properties_open, enabled: true,
                     }),
+            ],
+        },
+        // AEC tab — 1.0 extension tab. Placeholder until the AEC
+        // extension is ported to 2.0.
+        RibbonTabDef {
+            id: "aec".into(),
+            label: "AEC".into(),
+            groups: vec![
+                RibbonGroup::new("Walls")
+                    .button(RibbonButtonDef {
+                        id: "aec_wall".into(), label: "Wall".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "aec_door".into(), label: "Door".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "aec_window".into(), label: "Window".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    }),
+                RibbonGroup::new("Structure")
+                    .button(RibbonButtonDef {
+                        id: "aec_column".into(), label: "Column".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "aec_beam".into(), label: "Beam".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "aec_slab".into(), label: "Slab".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    }),
+            ],
+        },
+        // PILE PLAN tab — 1.0 extension tab.
+        RibbonTabDef {
+            id: "pile_plan".into(),
+            label: "Pile Plan".into(),
+            groups: vec![
+                RibbonGroup::new("Piles")
+                    .button(RibbonButtonDef {
+                        id: "pile_place".into(), label: "Place Pile".into(),
+                        icon: IconKind::Circle, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "pile_grid".into(), label: "Pile Grid".into(),
+                        icon: IconKind::Grid, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "pile_dim".into(), label: "Auto-Dim".into(),
+                        icon: IconKind::Dimension, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    }),
+                RibbonGroup::new("Schedule")
+                    .button(RibbonButtonDef {
+                        id: "pile_schedule".into(), label: "Schedule".into(),
+                        icon: IconKind::Grid, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    }),
+            ],
+        },
+        // IFC tab — 1.0: Actions / Statistics / Bonsai Sync.
+        RibbonTabDef {
+            id: "ifc".into(),
+            label: "IFC".into(),
+            groups: vec![
+                RibbonGroup::new("Actions")
+                    .button(RibbonButtonDef {
+                        id: "ifc_export".into(), label: "Export IFC".into(),
+                        icon: IconKind::Download, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "ifc_export_folder".into(), label: "Export Map".into(),
+                        icon: IconKind::Folder, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "ifc_panel".into(), label: "IFC Model".into(),
+                        icon: IconKind::Folder, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "ifc_regen".into(), label: "Regenerate".into(),
+                        icon: IconKind::Refresh, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "ifc_project".into(), label: "Project".into(),
+                        icon: IconKind::Folder, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    }),
+                RibbonGroup::new("Bonsai Sync")
+                    .button(RibbonButtonDef {
+                        id: "bonsai_toggle".into(), label: "Sync Off".into(),
+                        icon: IconKind::Refresh, size: ButtonSize::Large,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "bonsai_sync_now".into(), label: "Sync Now".into(),
+                        icon: IconKind::Refresh, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "bonsai_copy_script".into(), label: "Copy Script".into(),
+                        icon: IconKind::Copy, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    }),
+            ],
+        },
+        // Devtools tab — 2.0-only, far right per directive.
+        RibbonTabDef {
+            id: "devtools".into(),
+            label: "Devtools".into(),
+            groups: vec![
                 RibbonGroup::new("Layout")
                     .button(RibbonButtonDef {
                         id: "split_h".into(), label: "Split H".into(),
@@ -6441,12 +6715,12 @@ fn build_ribbon_tabs(
                 RibbonGroup::new("Diagnostics")
                     .button(RibbonButtonDef {
                         id: "samples".into(), label: "Samples".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        icon: IconKind::Grid, size: ButtonSize::Small,
                         selected: samples_open, enabled: true,
                     })
                     .button(RibbonButtonDef {
                         id: "perf_hud".into(), label: "Perf HUD".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        icon: IconKind::Dimension, size: ButtonSize::Small,
                         selected: perf_hud, enabled: true,
                     })
                     .button(RibbonButtonDef {

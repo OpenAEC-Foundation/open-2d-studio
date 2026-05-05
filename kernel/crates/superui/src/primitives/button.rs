@@ -45,10 +45,14 @@ impl<'a> CadButton<'a> {
         //   Large  ~ 56 px (icon+label stacked)
         //   Medium ~ 72 px (icon + short label, e.g. "Aligned", "Linear")
         //   Small  ~ 86 px (icon + label, e.g. "Select All", "Find/Replace")
+        // Tightened to fit ALL Home groups (Selection/Draw/Annotate/
+        // Modify/Edit/Clipboard/Collection/Settings) horizontally on a
+        // 1920-px screen. 1.0's web ribbon truncates labels with
+        // ellipsis; we mirror that by shrinking the per-button width.
         let (size_v, icon_size) = match self.size {
-            ButtonSize::Large  => (Vec2::new(56.0, metrics::RIBBON_BUTTON_LARGE), metrics::ICON_LG),
-            ButtonSize::Medium => (Vec2::new(68.0, metrics::RIBBON_BUTTON_MEDIUM), metrics::ICON_MD),
-            ButtonSize::Small  => (Vec2::new(78.0, metrics::RIBBON_BUTTON_SMALL), metrics::ICON_SM),
+            ButtonSize::Large  => (Vec2::new(48.0, metrics::RIBBON_BUTTON_LARGE), metrics::ICON_LG),
+            ButtonSize::Medium => (Vec2::new(58.0, metrics::RIBBON_BUTTON_MEDIUM), metrics::ICON_MD),
+            ButtonSize::Small  => (Vec2::new(62.0, metrics::RIBBON_BUTTON_SMALL), metrics::ICON_SM),
         };
         let (rect, response) = ui.allocate_exact_size(size_v, Sense::click());
         let painter = ui.painter();
