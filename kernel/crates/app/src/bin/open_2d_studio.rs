@@ -19,6 +19,7 @@ use bytemuck::{Pod, Zeroable};
 use egui_wgpu::ScreenDescriptor;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
+use std::sync::mpsc;
 use std::time::Instant;
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, KeyEvent, MouseButton, MouseScrollDelta, WindowEvent};
@@ -977,6 +978,27 @@ struct FileTab {
     /// `dash_pixel_stride_changed`) we re-call rebuild_buffers to
     /// keep dashes constant in screen pixels.
     last_dash_wpp: f64,
+
+    /// When Some(_), this tab is a placeholder for a background-loading
+    /// file. The string is the current loading phase for the overlay
+    /// label. Cleared (set to None) when the load completes and the
+    /// scene is swapped in.
+    loading: Option<LoadingState>,
+}
+
+/// Per-tab background-load progress state. Stored on `FileTab.loading`
+/// when a placeholder tab is awaiting a Scene from a worker thread.
+#[derive(Clone)]
+struct LoadingState {
+    /// Short label rendered next to the spinner (e.g. "Parsing DWG…").
+    phase: String,
+    /// 0.0..1.0 — best-effort fraction. May stay near 0 since DWG load
+    /// has only coarse phase boundaries; the spinner gives "alive"
+    /// feedback regardless.
+    fraction: f32,
+    /// Wall-clock instant when the load started. Used for the
+    /// "loaded in 12.4s" log line and a spinner phase angle.
+    started_at: Instant,
 }
 
 /// Snapshot of one entity captured before deletion / cut. Stores enough
@@ -1048,6 +1070,7 @@ impl FileTab {
             annotation_pipe: None,
             scene_index: None,
             last_dash_wpp: 0.0,
+            loading: None,
         }
     }
 
@@ -1540,6 +1563,39 @@ struct App {
     /// the `superui::Ribbon` widget renders each frame. Free-form
     /// string keyed against the ids in `build_ribbon_tabs`.
     active_ribbon_tab: RibbonTabId,
+
+    /// In-flight background loads. Each `LoadingJob` owns the receiving
+    /// end of an mpsc channel that the worker thread posts a
+    /// `LoadingMsg::Done(Scene)` (or `Failed`) into when it finishes.
+    /// Drained once per frame in `poll_loading_jobs`.
+    loading_jobs: Vec<LoadingJob>,
+}
+
+/// One in-flight background DWG/DXF/IFCDraw load.
+struct LoadingJob {
+    /// Receiver for the worker's final `LoadingMsg`. The worker drops
+    /// the sender after sending; an `Err(Disconnected)` from try_recv
+    /// without a prior message means the worker panicked and we
+    /// should surface that as a failed load.
+    rx: mpsc::Receiver<LoadingMsg>,
+    /// File path being loaded — kept around for the "loaded in 1.2s"
+    /// log line and the placeholder tab's path field.
+    path: String,
+    /// Index into `App.tabs` of the placeholder tab to swap when done.
+    /// On replace-active loads this points at the active tab; on
+    /// open-new loads it points at a freshly pushed placeholder.
+    tab_idx: usize,
+    /// Wall-clock when the worker thread was spawned. Reported once at
+    /// completion for diagnostics.
+    started_at: Instant,
+}
+
+/// Message posted from the loader worker thread to the UI thread.
+enum LoadingMsg {
+    /// Final result — Scene loaded successfully.
+    Done(Box<Scene>),
+    /// Final result — load failed; carries the human-readable error.
+    Failed(String),
 }
 
 /// Per-section render timings — one frame.
@@ -1716,6 +1772,109 @@ impl App {
             // Ribbon defaults to the Home tab on launch — matches 1.0
             // reference (orange underline + light bg on Home at first paint).
             active_ribbon_tab: "home".to_string(),
+            loading_jobs: Vec::new(),
+        }
+    }
+
+    /// Spawn a background-thread load of `path` and push a placeholder
+    /// FileTab so the user sees an immediate "Loading…" overlay rather
+    /// than a frozen window. The real Scene is swapped in when the
+    /// worker thread sends `LoadingMsg::Done`. See `poll_loading_jobs`.
+    fn start_load_into_new_tab(&mut self, path: String) {
+        let placeholder = Scene::empty(
+            "loading",
+            format!("Loading {}…", short_path(&path)),
+        );
+        let mut tab = FileTab::new(placeholder, Some(path.clone()));
+        tab.loading = Some(LoadingState {
+            phase: "Reading file…".to_string(),
+            fraction: 0.05,
+            started_at: Instant::now(),
+        });
+        self.tabs.push(tab);
+        let tab_idx = self.tabs.len() - 1;
+        self.active_tab = tab_idx;
+        if let Some(win) = self.window.as_ref() {
+            win.set_title(&Self::title_for(&self.tabs, self.active_tab));
+        }
+        let job = spawn_load_job(path.clone(), tab_idx);
+        self.loading_jobs.push(job);
+    }
+
+    /// Like `start_load_into_new_tab` but reuses the active tab — used
+    /// by Reload (Ctrl+R) so the user doesn't end up with a duplicate
+    /// tab on every reload.
+    fn start_load_into_active_tab(&mut self, path: String) {
+        let tab_idx = self.active_tab;
+        let Some(tab) = self.tabs.get_mut(tab_idx) else {
+            // No active tab → fall back to opening as new.
+            self.start_load_into_new_tab(path);
+            return;
+        };
+        tab.loading = Some(LoadingState {
+            phase: "Reading file…".to_string(),
+            fraction: 0.05,
+            started_at: Instant::now(),
+        });
+        let job = spawn_load_job(path.clone(), tab_idx);
+        self.loading_jobs.push(job);
+    }
+
+    /// Drain finished loading jobs and swap their results into the
+    /// placeholder tabs. Called once per frame from the render loop.
+    fn poll_loading_jobs(&mut self) {
+        // Iterate in reverse so we can swap_remove in place.
+        let mut i = 0usize;
+        while i < self.loading_jobs.len() {
+            match self.loading_jobs[i].rx.try_recv() {
+                Ok(LoadingMsg::Done(scene)) => {
+                    let job = self.loading_jobs.swap_remove(i);
+                    let elapsed = job.started_at.elapsed();
+                    eprintln!("[load] '{}' done in {:.2}s",
+                        short_path(&job.path), elapsed.as_secs_f64());
+                    if let Some(tab) = self.tabs.get_mut(job.tab_idx) {
+                        tab.cam = PaneCam::fit(&scene.bbox);
+                        tab.scene = *scene;
+                        tab.path = Some(job.path.clone());
+                        tab.label = FileTab::derive_label(Some(&job.path));
+                        tab.loading = None;
+                        tab.scene_index = None;
+                        // GPU buffers will be (re)built on next frame's
+                        // rebuild_buffers call, since the active-tab
+                        // path always lazy-builds before drawing.
+                    }
+                    self.push_recent_file(&job.path);
+                    if let Some(win) = self.window.as_ref() {
+                        win.set_title(&Self::title_for(&self.tabs, self.active_tab));
+                    }
+                    // Stay at index i — swap_remove pulled the next job here.
+                }
+                Ok(LoadingMsg::Failed(err)) => {
+                    let job = self.loading_jobs.swap_remove(i);
+                    eprintln!("[load] '{}' FAILED: {}", short_path(&job.path), err);
+                    if let Some(tab) = self.tabs.get_mut(job.tab_idx) {
+                        tab.loading = None;
+                        tab.scene = Scene::empty(
+                            "load-failed",
+                            format!("load FAILED: {}", err),
+                        );
+                        tab.scene_index = None;
+                    }
+                }
+                Err(mpsc::TryRecvError::Empty) => { i += 1; }
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    // Worker dropped sender without sending — treat as failure.
+                    let job = self.loading_jobs.swap_remove(i);
+                    eprintln!("[load] '{}' worker disconnected", short_path(&job.path));
+                    if let Some(tab) = self.tabs.get_mut(job.tab_idx) {
+                        tab.loading = None;
+                        tab.scene = Scene::empty(
+                            "load-failed",
+                            "load FAILED: worker thread crashed".to_string(),
+                        );
+                    }
+                }
+            }
         }
     }
 
@@ -1813,9 +1972,11 @@ impl App {
         let Some(picked) = dialog.pick_file() else { return; };
         let picked_str = picked.to_string_lossy().into_owned();
         eprintln!("[tab open] picked: {}", picked_str);
-        let scene = load_any(&picked_str, "tab");
-        self.push_tab_with_scene(scene, Some(picked_str.clone()));
-        self.push_recent_file(&picked_str);
+        // Background-load with a placeholder tab + spinner overlay so
+        // the window doesn't freeze on big DWG files (4 MB / 113k
+        // objects loads in ~12s — more than long enough for the user
+        // to think the app crashed without visible feedback).
+        self.start_load_into_new_tab(picked_str);
     }
 
     /// "Save As IFC 2D B" — run the IFCX-binary exporter on the active
@@ -2115,6 +2276,10 @@ impl App {
 
     fn render(&mut self) {
         let frame_start = std::time::Instant::now();
+        // Pick up any results from background loader threads BEFORE the
+        // egui pass so the placeholder tab swaps in on the same frame
+        // and the user sees the loaded scene immediately.
+        self.poll_loading_jobs();
         // Apply any pending present-mode switch BEFORE reading surface config.
         if let Some(new_mode) = self.pending_present_mode.take() {
             if let Some(gpu) = self.gpu.as_mut() {
@@ -3195,6 +3360,21 @@ impl App {
                         ),
                     );
 
+                    // Loading overlay — drawn whenever the active tab is
+                    // a placeholder waiting for a background-thread load
+                    // to finish. Replaces the previous "frozen window"
+                    // UX on big DWG opens. Centered card with the file
+                    // name + an animated spinner + elapsed seconds.
+                    if let Some(active) = self.tabs.get(self.active_tab) {
+                        if let Some(loading) = active.loading.clone() {
+                            paint_loading_overlay(
+                                ui.painter(),
+                                rect,
+                                active.label.as_str(),
+                                &loading,
+                            );
+                        }
+                    }
                 });
             // ---- Drag-box overlay (Select mode only) ---------------
             // Drawn via a foreground layer painter so it sits above the
@@ -3781,14 +3961,10 @@ impl App {
         }
         if let Some(path) = requested_load_as_new_tab {
             eprintln!("[samples] loading as new tab: {}", path);
-            let scene = load_any(&path, "tab");
-            self.push_tab_with_scene(scene, Some(path.clone()));
-            self.push_recent_file(&path);
+            self.start_load_into_new_tab(path);
         }
         if let Some(path) = requested_menu_recent_load {
-            let scene = load_any(&path, "tab");
-            self.push_tab_with_scene(scene, Some(path.clone()));
-            self.push_recent_file(&path);
+            self.start_load_into_new_tab(path);
         }
         if requested_menu_recent_clear {
             self.recent_files.clear();
@@ -3797,9 +3973,7 @@ impl App {
         if requested_menu_reload {
             let path_opt = self.tabs.get(self.active_tab).and_then(|t| t.path.clone());
             if let Some(path) = path_opt {
-                let scene = load_any(&path, "tab");
-                self.replace_active_scene(scene, Some(path.clone()));
-                self.push_recent_file(&path);
+                self.start_load_into_active_tab(path);
             } else {
                 eprintln!("[menu] reload: active tab has no path");
             }
@@ -6120,6 +6294,135 @@ fn discover_samples() -> Vec<SampleEntry> {
     }
     eprintln!("[samples] discovered {} test files across {} dirs", out.len(), roots.len());
     out
+}
+
+/// Spawn a worker thread that runs `load_any` for `path` and sends the
+/// resulting `Scene` back over an mpsc channel. Returns a `LoadingJob`
+/// the App stores until the result lands. Catching panics keeps the UI
+/// thread alive even if a parser/tessellator regression aborts.
+fn spawn_load_job(path: String, tab_idx: usize) -> LoadingJob {
+    let (tx, rx) = mpsc::channel();
+    let path_for_thread = path.clone();
+    std::thread::Builder::new()
+        .name(format!("load:{}", short_path(&path)))
+        .spawn(move || {
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                load_any(&path_for_thread, "tab")
+            }));
+            let msg = match result {
+                Ok(scene) => LoadingMsg::Done(Box::new(scene)),
+                Err(panic) => {
+                    let what = panic.downcast_ref::<&'static str>().map(|s| (*s).to_string())
+                        .or_else(|| panic.downcast_ref::<String>().cloned())
+                        .unwrap_or_else(|| "panic in loader".to_string());
+                    LoadingMsg::Failed(format!("loader panic: {}", what))
+                }
+            };
+            let _ = tx.send(msg);
+        })
+        .expect("spawn loader thread");
+    LoadingJob {
+        rx,
+        path,
+        tab_idx,
+        started_at: Instant::now(),
+    }
+}
+
+/// Centered "Loading…" card with a 12-dot spinner. Keeps users from
+/// thinking the app crashed during a multi-second DWG open. Drawn from
+/// the CentralPanel painter, after the inset border, so it sits on top
+/// of the (mostly empty) wgpu placeholder scene.
+fn paint_loading_overlay(
+    painter: &egui::Painter,
+    canvas: egui::Rect,
+    file_label: &str,
+    state: &LoadingState,
+) {
+    // Soft scrim behind the card so the (likely empty) canvas behind
+    // doesn't visually compete with the loading text.
+    painter.rect_filled(
+        canvas, 0.0,
+        egui::Color32::from_rgba_unmultiplied(15, 18, 22, 140),
+    );
+    // Card. ~360x120 logical px, clamped if the canvas is smaller.
+    let card_w = 360.0_f32.min(canvas.width() - 24.0).max(160.0);
+    let card_h = 130.0_f32.min(canvas.height() - 24.0).max(80.0);
+    let center = canvas.center();
+    let card = egui::Rect::from_center_size(center, egui::vec2(card_w, card_h));
+    painter.rect_filled(card, 8.0,
+        egui::Color32::from_rgba_unmultiplied(28, 32, 38, 230));
+    painter.rect_stroke(card, 8.0,
+        egui::Stroke::new(1.0, egui::Color32::from_rgb(80, 86, 94)));
+
+    // Animated 12-dot spinner — phase advances with wall-clock so it
+    // visibly moves even when the worker thread doesn't post progress.
+    let spin_center = egui::pos2(card.left() + 36.0, card.center().y);
+    let elapsed = state.started_at.elapsed().as_secs_f32();
+    let phase = (elapsed * 8.0) as usize % 12;
+    for i in 0..12 {
+        let theta = i as f32 * std::f32::consts::TAU / 12.0;
+        let p = spin_center + egui::vec2(theta.cos() * 14.0, theta.sin() * 14.0);
+        // Trailing-fade: dots ahead of phase are dim, dot AT phase is
+        // brightest. Standard tail-spinner aesthetic.
+        let age = (i + 12 - phase) % 12;
+        let alpha = (220 - age as u8 * 16).max(40);
+        painter.circle_filled(p, 2.4,
+            egui::Color32::from_rgba_unmultiplied(255, 255, 255, alpha));
+    }
+
+    // File label + phase label + elapsed time, stacked to the right
+    // of the spinner.
+    let text_left = card.left() + 70.0;
+    let text_top = card.top() + 18.0;
+    painter.text(
+        egui::pos2(text_left, text_top),
+        egui::Align2::LEFT_TOP,
+        format!("Loading {}", file_label),
+        egui::FontId::proportional(14.0),
+        egui::Color32::from_rgb(230, 230, 230),
+    );
+    painter.text(
+        egui::pos2(text_left, text_top + 24.0),
+        egui::Align2::LEFT_TOP,
+        &state.phase,
+        egui::FontId::proportional(12.0),
+        egui::Color32::from_rgb(170, 170, 170),
+    );
+    painter.text(
+        egui::pos2(text_left, text_top + 44.0),
+        egui::Align2::LEFT_TOP,
+        format!("{:.1}s elapsed", elapsed),
+        egui::FontId::proportional(11.0),
+        egui::Color32::from_rgb(130, 130, 130),
+    );
+
+    // Best-effort progress bar. Capped at the supplied fraction; we
+    // don't yet update it from the worker thread (DWG load has only
+    // coarse phase boundaries) but the spinner gives "alive" feedback
+    // and the bar gradually advances based on wall-clock as a fallback
+    // (saturates at 90% so it never falsely claims completion).
+    let bar_top = card.bottom() - 18.0;
+    let bar_rect = egui::Rect::from_min_size(
+        egui::pos2(card.left() + 16.0, bar_top),
+        egui::vec2(card.width() - 32.0, 4.0),
+    );
+    painter.rect_filled(bar_rect, 2.0,
+        egui::Color32::from_rgba_unmultiplied(60, 64, 72, 220));
+    // Time-driven fallback fraction: ~50% at 5s, ~90% at 30s.
+    let time_frac = (1.0 - (-elapsed / 12.0).exp()).min(0.9);
+    let frac = state.fraction.max(time_frac);
+    let fill_w = (bar_rect.width() * frac).clamp(0.0, bar_rect.width());
+    let fill = egui::Rect::from_min_size(bar_rect.min, egui::vec2(fill_w, bar_rect.height()));
+    painter.rect_filled(fill, 2.0, egui::Color32::from_rgb(80, 160, 230));
+}
+
+/// Trim a path for log/UI use: keep just the file name when possible.
+fn short_path(path: &str) -> String {
+    std::path::Path::new(path)
+        .file_name()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| path.to_string())
 }
 
 fn load_any(path: &str, label: &'static str) -> Scene {
