@@ -287,6 +287,15 @@ pub fn render_string_with_contours(
 
     let font_key = font_file.to_ascii_lowercase();
 
+    // Diagnostic hook (set env var O2D_GLYPH_DBG=1 to log per-string
+    // gid mapping). Useful when investigating font-mapping or
+    // glyph-substitution issues.
+    if std::env::var_os("O2D_GLYPH_DBG").is_some() {
+        let gids: Vec<(char, u16)> = text.chars()
+            .map(|c| (c, font.glyph_id(c).0))
+            .collect();
+        eprintln!("[render_str] font={:?} text={:?} gids={:?}", font_file, text, gids);
+    }
     let mut chars = text.chars().peekable();
     while let Some(ch) = chars.next() {
         // Hard line break. Handle both bare "\n", bare "\r", and the
@@ -421,12 +430,30 @@ fn tessellate_glyph_local(font: &FontArc, gid: GlyphId) -> Option<Vec<Vec<[f32; 
         }
         cur_end_local = Some(end_local);
     }
-    contours.retain(|c| c.len() >= 3);
-    for c in contours.iter_mut() {
-        if c.len() >= 2 {
-            let f = c[0]; let l = *c.last().unwrap();
-            if (f[0] - l[0]).abs() < eps_local && (f[1] - l[1]).abs() < eps_local {
-                c.pop();
+    // Diagnostic hook (set env var O2D_GLYPH_DBG=1 to log per-glyph
+    // contour summaries) — useful when investigating "punctuation
+    // renders wrong" reports. Cheap when env var is unset.
+    if std::env::var_os("O2D_GLYPH_DBG").is_some() {
+        let pre: Vec<usize> = contours.iter().map(|c| c.len()).collect();
+        contours.retain(|c| c.len() >= 3);
+        for c in contours.iter_mut() {
+            if c.len() >= 2 {
+                let f = c[0]; let l = *c.last().unwrap();
+                if (f[0] - l[0]).abs() < eps_local && (f[1] - l[1]).abs() < eps_local {
+                    c.pop();
+                }
+            }
+        }
+        let post: Vec<usize> = contours.iter().map(|c| c.len()).collect();
+        eprintln!("[GLYPH gid={}] pre_lens={:?} post_lens={:?}", gid.0, pre, post);
+    } else {
+        contours.retain(|c| c.len() >= 3);
+        for c in contours.iter_mut() {
+            if c.len() >= 2 {
+                let f = c[0]; let l = *c.last().unwrap();
+                if (f[0] - l[0]).abs() < eps_local && (f[1] - l[1]).abs() < eps_local {
+                    c.pop();
+                }
             }
         }
     }

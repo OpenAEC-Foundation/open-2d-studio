@@ -41,21 +41,36 @@ impl<'a> CadButton<'a> {
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let palette = Theme::Default.palette();
+        // 1.0 widths (verified against ref-1.0-region-ribbon.png):
+        //   Large  ~ 56 px (icon+label stacked)
+        //   Medium ~ 72 px (icon + short label, e.g. "Aligned", "Linear")
+        //   Small  ~ 86 px (icon + label, e.g. "Select All", "Find/Replace")
         let (size_v, icon_size) = match self.size {
-            ButtonSize::Large  => (Vec2::new(66.0, metrics::RIBBON_BUTTON_LARGE), metrics::ICON_LG),
-            ButtonSize::Medium => (Vec2::new(110.0, metrics::RIBBON_BUTTON_MEDIUM), metrics::ICON_MD),
-            ButtonSize::Small  => (Vec2::new(110.0, metrics::RIBBON_BUTTON_SMALL), metrics::ICON_SM),
+            ButtonSize::Large  => (Vec2::new(56.0, metrics::RIBBON_BUTTON_LARGE), metrics::ICON_LG),
+            ButtonSize::Medium => (Vec2::new(72.0, metrics::RIBBON_BUTTON_MEDIUM), metrics::ICON_MD),
+            ButtonSize::Small  => (Vec2::new(86.0, metrics::RIBBON_BUTTON_SMALL), metrics::ICON_SM),
         };
         let (rect, response) = ui.allocate_exact_size(size_v, Sense::click());
         let painter = ui.painter();
 
-        // Background fill based on state.
+        // Background fill based on state. 1.0 only paints a solid amber
+        // fill for the *Large* selected button (e.g. the big `Select`
+        // pawn in the SELECTION group). Medium/Small selected buttons
+        // get only a thin amber bottom underline + faint warm-grey wash.
         let bg = if !self.enabled {
-            palette.button_bg
+            Color32::TRANSPARENT
         } else if response.is_pointer_button_down_on() {
-            palette.button_active
+            // Press feedback uses the warm-grey hover even for non-Large.
+            if matches!(self.size, ButtonSize::Large) { palette.button_active }
+            else { palette.button_hover }
         } else if self.selected {
-            palette.button_active
+            match self.size {
+                ButtonSize::Large => palette.button_active,
+                // No fill — selection on Medium/Small reads as just the
+                // amber underline drawn after the label, matching the
+                // 1.0 reference (`ref-1.0-region-ribbon.png`).
+                _ => Color32::TRANSPARENT,
+            }
         } else if response.hovered() {
             palette.button_hover
         } else {
@@ -105,9 +120,17 @@ impl<'a> CadButton<'a> {
             }
         }
 
-        // Subtle 1 px stroke when selected so the active state reads.
-        if self.selected {
-            painter.rect_stroke(rect, 0.0, Stroke::new(1.0, palette.accent));
+        // Selected indicator:
+        //   - Large: keep the solid amber fill, no border (matches 1.0
+        //     pawn in the SELECTION group).
+        //   - Medium/Small: thin 2 px amber underline along the bottom
+        //     edge, mirroring 1.0's active-tab convention.
+        if self.selected && !matches!(self.size, ButtonSize::Large) {
+            painter.line_segment(
+                [egui::pos2(rect.left() + 2.0, rect.bottom() - 1.0),
+                 egui::pos2(rect.right() - 2.0, rect.bottom() - 1.0)],
+                Stroke::new(2.0, palette.accent),
+            );
         }
 
         response

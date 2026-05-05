@@ -229,6 +229,10 @@ pub fn phosphor(name: &str) -> &'static str {
         "info" => egui_phosphor::regular::INFO,
         "warning" => egui_phosphor::regular::WARNING,
         "close" => egui_phosphor::regular::X,
+        "print" => egui_phosphor::regular::PRINTER,
+        "menu" => egui_phosphor::regular::LIST,
+        "chevron_down" => egui_phosphor::regular::CARET_DOWN,
+        "plus" => egui_phosphor::regular::PLUS,
         _ => egui_phosphor::regular::QUESTION,
     }
 }

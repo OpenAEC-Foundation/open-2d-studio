@@ -135,31 +135,71 @@ impl Ribbon {
             ui.horizontal(|ui| {
                 if let Some(active_tab) = self.tabs.iter().find(|t| t.id == self.active) {
                     for group in &active_tab.groups {
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
                         let g_left = ui.cursor().left();
-                        ui.vertical(|ui| {
-                            // Buttons row — leave room for the group title.
-                            ui.horizontal(|ui| {
-                                ui.add_space(2.0);
-                                for b in &group.buttons {
-                                    let resp = match b.size {
-                                        crate::primitives::button::ButtonSize::Large =>
-                                            CadButton::large(&b.label),
-                                        crate::primitives::button::ButtonSize::Medium =>
-                                            CadButton::medium(&b.label),
-                                        crate::primitives::button::ButtonSize::Small =>
-                                            CadButton::small(&b.label),
-                                    }
-                                    .icon(b.icon)
-                                    .selected(b.selected)
-                                    .enabled(b.enabled)
-                                    .show(ui);
+                        // 1.0 packs Small/Medium buttons into 2-row columns
+                        // (verified against ref-1.0-region-ribbon.png —
+                        // DRAW is 2×4 small, MODIFY is 2×3 small, EDIT is
+                        // 2×3 small, ANNOTATE is 2×2 medium). Large
+                        // buttons stay on their own as a single full-height
+                        // tile. We allocate a fixed-height row and lay out
+                        // by hand using `allocate_exact_size` so column
+                        // widths and the 2-row stacking work the same way
+                        // egui's natural flow does for single rows.
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+                            ui.add_space(2.0);
+                            let mut i = 0;
+                            while i < group.buttons.len() {
+                                let b = &group.buttons[i];
+                                if matches!(b.size, crate::primitives::button::ButtonSize::Large) {
+                                    let resp = CadButton::large(&b.label)
+                                        .icon(b.icon)
+                                        .selected(b.selected)
+                                        .enabled(b.enabled)
+                                        .show(ui);
                                     if resp.clicked() {
                                         actions.push(RibbonAction::ButtonClicked(b.id.clone()));
                                     }
+                                    i += 1;
+                                } else {
+                                    // Pack this run of non-Large buttons
+                                    // into 2-row columns.
+                                    let mut run_end = i;
+                                    while run_end < group.buttons.len()
+                                        && !matches!(group.buttons[run_end].size,
+                                            crate::primitives::button::ButtonSize::Large)
+                                    {
+                                        run_end += 1;
+                                    }
+                                    let run = &group.buttons[i..run_end];
+                                    let cols = (run.len() + 1) / 2;
+                                    for c in 0..cols {
+                                        ui.vertical(|ui| {
+                                            ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
+                                            for r in 0..2 {
+                                                let idx = c * 2 + r;
+                                                if idx >= run.len() { continue; }
+                                                let b = &run[idx];
+                                                let resp = match b.size {
+                                                    crate::primitives::button::ButtonSize::Medium =>
+                                                        CadButton::medium(&b.label),
+                                                    _ => CadButton::small(&b.label),
+                                                }
+                                                .icon(b.icon)
+                                                .selected(b.selected)
+                                                .enabled(b.enabled)
+                                                .show(ui);
+                                                if resp.clicked() {
+                                                    actions.push(RibbonAction::ButtonClicked(b.id.clone()));
+                                                }
+                                            }
+                                        });
+                                    }
+                                    i = run_end;
                                 }
-                                ui.add_space(2.0);
-                            });
+                            }
+                            ui.add_space(2.0);
                         });
                         let g_right = ui.cursor().left();
                         group_rects.push((
@@ -169,7 +209,7 @@ impl Ribbon {
                             ),
                             group.title.clone(),
                         ));
-                        ui.add_space(8.0);
+                        ui.add_space(6.0);
                     }
                 }
             });
@@ -188,10 +228,10 @@ impl Ribbon {
                 palette.fg_dim,
             );
             if i + 1 < group_rects.len() {
-                let sx = g_rect.right() + 4.0;
+                let sx = g_rect.right() + 3.0;
                 ui.painter().line_segment(
-                    [egui::pos2(sx, group_rect.top() + 6.0),
-                     egui::pos2(sx, group_rect.bottom() - 18.0)],
+                    [egui::pos2(sx, group_rect.top() + 4.0),
+                     egui::pos2(sx, group_rect.bottom() - 16.0)],
                     egui::Stroke::new(1.0, palette.border),
                 );
             }

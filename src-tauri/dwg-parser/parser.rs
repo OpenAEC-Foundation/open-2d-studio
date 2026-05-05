@@ -7299,8 +7299,8 @@ impl DwgParser {
 
         if std::env::var("DWG_DEBUG_DIMSTYLE").is_ok() {
             eprintln!(
-                "[DIMSTYLE_OBJ] name={:?} dimscale={} dimtxt={} dimasz={} dimblk1={:?} dimblk2={:?}",
-                name, dimscale, dimtxt, dimasz, dimblk1, dimblk2,
+                "[DIMSTYLE_OBJ] name={:?} dimscale_raw={} dimtxt_raw={} dimasz_raw={} (resolved {} {} {}) blk1={:?} blk2_chars={}",
+                name, dimscale_raw, dimtxt_raw, dimasz_raw, dimscale, dimtxt, dimasz, dimblk1, dimblk2.chars().count(),
             );
         }
 

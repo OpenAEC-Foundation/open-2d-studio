@@ -746,6 +746,12 @@ impl GpuCtx {
         };
         surface.configure(&device, &config);
         let egui_ctx = egui::Context::default();
+        // Install the egui-phosphor icon font so the superui titlebar
+        // QAT buttons + ribbon icon-only buttons can render line icons
+        // matching 1.0's lucide-react set.
+        let mut fonts = egui::FontDefinitions::default();
+        egui_phosphor::add_to_fonts(&mut fonts, egui_phosphor::Variant::Regular);
+        egui_ctx.set_fonts(fonts);
         let egui_state = egui_winit::State::new(
             egui_ctx.clone(), egui::ViewportId::ROOT, &*window,
             Some(window.scale_factor() as f32), None, None,
@@ -1321,8 +1327,9 @@ impl App {
             edit_mode: None,
             last_lmb_click_time: None,
             last_lmb_click_pos: (0.0, 0.0),
-            // Ribbon defaults to the Files tab on launch.
-            active_ribbon_tab: "files".to_string(),
+            // Ribbon defaults to the Home tab on launch — matches 1.0
+            // reference (orange underline + light bg on Home at first paint).
+            active_ribbon_tab: "home".to_string(),
         }
     }
 
@@ -1879,6 +1886,7 @@ impl App {
         let mut requested_window_minimize = false;
         let mut requested_window_toggle_max = false;
         let mut requested_window_close = false;
+        let mut requested_window_drag = false;
         // Text-editor overlay buttons (Task 10). Set when the user clicks
         // Commit / Cancel in the floating overlay; processed AFTER the
         // egui closure so the &mut self borrow on tabs/edit_mode is free.
@@ -1986,6 +1994,9 @@ impl App {
                             }
                             TitleBarAction::Close => {
                                 requested_window_close = true;
+                            }
+                            TitleBarAction::StartDrag => {
+                                requested_window_drag = true;
                             }
                         }
                     }
@@ -2693,6 +2704,13 @@ impl App {
         }
         if requested_window_close {
             std::process::exit(0);
+        }
+        if requested_window_drag {
+            if let Some(w) = self.window.as_ref() {
+                // Best-effort — fails silently if the OS rejects (e.g.
+                // already in another window-manager modal interaction).
+                let _ = w.drag_window();
+            }
         }
         if let Some(m) = requested_tool_mode {
             self.tool_mode = m;
@@ -4583,8 +4601,12 @@ fn make_window_icon() -> Option<winit::window::Icon> {
 impl ApplicationHandler for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let title = Self::title_for(&self.tabs, self.active_tab);
+        // Hide the native OS chrome — our `superui::TitleBar` paints its
+        // own titlebar (icon + QAT + title + window controls). We start
+        // a window drag from inside that bar via `Window::drag_window`.
         let mut attrs = Window::default_attributes()
             .with_title(title)
+            .with_decorations(false)
             .with_inner_size(winit::dpi::LogicalSize::new(1800, 1000));
         if let Some(ic) = make_window_icon() {
             attrs = attrs.with_window_icon(Some(ic));
