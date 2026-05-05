@@ -15,6 +15,8 @@
 
 pub mod left_dock;
 pub mod right_dock;
+pub mod structure_tree;
 
 pub use left_dock::{LeftDock, LeftDockAction, DrawingItem, SheetItem};
 pub use right_dock::{RightDock, RightDockAction};
+pub use structure_tree::{StructureTree, StructureTreeAction, TreeNode, NodeKind};
