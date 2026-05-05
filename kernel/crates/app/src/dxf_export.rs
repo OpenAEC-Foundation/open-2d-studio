@@ -76,18 +76,41 @@
 //!     TTF-outline triangles in scene_io)
 
 use crate::scene_io::Scene;
+use std::collections::HashSet;
 use std::io::{self, Write};
 
 /// Write `scene` to `out` as a DXF R2013 (AC1027) textual file.
 ///
-/// Produces a self-contained DXF with HEADER + TABLES (LAYER) + ENTITIES
-/// sections. `scene.segments` become LINE entities, `scene.triangles`
-/// become SOLID entities. Layer names and colors round-trip via
-/// `scene.layer_names` / `scene.layer_colors`.
+/// Convenience wrapper around [`write_dxf_filtered`] with no
+/// deleted layers — emits every segment / triangle.
+pub fn write_dxf<W: Write>(scene: &Scene, out: W) -> io::Result<()> {
+    write_dxf_filtered(scene, out, &HashSet::new())
+}
+
+/// Like [`write_dxf`] but skips every segment / triangle whose layer
+/// name appears in `deleted_layers`. The matching LAYER table records
+/// are also dropped so re-loaded files don't re-introduce empty layers.
 ///
 /// Does NOT flush or close `out`. Caller owns the sink (commonly a
 /// `BufWriter<File>` — wrap if needed for large scenes).
-pub fn write_dxf<W: Write>(scene: &Scene, mut out: W) -> io::Result<()> {
+pub fn write_dxf_filtered<W: Write>(
+    scene: &Scene,
+    mut out: W,
+    deleted_layers: &HashSet<String>,
+) -> io::Result<()> {
+    // Pre-computed parallel array: is layer-idx i in deleted_layers?
+    // O(1) per-entity skip check (vs hashing the layer name N times).
+    let is_deleted_layer_idx: Vec<bool> = scene
+        .layer_names
+        .iter()
+        .map(|n| deleted_layers.contains(n))
+        .collect();
+    let layer_idx_deleted = |li: u16| -> bool {
+        is_deleted_layer_idx
+            .get(li as usize)
+            .copied()
+            .unwrap_or(false)
+    };
     // Track next handle (code 5) — hex, starts at 20 so it doesn't collide
     // with reserved low handles some readers expect (LAYER 0, BLOCK *Model_Space
     // etc. typically sit in range 1-1F). We pass a `&mut u64` through and let
@@ -156,6 +179,9 @@ pub fn write_dxf<W: Write>(scene: &Scene, mut out: W) -> io::Result<()> {
         write_layer(&mut out, &mut handle, "0", 7)?;
     } else {
         for (i, name) in scene.layer_names.iter().enumerate() {
+            // Drop deleted-layer table records so re-loaded files
+            // don't re-introduce the (now empty) layer.
+            if layer_idx_deleted(i as u16) { continue; }
             let rgba = scene.layer_colors.get(i).copied().unwrap_or(0xFFFFFFFF);
             let aci = rgba_to_aci(rgba);
             // DXF layer names must be non-empty — substitute "0" if we
@@ -179,6 +205,10 @@ pub fn write_dxf<W: Write>(scene: &Scene, mut out: W) -> io::Result<()> {
         // with model coords in one namespace would overlap the drawing.
         // (If we gain Layout writing later, revisit this.)
         if seg.is_paper { continue; }
+        // Drop entities on user-deleted layers so saves are clean.
+        if let Some(&li) = scene.segment_layer_idx.get(i) {
+            if layer_idx_deleted(li) { continue; }
+        }
 
         let layer = layer_name_for(scene, scene.segment_layer_idx.get(i).copied());
         let aci = rgba_to_aci(seg.color);
@@ -207,6 +237,9 @@ pub fn write_dxf<W: Write>(scene: &Scene, mut out: W) -> io::Result<()> {
     // == corner 3.
     for (i, tri) in scene.triangles.iter().enumerate() {
         if tri.is_paper { continue; }
+        if let Some(&li) = scene.triangle_layer_idx.get(i) {
+            if layer_idx_deleted(li) { continue; }
+        }
 
         let layer = layer_name_for(scene, scene.triangle_layer_idx.get(i).copied());
         let aci = rgba_to_aci(tri.color);

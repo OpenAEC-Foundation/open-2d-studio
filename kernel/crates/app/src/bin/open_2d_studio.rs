@@ -52,7 +52,7 @@ use superui::{
 // affine transform composition, etc.).
 use kernel_app::scene_io::{load_dwg, load_dxf, Scene, TriKind};
 use kernel_app::ifcx_export::write_ifcx_binary;
-use kernel_app::dxf_export::write_dxf;
+use kernel_app::dxf_export::write_dxf_filtered;
 use kernel_spatial::{SegmentEntry, SegmentIndex};
 
 // =============================================================================
@@ -914,6 +914,13 @@ struct FileTab {
     cam: PaneCam,
     show_paper: bool,
     hidden_layers: HashSet<String>,
+    /// Layers the user has soft-deleted via the trash button in the
+    /// LAYERS panel. These are unioned into `hidden_layers` so they
+    /// never render, AND they're excluded from DXF save output (see
+    /// `save_as_dxf`). Soft-delete avoids mutating the parallel
+    /// segment / triangle / layer-idx arrays in place — the original
+    /// scene stays intact and a future "restore" step is straightforward.
+    deleted_layers: HashSet<String>,
 
     // GPU — lazily built once self.gpu exists.
     pipe: Option<LinePipeline>,
@@ -1024,6 +1031,7 @@ impl FileTab {
             cam,
             show_paper: false,
             hidden_layers: HashSet::new(),
+            deleted_layers: HashSet::new(),
             pipe: None,
             tri_pipe: None,
             text_tri_pipe: None,
@@ -1905,7 +1913,7 @@ impl App {
         };
         // BufWriter matters — write_dxf does many small writeln!s per entity.
         let mut writer = std::io::BufWriter::new(file);
-        if let Err(e) = write_dxf(&tab.scene, &mut writer) {
+        if let Err(e) = write_dxf_filtered(&tab.scene, &mut writer, &tab.deleted_layers) {
             eprintln!("[save-as-dxf] encode failed: {e}");
             return;
         }
@@ -1968,6 +1976,7 @@ impl App {
         tab.selection.clear();
         tab.hover = None;
         tab.hidden_layers.clear();
+        tab.deleted_layers.clear();
         tab.move_drag = None;
         tab.move_drag_multi = None;
         tab.pending_move_offset = [0.0, 0.0];
@@ -2252,6 +2261,11 @@ impl App {
         let mut requested_layer_toggle: Option<String> = None;
         let mut requested_layer_show_all = false;
         let mut requested_layer_hide_all = false;
+        // Trash-button click on a layer row in the LAYERS panel.
+        // Soft-deletes the layer: it's hidden from rendering and
+        // skipped during DXF save. Shift+click in the UI is required
+        // to set this — see the panel section below.
+        let mut requested_layer_delete: Option<String> = None;
         let mut requested_selection_clear = false;
         // (bbox, layout_name) — layout tab switch on active tab.
         let mut requested_fit_layout: Option<([f64; 4], String)> = None;
@@ -2883,6 +2897,30 @@ impl App {
                                         ui.painter().rect_stroke(rect, 2.0,
                                             egui::Stroke::new(1.0, egui::Color32::from_gray(60)));
                                         ui.label(name);
+                                        // Trash button — right-aligned. Shift+click
+                                        // is required to actually delete (we treat
+                                        // a plain click as a fat-finger guard);
+                                        // this matches Windows Explorer's
+                                        // Shift+Del "skip recycle bin" muscle memory.
+                                        ui.with_layout(
+                                            egui::Layout::right_to_left(
+                                                egui::Align::Center),
+                                            |ui| {
+                                                let resp = ui.add(
+                                                    egui::Button::new("🗑")
+                                                        .small()
+                                                        .frame(false))
+                                                    .on_hover_text(
+                                                        "Shift+click to delete \
+                                                         this layer (excluded \
+                                                         from saved output)");
+                                                if resp.clicked()
+                                                    && ui.input(|i| i.modifiers.shift)
+                                                {
+                                                    requested_layer_delete = Some(
+                                                        name.clone());
+                                                }
+                                            });
                                     });
                                     if visible != before {
                                         requested_layer_toggle = Some(name.clone());
@@ -3462,7 +3500,16 @@ impl App {
         }
         if requested_layer_show_all {
             if let Some(tab) = self.tabs.get_mut(self.active_tab) {
-                tab.hidden_layers.clear();
+                // Soft-deleted layers stay hidden after Show-all so the
+                // user has to explicitly restore them (future feature).
+                tab.hidden_layers = tab.deleted_layers.clone();
+            }
+            need_rebuild_active = true;
+        }
+        if let Some(key) = requested_layer_delete {
+            if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                tab.deleted_layers.insert(key.clone());
+                tab.hidden_layers.insert(key);
             }
             need_rebuild_active = true;
         }
