@@ -1670,6 +1670,34 @@ struct App {
     /// `LoadingMsg::Done(Scene)` (or `Failed`) into when it finishes.
     /// Drained once per frame in `poll_loading_jobs`.
     loading_jobs: Vec<LoadingJob>,
+
+    /// In-app file-picker modal — replaces the native rfd Open dialog
+    /// with a thumbnail + version-badge tile grid. Lazily initialised
+    /// on first open so the start directory tracks the active tab.
+    file_picker_open: bool,
+    file_picker_state: Option<superui::dialogs::FilePickerState>,
+    /// Background preview-generation channel + per-path entry cache.
+    preview_cache: HashMap<std::path::PathBuf, superui::dialogs::PreviewEntry>,
+    preview_inflight: HashSet<std::path::PathBuf>,
+    preview_tx: Option<mpsc::Sender<(std::path::PathBuf, Option<egui::ColorImage>)>>,
+    preview_rx: Option<mpsc::Receiver<(std::path::PathBuf, Option<egui::ColorImage>)>>,
+}
+
+/// Glue between the in-app `FilePicker` and `App`'s preview cache.
+struct AppPreviewProvider<'a> {
+    cache: &'a mut HashMap<std::path::PathBuf, superui::dialogs::PreviewEntry>,
+    inflight: &'a mut HashSet<std::path::PathBuf>,
+    spawn_queue: &'a mut Vec<std::path::PathBuf>,
+}
+
+impl<'a> superui::dialogs::PreviewProvider for AppPreviewProvider<'a> {
+    fn request(&mut self, path: &std::path::Path) -> Option<&superui::dialogs::PreviewEntry> {
+        if !self.cache.contains_key(path) && !self.inflight.contains(path) {
+            self.inflight.insert(path.to_path_buf());
+            self.spawn_queue.push(path.to_path_buf());
+        }
+        self.cache.get(path)
+    }
 }
 
 /// One in-flight background DWG/DXF/IFCDraw load.
@@ -1874,6 +1902,13 @@ impl App {
             // reference (orange underline + light bg on Home at first paint).
             active_ribbon_tab: "home".to_string(),
             loading_jobs: Vec::new(),
+            // File picker — lazily initialised on first open.
+            file_picker_open: false,
+            file_picker_state: None,
+            preview_cache: HashMap::new(),
+            preview_inflight: HashSet::new(),
+            preview_tx: None,
+            preview_rx: None,
         }
     }
 
@@ -2054,30 +2089,31 @@ impl App {
 
     /// Open a file picker and append the result as a new tab.
     fn open_file_dialog(&mut self) {
-        let starting_dir = self.tabs.iter()
-            .find_map(|t| t.path.as_ref())
-            .and_then(|p| std::path::Path::new(p).parent().map(|d| d.to_path_buf()));
-        let mut dialog = rfd::FileDialog::new()
-            .set_title("Open DWG, DXF or IFCDraw as new tab")
-            .add_filter(
-                "CAD drawings (*.dwg, *.dxf, *.ifcdraw)",
-                &["dwg", "dxf", "ifcdraw", "DWG", "DXF", "IFCDRAW"],
-            )
-            .add_filter("AutoCAD DWG (*.dwg)", &["dwg", "DWG"])
-            .add_filter("AutoCAD DXF (*.dxf)", &["dxf", "DXF"])
-            .add_filter("Open 2D Studio (*.ifcdraw)", &["ifcdraw", "IFCDRAW"])
-            .add_filter("All files", &["*"]);
-        if let Some(dir) = starting_dir {
-            dialog = dialog.set_directory(dir);
+        if self.file_picker_state.is_none() {
+            let starting_dir = self.tabs.iter()
+                .find_map(|t| t.path.as_ref())
+                .and_then(|p| std::path::Path::new(p).parent().map(|d| d.to_path_buf()))
+                .or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from))
+                .unwrap_or_else(|| std::path::PathBuf::from("."));
+            let mut recents: Vec<std::path::PathBuf> = Vec::new();
+            let mut seen = HashSet::new();
+            for t in &self.tabs {
+                if let Some(p) = t.path.as_ref() {
+                    if let Some(parent) = std::path::Path::new(p).parent() {
+                        let pb = parent.to_path_buf();
+                        if seen.insert(pb.clone()) { recents.push(pb); }
+                    }
+                }
+            }
+            self.file_picker_state =
+                Some(superui::dialogs::FilePickerState::new(starting_dir, recents));
         }
-        let Some(picked) = dialog.pick_file() else { return; };
-        let picked_str = picked.to_string_lossy().into_owned();
-        eprintln!("[tab open] picked: {}", picked_str);
-        // Background-load with a placeholder tab + spinner overlay so
-        // the window doesn't freeze on big DWG files (4 MB / 113k
-        // objects loads in ~12s — more than long enough for the user
-        // to think the app crashed without visible feedback).
-        self.start_load_into_new_tab(picked_str);
+        if self.preview_tx.is_none() {
+            let (tx, rx) = mpsc::channel();
+            self.preview_tx = Some(tx);
+            self.preview_rx = Some(rx);
+        }
+        self.file_picker_open = true;
     }
 
     /// "Save As IFC 2D B" — run the IFCX-binary exporter on the active
@@ -3139,6 +3175,71 @@ impl App {
                 }
                 self.app_menu_open = open;
             }
+
+            // ---- File picker modal (replaces native rfd Open) -------
+            if self.file_picker_open {
+                if let Some(rx) = self.preview_rx.as_ref() {
+                    loop {
+                        match rx.try_recv() {
+                            Ok((path, image)) => {
+                                self.preview_inflight.remove(&path);
+                                self.preview_cache.insert(
+                                    path.clone(),
+                                    superui::dialogs::PreviewEntry {
+                                        image,
+                                        finished: true,
+                                    },
+                                );
+                                if let Some(state) = self.file_picker_state.as_mut() {
+                                    state.invalidate_texture(&path);
+                                }
+                            }
+                            Err(_) => break,
+                        }
+                    }
+                }
+                let mut open = self.file_picker_open;
+                let action = if let Some(state) = self.file_picker_state.as_mut() {
+                    let mut to_spawn: Vec<std::path::PathBuf> = Vec::new();
+                    let mut provider = AppPreviewProvider {
+                        cache: &mut self.preview_cache,
+                        inflight: &mut self.preview_inflight,
+                        spawn_queue: &mut to_spawn,
+                    };
+                    let action = superui::dialogs::FilePicker::show(
+                        ctx, state, &mut provider, &mut open,
+                    );
+                    drop(provider);
+                    if let Some(tx) = self.preview_tx.as_ref() {
+                        for path in to_spawn {
+                            if self.preview_cache.contains_key(&path)
+                                || self.preview_inflight.contains(&path)
+                            {
+                                continue;
+                            }
+                            self.preview_inflight.insert(path.clone());
+                            let tx = tx.clone();
+                            std::thread::spawn(move || {
+                                let image = generate_preview_image(&path);
+                                let _ = tx.send((path, image));
+                            });
+                        }
+                    }
+                    action
+                } else { None };
+                self.file_picker_open = open;
+                if let Some(action) = action {
+                    match action {
+                        superui::dialogs::FilePickerAction::Open(p) => {
+                            let s = p.to_string_lossy().into_owned();
+                            eprintln!("[tab open] picked: {}", s);
+                            requested_load_as_new_tab = Some(s);
+                        }
+                        superui::dialogs::FilePickerAction::Cancelled => {}
+                    }
+                }
+            }
+
 
             // ---- Left: Layer Manager ---------------------------------
             // Docked tool-window look: a title-bar header with a chevron
@@ -5679,6 +5780,11 @@ impl ApplicationHandler for App {
                     // backed out without disturbing other state).
                     if self.edit_mode.is_some() {
                         self.cancel_text_edit();
+                    } else if self.tool_mode == ToolMode::ZoomRegion {
+                        // ZR — cancel the zoom-region: revert tool +
+                        // clear in-progress anchor. Camera stays put.
+                        self.tool_mode = ToolMode::Select;
+                        self.zoom_region_p1 = None;
                     } else if !self.area_in_progress.is_empty() {
                         self.area_in_progress.clear();
                     } else if self.dim_p1.is_some() {
@@ -5809,6 +5915,14 @@ impl ApplicationHandler for App {
                     self.cycle_tab(!self.modifiers_shift_held());
                 }
                 KeyCode::KeyZ if self.modifiers_ctrl_held() => self.requested_undo = true,
+                // ZR — plain Z buffers a chord prefix. `Z R` within 1 s
+                // triggers Zoom-Region mode (handled in the KeyR arm).
+                // Plain Z has no standalone action; if no second key
+                // arrives the buffer expires harmlessly.
+                KeyCode::KeyZ if !self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
+                    self.key_chord_pending = Some(KeyCode::KeyZ);
+                    self.key_chord_at = Some(std::time::Instant::now());
+                }
                 KeyCode::KeyA if self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
                     self.requested_select_all = true;
                 }
@@ -5859,7 +5973,12 @@ impl ApplicationHandler for App {
                     }
                     self.active_split_child = 0;
                 }
-                _ => {}
+                _ => {
+                    // ZR — any unrecognised key clears the chord buffer
+                    // so a stale `Z` press doesn't latch a later `R`.
+                    self.key_chord_pending = None;
+                    self.key_chord_at = None;
+                }
             }
             WindowEvent::CursorMoved { position, .. } => {
                 self.mouse_pos = (position.x as f32, position.y as f32);
@@ -6957,4 +7076,87 @@ fn main() -> anyhow::Result<()> {
     }
     event_loop.run_app(&mut app)?;
     Ok(())
+}
+
+/// Generate a 160x120 preview thumbnail for the file picker. Runs on a
+/// worker thread; returns `None` on parse failure / unsupported format.
+fn generate_preview_image(path: &std::path::Path) -> Option<egui::ColorImage> {
+    let started = Instant::now();
+    let ext = path
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|s| s.to_ascii_lowercase())
+        .unwrap_or_default();
+    let segments: Vec<(f32, f32, f32, f32)> = match ext.as_str() {
+        "dxf" => extract_dxf_preview_segments(path).unwrap_or_default(),
+        _ => Vec::new(),
+    };
+    if started.elapsed().as_millis() > 500 {
+        eprintln!(
+            "[file-picker] preview budget exceeded for {} ({} ms, {} segs)",
+            path.display(),
+            started.elapsed().as_millis(),
+            segments.len(),
+        );
+    }
+    if segments.is_empty() {
+        return None;
+    }
+    Some(superui::dialogs::rasterize_segments(&segments, 160, 120))
+}
+
+/// Stream-parse a DXF file's first ENTITIES section and pull out LINE
+/// endpoints. Bounded at 6000 segments / 200k input lines.
+fn extract_dxf_preview_segments(
+    path: &std::path::Path,
+) -> std::io::Result<Vec<(f32, f32, f32, f32)>> {
+    use std::io::BufRead;
+    let file = std::fs::File::open(path)?;
+    let reader = std::io::BufReader::new(file);
+    let mut out: Vec<(f32, f32, f32, f32)> = Vec::with_capacity(2048);
+    let mut lines = reader.lines();
+    let mut in_line_entity = false;
+    let mut x1 = f32::NAN;
+    let mut y1 = f32::NAN;
+    let mut x2 = f32::NAN;
+    let mut y2 = f32::NAN;
+    let mut total_lines = 0u32;
+    while let (Some(code_line), Some(value_line)) = (lines.next(), lines.next()) {
+        total_lines += 2;
+        if total_lines > 200_000 || out.len() >= 6000 {
+            break;
+        }
+        let Ok(code) = code_line else { continue; };
+        let Ok(value) = value_line else { continue; };
+        let code = code.trim();
+        let value = value.trim();
+        if code == "0" {
+            if in_line_entity
+                && x1.is_finite() && y1.is_finite()
+                && x2.is_finite() && y2.is_finite()
+            {
+                out.push((x1, y1, x2, y2));
+            }
+            in_line_entity = value == "LINE";
+            x1 = f32::NAN; y1 = f32::NAN; x2 = f32::NAN; y2 = f32::NAN;
+            continue;
+        }
+        if !in_line_entity {
+            continue;
+        }
+        match code {
+            "10" => x1 = value.parse().unwrap_or(f32::NAN),
+            "20" => y1 = value.parse().unwrap_or(f32::NAN),
+            "11" => x2 = value.parse().unwrap_or(f32::NAN),
+            "21" => y2 = value.parse().unwrap_or(f32::NAN),
+            _ => {}
+        }
+    }
+    if in_line_entity
+        && x1.is_finite() && y1.is_finite()
+        && x2.is_finite() && y2.is_finite()
+    {
+        out.push((x1, y1, x2, y2));
+    }
+    Ok(out)
 }
