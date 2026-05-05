@@ -6811,29 +6811,36 @@ fn main() -> anyhow::Result<()> {
     //   f1.dxf f2.dwg …     → each file arg becomes its own tab.
     let args: Vec<String> = std::env::args().skip(1).collect();
 
-    let mut tabs: Vec<FileTab> = Vec::new();
-
+    // Collect the paths CLI mode would have loaded synchronously, but
+    // hand them off to the background loader after App::new so the
+    // window appears IMMEDIATELY with a spinner overlay instead of
+    // freezing at the OS level for the duration of a big DWG parse.
+    let mut deferred_paths: Vec<String> = Vec::new();
     if args.len() == 1
         && !args[0].to_lowercase().ends_with(".dwg")
         && !args[0].to_lowercase().ends_with(".dxf")
+        && !args[0].to_lowercase().ends_with(".ifcdraw")
     {
         let base = args[0].trim_end_matches(".dxf").trim_end_matches(".dwg").to_string();
-        let dxf_path = format!("{}.dxf", base);
-        let dwg_path = format!("{}.dwg", base);
         eprintln!("[open_2d_studio] base={}  tab 1 ← DXF, tab 2 ← DWG", base);
-        let dxf_scene = load_any(&dxf_path, "dxf");
-        tabs.push(FileTab::new(dxf_scene, Some(dxf_path)));
-        let dwg_scene = load_any(&dwg_path, "dwg");
-        tabs.push(FileTab::new(dwg_scene, Some(dwg_path)));
+        deferred_paths.push(format!("{}.dxf", base));
+        deferred_paths.push(format!("{}.dwg", base));
     } else {
-        for a in &args {
-            let scene = load_any(a, "tab");
-            tabs.push(FileTab::new(scene, Some(a.clone())));
-        }
+        deferred_paths.extend(args.iter().cloned());
     }
 
     let event_loop = EventLoop::new()?;
-    let mut app = App::new(tabs);
+    let mut app = App::new(Vec::new());
+    // Queue background loads BEFORE entering the event loop. App::new
+    // already pushed a single blank "Start" tab; remove it if we have
+    // real files to load so the user only sees the placeholder tabs.
+    if !deferred_paths.is_empty() {
+        app.tabs.clear();
+        app.active_tab = 0;
+        for path in deferred_paths {
+            app.start_load_into_new_tab(path);
+        }
+    }
     event_loop.run_app(&mut app)?;
     Ok(())
 }
