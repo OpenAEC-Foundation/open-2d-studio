@@ -81,6 +81,67 @@ pub mod metrics {
     pub const DOCK_ITEM_HEIGHT: f32 = 26.0;
 }
 
+/// Ribbon-grid tokens. The ribbon paints onto a strict cell grid so that
+/// rows and columns of buttons always line up regardless of which group
+/// they live in. All sizing decisions live here so the consumer never
+/// has to think about pixels.
+///
+/// Design principles (verified against 1.0 `Ribbon.css`):
+/// 1. The content strip has a fixed inner height (`CONTENT_INNER_H`)
+///    reserved for buttons; the group title baseline is anchored at
+///    `CONTENT_H - TITLE_BAND_H`.
+/// 2. Every button cell has the same outer size for its variant. Large
+///    cells span the full inner band height; Medium/Small cells stack 2
+///    per column with zero variance between groups.
+/// 3. Icons are centred on a deterministic baseline inside each cell.
+pub mod ribbon_grid {
+    /// Total content strip height (matches `metrics::RIBBON_CONTENT_HEIGHT`).
+    pub const CONTENT_H: f32 = super::metrics::RIBBON_CONTENT_HEIGHT;
+    /// Reserved band along the bottom for the uppercase group label.
+    pub const TITLE_BAND_H: f32 = 16.0;
+    /// Inner band height available to buttons (cells must fit in this).
+    pub const INNER_H: f32 = CONTENT_H - TITLE_BAND_H;
+
+    /// Padding inside the content strip on top.
+    pub const INNER_PAD_TOP: f32 = 4.0;
+
+    // ---- Cell sizes ---------------------------------------------------
+    /// Large icon-over-caption cell. Tall: spans full INNER_H minus pad.
+    pub const LARGE_W: f32 = 56.0;
+    pub const LARGE_H: f32 = INNER_H - INNER_PAD_TOP; // 88
+    /// Medium horizontal icon+caption cell. Two stack per column.
+    pub const MEDIUM_W: f32 = 86.0;
+    pub const MEDIUM_H: f32 = (INNER_H - INNER_PAD_TOP) / 2.0; // 44
+    /// Small horizontal icon+caption cell. Two stack per column.
+    pub const SMALL_W: f32 = 86.0;
+    pub const SMALL_H: f32 = (INNER_H - INNER_PAD_TOP) / 2.0; // 44
+
+    /// Gutter between adjacent cells in a stack column (vertical).
+    pub const CELL_GAP_V: f32 = 0.0;
+    /// Gutter between adjacent stack columns inside a group.
+    pub const CELL_GAP_H: f32 = 2.0;
+    /// Padding inside a group on the left/right.
+    pub const GROUP_PAD_X: f32 = 4.0;
+    /// Space added between adjacent groups (separator inset lives here).
+    pub const GROUP_GAP: f32 = 8.0;
+
+    // ---- Icon sizes per cell variant ---------------------------------
+    pub const ICON_LARGE: f32 = 28.0;
+    pub const ICON_MEDIUM: f32 = 18.0;
+    pub const ICON_SMALL: f32 = 14.0;
+
+    // ---- Caption font sizes ------------------------------------------
+    pub const CAPTION_LARGE: f32 = 11.0;
+    pub const CAPTION_MEDIUM: f32 = 11.0;
+    pub const CAPTION_SMALL: f32 = 11.0;
+    pub const TITLE_FONT: f32 = 9.0;
+
+    /// Inner padding inside a cell on every side.
+    pub const CELL_PAD: f32 = 4.0;
+    /// Gap between icon and caption inside a horizontal cell.
+    pub const ICON_CAPTION_GAP: f32 = 6.0;
+}
+
 /// Typography tokens. Phase 1 uses egui's default font; sizes match 1.0.
 pub mod typography {
     /// Group label / micro text — `font-size: 9px` in `Ribbon.css` line 113.

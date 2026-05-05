@@ -89,12 +89,14 @@ pub enum IconKind {
 /// at large/medium/small button sizes.
 pub fn paint_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32) {
     let center = rect.center();
-    let r = rect.width().min(rect.height()) * 0.45;
-    // 1.0's lucide icons render with stroke-width: 2 at 24×24 → 1/12 ratio.
-    // Round 8 polish: bump the floor to 1.7 px so Small (14 px) icons read
-    // as solid glyphs instead of hairlines on the warm-dark body. Larger
-    // ratio (0.16) keeps Large (24 px) icons appropriately bold.
-    let stroke = Stroke::new((r * 0.16).max(1.7), color);
+    // Normalize: every glyph is drawn into the inner 80 % of the rect
+    // ("inner safe zone"). r = 0.40 * min(w, h) so the bounding box
+    // is identical across all variants. Stroke width = r * 0.20
+    // (clamped at 1.5 px floor) so phosphor and hand-drawn glyphs
+    // share a single visual weight. To audit, paint all variants in
+    // a grid (see `examples/icon_grid.rs` once added).
+    let r = rect.width().min(rect.height()) * 0.40;
+    let stroke = Stroke::new((r * 0.20).max(1.5), color);
     match kind {
         IconKind::Line => {
             painter.line_segment(
@@ -135,9 +137,9 @@ pub fn paint_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32)
             // corner — used widely as the generic placeholder in 1.0
             // Ribbon button slots, so we upgrade it from a plain box to
             // something that reads as "document" at a glance.
-            let w = r * 1.5;
-            let h = r * 1.85;
-            let fold = r * 0.55;
+            let w = r * 1.3;
+            let h = r * 1.6;
+            let fold = r * 0.45;
             let top_left   = Pos2::new(center.x - w * 0.5, center.y - h * 0.5);
             let top_right0 = Pos2::new(center.x + w * 0.5 - fold, center.y - h * 0.5);
             let top_right1 = Pos2::new(center.x + w * 0.5, center.y - h * 0.5 + fold);
@@ -173,7 +175,7 @@ pub fn paint_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32)
             );
         }
         IconKind::Hatch => {
-            let inset = r * 0.85;
+            let inset = r * 0.75;
             let bx = Rect::from_center_size(center, egui::vec2(inset * 2.0, inset * 1.4));
             painter.rect_stroke(bx, 0.0, stroke);
             // Diagonal lines inside.
