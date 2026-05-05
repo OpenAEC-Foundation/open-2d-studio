@@ -15,4 +15,10 @@ pub mod primitives;
 #[cfg(feature = "layout")]
 pub mod layout;
 
+#[cfg(feature = "panels")]
+pub mod panels;
+
+#[cfg(feature = "dialogs")]
+pub mod dialogs;
+
 pub use theme::{Theme, Palette, apply_theme};

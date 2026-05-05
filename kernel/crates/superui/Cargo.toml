@@ -12,7 +12,7 @@ egui-phosphor = "0.7"
 serde = { workspace = true }
 
 [features]
-default = ["layout"]
+default = ["layout", "panels", "dialogs"]
 layout = []
 panels = []
 dialogs = []

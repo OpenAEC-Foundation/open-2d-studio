@@ -28,7 +28,10 @@ pub mod metrics {
     /// 1.0 reserves ~24 px below the buttons for the uppercase group
     /// label; we keep that gap so 66 px Large buttons don't crowd the
     /// title.
-    pub const RIBBON_CONTENT_HEIGHT: f32 = 100.0;
+    /// Round 9 fix: bump 100 → 108 so 66 px Large + group-title baseline
+    /// don't overlap captions of medium/large buttons in stacked groups
+    /// like ANNOTATE / MODIFY / EDIT.
+    pub const RIBBON_CONTENT_HEIGHT: f32 = 108.0;
 
     /// File tab bar height — `FileTabBar.tsx` line 217 (`h-[30px]`).
     pub const FILETAB_HEIGHT: f32 = 30.0;
@@ -37,7 +40,9 @@ pub mod metrics {
     pub const STATUSBAR_HEIGHT: f32 = 24.0;
 
     /// Large (vertical) ribbon button height — `Ribbon.css` line 294.
-    pub const RIBBON_BUTTON_LARGE: f32 = 66.0;
+    /// Round 9 fix: bump 66 → 72 so the caption ("Select", "Measure",
+    /// "Move") doesn't clip below the icon glyph at icon size 24 px.
+    pub const RIBBON_BUTTON_LARGE: f32 = 72.0;
 
     /// Medium ribbon button height — `Ribbon.css` line 399.
     pub const RIBBON_BUTTON_MEDIUM: f32 = 32.0;
@@ -59,6 +64,21 @@ pub mod metrics {
     /// we previously used. Round 8 polish: shrink so it stops dominating
     /// the group visually.
     pub const ICON_LG: f32 = 24.0;
+
+    // ---- Side-dock metrics (Round 9, panels feature) -------------------
+    /// Default left dock width — matches 1.0 React `Sidebar.css` left
+    /// rail width (`width: 248px`).
+    pub const LEFT_DOCK_WIDTH: f32 = 248.0;
+
+    /// Default right (Properties) dock width — 1.0 ships ~340 px wide.
+    pub const RIGHT_DOCK_WIDTH: f32 = 340.0;
+
+    /// Section header bar height inside a dock (caret + label + side
+    /// icon). Matches 1.0's collapsible-section header.
+    pub const DOCK_HEADER_HEIGHT: f32 = 28.0;
+
+    /// List-item height inside the LeftDock drawings/sheets lists.
+    pub const DOCK_ITEM_HEIGHT: f32 = 26.0;
 }
 
 /// Typography tokens. Phase 1 uses egui's default font; sizes match 1.0.
