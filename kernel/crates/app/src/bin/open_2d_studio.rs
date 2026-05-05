@@ -2282,9 +2282,7 @@ impl App {
                                 "scale"         => { requested_tool_mode = Some(ToolMode::Scale); }
                                 "mirror"        => { requested_tool_mode = Some(ToolMode::Mirror); }
                                 "duplicate"     => { requested_duplicate = true; }
-                                "measure"       => { requested_tool_mode = Some(ToolMode::Measure); }
                                 "dim"           => { requested_tool_mode = Some(ToolMode::Dimension); }
-                                "area"          => { requested_tool_mode = Some(ToolMode::Area); }
                                 "clear"         => {
                                     requested_clear_measurement = true;
                                     requested_clear_annotations = true;
@@ -6007,37 +6005,48 @@ fn build_ribbon_tabs(
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: false,
                     }),
+                // ANNOTATE group — 1.0 layout: large `Aligned` button +
+                // small 2×2 grid (Linear / Angular / Radius / Diameter).
+                // The big Aligned button drives the existing Dimension
+                // tool (whose current behaviour is aligned-dim placement).
+                // The 4 sub-types are placeholders until the dimension
+                // tool branches per-style.
                 RibbonGroup::new("Annotate")
                     .button(RibbonButtonDef {
-                        id: "measure".into(), label: "Measure".into(),
+                        id: "dim".into(), label: "Aligned".into(),
                         icon: IconKind::Dimension, size: ButtonSize::Large,
-                        selected: matches!(tool, ToolMode::Measure), enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "dim".into(), label: "Dim".into(),
-                        icon: IconKind::Dimension, size: ButtonSize::Small,
                         selected: matches!(tool, ToolMode::Dimension), enabled: true,
                     })
                     .button(RibbonButtonDef {
-                        id: "area".into(), label: "Area".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: matches!(tool, ToolMode::Area), enabled: true,
+                        id: "dim_linear".into(), label: "Linear".into(),
+                        icon: IconKind::Dimension, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "dim_angular".into(), label: "Angular".into(),
+                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "dim_radius".into(), label: "Radius".into(),
+                        icon: IconKind::Circle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "dim_diameter".into(), label: "Diameter".into(),
+                        icon: IconKind::Circle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
                     }),
+                // MODIFY group — 1.0 reference shows a 2-col × 3-row grid:
+                //   [Move][Mirror]
+                //   [Copy][Array]
+                //   [Rotate][Scale]
+                // `Array` has no underlying tool yet — disabled.
                 RibbonGroup::new("Modify")
                     .button(RibbonButtonDef {
                         id: "move".into(), label: "Move".into(),
-                        icon: IconKind::Move, size: ButtonSize::Large,
+                        icon: IconKind::Move, size: ButtonSize::Small,
                         selected: matches!(tool, ToolMode::Move), enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "rotate".into(), label: "Rotate".into(),
-                        icon: IconKind::Arc, size: ButtonSize::Small,
-                        selected: matches!(tool, ToolMode::Rotate), enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "scale".into(), label: "Scale".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: matches!(tool, ToolMode::Scale), enabled: true,
                     })
                     .button(RibbonButtonDef {
                         id: "mirror".into(), label: "Mirror".into(),
@@ -6048,8 +6057,85 @@ fn build_ribbon_tabs(
                         id: "duplicate".into(), label: "Copy".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "array".into(), label: "Array".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "rotate".into(), label: "Rotate".into(),
+                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Rotate), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "scale".into(), label: "Scale".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Scale), enabled: true,
                     }),
+                // EDIT group — 1.0 reference: 2-col × 3-row grid of CAD
+                // edit primitives (Trim/Fillet, Extend/Chamfer,
+                // Offset/Stretch). None of these have backing tool modes
+                // yet, so we render them as disabled placeholders so the
+                // visual layout matches.
                 RibbonGroup::new("Edit")
+                    .button(RibbonButtonDef {
+                        id: "trim".into(), label: "Trim".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "fillet".into(), label: "Fillet".into(),
+                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "extend".into(), label: "Extend".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "chamfer".into(), label: "Chamfer".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "offset".into(), label: "Offset".into(),
+                        icon: IconKind::Polyline, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "stretch".into(), label: "Stretch".into(),
+                        icon: IconKind::Move, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    }),
+            ],
+        },
+        // Devtools tab — keeps the engineering controls reachable without
+        // polluting the user-facing Home tab. View-side toggles (Layers,
+        // Properties, Fit) live here too because the Selection group on
+        // 1.0 doesn't include them.
+        RibbonTabDef {
+            id: "devtools".into(),
+            label: "Devtools".into(),
+            groups: vec![
+                RibbonGroup::new("View")
+                    .button(RibbonButtonDef {
+                        id: "fit_extents".into(), label: "Fit".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "layers".into(), label: "Layers".into(),
+                        icon: IconKind::Hatch, size: ButtonSize::Small,
+                        selected: layers_open, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "properties".into(), label: "Properties".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: properties_open, enabled: true,
+                    }),
+                RibbonGroup::new("Layout")
                     .button(RibbonButtonDef {
                         id: "split_h".into(), label: "Split H".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
@@ -6064,7 +6150,8 @@ fn build_ribbon_tabs(
                         id: "unsplit".into(), label: "Unsplit".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: split.is_some(),
-                    })
+                    }),
+                RibbonGroup::new("Diagnostics")
                     .button(RibbonButtonDef {
                         id: "samples".into(), label: "Samples".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
