@@ -5660,6 +5660,78 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     }
 
     if !bbox[0].is_finite() { bbox = [0.0, 0.0, 1.0, 1.0]; }
+
+    // ----- Drop segments with pathological coordinates -----
+    // Pathological HATCH boundaries (and a few corrupt INSERT transforms)
+    // emit segment endpoints with finite-but-astronomical IEEE-754 values
+    // (10^200+). expand_bbox above already gates these out of the bbox at
+    // |coord|>1e6, but they remain in the segment buffer, and the renderer
+    // happily projects them — producing a "spider web" converging on the
+    // legitimate cluster (see bug 04-12-2025.dwg). No real CAD drawing
+    // needs coordinates beyond ±1e9 world units, so drop offenders here
+    // along with their parallel index/dash-kind metadata.
+    {
+        // 1e9 world units = 1000 km, well above any realistic site plan.
+        // Pathological HATCHes typically emit at 10^200+ and the cap
+        // catches all of those without touching real geometry.
+        const COORD_HARD_CAP: f64 = 1.0e9;
+        let n_before = segments.len();
+        // Need to filter segments + parallel arrays (segment_layer_idx,
+        // segment_entity_idx, segment_dash_kind) in lockstep.
+        let mut keep: Vec<bool> = Vec::with_capacity(n_before);
+        for s in &segments {
+            let ok = s.p1[0].is_finite() && s.p1[1].is_finite()
+                  && s.p2[0].is_finite() && s.p2[1].is_finite()
+                  && s.p1[0].abs() < COORD_HARD_CAP && s.p1[1].abs() < COORD_HARD_CAP
+                  && s.p2[0].abs() < COORD_HARD_CAP && s.p2[1].abs() < COORD_HARD_CAP;
+            keep.push(ok);
+        }
+        let n_drop = keep.iter().filter(|k| !**k).count();
+        if n_drop > 0 {
+            // Tally dropped-by-entity for the warning.
+            let mut by_entity: std::collections::HashMap<u32, usize> = std::collections::HashMap::new();
+            for (i, k) in keep.iter().enumerate() {
+                if !*k {
+                    let eid = segment_entity_idx.get(i).copied().unwrap_or(u32::MAX);
+                    *by_entity.entry(eid).or_insert(0) += 1;
+                }
+            }
+            let mut idx = 0;
+            segments.retain(|_| { let k = keep[idx]; idx += 1; k });
+            if segment_layer_idx.len() == n_before {
+                idx = 0;
+                segment_layer_idx.retain(|_| { let k = keep[idx]; idx += 1; k });
+            }
+            if segment_entity_idx.len() == n_before {
+                idx = 0;
+                segment_entity_idx.retain(|_| { let k = keep[idx]; idx += 1; k });
+            }
+            if segment_dash_kind.len() == n_before {
+                idx = 0;
+                segment_dash_kind.retain(|_| { let k = keep[idx]; idx += 1; k });
+            }
+            let mut sources: Vec<(u32, usize)> = by_entity.into_iter().collect();
+            sources.sort_by(|a, b| b.1.cmp(&a.1));
+            let top: Vec<String> = sources.iter().take(5).map(|(eid, n)| {
+                let name = entity_names.get(*eid as usize).map(|s| s.as_str()).unwrap_or("?");
+                format!("{}×{}", n, name)
+            }).collect();
+            eprintln!(
+                "[load_dwg] WARN dropped {} of {} segments with pathological coords (|x| or |y| > {:.0e}); top sources: {}",
+                n_drop, n_before, COORD_HARD_CAP, top.join(", ")
+            );
+            // After filtering, recompute bbox from surviving segments since
+            // the original bbox accumulator's 1e6 gate may have under- or
+            // over-included relative to what's left.
+            let mut new_bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+            for s in &segments {
+                expand_bbox(&mut new_bbox, s.p1[0], s.p1[1]);
+                expand_bbox(&mut new_bbox, s.p2[0], s.p2[1]);
+            }
+            if new_bbox[0].is_finite() { bbox = new_bbox; }
+        }
+    }
+
     let label = format!(
         "DWG [{}]  objs={} ents={} segs={} tri={}  LN={} CI={} AR={} LW={} IN={} EL={} SP={} PT={} SO={} LD={} RY={} XL={} DI={} HA={} ot={}",
         file.version, file.objects.len(),
