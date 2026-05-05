@@ -96,4 +96,32 @@ After each commit:
 
 ## Delta log
 
-(none yet — baseline only)
+### 2026-05-06 — Round 1 fixes (multi-agent night-shift)
+
+| Commit | Author | Effect |
+|--------|--------|--------|
+| `1a7cfbb` | parallel agent | scene_io: lower p90-filter trigger 1e6→1e5 — engages outlier rejection on civil drawings; "tiny-drawing" bucket largely fixed (TO-05 went from 5-pixel speck to readable plan). Also enriched the per-entity drop warning with the worst-segment coords + block name (consumed my staged diagnostic edit). |
+| `19f60ee` | parallel agent | headless_render: elevate wgpu max_buffer_size to adapter-max (≥1 GB) — Kerk aan de Haven (6.8 MB, 9 M segs, 284 MB scene VB) now renders. Mirrors GUI fix `dbf900d`. Corpus delta: ❌→✅ on Kerk. |
+
+### Open follow-ups identified (not yet fixed in this round)
+
+1. **R2018 block-internal entity decode bug — "Standard grid marker" family.**
+   The diagnostic added in 1a7cfbb confirms that all 50 INSERT drops in
+   TO-05 cluster on a small set of block names ("Standard grid marker",
+   "Standard grid marker_2"…_7") and the worst-coord segment in each
+   block has either x or y at a constant huge magnitude per block
+   (1.14e172, 3.09e172, 3.53e72, 5.49e303). Each "Standard grid marker"
+   block contains a single corrupted LINE (or polyline) endpoint while
+   the other 68 segs in the block are fine. Same pattern in 16/20 corpus
+   files (all R2018 builds). Likely a R2018-specific entity-data
+   bit-stream alignment issue triggered by a particular optional field
+   inside that block's content stream — needs ODA §20.4.40 (LINE) or
+   §20.4.85 (LWPOLYLINE) bit-walk against a known-good reference DXF.
+2. **Parser perf on 1.8 MB+ R2018 files.** TO-04 spent 77 s in
+   `phase parse:` for 57 013 objects (1.4 ms/object). TO-03 (2.8 MB)
+   and 2023-189 (43 MB) hit the 180 s wall timeout entirely. Profile
+   the parse loop — likely `read_dd` chain re-allocates or something
+   similar.
+3. **R2007+ DIMSTYLE BD ~148-bit drift** — still present, separate
+   from above (cited in `SPEC_NOTES.md` open findings).
+
