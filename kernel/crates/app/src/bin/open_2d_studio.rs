@@ -979,6 +979,17 @@ struct FileTab {
     /// keep dashes constant in screen pixels.
     last_dash_wpp: f64,
 
+    /// Cached structure-browser tree. Rebuilding this walks all
+    /// segments + entity ids and allocates a HashMap; on a 113k-segment
+    /// DWG that's ~3-5 ms per frame. Built on demand, dropped on any
+    /// scene-mutating path (rebuild_buffers).
+    cached_structure_tree: Option<TreeNode>,
+    /// Cached layer list for the LAYERS panel. Cheap when the layer
+    /// table is parsed (sort + clone of names/colors), but the fall-back
+    /// branch walks every segment; either way no point recomputing per
+    /// frame when the scene hasn't changed.
+    cached_layer_list: Option<Vec<(String, u32)>>,
+
     /// When Some(_), this tab is a placeholder for a background-loading
     /// file. The string is the current loading phase for the overlay
     /// label. Cleared (set to None) when the load completes and the
@@ -1070,6 +1081,8 @@ impl FileTab {
             annotation_pipe: None,
             scene_index: None,
             last_dash_wpp: 0.0,
+            cached_structure_tree: None,
+            cached_layer_list: None,
             loading: None,
         }
     }
@@ -1104,6 +1117,31 @@ impl FileTab {
         // because users notice shimmer/breathing of pattern edges well
         // below the 1-pixel just-noticeable-difference for solid lines.
         ratio < 0.94 || ratio > 1.06
+    }
+
+    /// Get a cached, layer-grouped layer list for the LAYERS panel.
+    /// First call after a scene mutation pays the derive cost; later
+    /// calls return a cheap clone of the cached vec. Mutating paths
+    /// (rebuild_buffers_with_canvas) clear the cache.
+    fn layer_list_cached(&mut self, default_color: u32) -> Vec<(String, u32)> {
+        if let Some(cached) = &self.cached_layer_list {
+            return cached.clone();
+        }
+        let list = derive_layer_list(&self.scene, default_color);
+        self.cached_layer_list = Some(list.clone());
+        list
+    }
+
+    /// Get a cached structure-browser TreeNode. First call after scene
+    /// mutation walks segments + entity ids and allocates HashMaps;
+    /// later calls clone the cached node. Cleared by rebuild_buffers.
+    fn structure_tree_cached(&mut self) -> TreeNode {
+        if let Some(cached) = &self.cached_structure_tree {
+            return cached.clone();
+        }
+        let tree = build_structure_tree(&self.scene, &self.label);
+        self.cached_structure_tree = Some(tree.clone());
+        tree
     }
 
     /// Lazily build the scene's spatial + entity index. Cheap re-entry —
@@ -1155,6 +1193,15 @@ impl FileTab {
         // Any scene-mutating path lands here. Drop the cached spatial /
         // entity index so the next pick rebuilds against the new geometry.
         self.scene_index = None;
+        // Structure-tree + layer-list caches are derived from scene
+        // contents (not camera). Pure zoom-driven dash rebuilds also
+        // flow through here but the scene topology hasn't changed; we
+        // could keep these caches across dash rebuilds, but the cost of
+        // re-deriving is small relative to the buffer rebuild itself
+        // (which dominates), so just invalidate for simplicity. The
+        // rare dash-only rebuild during zoom pays a few ms extra.
+        self.cached_structure_tree = None;
+        self.cached_layer_list = None;
 
         let hidden = &self.hidden_layers;
         let want_paper = self.show_paper;
@@ -2338,8 +2385,8 @@ impl App {
         // Layers for the active tab (if panel open).
         let layer_panel_open = self.layer_panel_open;
         let layers_for_active: Vec<(String, u32)> = if layer_panel_open {
-            self.tabs.get(active_tab_idx)
-                .map(|t| derive_layer_list(&t.scene, DEFAULT_LINE_COLOR))
+            self.tabs.get_mut(active_tab_idx)
+                .map(|t| t.layer_list_cached(DEFAULT_LINE_COLOR))
                 .unwrap_or_default()
         } else { Vec::new() };
         let hidden_snapshot: HashSet<String> = if layer_panel_open {
@@ -2355,8 +2402,7 @@ impl App {
         // FileTab if perf becomes an issue.
         let structure_panel_open = self.structure_panel_open;
         let structure_root: Option<TreeNode> = if structure_panel_open {
-            self.tabs.get(active_tab_idx).map(|t|
-                build_structure_tree(&t.scene, &t.label))
+            self.tabs.get_mut(active_tab_idx).map(|t| t.structure_tree_cached())
         } else { None };
 
         // Properties snapshot. With multi-select, `prop_selection_idx`
