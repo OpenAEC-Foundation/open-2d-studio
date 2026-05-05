@@ -239,10 +239,15 @@ impl Ribbon {
                 palette.fg_dim,
             );
             if i + 1 < group_rects.len() {
+                // 1.0 `.ribbon-group` has `border-right: 1px solid
+                // var(--theme-border-light)` spanning the full group
+                // height (top to bottom of content strip). Inset by 4 px
+                // top/bottom so the line sits visually inside the strip
+                // without colliding with the tab edge or status bar.
                 let sx = g_rect.right() + rg::GROUP_GAP * 0.5;
                 ui.painter().line_segment(
-                    [egui::pos2(sx, group_rect.top() + 12.0),
-                     egui::pos2(sx, group_rect.bottom() - rg::TITLE_BAND_H - 4.0)],
+                    [egui::pos2(sx, group_rect.top() + 4.0),
+                     egui::pos2(sx, group_rect.bottom() - 4.0)],
                     egui::Stroke::new(1.0, sep_color),
                 );
             }
