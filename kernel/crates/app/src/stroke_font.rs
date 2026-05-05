@@ -18,8 +18,13 @@ pub type Glyph = &'static [Stroke];
 /// Cell advance = width of a glyph cell (so next char shifts by this * text_height).
 pub const CELL_ADVANCE: f32 = 0.7;
 
-/// Look up the glyph for a character. Unknown characters return a rectangle
-/// placeholder so the missing character is visible in the drawing.
+/// Look up the glyph for a character. Unknown characters return a `?`
+/// placeholder so the missing character is visible without dumping ugly
+/// empty rectangles into the drawing — the previous UNKNOWN-as-rectangle
+/// behaviour produced the user-visible "hokjes" (boxes) for any non-ASCII
+/// character (Dutch ë/ö, ⌀ diameter, CJK, etc.) that survived past the
+/// TTF path. A printable `?` is much less visually disruptive and matches
+/// what most TTF .notdef glyphs convey ("character not in font").
 pub fn glyph(c: char) -> Glyph {
     let upper = c.to_ascii_uppercase();
     match upper {
@@ -42,7 +47,11 @@ pub fn glyph(c: char) -> Glyph {
         '*' => STAR, '#' => HASH, '<' => LT, '>' => GT,
         '[' => LBRACK, ']' => RBRACK, '{' => LBRACE, '}' => RBRACE,
         '&' => AMP, '@' => AT, '%' => PCT,
-        _ => UNKNOWN,
+        // Anything else — Unicode that the stroke font has no shape for —
+        // becomes a question mark instead of a literal rectangle. Keeps
+        // text legible (you can see SOMETHING was here) without painting
+        // the eyesore boxes. See module-doc above for the rationale.
+        _ => QUESTION,
     }
 }
 
@@ -138,6 +147,7 @@ const PCT: Glyph = &[
     &[(0.0, 0.0), (0.6, 1.0)],
     &[(0.4, 0.25), (0.5, 0.3), (0.55, 0.25), (0.55, 0.05), (0.5, 0.0), (0.4, 0.05), (0.4, 0.25)],
 ];
+#[allow(dead_code)] // kept for reference; glyph() now maps unknown→QUESTION
 const UNKNOWN: Glyph = &[&[(0.05, 0.05), (0.55, 0.05), (0.55, 0.95), (0.05, 0.95), (0.05, 0.05)]];
 
 /// Render a string as world-space segments starting at `origin`, with each
