@@ -5915,6 +5915,10 @@ fn build_ribbon_tabs(
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: true,
                     }),
+                // SELECTION group — mirrors 1.0:
+                //   [Select Large] [Select All / Deselect / Find] [Pan Large]
+                // Select All / Deselect / Find are disabled placeholders
+                // until the underlying actions exist.
                 RibbonGroup::new("Selection")
                     .button(RibbonButtonDef {
                         id: "select".into(), label: "Select".into(),
@@ -5922,19 +5926,24 @@ fn build_ribbon_tabs(
                         selected: matches!(tool, ToolMode::Select), enabled: true,
                     })
                     .button(RibbonButtonDef {
-                        id: "fit_extents".into(), label: "Fit".into(),
+                        id: "select_all".into(), label: "Select All".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: false, enabled: true,
+                        selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
-                        id: "layers".into(), label: "Layers".into(),
-                        icon: IconKind::Hatch, size: ButtonSize::Small,
-                        selected: layers_open, enabled: true,
+                        id: "deselect".into(), label: "Deselect".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
-                        id: "properties".into(), label: "Properties".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: properties_open, enabled: true,
+                        id: "find_replace".into(), label: "Find/Replace".into(),
+                        icon: IconKind::Text, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "pan".into(), label: "Pan".into(),
+                        icon: IconKind::Move, size: ButtonSize::Large,
+                        selected: false, enabled: false,
                     }),
                 RibbonGroup::new("Draw")
                     .button(RibbonButtonDef {
