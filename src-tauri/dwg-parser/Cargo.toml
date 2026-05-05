@@ -8,3 +8,9 @@ path = "lib.rs"
 
 [dependencies]
 serde_json = "1"
+
+[features]
+# Enables verbose `[dwg-dbg]` traces from the parser to stderr.
+# Off by default — debug prints are silent in normal builds.
+# Build with: `cargo build --release --features dwg-debug`
+dwg-debug = []

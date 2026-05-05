@@ -87,8 +87,8 @@ const SECTION_OBJECT_MAP: u8 = 2;
 
 // Object type constants
 fn obj_type_name(type_num: u16) -> Option<&'static str> {
-    // Per ODA OpenDesignSpec §5.1 / §20.3 "Object type numbers".
-    // Types below 500 are fixed and well-known. Types ≥ 500 are
+    // Per ODA OpenDesignSpec Â§5.1 / Â§20.3 "Object type numbers".
+    // Types below 500 are fixed and well-known. Types â‰¥ 500 are
     // class-indexed via the CLASSES section's class_number.
     match type_num {
         0x01 => Some("TEXT"),
@@ -349,7 +349,7 @@ impl DwgParser {
             }
         }
 
-        // Resolve handle references → layer names, linetype names, etc.
+        // Resolve handle references â†’ layer names, linetype names, etc.
         resolve_handles(&mut dwg, data, self.version);
 
         // Extract thumbnail/preview image
@@ -360,7 +360,7 @@ impl DwgParser {
 
     /// Extract the preview/thumbnail image from the DWG file.
     ///
-    /// For R13–R2000, the image seeker is at file offset 0x0D (4 bytes LE).
+    /// For R13â€“R2000, the image seeker is at file offset 0x0D (4 bytes LE).
     /// At that address: sentinel (16 bytes) + overall size (RL) + image count
     /// (RC) + entries.  Each entry has a code (RC) indicating the image type
     /// (2 = BMP, 3 = WMF, 6 = PNG) followed by start offset (RL) and
@@ -407,13 +407,13 @@ impl DwgParser {
     // R13/R14 (AC1012/AC1014) parsing
     // ------------------------------------------------------------------
 
-    /// Parse R13/R14 files.  The file structure is the same as R2000 —
+    /// Parse R13/R14 files.  The file structure is the same as R2000 â€”
     /// section locators in the file header, same object-map layout, same
     /// sentinel-delimited sections.  The main differences are:
     ///
     /// * R13 objects have no bitsize field.
     /// * BT (bit thickness) and BE (bit extrusion) are not available in
-    ///   R13 — the parser reads BD / 3BD instead when the version is set.
+    ///   R13 â€” the parser reads BD / 3BD instead when the version is set.
     /// * Text is always code-page encoded.
     /// * Color is always CMC (no ENC / true-color).
     fn parse_r13_r14(&mut self, data: &[u8], dwg: &mut DwgFile) -> Result<(), DwgError> {
@@ -530,7 +530,7 @@ impl DwgParser {
             ];
             for name in &bd_vars {
                 let raw = reader.read_bd()?;
-                // Same clamp as parse_header_vars_from_bits — see that
+                // Same clamp as parse_header_vars_from_bits â€” see that
                 // function's comment block. R2000 generally lands the BD
                 // vars at the right offset, but the same defensive guard
                 // protects against any future preamble drift here too.
@@ -624,14 +624,14 @@ impl DwgParser {
             let body_end = body_start + section_size - 2;
             let mut rpos = body_start;
 
-            // per ODA §26.5 / §29: each HANDLES sub-section has an INDEPENDENT
+            // per ODA Â§26.5 / Â§29: each HANDLES sub-section has an INDEPENDENT
             // delta stream. Reset last_handle / last_loc at each sub-section
             // boundary so the first entry's hdelta is the absolute handle.
             last_handle = 0;
             last_loc = 0;
 
             while rpos < body_end {
-                // Per ODA OpenDesignSpec §5.4.5: handle delta is UNSIGNED MC
+                // Per ODA OpenDesignSpec Â§5.4.5: handle delta is UNSIGNED MC
                 // (handles grow monotonically in the delta stream); location
                 // delta is SIGNED MC (object offsets in the OBJECTS section
                 // can shift back and forth as Acad interleaves writes).
@@ -678,7 +678,7 @@ impl DwgParser {
         // Dump first 64 bytes of handles data
         let dump_len = data.len().min(64);
         let hex: String = data[..dump_len].iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-        eprintln!("[dwg-dbg] objmap data[..{}]: {}", dump_len, hex);
+        crate::dwg_dbg!("[dwg-dbg] objmap data[..{}]: {}", dump_len, hex);
 
         while pos < data.len() {
             if pos + 2 > data.len() { break; }
@@ -713,7 +713,7 @@ impl DwgParser {
                     scan += 1;
                 }
                 if found {
-                    eprintln!("[dwg-dbg] objmap: gap-skip from pos={} to pos={} (skipped {} bytes), last_handle=0x{:X} last_loc={}",
+                    crate::dwg_dbg!("[dwg-dbg] objmap: gap-skip from pos={} to pos={} (skipped {} bytes), last_handle=0x{:X} last_loc={}",
                         old_pos, pos, pos - old_pos, last_handle, last_loc);
                 }
                 if !found {
@@ -723,32 +723,32 @@ impl DwgParser {
             }
             section_count += 1;
             if section_count <= 5 || section_count % 10 == 0 {
-                eprintln!("[dwg-dbg] objmap sec={}: pos={} section_size={}", section_count, pos, section_size);
+                crate::dwg_dbg!("[dwg-dbg] objmap sec={}: pos={} section_size={}", section_count, pos, section_size);
             }
 
             let body_start = pos + 2;
             let body_end = (body_start + section_size - 2).min(data.len());
             let mut rpos = body_start;
 
-            // per ODA §26.5: each HANDLES sub-section's delta stream is
-            // INDEPENDENT — last_handle and last_loc reset to 0 at the start
+            // per ODA Â§26.5: each HANDLES sub-section's delta stream is
+            // INDEPENDENT â€” last_handle and last_loc reset to 0 at the start
             // of every sub-section. Sub-sections cover contiguous handle
             // ranges where the FIRST entry's hdelta is the absolute handle
             // value (not a delta from the previous sub-section's last).
             // Evidence (clean-room oracle): on Funderingsherstel DXF handles
             // max=0x165A with $HANDSEED=0x165A; without reset our decoder
-            // produced a max handle of 0x51C1 (3.5× too large) because large
+            // produced a max handle of 0x51C1 (3.5Ã— too large) because large
             // first-entry hdeltas per sub-section (869, 1631, 3176, 4231,
             // 5309) kept accumulating. Resetting per sub-section yields
             // handles 0x365, 0x65F, 0xC68, 0x1087, 0x14BD at sub-section
-            // starts — all within the DXF handle space.
-            // per ODA §29 entry
+            // starts â€” all within the DXF handle space.
+            // per ODA Â§29 entry
             last_handle = 0;
             last_loc = 0;
 
             while rpos < body_end {
                 let rpos_before = rpos;
-                // Per ODA OpenDesignSpec §5.4.5: handle delta is UNSIGNED MC
+                // Per ODA OpenDesignSpec Â§5.4.5: handle delta is UNSIGNED MC
                 // (handles in the Handles Section grow monotonically in the
                 // delta stream); location delta is SIGNED MC (object offsets
                 // in the OBJECTS section can shift back and forth as Acad
@@ -770,7 +770,7 @@ impl DwgParser {
                 last_loc = last_loc.wrapping_add(loc_delta);
 
                 if entry_count < 5 || (entry_count % 50000 == 0) {
-                    eprintln!("[dwg-dbg] objmap[{}] sec={} @pos={}: hdelta={} ldelta={} -> handle=0x{:X} loc={}",
+                    crate::dwg_dbg!("[dwg-dbg] objmap[{}] sec={} @pos={}: hdelta={} ldelta={} -> handle=0x{:X} loc={}",
                         entry_count, section_count, pos, handle_delta, loc_delta, last_handle, last_loc);
                 }
                 let _ = rpos_before;
@@ -785,13 +785,13 @@ impl DwgParser {
 
             pos += 2 + section_size;
         }
-        eprintln!("[dwg-dbg] objmap: {} sections, {} entries, data.len={}",
+        crate::dwg_dbg!("[dwg-dbg] objmap: {} sections, {} entries, data.len={}",
             section_count, entry_count, data.len());
         // Show distribution of offsets
         if !object_map.is_empty() {
             let max_off = object_map.values().max().copied().unwrap_or(0);
             let min_off = object_map.values().min().copied().unwrap_or(0);
-            eprintln!("[dwg-dbg] objmap offset range: {}..{}", min_off, max_off);
+            crate::dwg_dbg!("[dwg-dbg] objmap offset range: {}..{}", min_off, max_off);
         }
 
         object_map
@@ -850,7 +850,7 @@ impl DwgParser {
 
         pages.sort_by_key(|(so, _)| *so);
         let pages: Vec<PageInfo> = pages.into_iter().map(|(_, p)| p).collect();
-        eprintln!("[dwg-dbg] objmap_paged_r2018: {} pages for sec={}", pages.len(), target_section);
+        crate::dwg_dbg!("[dwg-dbg] objmap_paged_r2018: {} pages for sec={}", pages.len(), target_section);
 
         for page in &pages {
             let body_offset = page.file_offset + 32;
@@ -887,7 +887,7 @@ impl DwgParser {
                 let mut rpos = body_start;
 
                 while rpos < body_end {
-                    // Per ODA OpenDesignSpec §5.4.5: handle delta = unsigned MC,
+                    // Per ODA OpenDesignSpec Â§5.4.5: handle delta = unsigned MC,
                     // location delta = signed MC.
                     let (handle_delta_u, new_pos) = match DwgBitReader::read_unsigned_modular_char(page_data, rpos) {
                         Ok(v) => v,
@@ -913,18 +913,18 @@ impl DwgParser {
             }
             let page_entries = entry_count - page_entries_before;
             if page_count < 3 || page_count % 20 == 0 {
-                eprintln!("[dwg-dbg] objmap_r2018: page {} (pg{}) -> {} entries, valid_data={}B, stop@pos={}/{}",
+                crate::dwg_dbg!("[dwg-dbg] objmap_r2018: page {} (pg{}) -> {} entries, valid_data={}B, stop@pos={}/{}",
                     page_count, page.page_number, page_entries, page.valid_data_size, pos, valid_len);
             }
             page_count += 1;
         }
 
-        eprintln!("[dwg-dbg] objmap_paged_r2018: {} pages, {} entries, {} unique handles",
+        crate::dwg_dbg!("[dwg-dbg] objmap_paged_r2018: {} pages, {} entries, {} unique handles",
             page_count, entry_count, object_map.len());
         if !object_map.is_empty() {
             let max_off = object_map.values().max().copied().unwrap_or(0);
             let min_off = object_map.values().min().copied().unwrap_or(0);
-            eprintln!("[dwg-dbg] objmap_paged_r2018 offset range: {}..{}", min_off, max_off);
+            crate::dwg_dbg!("[dwg-dbg] objmap_paged_r2018 offset range: {}..{}", min_off, max_off);
         }
 
         object_map
@@ -995,7 +995,7 @@ impl DwgParser {
         }
 
         pages.sort_by_key(|p| p.start_offset);
-        eprintln!("[dwg-dbg] objmap_paged: {} pages for sec={}", pages.len(), target_section);
+        crate::dwg_dbg!("[dwg-dbg] objmap_paged: {} pages for sec={}", pages.len(), target_section);
 
         for page in &pages {
             let body_offset = page.file_offset + 32;
@@ -1010,7 +1010,7 @@ impl DwgParser {
                 Err(_) => continue,
             };
 
-            // Process full decompressed output — sections are self-terminating
+            // Process full decompressed output â€” sections are self-terminating
             let page_data = &decompressed[..];
 
             // Parse object map sections within this page.
@@ -1032,7 +1032,7 @@ impl DwgParser {
                 let mut rpos = body_start;
 
                 while rpos < body_end {
-                    // Per ODA OpenDesignSpec §5.4.5: handle delta = unsigned MC,
+                    // Per ODA OpenDesignSpec Â§5.4.5: handle delta = unsigned MC,
                     // location delta = signed MC.
                     let (handle_delta_u, new_pos) = match DwgBitReader::read_unsigned_modular_char(page_data, rpos) {
                         Ok(v) => v,
@@ -1050,7 +1050,7 @@ impl DwgParser {
                     last_loc = last_loc.wrapping_add(loc_delta);
 
                     if entry_count < 5 {
-                        eprintln!("[dwg-dbg] objmap_pg[{}] page={}: hdelta={} ldelta={} -> handle=0x{:X} loc={}",
+                        crate::dwg_dbg!("[dwg-dbg] objmap_pg[{}] page={}: hdelta={} ldelta={} -> handle=0x{:X} loc={}",
                             entry_count, page_count, handle_delta, loc_delta, last_handle, last_loc);
                     }
                     entry_count += 1;
@@ -1063,7 +1063,7 @@ impl DwgParser {
             }
             let page_entries = entry_count - page_entries_before;
             if page_count < 3 || page_count % 20 == 0 {
-                eprintln!("[dwg-dbg] objmap_paged: page {} -> {} entries (handle range 0x{:X}), stop@pos={}/{}",
+                crate::dwg_dbg!("[dwg-dbg] objmap_paged: page {} -> {} entries (handle range 0x{:X}), stop@pos={}/{}",
                     page_count, page_entries, last_handle, pos, page_data.len());
             }
             // Dump bytes around data_size boundary for first 2 pages
@@ -1071,17 +1071,17 @@ impl DwgParser {
                 let start = page.data_size.saturating_sub(8);
                 let end = (page.data_size + 16).min(page_data.len());
                 let hex: String = page_data[start..end].iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-                eprintln!("[dwg-dbg] page {} data_size boundary: [{}..{}] = {}", page_count, start, end, hex);
+                crate::dwg_dbg!("[dwg-dbg] page {} data_size boundary: [{}..{}] = {}", page_count, start, end, hex);
             }
             page_count += 1;
         }
 
-        eprintln!("[dwg-dbg] objmap_paged: {} pages, {} entries, {} unique handles",
+        crate::dwg_dbg!("[dwg-dbg] objmap_paged: {} pages, {} entries, {} unique handles",
             page_count, entry_count, object_map.len());
         if !object_map.is_empty() {
             let max_off = object_map.values().max().copied().unwrap_or(0);
             let min_off = object_map.values().min().copied().unwrap_or(0);
-            eprintln!("[dwg-dbg] objmap_paged offset range: {}..{}", min_off, max_off);
+            crate::dwg_dbg!("[dwg-dbg] objmap_paged offset range: {}..{}", min_off, max_off);
         }
 
         object_map
@@ -1122,7 +1122,7 @@ impl DwgParser {
             return Err(DwgError::InvalidBinary("Invalid R2004 page map address".into()));
         }
 
-        // Build page map: page_number → file_offset
+        // Build page map: page_number â†’ file_offset
         let page_map = self.read_r2004_page_map(
             data, section_page_map_addr, section_page_size,
         )?;
@@ -1150,30 +1150,30 @@ impl DwgParser {
         // assembler fails (empty result), fall back to the R2007 assembler
         // which tries both raw and XOR-decrypted headers.
         if section_map_data.is_empty() && self.version.is_r2007_plus() {
-            eprintln!("[dwg-dbg] section_map via r2004 empty, trying r2007 assembler for smid={}", section_map_id);
+            crate::dwg_dbg!("[dwg-dbg] section_map via r2004 empty, trying r2007 assembler for smid={}", section_map_id);
             match crate::r2007::assemble_section(
                 data, page_map, page_size, section_map_id, self.version.to_code(),
             ) {
                 Ok(d) => {
-                    eprintln!("[dwg-dbg] r2007 assembler for smid={}: {}B", section_map_id, d.len());
+                    crate::dwg_dbg!("[dwg-dbg] r2007 assembler for smid={}: {}B", section_map_id, d.len());
                     section_map_data = d;
                 }
                 Err(e) => {
-                    eprintln!("[dwg-dbg] r2007 assembler for smid={} failed: {:?}", section_map_id, e);
+                    crate::dwg_dbg!("[dwg-dbg] r2007 assembler for smid={} failed: {:?}", section_map_id, e);
                 }
             }
         }
         // Third fallback: read the section map page directly by page number.
         // For R2010+, section_map_id is a page number, not a section number.
         if section_map_data.is_empty() && self.version.is_r2010_plus() {
-            eprintln!("[dwg-dbg] section_map still empty, trying direct page read for smid={}", section_map_id);
+            crate::dwg_dbg!("[dwg-dbg] section_map still empty, trying direct page read for smid={}", section_map_id);
             match crate::r2007::read_section_map_by_page(data, page_map, section_map_id) {
                 Ok(d) => {
-                    eprintln!("[dwg-dbg] direct page read for smid={}: {}B", section_map_id, d.len());
+                    crate::dwg_dbg!("[dwg-dbg] direct page read for smid={}: {}B", section_map_id, d.len());
                     section_map_data = d;
                 }
                 Err(e) => {
-                    eprintln!("[dwg-dbg] direct page read for smid={} failed: {:?}", section_map_id, e);
+                    crate::dwg_dbg!("[dwg-dbg] direct page read for smid={} failed: {:?}", section_map_id, e);
                 }
             }
         }
@@ -1182,7 +1182,7 @@ impl DwgParser {
             let dump_end = 120.min(section_map_data.len());
             let hex: String = section_map_data[..dump_end].iter()
                 .map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-            eprintln!("[dwg-dbg] smap hex[0..{}]: {}", dump_end, hex);
+            crate::dwg_dbg!("[dwg-dbg] smap hex[0..{}]: {}", dump_end, hex);
             // Find "AcDb:" names and dump 40 bytes before each
             for i in 0..section_map_data.len().saturating_sub(5) {
                 if &section_map_data[i..i+5] == b"AcDb:" {
@@ -1201,18 +1201,18 @@ impl DwgParser {
                             Some(format!("[{}]={}", off, v))
                         } else { None }
                     }).collect();
-                    eprintln!("[dwg-dbg] smap name '{}' @{}: pre-dwords: {}", name, i, dwords.join(" "));
+                    crate::dwg_dbg!("[dwg-dbg] smap name '{}' @{}: pre-dwords: {}", name, i, dwords.join(" "));
                 }
             }
         }
         let section_info = Self::parse_r2004_section_map(&section_map_data);
-        eprintln!("[dwg-dbg] section_map ({} bytes): {} sections found", section_map_data.len(), section_info.len());
+        crate::dwg_dbg!("[dwg-dbg] section_map ({} bytes): {} sections found", section_map_data.len(), section_info.len());
         for si in &section_info {
-            eprintln!("[dwg-dbg]   type=0x{:08X} sec_num={} name={:?} pages={} data_size={}",
+            crate::dwg_dbg!("[dwg-dbg]   type=0x{:08X} sec_num={} name={:?} pages={} data_size={}",
                 si.section_type as u32, si.section_number, si.name, si.page_count, si.data_size);
         }
 
-        // Build the section type → section_number mapping.
+        // Build the section type â†’ section_number mapping.
         // The section map gives us (type_hash, section_number) from the ODA parser,
         // or we fall back to probing sections by content.
         let section_ids = if !section_info.is_empty() {
@@ -1259,7 +1259,7 @@ impl DwgParser {
         let mut objects_data: Option<Vec<u8>> = None;
 
         if let Some(&sec_id) = section_ids.get(&SECTION_TYPE_HANDLES) {
-            // Per ODA §4.5.2 the HANDLES section is a sequence of sub-sections.
+            // Per ODA Â§4.5.2 the HANDLES section is a sequence of sub-sections.
             // Each sub-section's 2-byte BE size field can claim more than the
             // page header's per-page data_size reports; AutoCAD-saved R2010+
             // files regularly emit an under-reported data_size so that the
@@ -1276,7 +1276,7 @@ impl DwgParser {
 
         // Assemble the objects section (AcDb:AcDbObjects)
         if let Some(&sec_id) = section_ids.get(&SECTION_TYPE_OBJECTS) {
-            // per ODA §4.7 LZ77 terminates on END opcode and may emit past
+            // per ODA Â§4.7 LZ77 terminates on END opcode and may emit past
             // declared decomp_size; full assembler must capture all bytes
             // until END, not stop at the header's decomp_size.
             let obj_data = self.assemble_r2004_section_full(
@@ -1287,7 +1287,7 @@ impl DwgParser {
             }
         }
 
-        eprintln!("[dwg-dbg] sections: {:?} object_map={} objects_section={}",
+        crate::dwg_dbg!("[dwg-dbg] sections: {:?} object_map={} objects_section={}",
             section_ids.keys().collect::<Vec<_>>(), dwg.object_map.len(),
             objects_data.as_ref().map(|b| b.len()).unwrap_or(0));
 
@@ -1312,7 +1312,7 @@ impl DwgParser {
             let oob_offsets = dwg.object_map.values()
                 .filter(|&&off| (off as usize) >= total)
                 .count();
-            eprintln!("[dwg-dbg] obj_section coverage: {}/{} 4K pages are all-zero, {}/{} map offsets -> zeros, {}/{} offsets OOB (>{}), max_off={}",
+            crate::dwg_dbg!("[dwg-dbg] obj_section coverage: {}/{} 4K pages are all-zero, {}/{} map offsets -> zeros, {}/{} offsets OOB (>{}), max_off={}",
                 zero_pages, n_pages, zero_offsets, dwg.object_map.len(), oob_offsets, dwg.object_map.len(), total, max_off);
         }
 
@@ -1322,11 +1322,11 @@ impl DwgParser {
                 self.use_string_stream = true;
                 dwg.objects = self.parse_objects_r2000(obj_buf, &dwg.object_map, &dwg.classes);
                 self.use_string_stream = false;
-                eprintln!("[dwg-dbg] parse_objects from obj_section ({}B): {} parsed",
+                crate::dwg_dbg!("[dwg-dbg] parse_objects from obj_section ({}B): {} parsed",
                     obj_buf.len(), dwg.objects.len());
             } else {
                 dwg.objects = self.parse_objects_r2000(data, &dwg.object_map, &dwg.classes);
-                eprintln!("[dwg-dbg] parse_objects fallback raw file: {} parsed", dwg.objects.len());
+                crate::dwg_dbg!("[dwg-dbg] parse_objects fallback raw file: {} parsed", dwg.objects.len());
             }
         }
 
@@ -1341,7 +1341,7 @@ impl DwgParser {
         Ok(())
     }
 
-    /// Build section type → section_number mapping from parsed section info.
+    /// Build section type â†’ section_number mapping from parsed section info.
     ///
     /// The section map's page entries list page_numbers. We look up those pages
     /// in the page map, read their headers, and extract the section_number
@@ -1376,7 +1376,7 @@ impl DwgParser {
                 }
                 result.insert(info.section_type, info.section_number);
                 if !verified {
-                    eprintln!("[dwg-dbg] section type=0x{:08X} sec_num={} NOT verified in page headers",
+                    crate::dwg_dbg!("[dwg-dbg] section type=0x{:08X} sec_num={} NOT verified in page headers",
                         info.section_type as u32, info.section_number);
                 }
             }
@@ -1397,7 +1397,7 @@ impl DwgParser {
         section_map_id: i32,
     ) -> HashMap<i32, i32> {
         // Collect unique section_numbers from page headers.
-        // Per ODA §4.4: data section page headers are XOR-encrypted.
+        // Per ODA Â§4.4: data section page headers are XOR-encrypted.
         let mut sec_nums = std::collections::HashSet::new();
         for (&_page_num, &file_offset) in page_map {
             if file_offset + 32 > data.len() { continue; }
@@ -1420,7 +1420,7 @@ impl DwgParser {
             ]) ^ mask) as usize;
             // Data pages: sec_type 1/2 (legacy) or section hash >= 0x41000000
             let valid_type = sec_type == 1 || sec_type == 2 || (sec_type as u32) >= 0x41000000;
-            eprintln!("[dwg-dbg] probe page @0x{:X}: sec_type=0x{:08X} sec_num={} ds={} cs={} valid={}",
+            crate::dwg_dbg!("[dwg-dbg] probe page @0x{:X}: sec_type=0x{:08X} sec_num={} ds={} cs={} valid={}",
                 file_offset, sec_type as u32, sec_num, dsize, csize, valid_type);
             if valid_type && sec_num > 0 && sec_num != section_map_id {
                 sec_nums.insert(sec_num);
@@ -1428,7 +1428,7 @@ impl DwgParser {
         }
 
         let mut result = HashMap::new();
-        eprintln!("[dwg-dbg] probe_sections: unique sec_nums={:?} (smid={})", sec_nums, section_map_id);
+        crate::dwg_dbg!("[dwg-dbg] probe_sections: unique sec_nums={:?} (smid={})", sec_nums, section_map_id);
 
         // Track unidentified sections to pick the largest as OBJECTS fallback
         let mut unidentified: Vec<(i32, usize)> = Vec::new();
@@ -1437,29 +1437,29 @@ impl DwgParser {
             let assembled = match self.assemble_r2004_section(data, page_map, page_size, *sec_num) {
                 Ok(d) if !d.is_empty() => d,
                 _ => {
-                    eprintln!("[dwg-dbg]   sec_num={}: empty or error", sec_num);
+                    crate::dwg_dbg!("[dwg-dbg]   sec_num={}: empty or error", sec_num);
                     continue;
                 }
             };
 
-            eprintln!("[dwg-dbg]   sec_num={}: assembled {}B, first8={:02X?}",
+            crate::dwg_dbg!("[dwg-dbg]   sec_num={}: assembled {}B, first8={:02X?}",
                 sec_num, assembled.len(), &assembled[..8.min(assembled.len())]);
 
             // Check for header sentinel
             if find_sentinel(&assembled, &HEADER_SENTINEL_START).is_some() {
-                eprintln!("[dwg-dbg]   sec_num={}: -> HEADER", sec_num);
+                crate::dwg_dbg!("[dwg-dbg]   sec_num={}: -> HEADER", sec_num);
                 result.insert(SECTION_TYPE_HEADER, *sec_num);
                 continue;
             }
 
             // Check for classes sentinel
             if find_sentinel(&assembled, &CLASSES_SENTINEL_START).is_some() {
-                eprintln!("[dwg-dbg]   sec_num={}: -> CLASSES", sec_num);
+                crate::dwg_dbg!("[dwg-dbg]   sec_num={}: -> CLASSES", sec_num);
                 result.insert(SECTION_TYPE_CLASSES, *sec_num);
                 continue;
             }
 
-            // Per ODA §4.5.2 the HANDLES section is a sequence of sub-sections,
+            // Per ODA Â§4.5.2 the HANDLES section is a sequence of sub-sections,
             // each with a 2-byte BE size prefix followed by (hdelta uMC, ldelta sMC)
             // pairs and a 2-byte CRC. Rather than the old "first BE short looks
             // plausible" heuristic (which misidentified a 223B page as HANDLES
@@ -1475,24 +1475,24 @@ impl DwgParser {
                     let body = if sec_size + 2 <= assembled.len() {
                         &assembled[body_start..body_start + sec_size - 2]
                     } else {
-                        // sub-section claims more than buffer — try decoding
+                        // sub-section claims more than buffer â€” try decoding
                         // what's available; the real HANDLES section may be
                         // padded with zeros after the valid bytes.
                         &assembled[body_start..]
                     };
                     if Self::looks_like_object_map(body) {
-                        // Score by full decode — record and compare after the loop
+                        // Score by full decode â€” record and compare after the loop
                         let score = Self::score_object_map(&assembled);
                         let prev_score = result.get(&SECTION_TYPE_HANDLES)
                             .and_then(|&prev_sec| self.assemble_r2004_section(data, page_map, page_size, prev_sec).ok())
                             .map(|d| Self::score_object_map(&d))
                             .unwrap_or(0);
                         if score > prev_score {
-                            eprintln!("[dwg-dbg]   sec_num={}: -> HANDLES ({}B, {} entries; prev_score={})",
+                            crate::dwg_dbg!("[dwg-dbg]   sec_num={}: -> HANDLES ({}B, {} entries; prev_score={})",
                                 sec_num, assembled.len(), score, prev_score);
                             result.insert(SECTION_TYPE_HANDLES, *sec_num);
                         } else {
-                            eprintln!("[dwg-dbg]   sec_num={}: HANDLES candidate rejected ({} entries <= prev {})",
+                            crate::dwg_dbg!("[dwg-dbg]   sec_num={}: HANDLES candidate rejected ({} entries <= prev {})",
                                 sec_num, score, prev_score);
                         }
                         continue;
@@ -1503,13 +1503,13 @@ impl DwgParser {
             // Check for objects section (MS size prefix + BS object type)
             if assembled.len() >= 8 {
                 if Self::looks_like_objects_section(&assembled) {
-                    eprintln!("[dwg-dbg]   sec_num={}: -> OBJECTS (heuristic)", sec_num);
+                    crate::dwg_dbg!("[dwg-dbg]   sec_num={}: -> OBJECTS (heuristic)", sec_num);
                     result.insert(SECTION_TYPE_OBJECTS, *sec_num);
                     continue;
                 }
             }
 
-            eprintln!("[dwg-dbg]   sec_num={}: unidentified ({}B)", sec_num, assembled.len());
+            crate::dwg_dbg!("[dwg-dbg]   sec_num={}: unidentified ({}B)", sec_num, assembled.len());
             unidentified.push((*sec_num, assembled.len()));
         }
 
@@ -1519,7 +1519,7 @@ impl DwgParser {
             unidentified.sort_by(|a, b| b.1.cmp(&a.1));
             let (best_sec, best_size) = unidentified[0];
             if best_size >= 256 {
-                eprintln!("[dwg-dbg]   sec_num={}: -> OBJECTS (largest unidentified, {}B)", best_sec, best_size);
+                crate::dwg_dbg!("[dwg-dbg]   sec_num={}: -> OBJECTS (largest unidentified, {}B)", best_sec, best_size);
                 result.insert(SECTION_TYPE_OBJECTS, best_sec);
             }
         }
@@ -1530,7 +1530,7 @@ impl DwgParser {
                 // Assemble current OBJECTS to check its size
                 if let Ok(cur_obj) = self.assemble_r2004_section(data, page_map, page_size, obj_sec) {
                     if largest_size > cur_obj.len() * 4 && largest_size >= 1024 {
-                        eprintln!("[dwg-dbg]   override OBJECTS: sec_num={} ({}B) -> sec_num={} ({}B)",
+                        crate::dwg_dbg!("[dwg-dbg]   override OBJECTS: sec_num={} ({}B) -> sec_num={} ({}B)",
                             obj_sec, cur_obj.len(), largest_sec, largest_size);
                         result.insert(SECTION_TYPE_OBJECTS, largest_sec);
                     }
@@ -1542,7 +1542,7 @@ impl DwgParser {
     }
 
     /// Score an assembled section as a HANDLES candidate by running the full
-    /// ODA §4.5.2 decode: for each sub-section (2-byte BE size + MC pairs),
+    /// ODA Â§4.5.2 decode: for each sub-section (2-byte BE size + MC pairs),
     /// count valid monotonic-handle entries. Terminates gracefully on zero-
     /// padded sub-section headers (common when LZ77 overshoots data_size).
     /// The REAL HANDLES section yields hundreds-to-thousands of entries; all
@@ -1655,7 +1655,7 @@ impl DwgParser {
 
         // Validate: first 12 bytes should be "AcFssFcAJMB\0"
         if decrypted.len() >= 12 && &decrypted[..11] != b"AcFssFcAJMB" {
-            // Not fatal — some files have variant signatures
+            // Not fatal â€” some files have variant signatures
         }
 
         Ok(decrypted)
@@ -1668,15 +1668,15 @@ impl DwgParser {
     /// at fixed intervals of `page_size` starting at file offset 0x100.
     ///
     /// System section pages (type >= 0x41000000) have a 20-byte header:
-    ///   +0:  section_type (RL) — e.g., 0x4163043B for page map
+    ///   +0:  section_type (RL) â€” e.g., 0x4163043B for page map
     ///   +4:  decompressed_size (RL)
     ///   +8:  compressed_size (RL)
-    ///   +12: compression_type (RL) — 2 = compressed
+    ///   +12: compression_type (RL) â€” 2 = compressed
     ///   +16: checksum (RL)
     ///   +20: body data
     ///
     /// Data section pages (type 1 or 2) have a 32-byte header:
-    ///   +0:  compression_type (RL) — 1=uncomp, 2=comp
+    ///   +0:  compression_type (RL) â€” 1=uncomp, 2=comp
     ///   +4:  section_number (RL)
     ///   +8:  data_size (RL)
     ///   +12: compressed_size (RL)
@@ -1769,7 +1769,7 @@ impl DwgParser {
             page_idx += 1;
         }
 
-        eprintln!("[dwg-dbg] page_map: {} entries from {} total slots, page_size=0x{:X}",
+        crate::dwg_dbg!("[dwg-dbg] page_map: {} entries from {} total slots, page_size=0x{:X}",
             page_map.len(), page_idx, page_size);
 
         Ok(page_map)
@@ -1777,7 +1777,7 @@ impl DwgParser {
 
     /// Fallback page map builder: walk the file from 0x100 onward, XOR-decrypt
     /// each 32-byte data page header, and build the page map directly.
-    /// Per ODA §4.4: data section page headers use mask = 0x4164536B ^ file_offset.
+    /// Per ODA Â§4.4: data section page headers use mask = 0x4164536B ^ file_offset.
     fn build_page_map_by_walking(data: &[u8]) -> HashMap<i32, usize> {
         let mut page_map = HashMap::new();
         let mut offset = 0x100usize;
@@ -1796,13 +1796,13 @@ impl DwgParser {
             }
 
             let sec_type = u32::from_le_bytes([hdr[0], hdr[1], hdr[2], hdr[3]]);
-            // per ODA OpenDesignSpec §4.6 data-page header layout:
+            // per ODA OpenDesignSpec Â§4.6 data-page header layout:
             //   hdr[0..4]  = section_type hash
             //   hdr[4..8]  = section_number
             //   hdr[8..12]  = comp_size   (on-disk compressed body bytes)
             //   hdr[12..16] = decomp_size (logical uncompressed bytes)
             // Prior code swapped these (comp_size read from [12..16]). Matches
-            // §24 Fix 2's parser.rs/r2007.rs alignment on page-header field
+            // Â§24 Fix 2's parser.rs/r2007.rs alignment on page-header field
             // positions.
             let comp_size = u32::from_le_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]) as usize;
 
@@ -1821,7 +1821,7 @@ impl DwgParser {
             // the authoritative page_map this walker can only make a best-
             // effort guess: round UP to a 32-byte boundary (ODA pages are
             // aligned this way). Any file with more aggressive padding will
-            // cause this heuristic to desynchronise — it is a LAST-RESORT
+            // cause this heuristic to desynchronise â€” it is a LAST-RESORT
             // fallback only used when read_page_map fails entirely.
             let stride_body = comp_size;
             let stride_total = 32 + stride_body;
@@ -1829,7 +1829,7 @@ impl DwgParser {
             offset += aligned;
         }
 
-        eprintln!("[dwg-dbg] build_page_map_by_walking: found {} pages (0x100..0x{:X})",
+        crate::dwg_dbg!("[dwg-dbg] build_page_map_by_walking: found {} pages (0x100..0x{:X})",
             page_map.len(), offset);
         page_map
     }
@@ -1867,7 +1867,7 @@ impl DwgParser {
     /// Truncating decompression to that value loses 30%+ of the cls section
     /// content. Use this for CLASSES specifically; the LZ77 decoder always
     /// terminates at the END opcode (0x11) so over-allocating the target
-    /// buffer is safe — trailing bytes are zero-padding.
+    /// buffer is safe â€” trailing bytes are zero-padding.
     fn assemble_r2004_section_full(
         &self,
         data: &[u8],
@@ -1902,7 +1902,7 @@ impl DwgParser {
         for (&_sec_num, &file_offset) in page_map {
             if file_offset + 32 > data.len() { continue; }
 
-            // Per ODA §4.4: R2004+ data section page headers are XOR-encrypted.
+            // Per ODA Â§4.4: R2004+ data section page headers are XOR-encrypted.
             // Mask = 0x4164536B ^ file_offset, applied to each DWORD.
             let mask = 0x4164536Bu32 ^ (file_offset as u32);
             let mut hdr = [0u8; 32];
@@ -1921,7 +1921,7 @@ impl DwgParser {
             // Accept data pages: type 1/2 (legacy) or section hash >= 0x41000000
             if sec_type != 1 && sec_type != 2 && (sec_type as u32) < 0x41000000 { continue; }
 
-            // per ODA §4.6 page XOR-header: [8..12]=comp_size, [12..16]=decomp_size
+            // per ODA Â§4.6 page XOR-header: [8..12]=comp_size, [12..16]=decomp_size
             // (matches r2007.rs; parser.rs had these flipped)
             let raw_csize = u32::from_le_bytes([hdr[8], hdr[9], hdr[10], hdr[11]]) as usize;
             let dsize = u32::from_le_bytes([hdr[12], hdr[13], hdr[14], hdr[15]]) as usize;
@@ -1934,7 +1934,7 @@ impl DwgParser {
             if comp_sz > 0x1000000 { continue; }
 
             if pages.len() < 3 && (sec_type as u32) >= 0x41000000 {
-                eprintln!("[dwg-dbg]   hdr-dec sec_num={} type=0x{:X} comp={} decomp={} dw4=0x{:X} dw5=0x{:X} dw6=0x{:X} dw7=0x{:X}",
+                crate::dwg_dbg!("[dwg-dbg]   hdr-dec sec_num={} type=0x{:X} comp={} decomp={} dw4=0x{:X} dw5=0x{:X} dw6=0x{:X} dw7=0x{:X}",
                     sec_number, sec_type as u32, comp_sz, decomp_sz, start_off,
                     u32::from_le_bytes([hdr[20], hdr[21], hdr[22], hdr[23]]),
                     u32::from_le_bytes([hdr[24], hdr[25], hdr[26], hdr[27]]),
@@ -1957,16 +1957,16 @@ impl DwgParser {
         // Sort by start_offset to assemble in order
         pages.sort_by_key(|p| p.start_offset);
 
-        eprintln!("[dwg-dbg] assemble sec={}: {} pages, page_size=0x{:X}", target_section, pages.len(), page_size);
+        crate::dwg_dbg!("[dwg-dbg] assemble sec={}: {} pages, page_size=0x{:X}", target_section, pages.len(), page_size);
         let dump_all_pages = std::env::var("O2D_DWG_TRACE_OBJ_HEADER").is_ok();
         let dump_n = if dump_all_pages { pages.len() } else { 8.min(pages.len()) };
         for (i, p) in pages.iter().enumerate().take(dump_n) {
-            eprintln!("[dwg-dbg]   page[{}]: start_off=0x{:X} dsize=0x{:X} csize=0x{:X} comp={} type=0x{:X}",
+            crate::dwg_dbg!("[dwg-dbg]   page[{}]: start_off=0x{:X} dsize=0x{:X} csize=0x{:X} comp={} type=0x{:X}",
                 i, p.start_offset, p.data_size, p.comp_size, p.compressed, p.sec_type_raw as u32);
         }
         if !dump_all_pages && pages.len() > 8 {
             let last = pages.last().unwrap();
-            eprintln!("[dwg-dbg]   page[{}]: start_off=0x{:X} dsize=0x{:X} csize=0x{:X} comp={} type=0x{:X}",
+            crate::dwg_dbg!("[dwg-dbg]   page[{}]: start_off=0x{:X} dsize=0x{:X} csize=0x{:X} comp={} type=0x{:X}",
                 pages.len()-1, last.start_offset, last.data_size, last.comp_size, last.compressed, last.sec_type_raw as u32);
         }
 
@@ -1991,14 +1991,14 @@ impl DwgParser {
         // to the section (with only data_size bytes of valid data).
         // Object map offsets are relative to this full padded section.
         // For force_full_page (CLASSES), allocate page_size per page so
-        // that LZ77 can run to its END opcode without truncation — see
+        // that LZ77 can run to its END opcode without truncation â€” see
         // assemble_r2004_section_full() docs.
         let total_size = if tight {
             // Tight packing: sum of data_size
             pages.iter().map(|p| p.data_size).sum::<usize>()
         } else if (pages.len() > 1 || force_full_page) && page_size > 0 {
             // Use the larger of page_size (stride) and data_size to account
-            // for pages whose decompressed content exceeds the stride —
+            // for pages whose decompressed content exceeds the stride â€”
             // matches the decomp_target choice below.
             pages.iter()
                 .map(|p| p.start_offset + page_size.max(p.data_size))
@@ -2027,7 +2027,7 @@ impl DwgParser {
             // For multi-page sections, each page's decompressed output may need
             // up to page_size bytes (the section's logical page stride).
             // For single-page sections, data_size from the header IS the
-            // decompressed size — except when `force_full_page` is set
+            // decompressed size â€” except when `force_full_page` is set
             // (CLASSES via assemble_r2004_section_full), in which case the
             // genuine size is unknown a-priori and we must let LZ77 run to
             // its END opcode within a page-sized buffer.
@@ -2044,7 +2044,7 @@ impl DwgParser {
                 page.data_size
             };
 
-            // per ODA §4.7: LZ77 terminates on END (0x11); declared data_size
+            // per ODA Â§4.7: LZ77 terminates on END (0x11); declared data_size
             // under-reports actual emitted bytes on some AutoCAD R2010+ files.
             // When we're running in the "full" (force_full_page) mode, use
             // the generous variant so END terminates the stream naturally.
@@ -2067,7 +2067,7 @@ impl DwgParser {
                 match result {
                     Ok(d) => d,
                     Err(e) => {
-                        eprintln!("[dwg-dbg]   DECOMPRESS FAIL at start_off=0x{:X}: {:?} (csize=0x{:X} target=0x{:X} dsize=0x{:X})",
+                        crate::dwg_dbg!("[dwg-dbg]   DECOMPRESS FAIL at start_off=0x{:X}: {:?} (csize=0x{:X} target=0x{:X} dsize=0x{:X})",
                             page.start_offset, e, page.comp_size, decomp_target, page.data_size);
                         continue;
                     }
@@ -2080,7 +2080,7 @@ impl DwgParser {
             // When tight, only copy data_size bytes (skip garbage padding).
             // Otherwise, keep all decompressed bytes (up to page_size). Many
             // R2010+ files (e.g. AcadSharp sample_AC1024.dwg) carry valid
-            // object content past the per-page `data_size` boundary —
+            // object content past the per-page `data_size` boundary â€”
             // truncating here cuts ~40% of decoded objects. The header
             // `data_size` field appears to under-report the true
             // decompressed payload size on these AutoCAD-saved files.
@@ -2133,11 +2133,11 @@ impl DwgParser {
     ///   +4:  max_decomp_size (RL)
     ///   +8:  unknown (RL)
     ///   +12: compressed (RL)
-    ///   +16: section_type hash (RL) — e.g., 0x4163003b
+    ///   +16: section_type hash (RL) â€” e.g., 0x4163003b
     ///   +20: encrypted (RL)
     ///   +24: name (64 bytes, null-terminated)
     ///   +88: num_page_entries (RL)
-    ///   +92: page entries (page_number: RL, data_size: RL) × N
+    ///   +92: page entries (page_number: RL, data_size: RL) Ã— N
     fn parse_section_map_oda(map_data: &[u8], start: usize) -> Vec<R2004SectionInfo> {
         let mut sections = Vec::new();
         let mut pos = start;
@@ -2269,7 +2269,7 @@ impl DwgParser {
         sections
     }
 
-    /// Parse R2010+ section map — per ODA OpenDesignSpec §4.6 "Section Map".
+    /// Parse R2010+ section map â€” per ODA OpenDesignSpec Â§4.6 "Section Map".
     ///
     /// The R2010+ system section map (page number = `section_map_id` from
     /// offset 0x5C of the decrypted file header) decompresses to a buffer
@@ -2278,15 +2278,15 @@ impl DwgParser {
     /// bytes and describes 4 metadata sections: AppInfoHistory, AppInfo,
     /// Preview, and RevHistory (sequential `section_number`s 11, 10, 9, 8).
     ///
-    /// Observed entry layout (§4.6, verified by hex dump):
+    /// Observed entry layout (Â§4.6, verified by hex dump):
     ///
     ///   preamble (starts at buffer[0]):
-    ///     RL  hdr_a            (= 0x0C on this file — total-section-count?)
-    ///     RL  hdr_b            (= 0x02 — page_count of map itself?)
+    ///     RL  hdr_a            (= 0x0C on this file â€” total-section-count?)
+    ///     RL  hdr_b            (= 0x02 â€” page_count of map itself?)
     ///     RL  max_page_size    (0x7400)
     ///     RL  0
     ///     RL  hdr_a again (0x0C)
-    ///     RL × several zeroes
+    ///     RL Ã— several zeroes
     ///     RL  0x7400 again
     ///     RL  1
     ///     RL  2
@@ -2295,12 +2295,12 @@ impl DwgParser {
     ///   per-section entry (112 bytes fixed layout, name padded to 64 chars):
     ///     RL  prev_entry_tail (for first entry = 0; subsequent entries
     ///                          appear to copy the prior entry's trailing
-    ///                          field. Treat as "unknown — ignore")
+    ///                          field. Treat as "unknown â€” ignore")
     ///     RL  max_decomp_size  (e.g. 0x280 = 640 for AppInfoHistory)
     ///     RL  0                 (reserved)
     ///     RL  0                 (reserved)
     ///     RL  total_data_size   (e.g. 0x280)
-    ///     RL  0                 (reserved — encryption flag on other files?)
+    ///     RL  0                 (reserved â€” encryption flag on other files?)
     ///     RL  num_pages          (= 1 for single-page metadata sections)
     ///     RL  decomp_size        (= max_decomp_size when the section fits in
     ///                              one page, e.g. 0x280 = 640)
@@ -2309,7 +2309,7 @@ impl DwgParser {
     ///     RL  section_number     (the sequential id recorded in each data
     ///                              page's XOR-decrypted header[4..8])
     ///     RL  0                  (reserved)
-    ///     name: 64 bytes null-padded ASCII (e.g. "AcDb:AppInfoHistory\0…")
+    ///     name: 64 bytes null-padded ASCII (e.g. "AcDb:AppInfoHistory\0â€¦")
     ///
     /// **Important finding on the test fixture**: this buffer ONLY lists the
     /// 4 metadata sections. The core data sections (Header, Classes, Handles,
@@ -2320,15 +2320,15 @@ impl DwgParser {
     /// heuristic lives in `probe_sections` and already recovers all 7 real
     /// data sections (sec_nums 1..7).
     ///
-    /// Consequently this function returns at most the 4 metadata sections —
+    /// Consequently this function returns at most the 4 metadata sections â€”
     /// enough to satisfy `build_section_map_from_info`, but the downstream
     /// code still relies on `probe_sections` to find Header/Classes/Handles/
-    /// Objects. Documented as a §21 finding in SPEC_NOTES.md.
+    /// Objects. Documented as a Â§21 finding in SPEC_NOTES.md.
     fn parse_section_map_r2010(map_data: &[u8]) -> Vec<R2004SectionInfo> {
         let mut sections = Vec::new();
         if map_data.len() < 0x74 { return sections; }
 
-        // Known section-name prefix per §4.6: every real entry's name begins
+        // Known section-name prefix per Â§4.6: every real entry's name begins
         // with the ASCII literal "AcDb:" (exactly 5 bytes). Scan for that
         // prefix; each occurrence marks the start of a 64-byte name field.
         // The per-section numeric preamble occupies the 48 bytes immediately
@@ -2350,7 +2350,7 @@ impl DwgParser {
                 // Numeric header occupies bytes [i-48..i]. The section_number
                 // is at [i-8..i-4] per observed layout.
                 if i < 48 {
-                    // Entry preamble truncated — skip
+                    // Entry preamble truncated â€” skip
                     i = nul;
                     continue;
                 }
@@ -2365,7 +2365,7 @@ impl DwgParser {
                 let page_size_field = read_rl(hdr_base + 28);          // [i-20..i-16]
                 let section_number = read_rl(hdr_base + 40) as i32;    // [i-8..i-4]
 
-                // per ODA §4.6: R2010+ section map stores the section name
+                // per ODA Â§4.6: R2010+ section map stores the section name
                 // (e.g. "AcDb:Header") but no per-section type hash. The
                 // downstream `section_ids` map keys on the legacy R2004
                 // hashes (SECTION_TYPE_HEADER = 0x4163003B, etc). Map the
@@ -2403,7 +2403,7 @@ impl DwgParser {
     fn parse_header_vars_r2004(&self, section_data: &[u8]) -> HashMap<String, serde_json::Value> {
         // Look for the header sentinel within the decompressed data
         if let Some(pos) = find_sentinel(section_data, &HEADER_SENTINEL_START) {
-            // After the sentinel (16 bytes) + size field (4 bytes) → bit data
+            // After the sentinel (16 bytes) + size field (4 bytes) â†’ bit data
             if pos + 20 < section_data.len() {
                 return self.parse_header_vars_from_bits(section_data, pos);
             }
@@ -2420,16 +2420,16 @@ impl DwgParser {
         let dump_end = 48.min(section_data.len());
         let hex: String = section_data[..dump_end].iter()
             .map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-        eprintln!("[dwg-dbg] parse_classes_r2004_section: len={} first48: {}", section_data.len(), hex);
+        crate::dwg_dbg!("[dwg-dbg] parse_classes_r2004_section: len={} first48: {}", section_data.len(), hex);
         // Also check for end sentinel
         let end_sent: [u8; 16] = [
             0x72, 0x5E, 0x3B, 0x47, 0x3B, 0x56, 0x07, 0x3A,
             0x3F, 0x23, 0x0B, 0xA0, 0x18, 0x30, 0x49, 0x75,
         ];
         if let Some(ep) = find_sentinel(section_data, &end_sent) {
-            eprintln!("[dwg-dbg]   end sentinel found at offset {}", ep);
+            crate::dwg_dbg!("[dwg-dbg]   end sentinel found at offset {}", ep);
         } else {
-            eprintln!("[dwg-dbg]   no end sentinel found");
+            crate::dwg_dbg!("[dwg-dbg]   no end sentinel found");
         }
 
         // Look for the classes sentinel within the decompressed data
@@ -2443,7 +2443,7 @@ impl DwgParser {
     }
 
     // ==================================================================
-    // R2007+ (AC1021 – AC1032) parsing
+    // R2007+ (AC1021 â€“ AC1032) parsing
     // ==================================================================
 
     /// Parse R2007 (AC1021) files.
@@ -2475,11 +2475,11 @@ impl DwgParser {
         #[allow(unused_imports)]
         use crate::r2007;
 
-        eprintln!("[dwg-dbg] try_r2007_page_pipeline: ENTER ver={} data.len=0x{:X}",
+        crate::dwg_dbg!("[dwg-dbg] try_r2007_page_pipeline: ENTER ver={} data.len=0x{:X}",
             dwg.version_code, data.len());
 
         // Decrypt the R2007 file header (same LCG as R2004 for R2010+; R2007
-        // itself uses a distinct codec — see r2007::decrypt_file_header docs).
+        // itself uses a distinct codec â€” see r2007::decrypt_file_header docs).
         let enc_hdr = match crate::r2007::decrypt_file_header(data) {
             Ok(h) => {
                 eprintln!(
@@ -2491,7 +2491,7 @@ impl DwgParser {
             }
             Err(e) => {
                 eprintln!(
-                    "[dwg-dbg] try_r2007_page_pipeline: decrypt_file_header FAILED ({:?}) — returning Err",
+                    "[dwg-dbg] try_r2007_page_pipeline: decrypt_file_header FAILED ({:?}) â€” returning Err",
                     e
                 );
                 return Err(e);
@@ -2503,14 +2503,14 @@ impl DwgParser {
             Ok(v) => v,
             Err(e) => {
                 eprintln!(
-                    "[dwg-dbg] try_r2007_page_pipeline: read_page_map FAILED ({:?}) — returning Err",
+                    "[dwg-dbg] try_r2007_page_pipeline: read_page_map FAILED ({:?}) â€” returning Err",
                     e
                 );
                 return Err(e);
             }
         };
         if page_map.is_empty() {
-            eprintln!("[dwg-dbg] try_r2007_page_pipeline: page_map empty — returning Err");
+            crate::dwg_dbg!("[dwg-dbg] try_r2007_page_pipeline: page_map empty â€” returning Err");
             return Err(DwgError::InvalidBinary("R2007: empty page map".into()));
         }
         eprintln!(
@@ -2533,11 +2533,11 @@ impl DwgParser {
         // For R2010+ the section_map_id is a page number, not a section number.
         // If assemble_section found nothing, read the page directly.
         if section_map_data.is_empty() {
-            eprintln!("[dwg-dbg] section_map via assemble_section empty, trying direct page read for smid={}", section_map_id);
+            crate::dwg_dbg!("[dwg-dbg] section_map via assemble_section empty, trying direct page read for smid={}", section_map_id);
             section_map_data = crate::r2007::read_section_map_by_page(
                 data, &page_map, section_map_id,
             )?;
-            eprintln!("[dwg-dbg] direct page read: {} bytes", section_map_data.len());
+            crate::dwg_dbg!("[dwg-dbg] direct page read: {} bytes", section_map_data.len());
         }
 
         let sections = crate::r2007::parse_section_map(&section_map_data);
@@ -2592,7 +2592,7 @@ impl DwgParser {
         // Require some results to confirm this worked
         if dwg.objects.is_empty() && dwg.header_vars.len() <= 1 {
             eprintln!(
-                "[dwg-dbg] try_r2007_page_pipeline: EXIT Err — no results (objects=0, hdrs<=1)"
+                "[dwg-dbg] try_r2007_page_pipeline: EXIT Err â€” no results (objects=0, hdrs<=1)"
             );
             return Err(DwgError::InvalidBinary("R2007: page pipeline produced no results".into()));
         }
@@ -2718,7 +2718,7 @@ impl DwgParser {
     }
 
     // ==================================================================
-    // R2010+ (AC1024–AC1032) parsing
+    // R2010+ (AC1024â€“AC1032) parsing
     // ==================================================================
 
     /// Parse R2010+ files using the page-based pipeline.
@@ -2752,13 +2752,13 @@ impl DwgParser {
         dwg.classes.clear();
     }
 
-    /// R2010+ pipeline using the RS(255,239)-wrapped file header per ODA §4.1.
+    /// R2010+ pipeline using the RS(255,239)-wrapped file header per ODA Â§4.1.
     /// After RS strip + LCG decrypt we follow the same R2007-style page map,
     /// section map, object map walk.
     fn try_r2010_rs_pipeline(&mut self, data: &[u8], dwg: &mut DwgFile) -> Result<(), DwgError> {
         let enc_hdr = crate::r2007::decrypt_file_header_r2010(data)?;
         // Dump full enc_hdr to narrow down where R2010+ stores the page_map_addr
-        eprintln!("[dwg-dbg] R2010-RS enc_hdr ({}B):", enc_hdr.len());
+        crate::dwg_dbg!("[dwg-dbg] R2010-RS enc_hdr ({}B):", enc_hdr.len());
         for row in 0..(enc_hdr.len() + 15) / 16 {
             let off = row * 16;
             let end = (off + 16).min(enc_hdr.len());
@@ -2766,7 +2766,7 @@ impl DwgParser {
                 .map(|b| format!("{:02x} ", b)).collect();
             eprintln!("  {:04x}: {}", off, hex);
         }
-        // Per ODA §4.1 R2010+ offsets:
+        // Per ODA Â§4.1 R2010+ offsets:
         //   0x4C: section_page_map_addr as 8-byte RLL (+ 0x100 base)
         //   0x54: section_map_id as 4-byte RL
         if enc_hdr.len() >= 0x60 {
@@ -2777,26 +2777,26 @@ impl DwgParser {
             let smid = u32::from_le_bytes([
                 enc_hdr[0x54], enc_hdr[0x55], enc_hdr[0x56], enc_hdr[0x57],
             ]) as i32;
-            eprintln!("[dwg-dbg] R2010-RS offsets@4C/54: page_map_addr=0x{:X} smid={} (data.len=0x{:X})",
+            crate::dwg_dbg!("[dwg-dbg] R2010-RS offsets@4C/54: page_map_addr=0x{:X} smid={} (data.len=0x{:X})",
                 pm_addr, smid, data.len());
         }
         let (page_map, page_size) = crate::r2007::read_page_map(data, &enc_hdr)?;
         if page_map.is_empty() {
             return Err(DwgError::InvalidBinary("R2010-RS: empty page map".into()));
         }
-        eprintln!("[dwg-dbg] R2010-RS: page_map={} entries page_size=0x{:X}", page_map.len(), page_size);
+        crate::dwg_dbg!("[dwg-dbg] R2010-RS: page_map={} entries page_size=0x{:X}", page_map.len(), page_size);
 
         // R2010+ header layout is shifted +0x14 relative to R2007 (verified by
         // matching the three known constants 0x20/0x80/0x40 at offsets 0x44/0x48/0x4C).
         //
         // Corrected R2010+ header layout:
-        //   0x40: section_page_amount (RL) — number of pages
+        //   0x40: section_page_amount (RL) â€” number of pages
         //   0x44: 0x20 (RL constant)
         //   0x48: 0x80 (RL constant)
         //   0x4C: 0x40 (RL constant)
-        //   0x50: section_page_map_id (RL) — page number of the page map itself
+        //   0x50: section_page_map_id (RL) â€” page number of the page map itself
         //   0x54: section_page_map_address (RLL, 8 bytes)
-        //   0x5C: section_map_id (RL) — section number of the section info/map
+        //   0x5C: section_map_id (RL) â€” section number of the section info/map
         //
         // section_map_id is used to both assemble the section info AND exclude
         // the section map from data-section probing.
@@ -2810,7 +2810,7 @@ impl DwgParser {
                 enc_hdr[0x48], enc_hdr[0x49], enc_hdr[0x4A], enc_hdr[0x4B],
             ]) as i32
         } else { 1 };
-        eprintln!("[dwg-dbg] R2010-RS: section_map_id={} (from 0x5C)", section_map_id);
+        crate::dwg_dbg!("[dwg-dbg] R2010-RS: section_map_id={} (from 0x5C)", section_map_id);
 
         self.parse_r2004_sections(data, dwg, &page_map, page_size, section_map_id)
     }
@@ -2822,7 +2822,7 @@ impl DwgParser {
     /// This pipeline:
     /// 1. Reads the page map normally
     /// 2. Finds the section map via sentinel scan (0x4163003B)
-    /// 3. Parses section info → builds section_type → sec_number mapping
+    /// 3. Parses section info â†’ builds section_type â†’ sec_number mapping
     /// 4. Uses standard assemble_r2004_section (XOR page headers) for data sections
     fn try_r2018_sentinel_pipeline(&mut self, data: &[u8], dwg: &mut DwgFile) -> Result<(), DwgError> {
         use crate::r2007::{
@@ -2834,13 +2834,13 @@ impl DwgParser {
         let enc_hdr = crate::r2007::decrypt_file_header(data)
             .or_else(|_| crate::r2007::decrypt_file_header_r2010(data))?;
         let (page_map, _page_size_raw) = crate::r2007::read_page_map(data, &enc_hdr)?;
-        // R2018 page_size from enc_hdr[0x28] is unreliable — use the standard
+        // R2018 page_size from enc_hdr[0x28] is unreliable â€” use the standard
         // R2007+ page size (0x7400) which matches the section map's max_decomp_size.
         let page_size: usize = 0x7400;
         if page_map.is_empty() {
             return Err(DwgError::InvalidBinary("R2018: empty page map".into()));
         }
-        eprintln!("[dwg-dbg] R2018 sentinel: page_map has {} entries", page_map.len());
+        crate::dwg_dbg!("[dwg-dbg] R2018 sentinel: page_map has {} entries", page_map.len());
 
         // Step 2: Find the section map by sentinel scan
         let section_maps = scan_system_section(data, SENTINEL_SECTION_MAP as u32);
@@ -2853,16 +2853,16 @@ impl DwgParser {
             .max_by_key(|(_, body)| body.len())
             .ok_or_else(|| DwgError::InvalidBinary("R2018: all section map bodies too small".into()))?;
 
-        eprintln!("[dwg-dbg] R2018 sentinel: section_map body={}B", section_map_body.len());
+        crate::dwg_dbg!("[dwg-dbg] R2018 sentinel: section_map body={}B", section_map_body.len());
 
-        // Step 3: Parse section map → get section names and page assignments
+        // Step 3: Parse section map â†’ get section names and page assignments
         let sections = parse_r2018_section_map(section_map_body);
         if sections.is_empty() {
             return Err(DwgError::InvalidBinary("R2018: section map parse yielded no sections".into()));
         }
-        eprintln!("[dwg-dbg] R2018 sentinel: {} sections found", sections.len());
+        crate::dwg_dbg!("[dwg-dbg] R2018 sentinel: {} sections found", sections.len());
 
-        // Step 4: Build section_type → sec_number mapping.
+        // Step 4: Build section_type â†’ sec_number mapping.
         // For each section in the section map, look up its first page in the
         // page map, XOR-decrypt the page header, and read the sec_number.
         let mut section_ids: HashMap<i32, i32> = HashMap::new();
@@ -2880,7 +2880,7 @@ impl DwgParser {
                         data[file_offset + 6], data[file_offset + 7],
                     ]) ^ mask) as i32;
                     if sec_num > 0 {
-                        eprintln!("[dwg-dbg] R2018: section {:?} (type=0x{:08X}) → sec_num={} (from page {} @0x{:X})",
+                        crate::dwg_dbg!("[dwg-dbg] R2018: section {:?} (type=0x{:08X}) â†’ sec_num={} (from page {} @0x{:X})",
                             s.name, s.section_type as u32, sec_num, first_page_num, file_offset);
                         section_ids.insert(s.section_type, sec_num);
                     }
@@ -2888,7 +2888,7 @@ impl DwgParser {
             }
         }
 
-        eprintln!("[dwg-dbg] R2018: resolved {} section mappings: {:?}",
+        crate::dwg_dbg!("[dwg-dbg] R2018: resolved {} section mappings: {:?}",
             section_ids.len(), section_ids);
 
         if section_ids.is_empty() {
@@ -2904,11 +2904,11 @@ impl DwgParser {
             let hdr_data = self.assemble_r2004_section(data, &page_map, page_size, sec_id)?;
             if !hdr_data.is_empty() {
                 dwg.header_vars = self.parse_header_vars_r2004(&hdr_data);
-                eprintln!("[dwg-dbg] R2018: header section {}B, {} vars", hdr_data.len(), dwg.header_vars.len());
+                crate::dwg_dbg!("[dwg-dbg] R2018: header section {}B, {} vars", hdr_data.len(), dwg.header_vars.len());
             }
         }
 
-        // Classes (use _full assembler — see notes on assemble_r2004_section_full)
+        // Classes (use _full assembler â€” see notes on assemble_r2004_section_full)
         if let Some(&sec_id) = section_ids.get(&SECTION_TYPE_CLASSES) {
             let cls_data = self.assemble_r2004_section_full(data, &page_map, page_size, sec_id)?;
             if !cls_data.is_empty() {
@@ -2916,21 +2916,21 @@ impl DwgParser {
                 for cls in &dwg.classes {
                     self.class_map.insert(cls.class_number, cls.clone());
                 }
-                eprintln!("[dwg-dbg] R2018: classes section {}B, {} classes", cls_data.len(), dwg.classes.len());
+                crate::dwg_dbg!("[dwg-dbg] R2018: classes section {}B, {} classes", cls_data.len(), dwg.classes.len());
             }
         }
 
-        // Handles — use section map's per-page data_size to limit valid data
+        // Handles â€” use section map's per-page data_size to limit valid data
         let mut alt_object_map: HashMap<u32, usize> = HashMap::new();
         let mut padded_map: HashMap<u32, usize> = HashMap::new();
         if let Some(&sec_id) = section_ids.get(&SECTION_TYPE_HANDLES) {
-            // Build page_number → decompressed_valid_size map from section map
+            // Build page_number â†’ decompressed_valid_size map from section map
             let mut page_data_sizes: HashMap<i32, u32> = HashMap::new();
             if let Some(hdl_section) = sections.iter().find(|s| s.section_type == SECTION_TYPE_HANDLES) {
                 for pe in &hdl_section.pages {
                     page_data_sizes.insert(pe.page_number, pe.comp_size);
                 }
-                eprintln!("[dwg-dbg] R2018: handles section has {} page data_size entries", page_data_sizes.len());
+                crate::dwg_dbg!("[dwg-dbg] R2018: handles section has {} page data_size entries", page_data_sizes.len());
             }
 
             // Try paged with data_size boundaries from section map
@@ -2943,33 +2943,33 @@ impl DwgParser {
             } else {
                 HashMap::new()
             };
-            eprintln!("[dwg-dbg] R2018: paged_map={} entries, padded_map={} entries",
+            crate::dwg_dbg!("[dwg-dbg] R2018: paged_map={} entries, padded_map={} entries",
                 paged_map.len(), padded_map.len());
             // Default to padded (more entries), keep paged as alternative
             dwg.object_map = padded_map.clone();
             alt_object_map = paged_map;
         }
 
-        // Objects — padded assembly (offsets reference page-aligned positions)
+        // Objects â€” padded assembly (offsets reference page-aligned positions)
         let mut objects_data: Option<Vec<u8>> = None;
         if let Some(&sec_id) = section_ids.get(&SECTION_TYPE_OBJECTS) {
             let obj_data = self.assemble_r2004_section(data, &page_map, page_size, sec_id)?;
             if !obj_data.is_empty() {
-                eprintln!("[dwg-dbg] R2018: objects section {}B", obj_data.len());
+                crate::dwg_dbg!("[dwg-dbg] R2018: objects section {}B", obj_data.len());
                 objects_data = Some(obj_data);
             }
         }
 
         dwg.header_vars.insert("$ACADVER".into(), serde_json::json!(dwg.version_code));
 
-        // Step 6: Parse objects — try padded map + padded buf first,
+        // Step 6: Parse objects â€” try padded map + padded buf first,
         // then paged map + tight buf (hypothesis: paged offsets match tight assembly)
         self.use_string_stream = true;
 
         if let Some(ref obj_buf) = objects_data {
             if !dwg.object_map.is_empty() {
                 dwg.objects = self.parse_objects_r2000(obj_buf, &dwg.object_map, &dwg.classes);
-                eprintln!("[dwg-dbg] R2018: padded+padded -> {} objects from {}B",
+                crate::dwg_dbg!("[dwg-dbg] R2018: padded+padded -> {} objects from {}B",
                     dwg.objects.len(), obj_buf.len());
             }
         }
@@ -2980,12 +2980,12 @@ impl DwgParser {
                 if let Ok(tight_buf) = self.assemble_r2004_section_tight(data, &page_map, page_size, sec_id) {
                     if !tight_buf.is_empty() {
                         let tight_objects = self.parse_objects_r2000(&tight_buf, &alt_object_map, &dwg.classes);
-                        eprintln!("[dwg-dbg] R2018: paged+tight ({}B) -> {} objects",
+                        crate::dwg_dbg!("[dwg-dbg] R2018: paged+tight ({}B) -> {} objects",
                             tight_buf.len(), tight_objects.len());
                         if tight_objects.len() > dwg.objects.len() {
                             dwg.objects = tight_objects;
                             dwg.object_map = alt_object_map;
-                            eprintln!("[dwg-dbg] R2018: switched to paged+tight");
+                            crate::dwg_dbg!("[dwg-dbg] R2018: switched to paged+tight");
                         }
                     }
                 }
@@ -3007,24 +3007,24 @@ impl DwgParser {
         // sentinel scan and resolves section numbers, then uses standard XOR
         // page header assembly. This is the primary R2018 path.
         if dwg.version_code == "AC1032" {
-            eprintln!("[dwg-dbg] R2018: trying sentinel-based pipeline");
+            crate::dwg_dbg!("[dwg-dbg] R2018: trying sentinel-based pipeline");
             match self.try_r2018_sentinel_pipeline(data, dwg) {
                 Ok(()) if dwg.objects.len() >= 20 || dwg.header_vars.len() > 1 => {
-                    eprintln!("[dwg-dbg] R2018: sentinel pipeline SUCCEEDED — {} objects",
+                    crate::dwg_dbg!("[dwg-dbg] R2018: sentinel pipeline SUCCEEDED â€” {} objects",
                         dwg.objects.len());
                     return Ok(());
                 }
                 Ok(()) if !dwg.objects.is_empty() => {
-                    eprintln!("[dwg-dbg] R2018: sentinel pipeline got {} objects (low), trying more",
+                    crate::dwg_dbg!("[dwg-dbg] R2018: sentinel pipeline got {} objects (low), trying more",
                         dwg.objects.len());
-                    // Don't reset — keep as baseline, let other pipelines try
+                    // Don't reset â€” keep as baseline, let other pipelines try
                 }
                 Ok(()) => {
-                    eprintln!("[dwg-dbg] R2018: sentinel pipeline returned Ok but no results");
+                    crate::dwg_dbg!("[dwg-dbg] R2018: sentinel pipeline returned Ok but no results");
                     self.reset_dwg_partial(dwg);
                 }
                 Err(e) => {
-                    eprintln!("[dwg-dbg] R2018: sentinel pipeline failed: {:?}", e);
+                    crate::dwg_dbg!("[dwg-dbg] R2018: sentinel pipeline failed: {:?}", e);
                     self.reset_dwg_partial(dwg);
                 }
             }
@@ -3036,13 +3036,13 @@ impl DwgParser {
         }
 
         // R2010+ wraps the 0x6C-byte LCG-encrypted file header in an RS(255,239)
-        // sector block per ODA §4.1. Run that pipeline first, then fall back
+        // sector block per ODA Â§4.1. Run that pipeline first, then fall back
         // to the plain R2007-style LCG-only decrypt (some files skip RS), then
         // to the legacy 3-config R2010 path, then to sentinel scanning.
-        eprintln!("[dwg-dbg] R2010+: trying RS-wrapped pipeline");
+        crate::dwg_dbg!("[dwg-dbg] R2010+: trying RS-wrapped pipeline");
         match self.try_r2010_rs_pipeline(data, dwg) {
             Ok(()) if dwg.objects.len() > best_objects.len() => {
-                eprintln!("[dwg-dbg] R2010+: RS pipeline produced {} objects (beats best {})",
+                crate::dwg_dbg!("[dwg-dbg] R2010+: RS pipeline produced {} objects (beats best {})",
                     dwg.objects.len(), best_objects.len());
                 if dwg.objects.len() >= 20 || dwg.header_vars.len() > 1 {
                     return Ok(());
@@ -3052,27 +3052,27 @@ impl DwgParser {
                 self.reset_dwg_partial(dwg);
             }
             Ok(()) => {
-                eprintln!("[dwg-dbg] R2010+: RS pipeline got {} objects (not better than {})",
+                crate::dwg_dbg!("[dwg-dbg] R2010+: RS pipeline got {} objects (not better than {})",
                     dwg.objects.len(), best_objects.len());
                 self.reset_dwg_partial(dwg);
             }
             Err(e) => {
-                eprintln!("[dwg-dbg] R2010+: RS pipeline failed ({:?})", e);
+                crate::dwg_dbg!("[dwg-dbg] R2010+: RS pipeline failed ({:?})", e);
                 self.reset_dwg_partial(dwg);
             }
         }
-        eprintln!("[dwg-dbg] R2010+: trying plain r2007 pipeline");
+        crate::dwg_dbg!("[dwg-dbg] R2010+: trying plain r2007 pipeline");
         match self.try_r2007_page_pipeline(data, dwg) {
             Ok(()) if dwg.objects.len() >= 20 || dwg.header_vars.len() > 1 => {
-                eprintln!("[dwg-dbg] R2010+: r2007 pipeline SUCCEEDED — {} objects", dwg.objects.len());
+                crate::dwg_dbg!("[dwg-dbg] R2010+: r2007 pipeline SUCCEEDED â€” {} objects", dwg.objects.len());
                 return Ok(());
             }
             Ok(()) => {
-                eprintln!("[dwg-dbg] R2010+: r2007 pipeline returned Ok but no results, continuing");
+                crate::dwg_dbg!("[dwg-dbg] R2010+: r2007 pipeline returned Ok but no results, continuing");
                 self.reset_dwg_partial(dwg);
             }
             Err(e) => {
-                eprintln!("[dwg-dbg] R2010+: r2007 pipeline failed ({:?})", e);
+                crate::dwg_dbg!("[dwg-dbg] R2010+: r2007 pipeline failed ({:?})", e);
                 self.reset_dwg_partial(dwg);
             }
         }
@@ -3094,7 +3094,7 @@ impl DwgParser {
 
         // Page-walk fallback: build page map by walking XOR-decrypted page headers.
         // Bypasses broken page map decompression entirely.
-        eprintln!("[dwg-dbg] R2010+: trying page-walk fallback");
+        crate::dwg_dbg!("[dwg-dbg] R2010+: trying page-walk fallback");
         self.reset_dwg_partial(dwg);
         let walked_page_map = Self::build_page_map_by_walking(data);
         if !walked_page_map.is_empty() {
@@ -3107,10 +3107,10 @@ impl DwgParser {
                     let enough = dwg.objects.len() >= 20
                         || (dwg.objects.len() > 0 && dwg.object_map.len() <= 20);
                     if enough {
-                        eprintln!("[dwg-dbg] R2010+: page-walk SUCCEEDED — {} objects", dwg.objects.len());
+                        crate::dwg_dbg!("[dwg-dbg] R2010+: page-walk SUCCEEDED â€” {} objects", dwg.objects.len());
                         return Ok(());
                     }
-                    eprintln!("[dwg-dbg] R2010+: page-walk too few objects ({}/{}), trying sentinel",
+                    crate::dwg_dbg!("[dwg-dbg] R2010+: page-walk too few objects ({}/{}), trying sentinel",
                         dwg.objects.len(), dwg.object_map.len());
                     self.reset_dwg_partial(dwg);
                 }
@@ -3126,7 +3126,7 @@ impl DwgParser {
         // If sentinel scan produced fewer objects than the best earlier pipeline,
         // restore the best result.
         if dwg.objects.len() < best_objects.len() && !best_objects.is_empty() {
-            eprintln!("[dwg-dbg] R2010+: sentinel ({}) < best ({}), restoring best",
+            crate::dwg_dbg!("[dwg-dbg] R2010+: sentinel ({}) < best ({}), restoring best",
                 dwg.objects.len(), best_objects.len());
             dwg.objects = best_objects;
         }
@@ -3176,7 +3176,7 @@ impl DwgParser {
         for (ci, config) in configs.iter().enumerate() {
             let end = config.page_map_addr_offset + config.page_map_addr_size;
             if end > enc_hdr.len() {
-                eprintln!("[dwg-dbg] cfg{}: skip (enc_hdr too short: need {}, have {})", ci, end, enc_hdr.len());
+                crate::dwg_dbg!("[dwg-dbg] cfg{}: skip (enc_hdr too short: need {}, have {})", ci, end, enc_hdr.len());
                 continue;
             }
 
@@ -3204,7 +3204,7 @@ impl DwgParser {
 
             // Validate: page_map_addr must be in bounds with room for a header
             if page_map_addr + 32 >= data.len() || page_map_addr < 0x100 {
-                eprintln!("[dwg-dbg] cfg{}: skip (page_map_addr 0x{:X} out of bounds, data.len=0x{:X})", ci, page_map_addr, data.len());
+                crate::dwg_dbg!("[dwg-dbg] cfg{}: skip (page_map_addr 0x{:X} out of bounds, data.len=0x{:X})", ci, page_map_addr, data.len());
                 continue;
             }
 
@@ -3219,7 +3219,7 @@ impl DwgParser {
 
             // section_map_id should be small and positive
             if section_map_id <= 0 || section_map_id > 100 {
-                eprintln!("[dwg-dbg] cfg{}: skip (section_map_id={} out of range)", ci, section_map_id);
+                crate::dwg_dbg!("[dwg-dbg] cfg{}: skip (section_map_id={} out of range)", ci, section_map_id);
                 continue;
             }
 
@@ -3247,7 +3247,7 @@ impl DwgParser {
             };
 
             if page_size == 0 {
-                eprintln!("[dwg-dbg] cfg{}: skip (page_size=0, detect failed)", ci);
+                crate::dwg_dbg!("[dwg-dbg] cfg{}: skip (page_size=0, detect failed)", ci);
                 continue;
             }
 
@@ -3256,45 +3256,45 @@ impl DwgParser {
                 data[page_map_addr + 2], data[page_map_addr + 3],
             ]);
             if pm_sec_type <= 0 {
-                eprintln!("[dwg-dbg] cfg{}: skip (pm_sec_type={} at addr=0x{:X})", ci, pm_sec_type, page_map_addr);
+                crate::dwg_dbg!("[dwg-dbg] cfg{}: skip (pm_sec_type={} at addr=0x{:X})", ci, pm_sec_type, page_map_addr);
                 continue;
             }
-            eprintln!("[dwg-dbg] cfg{}: page_map_addr=0x{:X} page_size=0x{:X} smid={} pm_sec_type=0x{:X}",
+            crate::dwg_dbg!("[dwg-dbg] cfg{}: page_map_addr=0x{:X} page_size=0x{:X} smid={} pm_sec_type=0x{:X}",
                 ci, page_map_addr, page_size, section_map_id, pm_sec_type);
 
             // Try to build the page map and parse sections
             match self.read_r2004_page_map(data, page_map_addr, page_size) {
                 Ok(page_map) if !page_map.is_empty() => {
-                    eprintln!("[dwg-dbg] R2010 try config: page_map_addr=0x{:X} page_size=0x{:X} pages={} smid={}",
+                    crate::dwg_dbg!("[dwg-dbg] R2010 try config: page_map_addr=0x{:X} page_size=0x{:X} pages={} smid={}",
                         page_map_addr, page_size, page_map.len(), section_map_id);
                     match self.parse_r2004_sections(
                         data, dwg, &page_map, page_size, section_map_id,
                     ) {
                         Ok(()) if !dwg.objects.is_empty() || !dwg.header_vars.is_empty() => {
-                            eprintln!("[dwg-dbg] R2010 pipeline OK: object_map={} objects={}",
+                            crate::dwg_dbg!("[dwg-dbg] R2010 pipeline OK: object_map={} objects={}",
                                 dwg.object_map.len(), dwg.objects.len());
                             return Ok(());
                         }
                         r => {
-                            eprintln!("[dwg-dbg] R2010 pipeline rejected: result={:?} object_map={} objects={} header_vars={}",
+                            crate::dwg_dbg!("[dwg-dbg] R2010 pipeline rejected: result={:?} object_map={} objects={} header_vars={}",
                                 r.is_ok(), dwg.object_map.len(), dwg.objects.len(), dwg.header_vars.len());
                             continue;
                         }
                     }
                 }
                 Ok(page_map) => {
-                    eprintln!("[dwg-dbg] R2010 page_map empty at addr=0x{:X} size=0x{:X}", page_map_addr, page_size);
+                    crate::dwg_dbg!("[dwg-dbg] R2010 page_map empty at addr=0x{:X} size=0x{:X}", page_map_addr, page_size);
                     let _ = page_map;
                     continue;
                 }
                 Err(e) => {
-                    eprintln!("[dwg-dbg] R2010 read_r2004_page_map failed at addr=0x{:X}: {:?}", page_map_addr, e);
+                    crate::dwg_dbg!("[dwg-dbg] R2010 read_r2004_page_map failed at addr=0x{:X}: {:?}", page_map_addr, e);
                     continue;
                 }
             }
         }
 
-        eprintln!("[dwg-dbg] R2010 all configs failed, falling back");
+        crate::dwg_dbg!("[dwg-dbg] R2010 all configs failed, falling back");
         Err(DwgError::InvalidBinary("R2010+: no valid header config found".into()))
     }
 
@@ -3705,7 +3705,7 @@ impl DwgParser {
             ];
             for name in &bd_vars {
                 let raw = reader.read_bd()?;
-                // Per ODA OpenDesignSpec §5.4 (HEADER variables): R2007+ /
+                // Per ODA OpenDesignSpec Â§5.4 (HEADER variables): R2007+ /
                 // R2010+ headers contain a much longer preamble than the
                 // R2000 layout this parser still uses (CLAYER/UCSORG/
                 // CECOLOR/HANDSEED/etc., variable-length H fields). Without
@@ -3716,7 +3716,7 @@ impl DwgParser {
                 //
                 // Until the full R2010 header preamble is decoded, sanity-
                 // clamp each BD header var: anything outside [1e-6, 1e6]
-                // (covers every plausible CAD-unit/scale combination —
+                // (covers every plausible CAD-unit/scale combination â€”
                 // metres-per-mm 0.001 down to mm-per-km 1e6) is treated as
                 // garbage and replaced with the AutoCAD default 1.0 for
                 // scale-style vars or 0.0 for size-style vars. This keeps
@@ -3779,7 +3779,7 @@ impl DwgParser {
                 data[sentinel_offset + 24], data[sentinel_offset + 25],
                 data[sentinel_offset + 26], data[sentinel_offset + 27],
             ]);
-            eprintln!("[dwg-dbg] R2010+ cls header: RL1(size)={} RL2={} RL3(bits?)={}", cls_data_size, rl2, rl3);
+            crate::dwg_dbg!("[dwg-dbg] R2010+ cls header: RL1(size)={} RL2={} RL3(bits?)={}", cls_data_size, rl2, rl3);
             // Verify: RL3 should be approximately cls_data_size * 8
             if rl3 > 0 && (rl3 as usize) >= cls_data_size * 7 && (rl3 as usize) <= cls_data_size * 9 {
                 sentinel_offset + 28
@@ -3791,7 +3791,7 @@ impl DwgParser {
         };
 
         let mut reader = DwgBitReader::new(data, data_start);
-        // per ODA §5.8 + classes_r2010_fix.md: cls_data_size is measured from
+        // per ODA Â§5.8 + classes_r2010_fix.md: cls_data_size is measured from
         // sentinel+20 (INCLUDING the 8-byte extended header), NOT from
         // data_start which for R2010+ is sentinel+28. Using data_start here
         // made end_byte 8 bytes too high, overshooting into the trailing
@@ -3805,13 +3805,13 @@ impl DwgParser {
         };
         let is_unicode = self.version.is_r2007_plus();
 
-        eprintln!("[dwg-dbg] parse_classes_from_bits: sentinel@{} cls_data_size={} end_byte={} data.len={} is_unicode={}",
+        crate::dwg_dbg!("[dwg-dbg] parse_classes_from_bits: sentinel@{} cls_data_size={} end_byte={} data.len={} is_unicode={}",
             sentinel_offset, cls_data_size, end_byte, data.len(), is_unicode);
         // Show first 80 bytes after sentinel
         let peek_end = (sentinel_offset + 96).min(data.len());
         let peek: String = data[sentinel_offset + 16..peek_end].iter()
             .map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-        eprintln!("[dwg-dbg]   data[16..96]: {}", peek);
+        crate::dwg_dbg!("[dwg-dbg]   data[16..96]: {}", peek);
         // Dump bytes around bit-interpretation endbit for string stream diagnosis
         {
             let start_bit = (sentinel_offset + 20) * 8;
@@ -3822,21 +3822,21 @@ impl DwgParser {
             if ctx_end > ctx_start {
                 let ctx: String = data[ctx_start..ctx_end].iter()
                     .map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-                eprintln!("[dwg-dbg]   bytes around bit-endbit (byte {}): {}", endbit_byte_pos, ctx);
+                crate::dwg_dbg!("[dwg-dbg]   bytes around bit-endbit (byte {}): {}", endbit_byte_pos, ctx);
             }
         }
         // Show last 16 bytes of class section
         let tail_start = end_byte.saturating_sub(16).max(sentinel_offset + 16);
         let tail: String = data[tail_start..end_byte.min(data.len())].iter()
             .map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-        eprintln!("[dwg-dbg]   data tail[{}..{}]: {}", tail_start, end_byte, tail);
+        crate::dwg_dbg!("[dwg-dbg]   data tail[{}..{}]: {}", tail_start, end_byte, tail);
 
         // Diagnostic: dump bytes between cls_data end and buffer end
         let cls_end = sentinel_offset + 20 + cls_data_size;
         if cls_end < data.len() {
             let trail: String = data[cls_end..data.len().min(cls_end+32)].iter()
                 .map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-            eprintln!("[dwg-dbg]   trailing bytes [{}-{}]: {}", cls_end, data.len(), trail);
+            crate::dwg_dbg!("[dwg-dbg]   trailing bytes [{}-{}]: {}", cls_end, data.len(), trail);
         }
 
         // Dump more bytes for class data analysis
@@ -3845,7 +3845,7 @@ impl DwgParser {
             let dump_end = (dump_start + 200).min(data.len());
             let hex: String = data[dump_start..dump_end].iter()
                 .map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-            eprintln!("[dwg-dbg]   cls data[20..220]: {}", hex);
+            crate::dwg_dbg!("[dwg-dbg]   cls data[20..220]: {}", hex);
         }
         // Search for known class name strings to verify data integrity
         {
@@ -3853,14 +3853,14 @@ impl DwgParser {
                 let nb = needle.as_bytes();
                 for i in 0..data.len().saturating_sub(nb.len()) {
                     if &data[i..i+nb.len()] == nb {
-                        eprintln!("[dwg-dbg]   found '{}' at byte {} (ASCII)", needle, i);
+                        crate::dwg_dbg!("[dwg-dbg]   found '{}' at byte {} (ASCII)", needle, i);
                     }
                 }
                 // UTF-16LE
                 let u16b: Vec<u8> = needle.chars().flat_map(|c| vec![c as u8, 0u8]).collect();
                 for i in 0..data.len().saturating_sub(u16b.len()) {
                     if data[i..i+u16b.len()] == u16b[..] {
-                        eprintln!("[dwg-dbg]   found '{}' at byte {} (UTF16)", needle, i);
+                        crate::dwg_dbg!("[dwg-dbg]   found '{}' at byte {} (UTF16)", needle, i);
                     }
                 }
             }
@@ -3873,23 +3873,23 @@ impl DwgParser {
             let bl_end = reader.tell_bit();
             let unk = reader.read_bit().unwrap_or(0);
             let b_end = reader.tell_bit();
-            eprintln!("[dwg-dbg]   BL maxclass={} (bits {}-{}), B unk={} (bit {})",
+            crate::dwg_dbg!("[dwg-dbg]   BL maxclass={} (bits {}-{}), B unk={} (bit {})",
                 maxcls, bl_start, bl_end, unk, b_end);
-            // Try parsing without BL+B too — reset and try directly
+            // Try parsing without BL+B too â€” reset and try directly
             // to see what BS gives at byte 20
             let save_pos = reader.tell_bit();
             reader.seek_bit((sentinel_offset + 20) * 8);
             let try_bs = reader.read_bs().unwrap_or(0);
-            eprintln!("[dwg-dbg]   (no-prefix) BS@byte20 = {}", try_bs);
+            crate::dwg_dbg!("[dwg-dbg]   (no-prefix) BS@byte20 = {}", try_bs);
             // Also try at byte 24 (after possible second RL)
             reader.seek_bit((sentinel_offset + 24) * 8);
             let try_bs24 = reader.read_bs().unwrap_or(0);
-            eprintln!("[dwg-dbg]   (no-prefix) BS@byte24 = {}", try_bs24);
+            crate::dwg_dbg!("[dwg-dbg]   (no-prefix) BS@byte24 = {}", try_bs24);
             // Try at byte 28 (after two RLs)
             reader.seek_bit((sentinel_offset + 28) * 8);
             let try_bs28 = reader.read_bs().unwrap_or(0);
             let try_bl28 = reader.read_bl().unwrap_or(0);
-            eprintln!("[dwg-dbg]   (no-prefix) BS@byte28 = {}, then BL = {}", try_bs28, try_bl28);
+            crate::dwg_dbg!("[dwg-dbg]   (no-prefix) BS@byte28 = {}, then BL = {}", try_bs28, try_bl28);
             reader.seek_bit(save_pos);
         }
 
@@ -3898,9 +3898,9 @@ impl DwgParser {
         //   1. Byte count (endbit = start + size*8)
         //   2. Bit count  (endbit = start + size)
         if is_unicode && end_byte > data_start {
-            // per ODA §5.4.4 + classes_r2010_fix.md: the spec-correct endbit
+            // per ODA Â§5.4.4 + classes_r2010_fix.md: the spec-correct endbit
             // for the string_present flag is (sentinel+20)*8 + cls_data_size*8
-            // — i.e. the end of the data region measured from sentinel+20
+            // â€” i.e. the end of the data region measured from sentinel+20
             // (including the 8-byte extended header but excluding CRC).
             //
             // Effective bit-cap: do NOT use data.len()*8 because, after the
@@ -3965,7 +3965,7 @@ impl DwgParser {
                 }
             };
 
-            // Build candidate list. Per ODA §5.4.4 the spec value is
+            // Build candidate list. Per ODA Â§5.4.4 the spec value is
             // (sentinel+20+cls_data_size)*8. AcadSharp/AutoCAD-saved files
             // include a small CRC between the cls data area and the end
             // sentinel; the present-flag may be at endbit_spec + (CRC bits).
@@ -3974,7 +3974,7 @@ impl DwgParser {
             for crc_bits in [0usize, 16, 32] {
                 let e = endbit_spec + crc_bits;
                 if e <= cls_end_bit_cap {
-                    candidates.push((e, if crc_bits == 0 { "spec ODA §5.4.4" }
+                    candidates.push((e, if crc_bits == 0 { "spec ODA Â§5.4.4" }
                         else if crc_bits == 16 { "spec + 16-bit CRC" }
                         else { "spec + 32-bit CRC" }));
                 }
@@ -3990,10 +3990,10 @@ impl DwgParser {
             });
 
             let endbit = if let Some((e, lbl, sds)) = chosen {
-                eprintln!("[dwg-dbg]   cls endbit ({}) = {}, sds={}", lbl, e, sds);
+                crate::dwg_dbg!("[dwg-dbg]   cls endbit ({}) = {}, sds={}", lbl, e, sds);
                 e
             } else {
-                eprintln!("[dwg-dbg]   no string stream found (from_rl={} bits={} bytes={} datalen={} endbyte={})",
+                crate::dwg_dbg!("[dwg-dbg]   no string stream found (from_rl={} bits={} bytes={} datalen={} endbyte={})",
                     endbit_from_rl, endbit_as_bits, endbit_as_bytes, endbit_data_len, endbit_end_byte);
                 // Brute-force: scan backward from end of buffer looking for a valid
                 // string-stream flag (bit=1) followed by a plausible RS strDataSize.
@@ -4032,7 +4032,7 @@ impl DwgParser {
                                             Err(_) => false,
                                         };
                                         if valid || sds < 2000 {
-                                            eprintln!("[dwg-dbg]   brute-force candidate: endbit={} sds={} ss_start={} valid={}",
+                                            crate::dwg_dbg!("[dwg-dbg]   brute-force candidate: endbit={} sds={} ss_start={} valid={}",
                                                 cand_endbit, sds, ss_start, valid);
                                         }
                                         if valid {
@@ -4063,16 +4063,16 @@ impl DwgParser {
                             let sds = (sds as u16) as usize;
                             if sds > 0 && sds < endbit {
                                 if let Some(ss_start) = sds_start.checked_sub(sds) {
-                                    eprintln!("[dwg-dbg]   class string stream: present, sds={} ss_start_bit={} endbit={}",
+                                    crate::dwg_dbg!("[dwg-dbg]   class string stream: present, sds={} ss_start_bit={} endbit={}",
                                         sds, ss_start, endbit);
                                     reader.set_string_stream(ss_start);
                                 }
                             } else {
-                                eprintln!("[dwg-dbg]   class string stream: present but sds={} invalid (endbit={})", sds, endbit);
+                                crate::dwg_dbg!("[dwg-dbg]   class string stream: present but sds={} invalid (endbit={})", sds, endbit);
                             }
                         }
                     } else {
-                        eprintln!("[dwg-dbg]   class string stream: not present (bit=0 at bit {})", str_present_bit);
+                        crate::dwg_dbg!("[dwg-dbg]   class string stream: not present (bit=0 at bit {})", str_present_bit);
                     }
                 }
             }
@@ -4090,7 +4090,7 @@ impl DwgParser {
                     for i in (0..data.len()).rev() {
                         if data[i] != 0 { last_nz = i + 1; break; }
                     }
-                    eprintln!("[dwg-dbg]   1st class entry @bit {}: num={} proxy_flags={} has_ss={} data_end={}",
+                    crate::dwg_dbg!("[dwg-dbg]   1st class entry @bit {}: num={} proxy_flags={} has_ss={} data_end={}",
                         entry_start, cls.class_number, cls.proxy_flags,
                         reader.has_string_stream(), last_nz);
                     // Dump last 16 non-zero bytes
@@ -4098,7 +4098,7 @@ impl DwgParser {
                         let s = last_nz.saturating_sub(16);
                         let hex: String = data[s..last_nz].iter()
                             .enumerate().map(|(i,b)| format!("[{}]={:02X}", s+i, b)).collect::<Vec<_>>().join(" ");
-                        eprintln!("[dwg-dbg]   tail bytes: {}", hex);
+                        crate::dwg_dbg!("[dwg-dbg]   tail bytes: {}", hex);
                     }
                 }
                 cls.app_name = reader.read_tv(is_unicode)?;
@@ -4108,7 +4108,7 @@ impl DwgParser {
                 cls.item_class_id = reader.read_bs()?;
 
                 // R2004+ classes have additional fields per entry.
-                // per ODA OpenDesignSpec §5.8 Classes Section, class entry
+                // per ODA OpenDesignSpec Â§5.8 Classes Section, class entry
                 // R2004+ trailer: BL num_objects, BS dwg_version, BS maint_version,
                 // BL unknown1, BL unknown2.
                 // Previously both "_dwg_version" and "_maintenance_version" were
@@ -4129,14 +4129,14 @@ impl DwgParser {
             match result {
                 Ok(cls) => {
                     if classes.len() < 40 || classes.len() % 20 == 0 {
-                        eprintln!("[dwg-dbg]   class[{}]: num={} dxf='{}' cpp='{}' app='{}'",
+                        crate::dwg_dbg!("[dwg-dbg]   class[{}]: num={} dxf='{}' cpp='{}' app='{}'",
                             classes.len(), cls.class_number, cls.dxf_name, cls.cpp_class_name, cls.app_name);
                     }
                     // Detect end of valid class entries: real CLASSES are
                     // numbered sequentially from 500 upward, have non-empty
                     // names, and a sane class_number range. Once the bit
                     // stream desyncs we read garbage class_numbers and
-                    // empty strings — stop the loop to avoid polluting
+                    // empty strings â€” stop the loop to avoid polluting
                     // class_map with bogus entries that hide real types.
                     let names_empty = cls.dxf_name.is_empty()
                         && cls.cpp_class_name.is_empty()
@@ -4144,14 +4144,14 @@ impl DwgParser {
                     let num_in_range = (cls.class_number as i32) >= 500
                         && (cls.class_number as i32) < 10000;
                     if names_empty || !num_in_range {
-                        eprintln!("[dwg-dbg]   class loop terminated at idx={}: num={} names_empty={} (last good = {} classes)",
+                        crate::dwg_dbg!("[dwg-dbg]   class loop terminated at idx={}: num={} names_empty={} (last good = {} classes)",
                             classes.len(), cls.class_number, names_empty, classes.len());
                         break;
                     }
                     classes.push(cls);
                 }
                 Err(e) => {
-                    eprintln!("[dwg-dbg]   class parse error at byte {}: {:?}", reader.tell_byte(), e);
+                    crate::dwg_dbg!("[dwg-dbg]   class parse error at byte {}: {:?}", reader.tell_byte(), e);
                     break;
                 }
             }
@@ -4197,13 +4197,13 @@ impl DwgParser {
             let obj_size = if hi & 0x80 == 0 {
                 lo | (((hi & 0x7F) as i32) << 8)
             } else {
-                // Multi-word MS — rare, handle with full parser
+                // Multi-word MS â€” rare, handle with full parser
                 match DwgBitReader::read_modular_short(data, pos) {
                     Ok((s, _)) => s,
                     Err(_) => { pos += 1; continue; }
                 }
             };
-            // Size cap at 64 KB — covers LWPOLYLINE/HATCH/DICT up to plausible
+            // Size cap at 64 KB â€” covers LWPOLYLINE/HATCH/DICT up to plausible
             // drawing scale. Raising to 1 MiB caused scanner runtime explosion
             // on R2018 files with 120 MB objects sections (8M+ candidates).
             // Common real entities are < 32 KB; 64 KB leaves headroom.
@@ -4221,7 +4221,7 @@ impl DwgParser {
 
             let mut reader = DwgBitReader::new(data, bit_start);
 
-            // R2010+: per ODA §20.1, an unsigned-MC handle_stream_size_bits
+            // R2010+: per ODA Â§20.1, an unsigned-MC handle_stream_size_bits
             // precedes the object type. Consume it before reading BS/OT.
             if self.version >= DwgVersion::R2010 {
                 let byte_pos = bit_start;
@@ -4242,7 +4242,7 @@ impl DwgParser {
             };
             if obj_type_name(type_num).is_none() { pos += 1; continue; }
 
-            // Validate bitsize (R14..R2007 only — R2010+ removed the RL bitsize
+            // Validate bitsize (R14..R2007 only â€” R2010+ removed the RL bitsize
             // field; it's replaced by the handle_stream_size_bits MC consumed above).
             if self.version >= DwgVersion::R14 && self.version < DwgVersion::R2010 {
                 match reader.read_raw_long() {
@@ -4256,9 +4256,9 @@ impl DwgParser {
                 }
             }
 
-            // Validate handle — cap raised to 0x0FFFFFFF to accommodate
+            // Validate handle â€” cap raised to 0x0FFFFFFF to accommodate
             // AutoCAD-2018+ files with large handle spaces (test65 uses up
-            // to 0x7FA58AA ≈ 134 M; old 0x100000 cap dropped all of these).
+            // to 0x7FA58AA â‰ˆ 134 M; old 0x100000 cap dropped all of these).
             let hval = match reader.read_h() {
                 Ok((hcode, hval)) => {
                     if hcode > 12
@@ -4327,7 +4327,7 @@ impl DwgParser {
         let mut scan_fallback = 0usize;
 
         while pos + 4 < data.len() {
-            // Skip zero padding efficiently — jump in chunks
+            // Skip zero padding efficiently â€” jump in chunks
             if data[pos] == 0 {
                 // Check if next 16 bytes are all zero, skip in bigger chunks
                 let chunk = 256;
@@ -4370,7 +4370,7 @@ impl DwgParser {
                         objects.push(obj);
                         sequential_ok += 1;
                     }
-                    // Advance past this object — obj_size is in bytes from bit_start
+                    // Advance past this object â€” obj_size is in bytes from bit_start
                     // Add 2 bytes for the CRC that follows each object
                     pos = obj_end + 2;
                 }
@@ -4385,7 +4385,7 @@ impl DwgParser {
         // Diagnostics: first/last non-zero positions
         let first_nonzero = data.iter().position(|&b| b != 0).unwrap_or(data.len());
         let last_nonzero = data.iter().rposition(|&b| b != 0).unwrap_or(0);
-        eprintln!("[dwg-dbg] scan_objects_section: {} objects found, {} seq_ok, {} seq_fail, {} scan_fb, data={}B first_nz={} last_nz={}",
+        crate::dwg_dbg!("[dwg-dbg] scan_objects_section: {} objects found, {} seq_ok, {} seq_fail, {} scan_fb, data={}B first_nz={} last_nz={}",
             objects.len(), sequential_ok, sequential_fail, scan_fallback, data.len(), first_nonzero, last_nonzero);
         objects
     }
@@ -4408,17 +4408,17 @@ impl DwgParser {
         let mut fail_samples: Vec<String> = Vec::new();
         let mut fail_inbounds_samples: Vec<String> = Vec::new();
         let mut fail_inbounds_offsets: Vec<usize> = Vec::new();
-        eprintln!("[dwg-dbg] parse_objects_r2000: {} handles, data.len={}", sorted.len(), data.len());
+        crate::dwg_dbg!("[dwg-dbg] parse_objects_r2000: {} handles, data.len={}", sorted.len(), data.len());
         // Show first 5 and last 5 offsets
         for (i, (&h, &off)) in sorted.iter().enumerate() {
             if i < 5 || i >= sorted.len() - 5 {
-                eprintln!("[dwg-dbg]   handle 0x{:X} -> offset {}", h, off);
+                crate::dwg_dbg!("[dwg-dbg]   handle 0x{:X} -> offset {}", h, off);
             } else if i == 5 {
-                eprintln!("[dwg-dbg]   ...");
+                crate::dwg_dbg!("[dwg-dbg]   ...");
             }
         }
         for (&handle, &file_offset) in &sorted {
-            // Skip OOB offsets early — don't even try parsing
+            // Skip OOB offsets early â€” don't even try parsing
             if file_offset + 4 >= data.len() {
                 fail_count += 1;
                 continue;
@@ -4463,9 +4463,9 @@ impl DwgParser {
                 }
             }
 
-            // For R2004+, try nearby offsets (±2, ±4, ±6, ±8) to handle CRC
+            // For R2004+, try nearby offsets (Â±2, Â±4, Â±6, Â±8) to handle CRC
             // alignment shifts. Only try for in-bounds offsets.
-            // DO NOT extend the search much further — wider windows produce
+            // DO NOT extend the search much further â€” wider windows produce
             // false positives where random bytes happen to MS-decode as a
             // small object, polluting the result set with garbage coordinates
             // that render as tens of thousands of spurious line segments.
@@ -4490,37 +4490,37 @@ impl DwgParser {
             }
         }
         if fail_count > 0 {
-            eprintln!("[dwg-dbg] parse_objects: {} failures out of {} handles ({} in-bounds, {} OOB)",
+            crate::dwg_dbg!("[dwg-dbg] parse_objects: {} failures out of {} handles ({} in-bounds, {} OOB)",
                 fail_count, sorted.len(), fail_inbounds, fail_count - fail_inbounds);
             for s in &fail_samples {
-                eprintln!("[dwg-dbg]   {}", s);
+                crate::dwg_dbg!("[dwg-dbg]   {}", s);
             }
         }
         if fail_inbounds > 0 {
-            eprintln!("[dwg-dbg] IN-BOUNDS failures ({}):", fail_inbounds);
+            crate::dwg_dbg!("[dwg-dbg] IN-BOUNDS failures ({}):", fail_inbounds);
             for s in &fail_inbounds_samples {
-                eprintln!("[dwg-dbg]   {}", s);
+                crate::dwg_dbg!("[dwg-dbg]   {}", s);
             }
             // Histogram of in-bounds failure offsets (64K buckets)
             let mut buckets: std::collections::BTreeMap<usize, usize> = std::collections::BTreeMap::new();
             for &off in &fail_inbounds_offsets {
                 *buckets.entry(off / 65536).or_insert(0) += 1;
             }
-            eprintln!("[dwg-dbg] IN-BOUNDS failure offset histogram (64K buckets):");
+            crate::dwg_dbg!("[dwg-dbg] IN-BOUNDS failure offset histogram (64K buckets):");
             for (&bucket, &cnt) in &buckets {
-                eprintln!("[dwg-dbg]   [{:>7}..{:>7}): {} failures",
+                crate::dwg_dbg!("[dwg-dbg]   [{:>7}..{:>7}): {} failures",
                     bucket * 65536, (bucket + 1) * 65536, cnt);
             }
             // Show range
             if let (Some(&min), Some(&max)) = (fail_inbounds_offsets.iter().min(), fail_inbounds_offsets.iter().max()) {
-                eprintln!("[dwg-dbg] IN-BOUNDS failure range: {}..{} (data.len={})", min, max, data.len());
+                crate::dwg_dbg!("[dwg-dbg] IN-BOUNDS failure range: {}..{} (data.len={})", min, max, data.len());
             }
         }
 
         objects
     }
 
-    /// Read an R2010+ encoded object type (OT) per ODA OpenDesignSpec §2.12.
+    /// Read an R2010+ encoded object type (OT) per ODA OpenDesignSpec Â§2.12.
     ///
     /// A 2-bit prefix indicates how to read the following 1 or 2 raw bytes:
     ///   0 -> 1 byte, value = byte
@@ -4565,7 +4565,7 @@ impl DwgParser {
         let mut reader = DwgBitReader::new(data, bit_start);
         let data_bit_start = reader.tell_bit();
 
-        // R2010+: per ODA OpenDesignSpec §20.1 / §20.2, an unsigned MC field
+        // R2010+: per ODA OpenDesignSpec Â§20.1 / Â§20.2, an unsigned MC field
         // carrying the size of the handle stream (in bits) appears right after
         // the MS object-size field and before the object type.  The handle-stream
         // size is used later to locate the string/handle streams; we don't need
@@ -4574,7 +4574,7 @@ impl DwgParser {
         //
         // IMPORTANT: per empirical alignment with libredwg-testdata + acadsharp
         // sample_AC1024.dwg, the MS `obj_size` field in R2010+ measures bytes
-        // STARTING AFTER the MC handle_stream_size_bits field — i.e. obj_size
+        // STARTING AFTER the MC handle_stream_size_bits field â€” i.e. obj_size
         // counts OT + data + handle_stream + padding, but NOT the MC itself.
         // We track the byte-count consumed by the MC so subsequent end-of-object
         // math can adjust for it.  Without this adjustment, both the string-stream
@@ -4584,7 +4584,7 @@ impl DwgParser {
         // parent POLYLINE_3D).
         let mc_start_byte = reader.tell_byte();
         let handle_stream_size_bits = if self.version >= DwgVersion::R2010 {
-            // Per ODA §20.1: unsigned MC for handle-stream size in bits.
+            // Per ODA Â§20.1: unsigned MC for handle-stream size in bits.
             let (v, new_pos) = DwgBitReader::read_unsigned_modular_char(data, reader.tell_byte())?;
             reader.seek_byte(new_pos);
             v as usize
@@ -4593,7 +4593,7 @@ impl DwgParser {
         };
         let mc_bits = (reader.tell_byte().saturating_sub(mc_start_byte)) * 8;
 
-        // Object type: pre-R2010 = BS, R2010+ = OT per §2.12
+        // Object type: pre-R2010 = BS, R2010+ = OT per Â§2.12
         let type_num = if self.version >= DwgVersion::R2010 {
             Self::read_ot(&mut reader)?
         } else {
@@ -4602,14 +4602,14 @@ impl DwgParser {
 
         // Debug: trace entity type resolution for key handles (only first few)
         if handle <= 0x10 {
-            eprintln!("[dwg-dbg] obj h=0x{:X}@{}: obj_size={} hs_bits={} type_num=0x{:X} ({}) bit_pos={}",
+            crate::dwg_dbg!("[dwg-dbg] obj h=0x{:X}@{}: obj_size={} hs_bits={} type_num=0x{:X} ({}) bit_pos={}",
                 handle, file_offset, obj_size, handle_stream_size_bits, type_num,
                 obj_type_name(type_num).unwrap_or("?"), reader.tell_bit());
             // Show raw bytes at offset
             let raw_end = (file_offset + 16).min(data.len());
             let raw: String = data[file_offset..raw_end].iter()
                 .map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-            eprintln!("[dwg-dbg]   raw[{}..]: {}", file_offset, raw);
+            crate::dwg_dbg!("[dwg-dbg]   raw[{}..]: {}", file_offset, raw);
         }
         // Optional verbose: dump every type_num when DWG_TRACE_TYPES=1
         if std::env::var("DWG_TRACE_TYPES").map(|v| v == "1").unwrap_or(false) {
@@ -4662,15 +4662,15 @@ impl DwgParser {
             }
         };
 
-        // Read bitsize — marks the end of data section / start of handles.
-        // Per ODA OpenDesignSpec §20.1 (non-entity objects) vs. §20.2 (entities):
+        // Read bitsize â€” marks the end of data section / start of handles.
+        // Per ODA OpenDesignSpec Â§20.1 (non-entity objects) vs. Â§20.2 (entities):
         //   R13       : no RL bitsize field anywhere.
         //   R14-R2007 : RL bitsize present for BOTH entities and non-entities.
-        //   R2010+    : RL bitsize present ONLY for entities (§20.2 lists it under
-        //               "R2000+ Only"). Non-entity objects (§20.1) rely on the MC
+        //   R2010+    : RL bitsize present ONLY for entities (Â§20.2 lists it under
+        //               "R2000+ Only"). Non-entity objects (Â§20.1) rely on the MC
         //               handle-stream-size read at the top of the object instead.
-        // Per ODA §20.1/§20.2: R14-R2007 have RL bitsize for both entities and
-        // non-entities. R2010+ removed the RL bitsize entirely — the MC
+        // Per ODA Â§20.1/Â§20.2: R14-R2007 have RL bitsize for both entities and
+        // non-entities. R2010+ removed the RL bitsize entirely â€” the MC
         // handle_stream_size field at the top of the object replaces it.
         // (Empirically verified on AC1024 fixtures; adding an RL read here
         // adds a 32-bit drift into entity_common that scrambles parsing.)
@@ -4686,7 +4686,7 @@ impl DwgParser {
             None
         };
 
-        // R2007+: set up string stream per ODA OpenDesignSpec §20.1.
+        // R2007+: set up string stream per ODA OpenDesignSpec Â§20.1.
         // The string stream is located just before the handle stream.
         // For entities (R2000+): endbit = data_bit_start + bitsize.
         // For non-entities (R2010+): endbit = data_bit_start + obj_size*8 - handle_stream_size_bits.
@@ -4695,7 +4695,7 @@ impl DwgParser {
         //   if 1: RS strDataSize at endbit-17
         //   string stream starts at endbit - 1 - strDataSize (in bits)
         if self.version.is_r2007_plus() && self.use_string_stream {
-            // Per ODA OpenDesignSpec §19.3.4 + §20.1 (R2010+):
+            // Per ODA OpenDesignSpec Â§19.3.4 + Â§20.1 (R2010+):
             //
             // The R2010+ object layout (after the leading MS object_size
             // field) is:
@@ -4762,7 +4762,7 @@ impl DwgParser {
                                         }
                                     }
                                 }
-                                // Per ODA OpenDesignSpec §19.3.4: the string-data
+                                // Per ODA OpenDesignSpec Â§19.3.4: the string-data
                                 // region ends at endbit - 17 (or endbit - 33 if
                                 // strDataSize had its high bit set, requiring
                                 // an extended high-RS), NOT at endbit - 1.
@@ -4786,7 +4786,7 @@ impl DwgParser {
             }
         }
 
-        // Read own handle — present in the data stream for all versions
+        // Read own handle â€” present in the data stream for all versions
         let _ = reader.read_h().ok();
 
         // Parse EED (Extended Entity Data)
@@ -4808,7 +4808,7 @@ impl DwgParser {
         // because it doesn't depend on correct parsing of the entity body.
         // handle_stream_start = data_bit_start + obj_size_bytes * 8 - handle_stream_size_bits
         //
-        // Compute hs_start once — applies to both entities AND table objects.
+        // Compute hs_start once â€” applies to both entities AND table objects.
         let hs_from_mc = if self.version >= DwgVersion::R2010 && handle_stream_size_bits > 0 {
             // Same adjustment as in the string-stream block: obj_size in
             // R2010+ counts bytes AFTER the MC handle_stream_size_bits
@@ -4826,7 +4826,7 @@ impl DwgParser {
         let hs_from_bitsize = bitsize.map(|bs| data_bit_start + bs as usize);
         let hs_bitpos = hs_from_mc.or(hs_from_bitsize);
 
-        // DWG_LAYER_DUMP=1 → dump raw object body bytes for each LAYER, plus
+        // DWG_LAYER_DUMP=1 â†’ dump raw object body bytes for each LAYER, plus
         // key offsets, so we can pattern-mine the bit/byte position of the ACI.
         // The dump is keyed by (handle, name) so it can be cross-referenced to
         // the DXF oracle (group code 62 per layer).
@@ -4867,9 +4867,9 @@ impl DwgParser {
             }
         } else {
             // Table-object handle-stream pass (LAYER, BLOCK_HEADER, STYLE,
-            // LTYPE, DIMSTYLE, ...). Per ODA §20.4.53 (LAYER) + similar
-            // §20.4.x sections each table object has its own handle layout.
-            // For now we only resolve LAYER's color handle (type 0x33) —
+            // LTYPE, DIMSTYLE, ...). Per ODA Â§20.4.53 (LAYER) + similar
+            // Â§20.4.x sections each table object has its own handle layout.
+            // For now we only resolve LAYER's color handle (type 0x33) â€”
             // other table objects keep the default no-op so we don't risk
             // disturbing the existing scene_io contract.
             if type_num == 0x33 {
@@ -4904,7 +4904,7 @@ impl DwgParser {
         obj_data.remove("_owned_object_count");
         obj_data.remove("_entity_mode");
         // LAYER-only intermediates from parse_layer_obj /
-        // read_layer_handles_at_current — `_color_handle` is kept so
+        // read_layer_handles_at_current â€” `_color_handle` is kept so
         // scene_io can resolve it; the rest are diagnostic and dropped.
         obj_data.remove("_color_bs_raw");
         obj_data.remove("_color_sentinel");
@@ -5047,7 +5047,7 @@ impl DwgParser {
                     items.push(serde_json::json!({"type": "int32", "value": v}));
                 }
                 _ => {
-                    // Unknown — skip rest
+                    // Unknown â€” skip rest
                     break;
                 }
             }
@@ -5087,7 +5087,7 @@ impl DwgParser {
             .and_then(|v| v.as_u64()).unwrap_or(3) as u8;
         let material_flags = obj_data.get("_material_flags")
             .and_then(|v| v.as_u64()).unwrap_or(3) as u8;
-        // Per ODA §20.4.1: entmode controls whether the OWNER handle is
+        // Per ODA Â§20.4.1: entmode controls whether the OWNER handle is
         // present in the handle-stream. Only entmode == 0 emits it.
         let entity_mode = obj_data.get("_entity_mode")
             .and_then(|v| v.as_u64()).unwrap_or(0) as u8;
@@ -5134,7 +5134,7 @@ impl DwgParser {
         }
 
         let _ = (|| -> Result<(), DwgError> {
-            // 1. Owner handle — ONLY present when entmode == 0 per ODA §20.4.1.
+            // 1. Owner handle â€” ONLY present when entmode == 0 per ODA Â§20.4.1.
             // For entmode 1 (PS) / 2 (MS) / 3 (other) the owner is implicit
             // and NOT encoded in the handle-stream. Reading it unconditionally
             // consumed bytes meant for later fields (layer, block_header, ...),
@@ -5159,14 +5159,14 @@ impl DwgParser {
                 let _ = hread!("xdict"); // skip xdict
             }
 
-            // 4. Layer handle — the key reference we need
+            // 4. Layer handle â€” the key reference we need
             let (code, val) = hread!("layer")?;
             refs.layer = Some(resolve_handle_ref(code, val, parent_handle));
 
-            // 5. Linetype handle — per ODA §20.4.1: present ONLY when
+            // 5. Linetype handle â€” per ODA Â§20.4.1: present ONLY when
             // ltype_flags == 0b11 (3). Flags 0/1/2 mean BYLAYER/BYBLOCK/
             // Continuous respectively and the handle is implicit. Previous
-            // logic `ltype_flags != 3` was inverted — it consumed the next
+            // logic `ltype_flags != 3` was inverted â€” it consumed the next
             // handle (typically block_header for INSERT) whenever the
             // linetype WAS implicit, corrupting the rest of the handle
             // stream.
@@ -5183,14 +5183,14 @@ impl DwgParser {
                 refs.next_entity = Some(resolve_handle_ref(code, val, parent_handle));
             }
 
-            // 7. Plotstyle handle — per ODA §20.4.1: present ONLY when
+            // 7. Plotstyle handle â€” per ODA Â§20.4.1: present ONLY when
             // plotstyle_flags == 0b11 (3). Same inversion fix as linetype.
             if plotstyle_flags == 3 {
                 let (code, val) = hread!("plotstyle")?;
                 refs.plotstyle = Some(resolve_handle_ref(code, val, parent_handle));
             }
 
-            // 8. R2007+: Material handle — per ODA §20.4.1: present ONLY
+            // 8. R2007+: Material handle â€” per ODA Â§20.4.1: present ONLY
             // when material_flags == 0b11 (3). Same inversion fix.
             if self.version >= DwgVersion::R2007 && material_flags == 3 {
                 let (code, val) = hread!("material")?;
@@ -5200,11 +5200,11 @@ impl DwgParser {
             // --- Entity-type-specific handles ---
 
             // TEXT (0x01) / ATTRIB (0x02) / ATTDEF (0x03) / MTEXT (0x2C):
-            // Per ODA §20.4.45 (TEXT) / §20.4.3 (ATTRIB) / §20.4.46 (MTEXT)
+            // Per ODA Â§20.4.45 (TEXT) / Â§20.4.3 (ATTRIB) / Â§20.4.46 (MTEXT)
             // the handle-stream ends with a hard pointer to the TEXT STYLE
             // table entry (DWG STYLE object, type_num 0x35). We record it
             // in `obj_data["textStyleHandle"]` via a post-hook in
-            // parse_entity_common_tail — but since we only have `refs`
+            // parse_entity_common_tail â€” but since we only have `refs`
             // here we piggy-back on `owned_handles[0]` so downstream
             // resolve_handles can look it up.
             if type_num == 0x01 || type_num == 0x02 || type_num == 0x03 || type_num == 0x2C {
@@ -5215,10 +5215,10 @@ impl DwgParser {
                 }
             }
 
-            // INSERT (0x07) / MINSERT (0x08): per ODA §20.4.9 handle section:
+            // INSERT (0x07) / MINSERT (0x08): per ODA Â§20.4.9 handle section:
             //   - BLOCK HEADER handle (hard reference, code 5)
             //   - Pre-R2004 with attribs: first_attrib, last_attrib, seqend
-            //   - R2004+ with attribs: owned_object_count × handle, then seqend
+            //   - R2004+ with attribs: owned_object_count Ã— handle, then seqend
             if type_num == 0x07 || type_num == 0x08 {
                 // Block header handle
                 if let Ok((code, val)) = hread!("block_header") {
@@ -5253,15 +5253,15 @@ impl DwgParser {
                 }
             }
 
-            // DIMENSION (0x14 .. 0x1A): per ODA OpenDesignSpec §19.4.27
+            // DIMENSION (0x14 .. 0x1A): per ODA OpenDesignSpec Â§19.4.27
             // (Dimension Common handle section). After the shared 8 handles
             // the DIMENSION body has two trailing entity-specific hard
             // references:
-            //   H  DIMSTYLE handle              (§19.4.27 "dimstyle")
-            //   H  anonymous block handle      (§19.4.27 "block")
+            //   H  DIMSTYLE handle              (Â§19.4.27 "dimstyle")
+            //   H  anonymous block handle      (Â§19.4.27 "block")
             // Stash DIMSTYLE in owned_handles[0] so downstream
             // resolve_handles can expose it as d["dimStyleHandle"]. The
-            // anonymous block handle is currently unused by scene_io —
+            // anonymous block handle is currently unused by scene_io â€”
             // read it to keep the handle-stream aligned but drop the value.
             if (0x14..=0x1A).contains(&type_num) {
                 if let Ok((code, val)) = hread!("dimstyle") {
@@ -5269,13 +5269,13 @@ impl DwgParser {
                         resolve_handle_ref(code, val, parent_handle)
                     );
                 }
-                // anonymous block handle — consumed to stay aligned
+                // anonymous block handle â€” consumed to stay aligned
                 let _ = hread!("dim_anon_block");
             }
 
-            // POLYLINE_2D (0x0F) / POLYLINE_3D (0x10): per ODA §20.4.16/17 handle section:
+            // POLYLINE_2D (0x0F) / POLYLINE_3D (0x10): per ODA Â§20.4.16/17 handle section:
             //   - Pre-R2004: first_vertex, last_vertex, seqend
-            //   - R2004+: owned_object_count × vertex handles, then seqend
+            //   - R2004+: owned_object_count Ã— vertex handles, then seqend
             if type_num == 0x0F || type_num == 0x10 {
                 if self.version >= DwgVersion::R2004 {
                     let count = obj_data.get("_owned_object_count")
@@ -5312,19 +5312,19 @@ impl DwgParser {
     /// Read LAYER object handle stream and recover the AcDbColor handle
     /// when the data-stream BS color was written in sentinel form.
     ///
-    /// Per ODA OpenDesignSpec §20.4.53 (LAYER object) the handle stream
+    /// Per ODA OpenDesignSpec Â§20.4.53 (LAYER object) the handle stream
     /// for a LAYER table record on R2004+ is, in order:
     ///
-    ///   parent_handle      H (soft pointer, code 4) — LAYER_CONTROL parent
-    ///   reactor_handles    H × num_reactors
+    ///   parent_handle      H (soft pointer, code 4) â€” LAYER_CONTROL parent
+    ///   reactor_handles    H Ã— num_reactors
     ///   xdic_handle        H (only when xdict_missing == 0)
     ///   external_ref       H (NULL_HANDLE for ordinary layers, code 5)
     ///   plotstyle          H (hard pointer)
     ///   material           H (hard pointer, R2007+ only)
     ///   linetype           H (hard pointer)
-    ///   color_object       H (hard pointer — ONLY when the LAYER's color
+    ///   color_object       H (hard pointer â€” ONLY when the LAYER's color
     ///                          BS contained a method-sentinel byte
-    ///                          0xC0..0xC8 per §2.11)
+    ///                          0xC0..0xC8 per Â§2.11)
     ///
     /// When the color_object handle is present we resolve it to an
     /// AcDbColor object body whose color_byte field holds the actual ACI.
@@ -5393,7 +5393,7 @@ impl DwgParser {
             if !xdict_missing {
                 let _ = read_one("xdic", reader);
             }
-            // 4. external_ref (always — NULL_HANDLE for non-xref layers)
+            // 4. external_ref (always â€” NULL_HANDLE for non-xref layers)
             let _ = read_one("external_ref", reader);
             // 5. plotstyle
             let _ = read_one("plotstyle", reader);
@@ -5403,8 +5403,8 @@ impl DwgParser {
             }
             // 7. linetype
             let _ltype = read_one("linetype", reader);
-            // 8. color object — present only when the data-stream BS used
-            //    a method-sentinel form (per ODA §2.11). If present we
+            // 8. color object â€” present only when the data-stream BS used
+            //    a method-sentinel form (per ODA Â§2.11). If present we
             //    capture the absolute handle so a post-resolution pass can
             //    look up the AcDbColor object's color_byte and override
             //    the white-fallback ACI emitted by read_cmc_r2004.
@@ -5412,18 +5412,18 @@ impl DwgParser {
             // ----------------------------------------------------------
             // Empirical evidence from O2D_LAYER_COLOR_DBG bit-stream
             // traces on the 3bm Funderingsherstel CP-21 fixture (AC1024 /
-            // R2010): for ALL layers — both clean-ACI and sentinel-form —
+            // R2010): for ALL layers â€” both clean-ACI and sentinel-form â€”
             // the LAYER object's handle_stream_size_bits MC field
             // consistently reads 78 bits, exactly enough for 5 handles
             // (parent + external_ref + plotstyle + material + linetype).
             // The CLASSES section in this file does NOT include an
             // AcDbColor class. So the AcDbColor handle resolution path
-            // implied by ODA §2.11 + §20.4.53 isn't applicable here.
+            // implied by ODA Â§2.11 + Â§20.4.53 isn't applicable here.
             //
             // The actual ACI for sentinel-form layers (Hulplijnen=1,
             // Detailpen002=2, Buitenwanden=3, etc.) appears to be
             // encoded INLINE in the data stream past the CMC color RC
-            // — but the exact post-color field layout is not yet
+            // â€” but the exact post-color field layout is not yet
             // decoded. Reading further handles past slot 5 produces
             // garbage codes (0xF, 0x0) confirming we're past hs_end.
             //
@@ -5443,7 +5443,7 @@ impl DwgParser {
     fn parse_entity_common(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
 
-        // Per ODA v5.4.1 §20.4.1 "Common Entity Data" (authoritative spec
+        // Per ODA v5.4.1 Â§20.4.1 "Common Entity Data" (authoritative spec
         // reference). Flow matches the spec table read top-to-bottom:
         //
         //   1. Graphic Present Flag (B)                     [Common]
@@ -5451,16 +5451,16 @@ impl DwgParser {
         //        pre-R2010 : RL  graphic size in bytes      [Common]
         //        R2010+    : BLL graphic size in bytes
         //        X               graphic image bytes
-        //   3. R13-R14 Only: RL Obj size (bitsize)          — skipped for R2000+
+        //   3. R13-R14 Only: RL Obj size (bitsize)          â€” skipped for R2000+
         //   4. Entmode BB                                   [Common]
         //   5. Numreactors BL                               [Common]
         //   6. XDic Missing Flag B                          [R2004+]
         //   7. Has DS binary data B                         [R2013+]
         //   8. Isbylayerlt B                                [R13-R14 only]
-        //   9. Nolinks B                                    [Common per §20.4.1,
+        //   9. Nolinks B                                    [Common per Â§20.4.1,
         //                                                    BUT empirically absent
         //                                                    in R2010+ data stream
-        //                                                    — see note below]
+        //                                                    â€” see note below]
         //  10. Color: CMC pre-R2004, ENC R2004+
         //  11. Ltype scale BD
         //  12. R2000+ BB Ltype flags + BB Plotstyle flags
@@ -5469,14 +5469,14 @@ impl DwgParser {
         //  15. BS Invisibility
         //  16. R2000+ RC Lineweight
         //
-        // Nolinks sub-note: the ODA v5.4.1 §20.4.1 table places `Nolinks B`
+        // Nolinks sub-note: the ODA v5.4.1 Â§20.4.1 table places `Nolinks B`
         // under a "Common" header (applying to R2010+). However empirical
         // evidence from arc_2010.dwg / circle_2010.dwg / line_2010.dwg
         // (all AC1024 = R2010, confirmed against DXF ground truth) shows
         // that OMITTING the nolinks bit for R2010+ produces pixel-exact
         // coordinates. Restoring the bit for R2010+ causes a 1-bit drift
         // that scrambles every R2010 entity. One reading of the spec is
-        // that for R2004+ (per §20.4.1 note 4548: "For R2004+ this always
+        // that for R2004+ (per Â§20.4.1 note 4548: "For R2004+ this always
         // has value 1 (links are not used)") the bit was absorbed back
         // into metadata / removed from the data stream. We treat that as
         // the empirically correct behaviour.
@@ -5502,11 +5502,11 @@ impl DwgParser {
         }
 
         let _ = (|| -> Result<(), DwgError> {
-            // 1. Graphic Present Flag (B) — Common §20.4.1.
+            // 1. Graphic Present Flag (B) â€” Common Â§20.4.1.
             tr!("graphic-present B");
             let preview_exists = reader.read_bit()?;
             if preview_exists != 0 {
-                // 2. Graphic size: RL pre-R2010, BLL R2010+. §20.2.
+                // 2. Graphic size: RL pre-R2010, BLL R2010+. Â§20.2.
                 tr!("graphic-size RL/BLL");
                 let preview_size = if self.version >= DwgVersion::R2010 {
                     reader.read_bll()? as usize
@@ -5518,7 +5518,7 @@ impl DwgParser {
                 // silently skip the read on legitimate large thumbnails,
                 // causing bit-stream drift for subsequent entity_common
                 // fields. Cap at the remaining bit-stream bytes as a hard
-                // safety net — consuming a truncated count is still
+                // safety net â€” consuming a truncated count is still
                 // preferable to skipping the read entirely.
                 let max_bytes = reader.remaining_bytes();
                 let to_read = preview_size.min(max_bytes);
@@ -5530,13 +5530,13 @@ impl DwgParser {
                 }
             }
 
-            // 4. Entmode BB — Common §20.4.1.
-            // Per ODA §20.4.1: entmode determines whether the OWNER handle
+            // 4. Entmode BB â€” Common Â§20.4.1.
+            // Per ODA Â§20.4.1: entmode determines whether the OWNER handle
             // appears in the handle section:
-            //   entmode == 0  → owner handle IS present (read as soft-pointer)
-            //   entmode == 1  → owner is PaperSpace (implicit, NOT in stream)
-            //   entmode == 2  → owner is ModelSpace  (implicit, NOT in stream)
-            //   entmode == 3  → owner absent from handle stream (special case)
+            //   entmode == 0  â†’ owner handle IS present (read as soft-pointer)
+            //   entmode == 1  â†’ owner is PaperSpace (implicit, NOT in stream)
+            //   entmode == 2  â†’ owner is ModelSpace  (implicit, NOT in stream)
+            //   entmode == 3  â†’ owner absent from handle stream (special case)
             // Stored under `_entity_mode` so read_entity_handles_at_current
             // can gate the owner-handle read. The public `entity_mode` key
             // is kept for backwards compat.
@@ -5545,12 +5545,12 @@ impl DwgParser {
             result.insert("entity_mode".into(), serde_json::json!(entity_mode));
             result.insert("_entity_mode".into(), serde_json::json!(entity_mode));
 
-            // 5. Numreactors BL — Common §20.4.1.
+            // 5. Numreactors BL â€” Common Â§20.4.1.
             tr!("numreactors BL");
             let num_reactors = reader.read_bl()?;
             result.insert("_num_reactors".into(), serde_json::json!(num_reactors));
 
-            // 6. XDic Missing Flag B — R2004+ §20.4.1.
+            // 6. XDic Missing Flag B â€” R2004+ Â§20.4.1.
             let xdict_missing = if self.version >= DwgVersion::R2004 {
                 tr!("xdict-missing B  [R2004+]");
                 reader.read_bit()? != 0
@@ -5559,22 +5559,22 @@ impl DwgParser {
             };
             result.insert("_xdict_missing".into(), serde_json::json!(xdict_missing));
 
-            // 7. Has DS binary data B — R2013+ §20.4.1.
+            // 7. Has DS binary data B â€” R2013+ Â§20.4.1.
             if self.version >= DwgVersion::R2013 {
                 tr!("has-ds-binary B  [R2013+]");
                 let _has_binary_data = reader.read_bit()?;
             }
 
-            // 8+9. Nolinks B (R2000-R2007 only in the data stream — see
+            // 8+9. Nolinks B (R2000-R2007 only in the data stream â€” see
             // header comment block above; R2010+ entities OMIT this bit
-            // empirically despite §20.4.1 labelling it "Common").
+            // empirically despite Â§20.4.1 labelling it "Common").
             //
-            // Per ODA §20.4.1 note: "For R2004+ this always has value 1
+            // Per ODA Â§20.4.1 note: "For R2004+ this always has value 1
             // (links are not used)". So when the bit is absent from the
-            // stream (R2010+) we MUST treat nolinks as `true`, NOT false —
+            // stream (R2010+) we MUST treat nolinks as `true`, NOT false â€”
             // otherwise read_entity_handles_at_current consumes two phantom
             // prev/next entity handles and corrupts every subsequent
-            // ref (plotstyle, material, block_header…).
+            // ref (plotstyle, material, block_headerâ€¦).
             let nolinks = if self.version < DwgVersion::R2010 {
                 tr!("nolinks B  [R2000-R2007]");
                 reader.read_bit()? != 0
@@ -5584,7 +5584,7 @@ impl DwgParser {
             result.insert("_nolinks".into(), serde_json::json!(nolinks));
 
             // 10. Color: R2004+ uses ENC (true color), R2000 uses CMC (index).
-            // §20.4.1 + §2.11 (ENC layout: BS + optional BS for RGB when
+            // Â§20.4.1 + Â§2.11 (ENC layout: BS + optional BS for RGB when
             // 0x8000 set + optional BL for transparency when 0x2000 set).
             if self.version >= DwgVersion::R2004 {
                 tr!("color ENC  [R2004+]");
@@ -5602,11 +5602,11 @@ impl DwgParser {
                 result.insert("color".into(), serde_json::json!(reader.read_cmc()?));
             }
 
-            // 11. Ltype scale BD — §20.4.1.
+            // 11. Ltype scale BD â€” Â§20.4.1.
             tr!("ltype-scale BD");
             result.insert("linetype_scale".into(), serde_json::json!(reader.read_bd()?));
 
-            // 12. Ltype flags BB + Plotstyle flags BB — R2000+ §20.4.1.
+            // 12. Ltype flags BB + Plotstyle flags BB â€” R2000+ Â§20.4.1.
             tr!("ltype-flags BB");
             let ltype_flags = reader.read_bb()?;
             result.insert("_ltype_flags".into(), serde_json::json!(ltype_flags));
@@ -5615,7 +5615,7 @@ impl DwgParser {
             let plotstyle_flags = reader.read_bb()?;
             result.insert("_plotstyle_flags".into(), serde_json::json!(plotstyle_flags));
 
-            // 13. R2007+: Material flags BB + Shadow flags RC — §20.4.1.
+            // 13. R2007+: Material flags BB + Shadow flags RC â€” Â§20.4.1.
             if self.version >= DwgVersion::R2007 {
                 tr!("material-flags BB  [R2007+]");
                 let material_flags = reader.read_bb()?;
@@ -5625,7 +5625,7 @@ impl DwgParser {
                 result.insert("_shadow_flags".into(), serde_json::json!(shadow_flags));
             }
 
-            // 14. R2010+: three single-bit visual-style flags — §20.4.1.
+            // 14. R2010+: three single-bit visual-style flags â€” Â§20.4.1.
             if self.version >= DwgVersion::R2010 {
                 tr!("has-full-vs B  [R2010+]");
                 let _has_full_vs = reader.read_bit()?;
@@ -5635,12 +5635,12 @@ impl DwgParser {
                 let _has_edge_vs = reader.read_bit()?;
             }
 
-            // 15. Invisibility BS — Common §20.4.1.
+            // 15. Invisibility BS â€” Common Â§20.4.1.
             tr!("invisibility BS");
             let invisibility = reader.read_bs()?;
             result.insert("invisible".into(), serde_json::json!(invisibility != 0));
 
-            // 16. Lineweight RC — R2000+ §20.4.1.
+            // 16. Lineweight RC â€” R2000+ Â§20.4.1.
             tr!("lineweight RC  [R2000+]");
             result.insert("lineweight".into(), serde_json::json!(reader.read_byte()?));
 
@@ -5827,7 +5827,7 @@ impl DwgParser {
     fn parse_text(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
         let _ = (|| -> Result<(), DwgError> {
-            // per ODA OpenDesignSpec §20.4.45 (TEXT entity). dataflags bits
+            // per ODA OpenDesignSpec Â§20.4.45 (TEXT entity). dataflags bits
             // indicate which optional sub-fields are OMITTED (bit set = omit,
             // use default). The justification codes (72/73 in DXF terms)
             // live after text_value and are guarded by bits 0x20 / 0x40 / 0x80.
@@ -5849,7 +5849,7 @@ impl DwgParser {
             let height = reader.read_double()?;
             let _width_factor = if dataflags & 0x10 == 0 { reader.read_double()? } else { 1.0 };
             let text_value = reader.read_tv(self.version.is_r2007_plus())?;
-            // per ODA §20.4.45: generation (BS), horizontal_alignment (BS),
+            // per ODA Â§20.4.45: generation (BS), horizontal_alignment (BS),
             // vertical_alignment (BS). Each guarded by the corresponding
             // dataflags omit-bit. Values match DXF codes 71, 72, 73.
             let _generation = if dataflags & 0x20 == 0 { reader.read_bs()? as i16 } else { 0 };
@@ -5863,7 +5863,7 @@ impl DwgParser {
             result.insert("height".into(), serde_json::json!(height));
             result.insert("text".into(), serde_json::json!(text_value));
             // DXF code 72 (horizontal justification): 0=Left 1=Center 2=Right
-            //   3=Aligned 4=Middle 5=Fit — consumed by scene_io.rs TEXT arm.
+            //   3=Aligned 4=Middle 5=Fit â€” consumed by scene_io.rs TEXT arm.
             result.insert("horizontalAlign".into(), serde_json::json!(horiz_align));
             // DXF code 73 (vertical justification): 0=Baseline 1=Bottom
             //   2=Middle 3=Top.
@@ -5876,10 +5876,10 @@ impl DwgParser {
     fn parse_mtext(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
         let _ = (|| -> Result<(), DwgError> {
-            // Per ODA OpenDesignSpec §20.4.46 (MTEXT).
+            // Per ODA OpenDesignSpec Â§20.4.46 (MTEXT).
             let insertion = reader.read_3bd()?;
             let _extrusion = reader.read_3bd()?;
-            // ODA §20.4.46: x_axis_dir (group 11/21/31) is the MTEXT local
+            // ODA Â§20.4.46: x_axis_dir (group 11/21/31) is the MTEXT local
             // X-axis direction vector. Its angle (atan2(y, x)) IS the MTEXT
             // rotation; there is NO separate code-50 angle in the DWG stream
             // (unlike TEXT). Without this a rotated MTEXT like Funderings-
@@ -5940,7 +5940,7 @@ impl DwgParser {
             let _extrusion = reader.read_3bd()?;
             let has_attribs = reader.read_bit()?;
 
-            // R2004+: owned_object_count (BL) — per ODA §20.4.9.
+            // R2004+: owned_object_count (BL) â€” per ODA Â§20.4.9.
             let owned_object_count = if self.version >= DwgVersion::R2004 {
                 reader.read_bl().unwrap_or(0)
             } else {
@@ -5962,7 +5962,7 @@ impl DwgParser {
     fn parse_lwpolyline(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
         let _ = (|| -> Result<(), DwgError> {
-            // Per ODA OpenDesignSpec §20.4.85 (LWPOLYLINE / "LWPLINE").
+            // Per ODA OpenDesignSpec Â§20.4.85 (LWPOLYLINE / "LWPLINE").
             let flag = reader.read_bs()? as u16;
 
             if flag & 4 != 0 { reader.read_bd()?; }   // const width  (43)
@@ -6031,7 +6031,7 @@ impl DwgParser {
             let scenario = reader.read_bl()?;
             result.insert("scenario".into(), serde_json::json!(scenario));
 
-            // per ODA OpenDesignSpec §19.3.19 — R2013+ SPLINE inserts two
+            // per ODA OpenDesignSpec Â§19.3.19 â€” R2013+ SPLINE inserts two
             // extra BL fields (splineflags1, knotparam) before degree.
             if self.version >= DwgVersion::R2013 {
                 let _splineflags1 = reader.read_bl()?;
@@ -6062,7 +6062,7 @@ impl DwgParser {
             } else if scenario == 1 {
                 let degree = reader.read_bl()?;
                 result.insert("degree".into(), serde_json::json!(degree));
-                // per ODA §19.3.19 — scenario 1 has fit_tol + beg/end tangent
+                // per ODA Â§19.3.19 â€” scenario 1 has fit_tol + beg/end tangent
                 // vectors before num_fit.
                 let _fit_tol = reader.read_bd()?;
                 let _beg_tan_vec = reader.read_3bd()?;
@@ -6174,7 +6174,7 @@ impl DwgParser {
             let height = reader.read_double()?;
             let _width_factor = if dataflags & 0x10 == 0 { reader.read_double()? } else { 1.0 };
             let text_value = reader.read_tv(is_unicode)?;
-            // per ODA §20.4.46 (ATTRIB) / §20.4.45 (TEXT): BS codes 71/72/73.
+            // per ODA Â§20.4.46 (ATTRIB) / Â§20.4.45 (TEXT): BS codes 71/72/73.
             let _generation = reader.read_bs()? as i16;
             let horiz_align = reader.read_bs()? as i16;
             let vert_align = reader.read_bs()? as i16;
@@ -6189,7 +6189,7 @@ impl DwgParser {
             result.insert("text".into(), serde_json::json!(text_value));
             result.insert("tag".into(), serde_json::json!(tag));
             result.insert("flags".into(), serde_json::json!(flags));
-            // DXF codes 72/73 — consumed by scene_io.rs TEXT arm.
+            // DXF codes 72/73 â€” consumed by scene_io.rs TEXT arm.
             result.insert("horizontalAlign".into(), serde_json::json!(horiz_align));
             result.insert("verticalAlign".into(), serde_json::json!(vert_align));
             Ok(())
@@ -6259,7 +6259,7 @@ impl DwgParser {
     fn parse_polyline_2d(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
         let _ = (|| -> Result<(), DwgError> {
-            // Per ODA OpenDesignSpec §20.4.16 (2D POLYLINE).
+            // Per ODA OpenDesignSpec Â§20.4.16 (2D POLYLINE).
             let flags = reader.read_bs()?;
             let _curve_type = reader.read_bs()?;
             let start_width = reader.read_bd()?;
@@ -6267,7 +6267,7 @@ impl DwgParser {
             let _thickness = reader.read_bt()?;
             let elevation = reader.read_bd()?;
             let _extrusion = reader.read_be()?;
-            // R2004+: owned-object count added per ODA §20.4.16.
+            // R2004+: owned-object count added per ODA Â§20.4.16.
             let owned_count = if self.version >= DwgVersion::R2004 {
                 reader.read_bl().unwrap_or(0)
             } else {
@@ -6287,10 +6287,10 @@ impl DwgParser {
     fn parse_polyline_3d(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
         let _ = (|| -> Result<(), DwgError> {
-            // Per ODA OpenDesignSpec §20.4.17 (3D POLYLINE).
+            // Per ODA OpenDesignSpec Â§20.4.17 (3D POLYLINE).
             let _curve_flags = reader.read_byte()?;
             let flags = reader.read_byte()?;
-            // R2004+: owned-object count added per ODA §20.4.17.
+            // R2004+: owned-object count added per ODA Â§20.4.17.
             let owned_count = if self.version >= DwgVersion::R2004 {
                 reader.read_bl().unwrap_or(0)
             } else {
@@ -6304,7 +6304,7 @@ impl DwgParser {
         result
     }
 
-    /// VERTEX_MESH (type 0x0C). Per ODA §20.4.18: flags (RC) + point (3BD).
+    /// VERTEX_MESH (type 0x0C). Per ODA Â§20.4.18: flags (RC) + point (3BD).
     fn parse_vertex_mesh(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
         let _ = (|| -> Result<(), DwgError> {
@@ -6317,7 +6317,7 @@ impl DwgParser {
         result
     }
 
-    /// VERTEX_PFACE (type 0x0D). Per ODA §20.4.19: flags (RC) + point (3BD).
+    /// VERTEX_PFACE (type 0x0D). Per ODA Â§20.4.19: flags (RC) + point (3BD).
     /// Structurally identical to VERTEX_3D/VERTEX_MESH for position data.
     fn parse_vertex_pface(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
@@ -6331,7 +6331,7 @@ impl DwgParser {
         result
     }
 
-    /// VERTEX_PFACE_FACE (type 0x0E). Per ODA §20.4.20: four vertex-indices (BS).
+    /// VERTEX_PFACE_FACE (type 0x0E). Per ODA Â§20.4.20: four vertex-indices (BS).
     /// This is a face record, not a positioned vertex. Emit indices but no position.
     fn parse_vertex_pface_face(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
@@ -6346,7 +6346,7 @@ impl DwgParser {
         result
     }
 
-    /// POLYLINE_PFACE (type 0x1D). Per ODA §20.4.21:
+    /// POLYLINE_PFACE (type 0x1D). Per ODA Â§20.4.21:
     ///   num_verts (BS) + num_faces (BS) [+ R2004+ owned_count (BL)].
     fn parse_polyline_pface(&self, reader: &mut DwgBitReader) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
@@ -6370,7 +6370,7 @@ impl DwgParser {
 
     // --- DIMENSION common ---
     //
-    // Per ODA 5.4.2 §19.4.27 (Dimension Common DWG body), the field order is:
+    // Per ODA 5.4.2 Â§19.4.27 (Dimension Common DWG body), the field order is:
     //   R2010+:  RC class_version (=0)
     //   3BD  extrusion         (210)
     //   2RD  text_midpt         (11)
@@ -6388,7 +6388,7 @@ impl DwgParser {
     //
     // Prior version of this parser was MISSING the R2007+ three booleans and
     // the final `clone_ins_pt 2RD`. That drift shifted all subsequent reads
-    // (extLine1/2 in LINEAR/ALIGNED, etc.) by ~131 bits — the Funderingsherstel
+    // (extLine1/2 in LINEAR/ALIGNED, etc.) by ~131 bits â€” the Funderingsherstel
     // DWG produced extLine1 values like 8.78e-153 (subnormal doubles) because
     // the ~131 mis-aligned bits happened to form an exponent near 0. Restoring
     // the missing fields gives extLine1/2 real coordinates so DIMENSION
@@ -6426,8 +6426,8 @@ impl DwgParser {
                 let _actual_measurement = reader.read_bd()?;
             }
 
-            // R2007+ three booleans (ODA §19.4.27 — "unknown", flip_arrow1,
-            // flip_arrow2). 3 bits, not always byte-aligned — read_bit is
+            // R2007+ three booleans (ODA Â§19.4.27 â€” "unknown", flip_arrow1,
+            // flip_arrow2). 3 bits, not always byte-aligned â€” read_bit is
             // correct.
             if self.version >= DwgVersion::R2007 {
                 let _unknown_b = reader.read_bit()?;
@@ -6435,7 +6435,7 @@ impl DwgParser {
                 let _flip_arrow2 = reader.read_bit()?;
             }
 
-            // clone_ins_pt 2RD — all versions. Without this, LINEAR/ALIGNED/
+            // clone_ins_pt 2RD â€” all versions. Without this, LINEAR/ALIGNED/
             // ANG2LN/ANG3PT/ORDINATE/RADIUS subtypes' subsequent reads are
             // shifted by 128 bits and produce subnormal garbage.
             let _clone_ins_pt = reader.read_2rd()?;
@@ -6597,23 +6597,23 @@ impl DwgParser {
             result.insert("height".into(), serde_json::json!(height));
 
             if self.version >= DwgVersion::R2000 {
-                // ODA §19.4.61 VIEWPORT (R2000+): R2000+ viewport header after
+                // ODA Â§19.4.61 VIEWPORT (R2000+): R2000+ viewport header after
                 // the paper-space rect. Field order per ODA:
                 //   view_target      3BD (DXF code 17)
                 //   view_direction   3BD (DXF code 16)
                 //   view_twist       BD  (DXF code 51)
-                //   view_height      BD  (DXF code 45) — model-space visible height
+                //   view_height      BD  (DXF code 45) â€” model-space visible height
                 //   lens_length      BD  (DXF code 42)
                 //   front_clip       BD  (DXF code 43)
                 //   back_clip        BD  (DXF code 44)
                 //   snap_angle       BD  (DXF code 50)
-                //   view_center      2RD (DXF code 12) — MODEL-space center ⚠ was mis-read as snap_base
+                //   view_center      2RD (DXF code 12) â€” MODEL-space center âš  was mis-read as snap_base
                 //   snap_base        2RD (DXF code 13)
                 //   snap_spacing     2RD (DXF code 14)
                 //   grid_spacing     2RD (DXF code 15)
                 //   circle_zoom      BS
                 //
-                // `view_center` is what DXF code 12/22 gives — the actual
+                // `view_center` is what DXF code 12/22 gives â€” the actual
                 // paper-space-tab projection uses it as the model-space
                 // point that maps to the paper-space rect center. Without
                 // it, the projection pass collapses all viewports to the
@@ -6650,10 +6650,10 @@ impl DwgParser {
         let mut result = HashMap::new();
         let is_unicode = self.version.is_r2007_plus();
         let _ = (|| -> Result<(), DwgError> {
-            // ODA §19.4.96 HATCH (R2000+).
+            // ODA Â§19.4.96 HATCH (R2000+).
             // R2004+ adds a full gradient-definition block BEFORE the legacy fields.
             // Even when is_gradient_fill==0, ALL gradient fields are still serialized
-            // (per spec) and must be consumed to keep the bit stream aligned —
+            // (per spec) and must be consumed to keep the bit stream aligned â€”
             // skipping them caused num_paths to read garbage and the parser bailed
             // out before populating boundaryPaths.
             if self.version >= DwgVersion::R2004 {
@@ -6677,7 +6677,7 @@ impl DwgParser {
             let elevation = reader.read_bd()?;
             let extrusion = reader.read_3bd()?;
             let pattern_name = reader.read_tv(is_unicode)?;
-            // Per ODA OpenDesign Spec §19.4.96: solid_fill and associative are
+            // Per ODA OpenDesign Spec Â§19.4.96: solid_fill and associative are
             // single bits (B), NOT BL. Only n_paths is BL.
             let solid_fill = reader.read_bit()?;
             let associative = reader.read_bit()?;
@@ -6788,32 +6788,32 @@ impl DwgParser {
                 result.insert("patternAngle".into(), serde_json::json!(pattern_angle));
                 result.insert("patternScale".into(), serde_json::json!(pattern_scale));
 
-                // per ODA §19.4.96 HATCH pattern definition line fields:
-                //   angle  (BD)         — rotation of this pattern line, degrees
-                //   base.x, base.y (BD) — origin of the infinite line
-                //   offset.x, offset.y  — perpendicular vector between parallel
+                // per ODA Â§19.4.96 HATCH pattern definition line fields:
+                //   angle  (BD)         â€” rotation of this pattern line, degrees
+                //   base.x, base.y (BD) â€” origin of the infinite line
+                //   offset.x, offset.y  â€” perpendicular vector between parallel
                 //                         copies of the line (controls spacing)
-                //   num_dashes (BS)     — count of dash items (0 = solid line)
-                //   dashes[]   (BD[])   — signed lengths, positive=pen-down,
+                //   num_dashes (BS)     â€” count of dash items (0 = solid line)
+                //   dashes[]   (BD[])   â€” signed lengths, positive=pen-down,
                 //                         negative=pen-up; matches DXF code 49
                 // Previously the values were read solely to advance the bit
                 // stream and then discarded; downstream DWG renderers therefore
                 // could not draw non-solid hatches. Now emitted as JSON so the
                 // scene-io consumer can feed emit_hatch_pattern_lines().
-                // Per ODA Open Design Spec §19.4.96 HATCH pattern definition
+                // Per ODA Open Design Spec Â§19.4.96 HATCH pattern definition
                 // line: angle (BD, RADIANS), pt0 (2BD), offset (2BD),
                 // num_dashes (BS), dashes (BD[]).
                 //
                 // EVIDENCE (2026-04-21 investigation): earlier code read base
                 // and offset as 2RD (raw doubles) and emitted `angle` as
                 // raw radians. Concrete test fixture
-                // `arceringen test/3070_model…_5.{dxf,dwg}`:
-                //   DXF HATCH@2790 (pattern FP_13) carries code 53 = 45.0°,
+                // `arceringen test/3070_modelâ€¦_5.{dxf,dwg}`:
+                //   DXF HATCH@2790 (pattern FP_13) carries code 53 = 45.0Â°,
                 //   base (43/44) = (0, 0), offset (45/46) = (-3.536, 3.536).
                 //   DWG HATCH h=204 parsed as `angle_raw = 0.7853981633974483`
-                //   (exactly π/4 = 45° in RADIANS); base/offset then decoded
-                //   as garbage magnitudes (1e-271 … 1e+247) — 128 extra
-                //   raw-double bits were consumed where 2×BD was expected,
+                //   (exactly Ï€/4 = 45Â° in RADIANS); base/offset then decoded
+                //   as garbage magnitudes (1e-271 â€¦ 1e+247) â€” 128 extra
+                //   raw-double bits were consumed where 2Ã—BD was expected,
                 //   so the next pattern-line read drifted into random bits.
                 // Fix:
                 //   1) Convert the stored angle to degrees to match the
@@ -6821,7 +6821,7 @@ impl DwgParser {
                 //      field is `angle_deg` and the renderer calls
                 //      `.to_radians()` on it).
                 //   2) Read pt0/offset via `read_2bd` (two BD values) per
-                //      ODA §19.4.96 — 2RD was wrong and the source of the
+                //      ODA Â§19.4.96 â€” 2RD was wrong and the source of the
                 //      multi-pattern-line drift.
                 let mut pattern_lines_json: Vec<serde_json::Value> = Vec::new();
                 for _ in 0..num_def_lines.min(1000) {
@@ -6873,12 +6873,12 @@ impl DwgParser {
     ) -> HashMap<String, serde_json::Value> {
         let mut result = HashMap::new();
 
-        // Per ODA §20.1 — Non-entity common object header.
+        // Per ODA Â§20.1 â€” Non-entity common object header.
         // After the handle + EED (already read in parse_single_object_r2000),
         // the data stream contains:
         //   1. num_reactors (BL)
-        //   2. xdict_missing_flag (B) — R2004+
-        //   3. has_binary_data (B) — R2013+
+        //   2. xdict_missing_flag (B) â€” R2004+
+        //   3. has_binary_data (B) â€” R2013+
         // These were previously read inside each individual parser (only num_reactors),
         // missing xdict_missing and has_binary_data which caused 1-2 bit drift on R2004+.
         let _ = (|| -> Result<(), DwgError> {
@@ -6938,11 +6938,11 @@ impl DwgParser {
         let is_r2004 = self.version.is_r2004_plus();
         let name = reader.read_tv(is_r2007)?;
         let _bit64 = reader.read_bit()?;
-        // Per ODA OpenDesignSpec §20.4.53 (LAYER) + libredwg's `dwg.spec`
+        // Per ODA OpenDesignSpec Â§20.4.53 (LAYER) + libredwg's `dwg.spec`
         // common_table_flags (entry_name): the field order on R2007+ is
         //   name TV
         //   64-flag B
-        //   xrefdep B          ← NOTE: xrefdep comes BEFORE xrefindex
+        //   xrefdep B          â† NOTE: xrefdep comes BEFORE xrefindex
         //   xrefindex+1 BS
         //   flags BS
         //   color CMC
@@ -6950,10 +6950,10 @@ impl DwgParser {
         // Round 10 finding (3bm Funderingsherstel CP-21 R2010 fixture):
         // reading xrefindex BEFORE xrefdep produced xref values like
         // 16568=0x40B8 / 16600=0x40D8 / 16632=0x40F8 for layers with
-        // lineweight 13/18/25 — clearly the BS was consuming the LATER
+        // lineweight 13/18/25 â€” clearly the BS was consuming the LATER
         // xrefindex+lineweight portion of the bit stream. Swapping to the
-        // correct order (xdep B → xref BS) made all 21 LAYER ACIs match
-        // the DXF (Hulplijnen=1, Buitenwanden=3, Bovenbouw=8, etc.) — the
+        // correct order (xdep B â†’ xref BS) made all 21 LAYER ACIs match
+        // the DXF (Hulplijnen=1, Buitenwanden=3, Bovenbouw=8, etc.) â€” the
         // post-color CMC bit cursor lands on the actual ACI byte instead
         // of on the raw BS dropping into the next field's bits.
         let _xdep = reader.read_bit()?;
@@ -6964,7 +6964,7 @@ impl DwgParser {
                 name, _xref_index, _xdep,
             );
         }
-        // Per ODA §20.4.53 (LAYER) + §2.11 (CmColor / ENC): on R2004+
+        // Per ODA Â§20.4.53 (LAYER) + Â§2.11 (CmColor / ENC): on R2004+
         // the layer color is an ENC (Extended NamedColor), not a plain
         // BS index. The ENC is a BS whose top 3 bits are flags and
         // whose low 13 bits are the ACI; when the file writer used a
@@ -6975,57 +6975,57 @@ impl DwgParser {
         // The old code called `read_cmc` which is a bare `read_bs`, so
         // every layer written in ByColor form returned color=195
         // (0x00C3 = the ByColor method byte). `aci_to_rgba(195)` maps
-        // to #D1AEED (pink-purple) — this is the user-visible bug:
+        // to #D1AEED (pink-purple) â€” this is the user-visible bug:
         // DWG entities on layers like "A--L21--_Buitenwanden" showed
-        // purple where the DXF shows red. Ref: SPEC_NOTES.md §ENC and
+        // purple where the DXF shows red. Ref: SPEC_NOTES.md Â§ENC and
         // the `read_enc` implementation in bitreader.rs.
         let flags = reader.read_bs()?;
-        // Per ODA §20.4.53 (LAYER) + §2.11 (CmColor / ENC):
+        // Per ODA Â§20.4.53 (LAYER) + Â§2.11 (CmColor / ENC):
         //
         // On R2004+ the layer color is written as a CMC (BS color_value +
         // optional RC flag-byte + optional color/book-name strings). The
         // BS color_value encoding uses 0xC0..0xC8 in either the low or high
         // byte to signal a ByBlock / ByLayer / ByColor / Foreground / None
         // method; in that case the actual ACI is either the OTHER byte of
-        // the BS or — on files written with the "explicit RC ACI" form —
+        // the BS or â€” on files written with the "explicit RC ACI" form â€”
         // an RC that immediately follows.
         //
         // Pre-existing behaviour (commit log: "entities on layers like
         // A--L21--_Buitenwanden showed purple where the DXF shows red",
-        // ACI=195 → #D1AEED) used `read_enc` and returned the ByColor
+        // ACI=195 â†’ #D1AEED) used `read_enc` and returned the ByColor
         // sentinel byte 0xC3 (=195) as the ACI, which mapped to pink-
         // purple. The detection-and-RC-read fix tried to decode a raw ACI
         // from the byte following the sentinel, but for this fixture that
-        // byte is NOT the ACI — it reads as 68/69 instead of the DXF 1/2.
+        // byte is NOT the ACI â€” it reads as 68/69 instead of the DXF 1/2.
         //
         // Empirically (DWG_DEBUG_LAYER trace + DXF oracle on
         // 3070_model_arceringen_5.dwg): when read_enc returns a BS whose
         // only meaningful bits are in the low byte and that byte is
         // 0xC3 (ByColor) we don't have a reliable way to recover the true
-        // ACI from surrounding bytes yet — the bits after the BS are the
+        // ACI from surrounding bytes yet â€” the bits after the BS are the
         // CMC's RC rcf and string-stream refs, not a raw ACI. We therefore
         // fall back to ACI=7 (white) for ByColor-method layers until the
         // spec-correct CMC R2007+ layout is decoded. This avoids the
-        // original "all layers render purple" bug — layers render white
+        // original "all layers render purple" bug â€” layers render white
         // instead, which the renderer shows on the black canvas just fine.
-        // Per ODA OpenDesignSpec §20.4.53 (LAYER) + §2.11 (CmColor): on
+        // Per ODA OpenDesignSpec Â§20.4.53 (LAYER) + Â§2.11 (CmColor): on
         // R2004+ the layer color is a CMC, not an ENC. The CMC layout is a
         // BL holding (method_byte << 24) | rgb_or_index, followed by an RC
         // flag byte and optional color/book name TVs. The previous read_enc
         // call was reading only a BS (16 bits) and consequently mis-aligned
-        // the bit cursor for every subsequent layer field — the visible
+        // the bit cursor for every subsequent layer field â€” the visible
         // symptom on the 3bm Funderingsherstel CP-21 fixture was layers
         // like A--L16--_Fundringskonstrukties (DXF group 62 = 3 = green)
         // resolving to white because the BS-read landed on the 0xC3 ByColor
         // sentinel instead of the legitimate ACI=3.
         //
-        // read_cmc_r2004 implements §2.11 properly and returns the decoded
+        // read_cmc_r2004 implements Â§2.11 properly and returns the decoded
         // ACI directly: 0 for ByBlock, 256 for ByLayer, the low 8 bits for
         // ByColor, and the 16-bit legacy index for files without a 0xCx
         // method byte.
         let color = if is_r2004 {
             let is_unicode = self.version.is_r2007_plus();
-            // O2D_LAYER_COLOR_DBG=1 → snapshot the raw bit-stream window around
+            // O2D_LAYER_COLOR_DBG=1 â†’ snapshot the raw bit-stream window around
             // the CMC read so we can see what the file actually encoded. Used
             // during clean-room debugging of the LAYER body bit-drift on the
             // 3bm Funderingsherstel CP-21 fixture (AC1024 / R2010).
@@ -7046,7 +7046,7 @@ impl DwgParser {
             }
             // Stash the raw BS + sentinel-detected flag so the table-object
             // handle-stream pass can decide whether to look up an AcDbColor
-            // handle reference (per ODA §20.4.53 LAYER + §2.11 CmColor: a
+            // handle reference (per ODA Â§20.4.53 LAYER + Â§2.11 CmColor: a
             // BS sentinel form 0xC3 ByColor on a table object indicates the
             // actual ACI lives as a hard-pointer Color handle in the handle
             // stream rather than inline in the data stream).
@@ -7054,9 +7054,9 @@ impl DwgParser {
             // Diag: dump the data-stream window AFTER the color CMC so we
             // can see what fields follow it before the handle stream starts.
             // The 3bm Funderingsherstel CP-21 fixture (AC1024 / R2010) has
-            // ~300 bits between color and handle stream; per ODA §20.4.53
+            // ~300 bits between color and handle stream; per ODA Â§20.4.53
             // these are post-color LAYER body fields (lineweight BS,
-            // transparency BL, plot/material flag bits) — bit-drift here
+            // transparency BL, plot/material flag bits) â€” bit-drift here
             // doesn't affect color decode but bit-counts the post-color
             // analysis.
             if std::env::var("O2D_LAYER_COLOR_DBG").is_ok() {
@@ -7141,7 +7141,7 @@ impl DwgParser {
         Ok(())
     }
 
-    /// per ODA OpenDesignSpec §20.4.40 (DIMSTYLE): decode the table-object
+    /// per ODA OpenDesignSpec Â§20.4.40 (DIMSTYLE): decode the table-object
     /// body just far enough to extract DIMSCALE (overall scale factor) and
     /// DIMTXT (text height). The scene loader uses these to size dimension
     /// text instead of falling back on the hard-coded `25 * dim_scale_xf`.
@@ -7152,8 +7152,8 @@ impl DwgParser {
     ///   64-flag           B
     ///   xref-index        BS
     ///   xdep              B
-    ///   DIMTOL            B    } early DIMSTYLE bit-flag block — order
-    ///   DIMLIM            B    } per spec (§20.4.40 R2000 layout). R2007+
+    ///   DIMTOL            B    } early DIMSTYLE bit-flag block â€” order
+    ///   DIMLIM            B    } per spec (Â§20.4.40 R2000 layout). R2007+
     ///   DIMTIH            B    } reorders some of these into a single BS,
     ///   DIMTOH            B    } but the BD block that follows starts in
     ///   DIMSE1            B    } the same place once we've consumed the
@@ -7169,7 +7169,7 @@ impl DwgParser {
     ///   DIMSD2            B
     ///   DIMTOLJ           RC
     ///   DIMJUST           RC
-    ///   DIMFIT            RC   (R2000 only — drop on R2007+)
+    ///   DIMFIT            RC   (R2000 only â€” drop on R2007+)
     ///   DIMUPT            B
     ///   DIMTZIN           RC   (R2007+)
     ///   DIMMALTZ          RC   (R2007+)
@@ -7180,7 +7180,7 @@ impl DwgParser {
     ///   DIMTDEC           BS
     ///   DIMALTU           BS
     ///   DIMALTTD          BS
-    ///   DIMSCALE          BD   ← we want this
+    ///   DIMSCALE          BD   â† we want this
     ///   DIMASZ            BD
     ///   DIMEXO            BD
     ///   DIMDLI            BD
@@ -7189,14 +7189,14 @@ impl DwgParser {
     ///   DIMDLE            BD
     ///   DIMTP             BD
     ///   DIMTM             BD
-    ///   DIMTXT            BD   ← and this
+    ///   DIMTXT            BD   â† and this
     ///   ...
     ///
     /// The post-flag fields vary considerably between R13/R2000/R2007/R2010.
     /// This implementation supports R2000 and R2007+; bit-drift would
     /// produce subnormal BD values, which the sanity-clamp at the bottom
     /// rejects in favour of AutoCAD defaults (DIMSCALE=1.0, DIMTXT=2.5)
-    /// — same defensive strategy as $LTSCALE in parse_header_vars_from_bits.
+    /// â€” same defensive strategy as $LTSCALE in parse_header_vars_from_bits.
     fn parse_dimstyle_obj(
         &self,
         reader: &mut DwgBitReader,
@@ -7208,15 +7208,15 @@ impl DwgParser {
         let _bit64 = reader.read_bit()?;
         let _xref_index = reader.read_bs()?;
         let _xdep = reader.read_bit()?;
-        // DIMTOL..DIMSOXD — 11 single-bit flags per §20.4.40 R2000 layout.
+        // DIMTOL..DIMSOXD â€” 11 single-bit flags per Â§20.4.40 R2000 layout.
         for _ in 0..11 { let _ = reader.read_bit()?; }
-        // DIMALTD, DIMZIN — RC each.
+        // DIMALTD, DIMZIN â€” RC each.
         let _ = reader.read_byte()?;
         let _ = reader.read_byte()?;
-        // DIMSD1, DIMSD2 — B each.
+        // DIMSD1, DIMSD2 â€” B each.
         let _ = reader.read_bit()?;
         let _ = reader.read_bit()?;
-        // DIMTOLJ, DIMJUST — RC each.
+        // DIMTOLJ, DIMJUST â€” RC each.
         let _ = reader.read_byte()?;
         let _ = reader.read_byte()?;
         if !is_r2007 {
@@ -7224,13 +7224,13 @@ impl DwgParser {
             let _ = reader.read_byte()?;
             let _ = reader.read_bit()?;
         } else {
-            // R2007+: DIMUPT (B), DIMTZIN/DIMMALTZ/DIMMALTTZ/DIMTAD (4×RC).
+            // R2007+: DIMUPT (B), DIMTZIN/DIMMALTZ/DIMMALTTZ/DIMTAD (4Ã—RC).
             let _ = reader.read_bit()?;
             for _ in 0..4 { let _ = reader.read_byte()?; }
         }
-        // Per ODA OpenDesignSpec §20.4.40 (DIMSTYLE Object Body, R2000+):
+        // Per ODA OpenDesignSpec Â§20.4.40 (DIMSTYLE Object Body, R2000+):
         // the BS group is DIMUNIT/DIMLUNIT, DIMAUNIT, DIMDEC, DIMTDEC,
-        // DIMALTU, DIMALTTD — that's 6 BSs, not 5. Confirmed against
+        // DIMALTU, DIMALTTD â€” that's 6 BSs, not 5. Confirmed against
         // libredwg's dwg.spec. The previous count of 5 dropped DIMAUNIT
         // which on the 3bm Funderingsherstel CP-21 fixture (AC1024 /
         // R2010) shifted the BD chain by one BS read worth of bits and
@@ -7240,12 +7240,12 @@ impl DwgParser {
         for _ in 0..6 { let _ = reader.read_bs()?; }
         // CALIBRATION: scan ahead to find a BD that decodes near 304.8 (DIMSCALE
         // for the 1_8_mm_0_ style per DXF oracle). Logs offsets when env set.
-        // BD chain begins here per §20.4.40.
+        // BD chain begins here per Â§20.4.40.
         let dimscale_raw = reader.read_bd()?;   // DIMSCALE
-        let dimasz_raw    = reader.read_bd()?;  // DIMASZ — arrowhead size
-        let dimexo_raw    = reader.read_bd()?;  // DIMEXO — extension-line offset from origin
+        let dimasz_raw    = reader.read_bd()?;  // DIMASZ â€” arrowhead size
+        let dimexo_raw    = reader.read_bd()?;  // DIMEXO â€” extension-line offset from origin
         let _dimdli       = reader.read_bd()?;
-        let dimexe_raw    = reader.read_bd()?;  // DIMEXE — extension-line overshoot past dim line
+        let dimexe_raw    = reader.read_bd()?;  // DIMEXE â€” extension-line overshoot past dim line
         let _dimrnd       = reader.read_bd()?;
         let _dimdle       = reader.read_bd()?;
         let _dimtp        = reader.read_bd()?;
@@ -7253,7 +7253,7 @@ impl DwgParser {
         let dimtxt_raw    = reader.read_bd()?;  // DIMTXT
 
         // Continue BD chain: DIMCEN, DIMTSZ, DIMALTF, DIMLFAC, DIMTVP,
-        // DIMTFAC, DIMGAP per §20.4.40. We don't surface these to the
+        // DIMTFAC, DIMGAP per Â§20.4.40. We don't surface these to the
         // scene loader yet, but consuming them keeps the bit cursor
         // aligned for the TV chain that holds DIMBLK1/DIMBLK2 below.
         // Wrapped in `let _ =` so a malformed BD inside doesn't poison
@@ -7265,11 +7265,11 @@ impl DwgParser {
         let _dimlfac      = reader.read_bd().unwrap_or(0.0);
         let _dimtvp       = reader.read_bd().unwrap_or(0.0);
         let _dimtfac      = reader.read_bd().unwrap_or(0.0);
-        let dimgap_raw    = reader.read_bd().unwrap_or(0.0);  // DIMGAP — text-to-dim-line gap
+        let dimgap_raw    = reader.read_bd().unwrap_or(0.0);  // DIMGAP â€” text-to-dim-line gap
 
-        // TV chain per ODA OpenDesignSpec §20.4.40: in R2000+, only DIMPOST
+        // TV chain per ODA OpenDesignSpec Â§20.4.40: in R2000+, only DIMPOST
         // and DIMAPOST are TVs in the dimstyle body. DIMBLK/DIMBLK1/DIMBLK2
-        // moved to the HANDLE stream (DXF group 340/343/344 — handle refs to
+        // moved to the HANDLE stream (DXF group 340/343/344 â€” handle refs to
         // BLOCK_RECORD entries) and MUST NOT be read as TVs here. The previous
         // code consumed five TVs which over-ran the string stream and produced
         // garbage Unicode in dimblk2 (visible via O2D_DWG_DIM_DUMP=1). On
@@ -7281,7 +7281,7 @@ impl DwgParser {
         let dimblk1: String = String::new();
         let dimblk2: String = String::new();
 
-        // Sanity clamp — same defensive approach as $LTSCALE in
+        // Sanity clamp â€” same defensive approach as $LTSCALE in
         // parse_header_vars_from_bits. Subnormal / out-of-range values
         // mean upstream bit-drift; substitute AutoCAD's table defaults
         // (DIMSCALE=1.0, DIMTXT=2.5 mm, DIMASZ=2.5 mm) so the consumer
@@ -7300,11 +7300,11 @@ impl DwgParser {
             && dimasz_raw.abs() >= 1e-6
             && dimasz_raw.abs() <= 1e6
         { dimasz_raw.abs() } else { 2.5 };
-        // DIMEXO/DIMEXE/DIMGAP — same defensive sanity-clamp as above. AutoCAD
-        // table defaults per ODA §20.4.40: DIMEXO=0.625, DIMEXE=1.25, DIMGAP=0.625.
+        // DIMEXO/DIMEXE/DIMGAP â€” same defensive sanity-clamp as above. AutoCAD
+        // table defaults per ODA Â§20.4.40: DIMEXO=0.625, DIMEXE=1.25, DIMGAP=0.625.
         // R2007+ bit-stream alignment is still off (~148 bits, see SPEC_NOTES.md
         // "Findings still open"), so most reads land subnormal and fall back to
-        // these defaults — which is what AutoCAD itself uses for any style that
+        // these defaults â€” which is what AutoCAD itself uses for any style that
         // doesn't override them, and visually correct enough that extension lines
         // get a proper start gap + tip overshoot rather than terminating exactly
         // on the measured points.
@@ -7348,7 +7348,7 @@ impl DwgParser {
         let is_unicode = self.version.is_r2007_plus();
         // num_reactors already read in parse_table_object common header
         //
-        // ODA §20.4.56 LTYPE object layout (after common non-entity header):
+        // ODA Â§20.4.56 LTYPE object layout (after common non-entity header):
         //   name           : TV
         //   64-flag        : B
         //   xref-index     : BS
@@ -7487,7 +7487,7 @@ impl DwgParser {
                 bytes_read += 4;
                 serde_json::json!(format!("{:X}", h))
             } else {
-                // Unknown — read as double
+                // Unknown â€” read as double
                 let v = reader.read_bd()?;
                 bytes_read += 8;
                 serde_json::json!(v)
@@ -7546,11 +7546,11 @@ fn resolve_handle_ref(code: u8, raw_value: u32, parent_handle: u32) -> u32 {
 
 /// Resolve handle references across all objects in a DwgFile.
 ///
-/// Builds a handle→name map from LAYER, LTYPE, STYLE, and BLOCK_HEADER
+/// Builds a handleâ†’name map from LAYER, LTYPE, STYLE, and BLOCK_HEADER
 /// objects, then populates each entity's `data["layer"]` etc.
 pub fn resolve_handles(dwg: &mut DwgFile, raw_data: &[u8], version: DwgVersion) {
-    // Build handle → name for named objects
-    let mut handle_to_name: HashMap<u32, (String, String)> = HashMap::new(); // handle → (type, name)
+    // Build handle â†’ name for named objects
+    let mut handle_to_name: HashMap<u32, (String, String)> = HashMap::new(); // handle â†’ (type, name)
     for obj in &dwg.objects {
         if let Some(name) = obj.data.get("name").and_then(|v| v.as_str()) {
             if name.is_empty() { continue; }
@@ -7591,8 +7591,8 @@ pub fn resolve_handles(dwg: &mut DwgFile, raw_data: &[u8], version: DwgVersion) 
 
         // DIMENSION (0x14..0x1A): resolve DIMSTYLE handle. Stored in
         // owned_handles[0] by read_entity_handles_at_current per ODA
-        // OpenDesignSpec §19.4.27. scene_io's DIMENSION text-render arm
-        // looks up the DIMSTYLE object to read DIMTXT × DIMSCALE.
+        // OpenDesignSpec Â§19.4.27. scene_io's DIMENSION text-render arm
+        // looks up the DIMSTYLE object to read DIMTXT Ã— DIMSCALE.
         if (0x14..=0x1A).contains(&obj.type_num) {
             if let Some(&h) = obj.handle_refs.owned_handles.first() {
                 obj.data.insert("dimStyleHandle".into(), serde_json::json!(h));
@@ -7602,7 +7602,7 @@ pub fn resolve_handles(dwg: &mut DwgFile, raw_data: &[u8], version: DwgVersion) 
             }
         }
 
-        // INSERT / MINSERT: resolve block header → block name
+        // INSERT / MINSERT: resolve block header â†’ block name
         if obj.type_num == 0x07 || obj.type_num == 0x08 {
             if let Some(bh_handle) = obj.handle_refs.block_header {
                 if let Some((_, block_name)) = handle_to_name.get(&bh_handle) {
@@ -7614,17 +7614,17 @@ pub fn resolve_handles(dwg: &mut DwgFile, raw_data: &[u8], version: DwgVersion) 
     }
 
     // --- Second pass: collect block entities for each INSERT ---
-    // Build a map: block_header_handle → Vec<entity data> by finding
+    // Build a map: block_header_handle â†’ Vec<entity data> by finding
     // BLOCK (type 0x04) entities that are owned by each block header,
     // then walking their sibling entities.
 
-    // First, build handle → object index
+    // First, build handle â†’ object index
     let mut handle_to_idx: HashMap<u32, usize> = HashMap::new();
     for (idx, obj) in dwg.objects.iter().enumerate() {
         handle_to_idx.insert(obj.handle, idx);
     }
 
-    // Build block_header_handle → Vec<serialized entity data>
+    // Build block_header_handle â†’ Vec<serialized entity data>
     // Find entities owned by each block by checking owner handles.
     let mut block_entities: HashMap<u32, Vec<serde_json::Value>> = HashMap::new();
     for obj in dwg.objects.iter() {
@@ -7673,19 +7673,19 @@ fn is_positioned_vertex(tn: &str) -> bool {
 /// Walk owned VERTEX objects and attach their positions to parent
 /// POLYLINE entities as a `vertices` JSON array.
 ///
-/// Covers the full legacy polyline family per ODA §20.4.16-22:
+/// Covers the full legacy polyline family per ODA Â§20.4.16-22:
 ///   POLYLINE_2D / POLYLINE_3D / POLYLINE_PFACE / POLYLINE_MESH
 ///   with child VERTEX_2D / VERTEX_3D / VERTEX_MESH / VERTEX_PFACE.
 /// VERTEX_PFACE_FACE children are emitted into a separate `faces` array
 /// (they carry vertex-indices, not positions).
 ///
 /// Strategy (two-pass with fallback):
-///   1. **Owner-handle grouping** — group VERTEX objects by their `owner`
+///   1. **Owner-handle grouping** â€” group VERTEX objects by their `owner`
 ///      handle ref.  If the owner is a POLYLINE, collect position data.
-///   2. **owned_handles** — R2004+ polylines list their children directly.
-///   3. **Handle-proximity fallback** — walk polyline_handle + 1, +2, ...
+///   2. **owned_handles** â€” R2004+ polylines list their children directly.
+///   3. **Handle-proximity fallback** â€” walk polyline_handle + 1, +2, ...
 ///      collecting VERTEX objects until a SEQEND or non-vertex is hit.
-///   4. **Rescue-parse** — re-parse vertex bytes from the object_map for
+///   4. **Rescue-parse** â€” re-parse vertex bytes from the object_map for
 ///      polylines whose children weren't decoded in the main pass.
 fn link_polyline_vertices(
     dwg: &mut DwgFile,
@@ -7837,13 +7837,13 @@ fn link_polyline_vertices(
                             continue 'walk;
                         }
                         if obj.type_name == "VERTEX_PFACE_FACE" {
-                            // face record — skip to next sibling
+                            // face record â€” skip to next sibling
                             continue 'walk;
                         }
-                        break; // parsed but not a vertex — stop trying other offsets
+                        break; // parsed but not a vertex â€” stop trying other offsets
                     }
                 }
-                // Don't break — continue walking past non-vertex objects
+                // Don't break â€” continue walking past non-vertex objects
             }
             if !verts.is_empty() {
                 rescued += verts.len();
@@ -7945,8 +7945,8 @@ pub fn decompress_r2004(src: &[u8], decompressed_size: usize) -> Result<Vec<u8>,
 
 /// Oversized-target LZ77 decompression.
 ///
-/// per ODA §4.7: LZ77 terminates on opcode 0x11 (END). The decompressed size
-/// declared in the page header may UNDERSTATE the emitted bytes — if the
+/// per ODA Â§4.7: LZ77 terminates on opcode 0x11 (END). The decompressed size
+/// declared in the page header may UNDERSTATE the emitted bytes â€” if the
 /// target buffer is too small we stop early before the END, truncating the
 /// stream. This variant accepts an oversized ceiling and returns the bytes
 /// actually emitted (up to END or src exhaustion), so callers that don't
@@ -7981,7 +7981,7 @@ fn decompress_r2004_core(
     let mut di = 0usize; // destination index
 
     // --- Initial literal run ---
-    // Per hand_decode.md: first byte < 0x10 → (low_nibble & 0x0F) + 3 literals.
+    // Per hand_decode.md: first byte < 0x10 â†’ (low_nibble & 0x0F) + 3 literals.
     // If low nibble is 0, read extended length via read_literal_length + 0x0F + 3.
     // If first byte >= 0x10, no initial literals; byte IS the first opcode.
     if si >= src.len() {
