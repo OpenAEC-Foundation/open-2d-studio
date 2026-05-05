@@ -144,6 +144,21 @@ pub struct Scene {
     /// TEXT/MTEXT branches. Consumed by re_tessellate_text_entity()
     /// on edit-commit.
     pub entity_text: Vec<Option<EntityText>>,
+    /// Per-segment dash style — parallel to `segments`. Encodes the
+    /// LINETYPE classification, NOT the world-unit dash pattern. Values:
+    ///   0 = solid (continuous, no dashing)
+    ///   1 = dashed
+    ///   2 = dotted
+    ///   3 = dash-dot
+    /// At scene-build time we push ONE long solid segment per LINE/POLY
+    /// entity even when its LINETYPE calls for dashing — the actual dash
+    /// strokes are generated PER-FRAME in `build_verts` using the
+    /// camera's world-per-pixel factor. That keeps the dash STRIDE
+    /// constant on screen across all zoom levels (the previous behaviour
+    /// emitted world-space dashes which became invisible when zoomed
+    /// out and grossly oversized when zoomed in). For SCREEN-FIXED dash
+    /// strides see the per-kind tables in build_verts.
+    pub segment_dash_kind: Vec<u8>,
 }
 
 impl Scene {
@@ -164,6 +179,7 @@ impl Scene {
             entity_names: Vec::new(),
             layouts: Vec::new(),
             entity_text: Vec::new(),
+            segment_dash_kind: Vec::new(),
         }
     }
 }
@@ -580,16 +596,71 @@ fn ear_clip(verts: &[[f64; 2]]) -> Vec<[usize; 3]> {
     out
 }
 
-/// Emit a dashed line between world-space `p1` and `p2` following the
-/// DXF LTYPE `pattern`. Pattern values alternate draw (positive) / skip
-/// (negative) lengths in world units. A zero-length item renders as a
-/// dot — we approximate it with a tiny segment so it survives rounding.
+/// Classify a DXF LTYPE pattern into a dash KIND used by the renderer
+/// to pick a fixed SCREEN-pixel stride at frame time. World-unit
+/// dash lengths from the DXF are intentionally discarded here — a
+/// dashed line should look the same on screen at every zoom level,
+/// and the original world-stride emitter (which this function and
+/// `push_lt_line` replace) gave dashes that became invisible when
+/// zoomed out and absurdly sparse when zoomed in.
 ///
-/// If `pattern` is empty the line is drawn solid. Very short segments
-/// (shorter than a single pattern step) render as solid to avoid
-/// stippling into invisibility on screen.
+/// Returns:
+///   0 = solid (continuous)
+///   1 = dashed (only "draw" runs, no zero-length dots)
+///   2 = dotted (only zero-length items, all dots)
+///   3 = dash-dot (mix of long draws and dots)
+fn classify_lt_pattern(pattern: &[f64]) -> u8 {
+    if pattern.is_empty() {
+        return 0;
+    }
+    let total: f64 = pattern.iter().map(|x| x.abs()).sum();
+    if total <= 1e-9 {
+        return 0;
+    }
+    let mut has_dot = false;     // a literal 0-length stroke (DXF dot)
+    let mut has_long_draw = false; // a positive draw item that's not a dot
+    for &v in pattern {
+        if v == 0.0 {
+            has_dot = true;
+        } else if v > 0.0 {
+            // distinguish "tiny draw" (basically a dot when stride is
+            // dominated by long draws) from a real dash. AutoCAD's
+            // ACAD_ISO patterns use 0 for dots; a positive < ~10% of
+            // the average abs is treated as dot-like.
+            let avg_abs = total / pattern.len() as f64;
+            if v < avg_abs * 0.10 {
+                has_dot = true;
+            } else {
+                has_long_draw = true;
+            }
+        }
+        // negative values are gaps; ignored for classification.
+    }
+    match (has_long_draw, has_dot) {
+        (true, true)   => 3, // dash-dot
+        (true, false)  => 1, // dashed
+        (false, true)  => 2, // dotted
+        (false, false) => 1, // shouldn't happen, fall back to dashed
+    }
+}
+
+/// Push ONE solid segment from `p1` to `p2` and record its dash KIND
+/// in the parallel `dash_kinds` array. Dashing is deferred to the
+/// renderer (`build_verts`) where the camera's world-per-pixel factor
+/// is known, so the stride stays constant in screen pixels regardless
+/// of zoom.
+///
+/// `dash_kinds` is kept in lock-step with `segments` by lazily padding
+/// up to `segments.len()` with 0 (solid) before the push — callers
+/// that mix raw `segments.push(..)` with `emit_dashed` therefore don't
+/// have to mirror every push themselves; they only have to make sure
+/// `dash_kinds` is resized to `segments.len()` once per entity at the
+/// end of the entity's emit (the model/paper-space loops in load_dxf
+/// / load_dwg do this). For empty patterns we still pad-and-push so
+/// the parallel-array invariant survives the call.
 fn emit_dashed(
     segments: &mut Vec<Segment>,
+    dash_kinds: &mut Vec<u8>,
     bbox: &mut [f64; 4],
     p1: [f64; 2], p2: [f64; 2],
     color: u32,
@@ -597,34 +668,18 @@ fn emit_dashed(
 ) {
     let dx = p2[0] - p1[0];
     let dy = p2[1] - p1[1];
-    let len = (dx * dx + dy * dy).sqrt();
-    if len <= f64::EPSILON { return; }
-    let total_pat: f64 = pattern.iter().map(|x| x.abs()).sum();
-    if pattern.is_empty() || total_pat <= 1e-9 || len < total_pat * 0.25 {
-        segments.push(Segment { p1, p2, color , is_paper: false });
-        expand_bbox(bbox, p1[0], p1[1]);
-        expand_bbox(bbox, p2[0], p2[1]);
-        return;
+    if (dx * dx + dy * dy).sqrt() <= f64::EPSILON { return; }
+    // Bring dash_kinds up to segments.len() before pushing — covers
+    // any raw Segment.push that happened between the last emit_dashed
+    // and now.
+    if dash_kinds.len() < segments.len() {
+        dash_kinds.resize(segments.len(), 0u8);
     }
-    let ux = dx / len;
-    let uy = dy / len;
-    let mut travelled = 0.0_f64;
-    let mut idx = 0usize;
-    while travelled < len {
-        let step = pattern[idx % pattern.len()];
-        let mag = step.abs().max(1e-3); // treat dot (0) as tiny stroke
-        let next = (travelled + mag).min(len);
-        let draw = step > 0.0 || step == 0.0; // 0 is a dot → draw
-        if draw {
-            let a = [p1[0] + ux * travelled, p1[1] + uy * travelled];
-            let b = [p1[0] + ux * next,      p1[1] + uy * next];
-            segments.push(Segment { p1: a, p2: b, color , is_paper: false });
-            expand_bbox(bbox, a[0], a[1]);
-            expand_bbox(bbox, b[0], b[1]);
-        }
-        travelled = next;
-        idx += 1;
-    }
+    let kind = classify_lt_pattern(pattern);
+    segments.push(Segment { p1, p2, color, is_paper: false });
+    dash_kinds.push(kind);
+    expand_bbox(bbox, p1[0], p1[1]);
+    expand_bbox(bbox, p2[0], p2[1]);
 }
 
 /// Plot-style fill colour for SOLID hatches. Real-world DXF output from
@@ -1846,6 +1901,11 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
     // Post-fill companion vectors — parallel to segments / triangles.
     let mut segment_layer_idx: Vec<u16> = Vec::new();
     let mut triangle_layer_idx: Vec<u16> = Vec::new();
+    // Per-segment dash KIND (0=solid, 1=dashed, 2=dotted, 3=dash-dot).
+    // emit_dashed pushes a kind for the line it emits; raw `Segment.push`
+    // sites don't have to mirror it because we resize-with-zero up to
+    // segments.len() at the tail-pad / end-of-loop sites below.
+    let mut segment_dash_kind: Vec<u8> = Vec::new();
     // Entity-group index (for whole-entity selection). Each call to
     // tessellate_dxf_entity at top level allocates ONE entity_idx and
     // fills the ranges produced by that call + any INSERT-child
@@ -1947,6 +2007,7 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
             0,
             Some(&mut entity_text),
             entity_idx,
+            &mut segment_dash_kind,
         );
         // Fill layer_idx + entity_idx for all segments / triangles
         // emitted by this entity (incl. any INSERT recursion).
@@ -1956,6 +2017,12 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
         triangle_layer_idx.extend(std::iter::repeat(layer_idx).take(tri_emit));
         segment_entity_idx.extend(std::iter::repeat(entity_idx).take(seg_emit));
         triangle_entity_idx.extend(std::iter::repeat(entity_idx).take(tri_emit));
+        // Pad dash-kind for any raw `Segment.push` sites inside
+        // tessellate_dxf_entity that emitted between (or after) the
+        // last emit_dashed call in this entity.
+        if segment_dash_kind.len() < segments.len() {
+            segment_dash_kind.resize(segments.len(), 0u8);
+        }
         if is_paper {
             for s in &mut segments[seg_start..] { s.is_paper = true; }
             for t in &mut triangles[tri_start..] { t.is_paper = true; }
@@ -2105,6 +2172,7 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
                 0,
                 None,
                 0,
+                &mut segment_dash_kind,
             );
             let seg_delta = segments.len() - e_seg_before;
             let tri_delta = triangles.len() - e_tri_before;
@@ -2233,6 +2301,7 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
         let mut scratch_segs: Vec<Segment> = Vec::new();
         let mut scratch_tris: Vec<Triangle> = Vec::new();
         let mut scratch_bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+        let mut scratch_dash_kind: Vec<u8> = Vec::new();
         for entity in drawing.entities() {
             // Skip paper-space entities in viewport pass — they'd push
             // title-block geometry through the model→paper transform.
@@ -2273,11 +2342,19 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
                 0,
                 None,
                 0,
+                &mut scratch_dash_kind,
             );
         }
-        for s in scratch_segs {
+        // Pad scratch_dash_kind to scratch_segs.len() so each scratch
+        // segment's dash kind survives clipping (default solid for
+        // non-dashed scratch segments).
+        if scratch_dash_kind.len() < scratch_segs.len() {
+            scratch_dash_kind.resize(scratch_segs.len(), 0u8);
+        }
+        for (i, s) in scratch_segs.into_iter().enumerate() {
             if let Some((p1, p2)) = clip_segment_to_rect(s.p1, s.p2, rect) {
                 segments.push(Segment { p1, p2, color: s.color, is_paper: true });
+                segment_dash_kind.push(scratch_dash_kind.get(i).copied().unwrap_or(0));
             }
         }
         for t in scratch_tris {
@@ -2395,6 +2472,12 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
     while triangle_layer_idx.len() < triangles.len() {
         triangle_layer_idx.push(0);
     }
+    // Same tail-pad for the parallel dash-kind buffer — anything that
+    // bypassed emit_dashed (hatch pattern lines, viewport projection
+    // raw push, sheet frames, viewport outlines) is solid.
+    if segment_dash_kind.len() < segments.len() {
+        segment_dash_kind.resize(segments.len(), 0u8);
+    }
     // Entity-idx tail pad: any segments that slipped past the main /
     // hatch / paper loops (viewport projection pass, sheet overlays) get
     // a sentinel entity group of their own so the viewer's entity-
@@ -2431,6 +2514,7 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
         segment_layer_idx, triangle_layer_idx,
         segment_entity_idx, triangle_entity_idx, entity_names,
         entity_text,
+        segment_dash_kind,
     })
 }
 
@@ -3408,6 +3492,7 @@ fn expand_dimension_block(
     bbox: &mut [f64; 4],
     counts: &mut [u32; 6],
     depth: u32,
+    dash_kinds: &mut Vec<u8>,
 ) {
     if block_name.is_empty() { return; }
     if let Some(ents) = block_map.get(block_name) {
@@ -3418,7 +3503,7 @@ fn expand_dimension_block(
                 layer_color_map, layer_ltype_map, linetype_map,
                 hidden_layers, hatches_by_block,
                 segments, triangles, bbox, counts, depth + 1,
-                None, 0,
+                None, 0, dash_kinds,
             );
         }
     }
@@ -3450,6 +3535,13 @@ fn tessellate_dxf_entity(
     // duplicate write needed).
     entity_text_out: Option<&mut Vec<Option<EntityText>>>,
     entity_idx_for_text: u32,
+    // Parallel-to-`segments` dash-kind buffer. `emit_dashed` lazily
+    // pads with 0 up to segments.len() before pushing its kind, so any
+    // raw `Segment.push` inside this function (CIRCLE/ARC/SOLID/etc.)
+    // doesn't have to keep dash_kinds in sync — the next emit_dashed
+    // OR the post-call `dash_kinds.resize(segments.len(), 0)` at the
+    // top-level loop in `load_dxf` does it.
+    dash_kinds: &mut Vec<u8>,
 ) {
     use dxf::entities::EntityType;
     // Honour layer plot / on flags. Entity is skipped if its layer is
@@ -3524,7 +3616,7 @@ fn tessellate_dxf_entity(
             EntityType::Line(l) => {
                 let p1 = xform.apply([l.p1.x, l.p1.y]);
                 let p2 = xform.apply([l.p2.x, l.p2.y]);
-                emit_dashed(segments, bbox, p1, p2, color, &ltype_pattern);
+                emit_dashed(segments, dash_kinds, bbox, p1, p2, color, &ltype_pattern);
                 counts[0] += 1;
             }
             EntityType::Circle(c) => {
@@ -3567,7 +3659,7 @@ fn tessellate_dxf_entity(
                 let bulges: Vec<f64> = pl.vertices.iter().map(|v| v.bulge).collect();
                 let closed = pl.get_is_closed() && verts.len() > 2;
                 for (p1, p2) in tessellate_polyline_bulges(&verts, &bulges, closed) {
-                    emit_dashed(segments, bbox, p1, p2, color, &ltype_pattern);
+                    emit_dashed(segments, dash_kinds, bbox, p1, p2, color, &ltype_pattern);
                 }
                 counts[3] += 1;
             }
@@ -3585,7 +3677,7 @@ fn tessellate_dxf_entity(
                 }
                 let closed = pl.get_is_closed() && verts.len() > 2;
                 for (p1, p2) in tessellate_polyline_bulges(&verts, &bulges, closed) {
-                    emit_dashed(segments, bbox, p1, p2, color, &ltype_pattern);
+                    emit_dashed(segments, dash_kinds, bbox, p1, p2, color, &ltype_pattern);
                 }
                 counts[5] += 1;
             }
@@ -3607,7 +3699,7 @@ fn tessellate_dxf_entity(
                 };
                 let combined = Xform::combine(xform, &ins_xform);
                 for sub in &block_entities {
-                    tessellate_dxf_entity(sub, &combined, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth + 1, None, 0);
+                    tessellate_dxf_entity(sub, &combined, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth + 1, None, 0, dash_kinds);
                 }
                 // Emit block-scoped HATCH fills defined INSIDE this
                 // BLOCK. dxf-0.5 drops HATCHes from the BLOCKS section;
@@ -4025,23 +4117,23 @@ fn tessellate_dxf_entity(
             // Radial, Diameter, AngularThreePointDimension, and
             // OrdinateDimension. Each has `.dimension_base.block_name`.
             EntityType::RotatedDimension(d) => {
-                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth);
+                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth, dash_kinds);
                 counts[5] += 1;
             }
             EntityType::RadialDimension(d) => {
-                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth);
+                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth, dash_kinds);
                 counts[5] += 1;
             }
             EntityType::DiameterDimension(d) => {
-                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth);
+                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth, dash_kinds);
                 counts[5] += 1;
             }
             EntityType::AngularThreePointDimension(d) => {
-                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth);
+                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth, dash_kinds);
                 counts[5] += 1;
             }
             EntityType::OrdinateDimension(d) => {
-                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth);
+                expand_dimension_block(&d.dimension_base.block_name, xform, block_map, style_map, layer_color_map, layer_ltype_map, linetype_map, hidden_layers, hatches_by_block, segments, triangles, bbox, counts, depth, dash_kinds);
                 counts[5] += 1;
             }
             // NOTE: dxf-0.5 does not expose a VIEWPORT entity variant
@@ -4601,6 +4693,12 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     // resolves to the real layer index per segment.
     let mut segment_layer_idx: Vec<u16> = Vec::new();
     let mut triangle_layer_idx: Vec<u16> = Vec::new();
+    // Per-segment dash KIND (parallel to `segments`). emit_dashed pushes
+    // the classification (1=dashed/2=dotted/3=dashdot); raw Segment.push
+    // sites in tessellate_one / expand_insert / hatch fills don't track
+    // it, so we resize-with-zero to segments.len() at every entity-end
+    // pad (and once at scene tail).
+    let mut segment_dash_kind: Vec<u8> = Vec::new();
 
     let get_xy = |v: &serde_json::Value| -> Option<[f64; 2]> {
         if let Some(arr) = v.as_array() {
@@ -5116,16 +5214,29 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                 &mut visiting, trace_insert,
                 &layer_color_map, &layer_ltype_map, &ltype_dashes_map,
                 dwg_default_rgba, entity_color, global_ltscale,
+                &mut segment_dash_kind,
             );
+            // Pad dash-kind for any raw segments produced inside the
+            // INSERT expansion (CIRCLE/ARC tessellation inside blocks
+            // bypasses emit_dashed).
+            if segment_dash_kind.len() < segments.len() {
+                segment_dash_kind.resize(segments.len(), 0u8);
+            }
         } else {
             if let Some(cat) = tessellate_one(
                 &obj.type_name, &dv, &identity,
                 &mut segments, &mut triangles, &mut bbox, entity_color, &entity_ltype,
                 Some(&mut entity_text), entity_idx,
+                &mut segment_dash_kind,
             ) {
                 counts[cat] += 1;
             } else {
                 counts[5] += 1;
+            }
+            // Pad dash-kind for any raw `Segment.push` inside tessellate_one
+            // that ran between the last emit_dashed call and end-of-entity.
+            if segment_dash_kind.len() < segments.len() {
+                segment_dash_kind.resize(segments.len(), 0u8);
             }
             let added = segments.len() - seg_before;
             if trace_insert && added > 100 {
@@ -5314,6 +5425,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         let mut scratch_segs: Vec<Segment> = Vec::new();
         let mut scratch_tris: Vec<Triangle> = Vec::new();
         let mut scratch_bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+        let mut scratch_dash_kind: Vec<u8> = Vec::new();
         let mut vp_scratch_counts = [0u32; 15];
         for src in &file.objects {
             if !src.is_entity { continue; }
@@ -5375,6 +5487,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                     &mut visiting, false,
                     &layer_color_map, &layer_ltype_map, &ltype_dashes_map,
                     dwg_default_rgba, src_color, global_ltscale,
+                    &mut scratch_dash_kind,
                 );
             } else {
                 tessellate_one(
@@ -5385,13 +5498,20 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                     // paper space; no entity_text capture (the model-space
                     // pass already wrote into entity_text for these).
                     None, 0,
+                    &mut scratch_dash_kind,
                 );
             }
         }
-        // Clip + commit.
-        for seg in scratch_segs {
+        // Clip + commit. Keep scratch_dash_kind aligned with scratch_segs
+        // before consuming so each clipped output can carry through its
+        // dash kind.
+        if scratch_dash_kind.len() < scratch_segs.len() {
+            scratch_dash_kind.resize(scratch_segs.len(), 0u8);
+        }
+        for (i, seg) in scratch_segs.into_iter().enumerate() {
             if let Some((a, b)) = clip_segment_to_rect(seg.p1, seg.p2, rect) {
                 segments.push(Segment { p1: a, p2: b, color: seg.color, is_paper: true });
+                segment_dash_kind.push(scratch_dash_kind.get(i).copied().unwrap_or(0));
                 vp_projected_segs += 1;
             }
         }
@@ -5508,6 +5628,10 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     while segment_layer_idx.len() < segments.len() {
         segment_layer_idx.push(0);
     }
+    // Same tail-pad for the parallel dash-kind buffer.
+    if segment_dash_kind.len() < segments.len() {
+        segment_dash_kind.resize(segments.len(), 0u8);
+    }
     while triangle_layer_idx.len() < triangles.len() {
         triangle_layer_idx.push(0);
     }
@@ -5551,6 +5675,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         segment_layer_idx, triangle_layer_idx,
         segment_entity_idx, triangle_entity_idx, entity_names,
         entity_text,
+        segment_dash_kind,
     })
 }
 
@@ -5581,6 +5706,10 @@ fn tessellate_one(
     // duplicate write needed). Mirrors tessellate_dxf_entity's threading.
     entity_text_out: Option<&mut Vec<Option<EntityText>>>,
     entity_idx_for_text: u32,
+    // Parallel-to-`segments` dash-kind buffer, see scene_io::Scene
+    // documentation. emit_dashed lazy-pads up to segments.len() before
+    // pushing.
+    dash_kinds: &mut Vec<u8>,
 ) -> Option<usize> {
     let get_xy = |v: &serde_json::Value| -> Option<[f64; 2]> {
         if let Some(arr) = v.as_array() {
@@ -5597,13 +5726,13 @@ fn tessellate_one(
     // one is present. `emit_dashed` handles the "pattern empty → just push
     // a solid segment" fallback, so the body of each entity arm can stay
     // uniform.
-    let push_line = |segments: &mut Vec<Segment>, bbox: &mut [f64; 4], p1: [f64; 2], p2: [f64; 2]| {
+    let push_line = |segments: &mut Vec<Segment>, dash_kinds: &mut Vec<u8>, bbox: &mut [f64; 4], p1: [f64; 2], p2: [f64; 2]| {
         if ltype_pattern.is_empty() {
             segments.push(Segment { p1, p2, color, is_paper: false });
             expand_bbox(bbox, p1[0], p1[1]);
             expand_bbox(bbox, p2[0], p2[1]);
         } else {
-            emit_dashed(segments, bbox, p1, p2, color, ltype_pattern);
+            emit_dashed(segments, dash_kinds, bbox, p1, p2, color, ltype_pattern);
         }
     };
     match type_name {
@@ -5613,7 +5742,7 @@ fn tessellate_one(
             if let (Some(p1), Some(p2)) = (p1, p2) {
                 let tp1 = xform.apply(p1);
                 let tp2 = xform.apply(p2);
-                push_line(segments, bbox, tp1, tp2);
+                push_line(segments, dash_kinds, bbox, tp1, tp2);
             }
             Some(0)
         }
@@ -5676,7 +5805,7 @@ fn tessellate_one(
                 let closed = d.get("closed").and_then(|v| v.as_bool()).unwrap_or(false)
                     && verts.len() > 2;
                 for (p1, p2) in tessellate_polyline_bulges(&verts, &bulges, closed) {
-                    push_line(segments, bbox, p1, p2);
+                    push_line(segments, dash_kinds, bbox, p1, p2);
                 }
             }
             Some(3)
@@ -5874,7 +6003,7 @@ fn tessellate_one(
             if pts.len() >= 2 {
                 for v in &pts { expand_bbox(bbox, v[0], v[1]); }
                 for w in pts.windows(2) {
-                    push_line(segments, bbox, w[0], w[1]);
+                    push_line(segments, dash_kinds, bbox, w[0], w[1]);
                 }
             }
             Some(10)
@@ -5970,13 +6099,13 @@ fn tessellate_one(
                         // Extension lines (anchor → dim-line foot). Skip
                         // degenerate (anchor already on dim line).
                         if (te1[0] - tp1[0]).hypot(te1[1] - tp1[1]) > 1.0e-6 {
-                            push_line(segments, bbox, te1, tp1);
+                            push_line(segments, dash_kinds, bbox, te1, tp1);
                         }
                         if (te2[0] - tp2[0]).hypot(te2[1] - tp2[1]) > 1.0e-6 {
-                            push_line(segments, bbox, te2, tp2);
+                            push_line(segments, dash_kinds, bbox, te2, tp2);
                         }
                         // Dim line itself
-                        push_line(segments, bbox, tp1, tp2);
+                        push_line(segments, dash_kinds, bbox, tp1, tp2);
                         // Tick / arrowhead marks per ODA §20.4.40 DIMBLK1/DIMBLK2.
                         // Size = DIMASZ × DIMSCALE when DIMSTYLE plumbing
                         // resolves; otherwise fall back to the legacy 60-unit
@@ -6047,7 +6176,7 @@ fn tessellate_one(
                                         if first.is_none() { first = Some(p); }
                                         if let Some(pp) = prev {
                                             // Boundary outline.
-                                            push_line(segments, bbox, pp, p);
+                                            push_line(segments, dash_kinds, bbox, pp, p);
                                             if !solid_outline {
                                                 // Solid fill: triangle fan
                                                 // from centre to the rim chord.
@@ -6077,7 +6206,7 @@ fn tessellate_one(
                                     let tdy = dx * sin45 + dy * cos45;
                                     let a = [base[0] - tick_h * tdx, base[1] - tick_h * tdy];
                                     let b = [base[0] + tick_h * tdx, base[1] + tick_h * tdy];
-                                    push_line(segments, bbox, xform.apply(a), xform.apply(b));
+                                    push_line(segments, dash_kinds, bbox, xform.apply(a), xform.apply(b));
                                 }
                                 _ => {
                                     // Unknown block name → fall back to the
@@ -6090,7 +6219,7 @@ fn tessellate_one(
                                     let tdy = dx * sin45 + dy * cos45;
                                     let a = [base[0] - tick_h * tdx, base[1] - tick_h * tdy];
                                     let b = [base[0] + tick_h * tdx, base[1] + tick_h * tdy];
-                                    push_line(segments, bbox, xform.apply(a), xform.apply(b));
+                                    push_line(segments, dash_kinds, bbox, xform.apply(a), xform.apply(b));
                                 }
                             }
                         }
@@ -6105,7 +6234,7 @@ fn tessellate_one(
                     let e1 = d.get("extLine1").and_then(get_xy);
                     let e2 = d.get("extLine2").and_then(get_xy);
                     if let (Some(a), Some(b)) = (e1, e2) {
-                        push_line(segments, bbox, xform.apply(a), xform.apply(b));
+                        push_line(segments, dash_kinds, bbox, xform.apply(a), xform.apply(b));
                         ext_pair = Some((a, b));
                         drew_any = true;
                     }
@@ -6116,7 +6245,7 @@ fn tessellate_one(
                         let a = d.get(ka).and_then(get_xy);
                         let b = d.get(kb).and_then(get_xy);
                         if let (Some(a), Some(b)) = (a, b) {
-                            push_line(segments, bbox, xform.apply(a), xform.apply(b));
+                            push_line(segments, dash_kinds, bbox, xform.apply(a), xform.apply(b));
                             if ext_pair.is_none() { ext_pair = Some((a, b)); }
                             drew_any = true;
                         }
@@ -6127,7 +6256,7 @@ fn tessellate_one(
                     let a = d.get("featureLocation").and_then(get_xy);
                     let b = d.get("leaderEndpoint").and_then(get_xy);
                     if let (Some(a), Some(b)) = (a, b) {
-                        push_line(segments, bbox, xform.apply(a), xform.apply(b));
+                        push_line(segments, dash_kinds, bbox, xform.apply(a), xform.apply(b));
                         drew_any = true;
                     }
                 }
@@ -6871,6 +7000,7 @@ fn expand_insert(
     default_rgba: u32,
     parent_color: u32,
     global_ltscale: f64,
+    dash_kinds: &mut Vec<u8>,
 ) {
     if depth > 8 {
         if trace { eprintln!("[expand_insert] depth cap hit at {}, aborting", depth); }
@@ -6993,6 +7123,7 @@ fn expand_insert(
                         visiting, trace,
                         layer_color_map, layer_ltype_map, ltype_dashes_map,
                         default_rgba, insert_color, global_ltscale,
+                        dash_kinds,
                     );
                     continue;
                 }
@@ -7011,6 +7142,7 @@ fn expand_insert(
                     // INSERT child geometry shares the parent INSERT's
                     // entity_idx slot — no per-child entity_text capture.
                     None, 0,
+                    dash_kinds,
                 ) {
                     counts[cat] += 1;
                 } else {
@@ -7057,6 +7189,7 @@ fn expand_insert(
                     visiting, trace,
                     layer_color_map, layer_ltype_map, ltype_dashes_map,
                     default_rgba, insert_color, global_ltscale,
+                    dash_kinds,
                 );
                 continue;
             }
@@ -7072,6 +7205,7 @@ fn expand_insert(
                 // blockEntities fallback path — INSERT children share
                 // the parent's entity_idx slot, no entity_text capture.
                 None, 0,
+                dash_kinds,
             ) {
                 counts[cat] += 1;
             }

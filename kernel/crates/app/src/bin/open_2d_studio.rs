@@ -562,20 +562,47 @@ fn side_panel_header(
     });
 }
 
+/// Per-`Scene::segment_dash_kind` value pattern, expressed in SCREEN
+/// pixels. Stride stays constant regardless of camera zoom — that's
+/// the whole point of moving dashing from scene-build time (world
+/// units) to vertex-build time (screen units).
+///
+/// Each pattern is a slice of `(draw, gap)` pairs in pixels:
+///   - `draw == 0.0` is rendered as a single 1-pixel dot.
+///   - `gap`  is the unrendered space that follows.
+const DASH_PIXEL_PATTERNS: [&[(f32, f32)]; 4] = [
+    &[],                                     // 0 = solid (handled inline)
+    &[(8.0, 4.0)],                           // 1 = dashed
+    &[(0.0, 4.0)],                           // 2 = dotted (1 px dot + 4 px gap)
+    &[(8.0, 2.0), (0.0, 2.0)],               // 3 = dash-dot
+];
+
 /// Build line-segment vertex buffer for a single scene.
 ///
 /// `hidden_layers` filters out segments whose derived layer key is in
 /// the set (matches the behaviour of the old 4-pane build_verts).
+///
+/// `world_per_pixel` is the camera's current world-units-per-screen-pixel
+/// factor. Used to convert the screen-space dash patterns above into
+/// the world-space stride needed when emitting line vertices. When 0.0
+/// or non-finite (no-zoom-yet bootstrap) all segments render solid.
 fn build_verts(
     scene: &Scene,
     origin: [f64; 2],
     default_color: u32,
     want_paper: bool,
     hidden_layers: &HashSet<String>,
+    world_per_pixel: f64,
 ) -> Vec<Vertex> {
     let mut out = Vec::with_capacity(scene.segments.len() * 2);
     let use_real_layers = !scene.layer_names.is_empty()
         && scene.segment_layer_idx.len() == scene.segments.len();
+    let dash_kinds_ok = scene.segment_dash_kind.len() == scene.segments.len();
+    let wpp = if world_per_pixel.is_finite() && world_per_pixel > 0.0 {
+        world_per_pixel as f32
+    } else {
+        0.0
+    };
     for (idx, s) in scene.segments.iter().enumerate()
         .filter(|(_, s)| s.is_paper == want_paper)
     {
@@ -593,8 +620,58 @@ fn build_verts(
             continue;
         }
         let color = if s.color != 0 { s.color } else { default_color };
-        out.push(Vertex { pos: p1, color, _pad: 0 });
-        out.push(Vertex { pos: p2, color, _pad: 0 });
+
+        let kind = if dash_kinds_ok { scene.segment_dash_kind[idx] } else { 0u8 };
+        let pattern: &[(f32, f32)] = if (kind as usize) < DASH_PIXEL_PATTERNS.len() {
+            DASH_PIXEL_PATTERNS[kind as usize]
+        } else {
+            &[]
+        };
+        if pattern.is_empty() || wpp <= 0.0 {
+            // Solid segment — emit as one line.
+            out.push(Vertex { pos: p1, color, _pad: 0 });
+            out.push(Vertex { pos: p2, color, _pad: 0 });
+            continue;
+        }
+
+        // Dashed segment — chop into screen-space-stride strokes.
+        // The pattern is in pixels; multiply by wpp to map to world.
+        let dx = p2[0] - p1[0];
+        let dy = p2[1] - p1[1];
+        let len = (dx * dx + dy * dy).sqrt();
+        if len <= 1e-6 { continue; }
+        let ux = dx / len;
+        let uy = dy / len;
+
+        // Total stride in world units.
+        let stride_world: f32 = pattern.iter().map(|(d, g)| d.max(1.0) + g).sum::<f32>() * wpp;
+        // If the whole segment is shorter than half a stride render solid
+        // — avoids degenerate stippling on tiny ticks.
+        if stride_world <= 1e-6 || len < stride_world * 0.5 {
+            out.push(Vertex { pos: p1, color, _pad: 0 });
+            out.push(Vertex { pos: p2, color, _pad: 0 });
+            continue;
+        }
+
+        let mut travelled: f32 = 0.0;
+        let mut i = 0usize;
+        // Safety cap: extreme zoom-in could in theory want millions of
+        // dashes per segment. 4096 strokes / segment is more than
+        // anyone wants to render — fall back to solid past that.
+        let mut stroke_budget = 4096usize;
+        while travelled < len && stroke_budget > 0 {
+            let (draw_px, gap_px) = pattern[i % pattern.len()];
+            let draw_world = draw_px.max(1.0) * wpp;          // dot has draw_px==0; clamp to 1px
+            let gap_world  = gap_px * wpp;
+            let draw_end = (travelled + draw_world).min(len);
+            let a = [p1[0] + ux * travelled, p1[1] + uy * travelled];
+            let b = [p1[0] + ux * draw_end,  p1[1] + uy * draw_end];
+            out.push(Vertex { pos: a, color, _pad: 0 });
+            out.push(Vertex { pos: b, color, _pad: 0 });
+            travelled = draw_end + gap_world;
+            i += 1;
+            stroke_budget -= 1;
+        }
     }
     out
 }
@@ -884,6 +961,14 @@ struct FileTab {
     /// `pick_segment_at_in` and `rebuild_sel_pipe` from O(n_segments) to
     /// O(log n + k) and O(siblings) respectively.
     scene_index: Option<SceneIndex>,
+
+    /// World-units-per-pixel that the line vertex buffer was last
+    /// generated for. Dashed-line strides are baked at scene-build
+    /// time using this factor; when the camera zoom moves the scene
+    /// such that wpp differs by more than ~10% (see
+    /// `dash_pixel_stride_changed`) we re-call rebuild_buffers to
+    /// keep dashes constant in screen pixels.
+    last_dash_wpp: f64,
 }
 
 /// Snapshot of one entity captured before deletion / cut. Stores enough
@@ -953,7 +1038,30 @@ impl FileTab {
             annotations: Vec::new(),
             annotation_pipe: None,
             scene_index: None,
+            last_dash_wpp: 0.0,
         }
+    }
+
+    /// Has the camera zoom moved enough that the screen-space dash
+    /// stride would visibly drift? rebuild_buffers re-emits dashes
+    /// using the current world-per-pixel factor, so we only call it
+    /// when wpp changed by more than ~12% — a single dash boundary
+    /// at 8px stride moves by ~1px before triggering, below the
+    /// just-noticeable-difference threshold for line patterns.
+    fn dash_pixel_stride_changed(&self, gpu: &GpuCtx) -> bool {
+        // Ignore tabs that don't have any dashed segments — no point
+        // rebuilding their (already solid) buffers on every zoom change.
+        if self.scene.segment_dash_kind.iter().all(|k| *k == 0) {
+            return false;
+        }
+        let h_phys = gpu.config.height.max(1) as f64;
+        let wpp_now = (2.0 / self.cam.zoom.max(1e-12)) / h_phys;
+        if self.last_dash_wpp <= 0.0 || !self.last_dash_wpp.is_finite() {
+            return true;
+        }
+        let ratio = wpp_now / self.last_dash_wpp;
+        // Symmetric: zoom-in halves wpp, zoom-out doubles it.
+        ratio < 0.88 || ratio > 1.13
     }
 
     /// Lazily build the scene's spatial + entity index. Cheap re-entry —
@@ -986,7 +1094,9 @@ impl FileTab {
 
     /// Rebuild the GPU line + triangle pipelines for this tab after a
     /// load / layer toggle / layout switch. Reuses existing buffers when
-    /// capacity permits.
+    /// capacity permits. Also called when the camera zoom changes
+    /// significantly so dashed-line patterns can be re-emitted at the
+    /// new screen-space stride (see `dash_pixel_stride_changed`).
     fn rebuild_buffers(&mut self, gpu: &GpuCtx) {
         // Any scene-mutating path lands here. Drop the cached spatial /
         // entity index so the next pick rebuilds against the new geometry.
@@ -995,10 +1105,21 @@ impl FileTab {
         let hidden = &self.hidden_layers;
         let want_paper = self.show_paper;
 
+        // World-per-pixel — used by build_verts to render dashed lines
+        // at a constant SCREEN-pixel stride. `(2.0 / zoom)` is the
+        // visible world-height (the camera maps NDC [-1,1] to that
+        // span via half_h = 1/zoom), divided by physical canvas height
+        // gives world-per-pixel.
+        let h_phys = gpu.config.height.max(1) as f64;
+        let wpp = (2.0 / self.cam.zoom.max(1e-12)) / h_phys;
+        // Cache so the render loop can detect "next zoom delta" and
+        // skip the rebuild when wpp barely changed.
+        self.last_dash_wpp = wpp;
+
         // Build all vertex lists now so we only need an immutable view
         // of self.scene for the duration.
-        let model_verts = build_verts(&self.scene, self.cam.origin, DEFAULT_LINE_COLOR, false, hidden);
-        let paper_verts = build_verts(&self.scene, self.cam.origin, DEFAULT_LINE_COLOR, true, hidden);
+        let model_verts = build_verts(&self.scene, self.cam.origin, DEFAULT_LINE_COLOR, false, hidden, wpp);
+        let paper_verts = build_verts(&self.scene, self.cam.origin, DEFAULT_LINE_COLOR, true, hidden, wpp);
         let init_line: &[Vertex] = if paper_verts.len() > model_verts.len() { &paper_verts } else { &model_verts };
         let active_line = if want_paper { &paper_verts } else { &model_verts };
 
@@ -1774,6 +1895,28 @@ impl App {
                 gpu.surface.configure(&gpu.device, &gpu.config);
             }
             self.present_mode = new_mode;
+        }
+
+        // Dashed-line zoom-tracking: the line vertex buffer bakes
+        // dashed-segment strokes at a fixed SCREEN-pixel stride using
+        // the camera's world-per-pixel factor at build time. When the
+        // user zooms in/out far enough (tracked by
+        // `dash_pixel_stride_changed`) the baked strokes drift; rebuild
+        // the line buffer for the active tab so the dashes stay sized
+        // correctly on screen. Cheap when nothing dashed is in scope —
+        // the helper short-circuits on all-solid scenes.
+        if self.gpu.is_some() {
+            let active = self.active_tab;
+            if let Some(tab) = self.tabs.get(active) {
+                let needs_redash = self.gpu.as_ref()
+                    .map(|gpu| tab.dash_pixel_stride_changed(gpu))
+                    .unwrap_or(false);
+                if needs_redash {
+                    if let (Some(tab), Some(gpu)) = (self.tabs.get_mut(active), self.gpu.as_ref()) {
+                        tab.rebuild_buffers(gpu);
+                    }
+                }
+            }
         }
 
         // --- Snapshots for egui closure ---------------------------------
