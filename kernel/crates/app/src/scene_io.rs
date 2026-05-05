@@ -471,7 +471,16 @@ fn emit_hatch_pattern_lines(
     bbox: &mut [f64; 4],
 ) {
     if ring.len() < 3 || pattern_lines.is_empty() { return; }
+    // Per-call total emission cap — defends against ring × pattern
+    // combinations that legitimately fit the per-line range cap below
+    // but multiplied across many pattern_lines or split by non-convex
+    // rings produce millions of segments. We've observed individual
+    // HATCHes emit 200M+ segments on real-world DWGs; cap at 200k per
+    // hatch which is more than any legitimate fill density.
+    let segs_at_entry = segments.len();
+    const PER_HATCH_CAP: usize = 200_000;
     for pl in pattern_lines {
+        if segments.len() - segs_at_entry >= PER_HATCH_CAP { break; }
         let off = pl.offset;
         let off_len = off[0].hypot(off[1]);
         if off_len < 1e-9 { continue; }
@@ -526,6 +535,7 @@ fn emit_hatch_pattern_lines(
         let range = n_hi - n_lo;
         if range > 10_000 { continue; }
         for n in n_lo..=n_hi {
+            if segments.len() - segs_at_entry >= PER_HATCH_CAP { break; }
             let base_n = [
                 pl.base[0] + off[0] * n as f64,
                 pl.base[1] + off[1] * n as f64,
@@ -5142,6 +5152,11 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     eprintln!("[load_dwg] phase pre_entity_setup: {:.3}s",
         t_after_parse.elapsed().as_secs_f64());
     let t_entity_loop = std::time::Instant::now();
+    // Top-emitter tracking — debug an entity-loop blow-up by reporting
+    // the 10 entities that produced the most segments. Enabled by env var
+    // O2D_LOAD_PROFILE=1 to keep production logs quiet.
+    let profile_load = std::env::var("O2D_LOAD_PROFILE").is_ok();
+    let mut top_emitters: Vec<(usize, u64, String)> = Vec::new();
     for obj in &file.objects {
         if !obj.is_entity { continue; }
         // Skip BLOCK / ENDBLK sentinels and any entity living inside a block —
@@ -5264,8 +5279,36 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         // Post-fill the ranges this top-level entity emitted. INSERT children
         // recurse inside expand_insert, so their seg/tri deltas also fall into
         // this window and inherit the same entity_idx.
-        let seg_delta = segments.len() - seg_before;
-        let tri_delta = triangles.len() - tri_before;
+        let mut seg_delta = segments.len() - seg_before;
+        let mut tri_delta = triangles.len() - tri_before;
+        if profile_load && seg_delta > 1000 {
+            top_emitters.push((seg_delta, obj.handle as u64, obj.type_name.clone()));
+        }
+        // Per-entity emission cap — defends against pathological HATCH
+        // boundaries (degenerate offset, huge bbox, missing close-flag)
+        // and runaway INSERT recursion that can produce 100M+ segments
+        // from a single entity, which then either OOMs the wgpu buffer
+        // or stalls the spatial-index build for many seconds. Real-world
+        // CAD entities never legitimately emit more than ~1M segments;
+        // anything above that is a parser/tessellation glitch and we
+        // truncate with a warning so the rest of the drawing still loads.
+        const PER_ENTITY_SEG_CAP: usize = 1_000_000;
+        if seg_delta > PER_ENTITY_SEG_CAP {
+            eprintln!(
+                "[load_dwg] WARN entity h=0x{:X} type={} produced {} segs — truncating to {} (likely pathological hatch / INSERT recursion)",
+                obj.handle, obj.type_name, seg_delta, PER_ENTITY_SEG_CAP,
+            );
+            segments.truncate(seg_before + PER_ENTITY_SEG_CAP);
+            if segment_dash_kind.len() > seg_before + PER_ENTITY_SEG_CAP {
+                segment_dash_kind.truncate(seg_before + PER_ENTITY_SEG_CAP);
+            }
+            seg_delta = PER_ENTITY_SEG_CAP;
+        }
+        const PER_ENTITY_TRI_CAP: usize = 200_000;
+        if tri_delta > PER_ENTITY_TRI_CAP {
+            triangles.truncate(tri_before + PER_ENTITY_TRI_CAP);
+            tri_delta = PER_ENTITY_TRI_CAP;
+        }
         segment_entity_idx.extend(std::iter::repeat(entity_idx).take(seg_delta));
         triangle_entity_idx.extend(std::iter::repeat(entity_idx).take(tri_delta));
         // Fill per-entity LAYER idx too — needed so the viewer's Layer
@@ -5685,6 +5728,13 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     }
     eprintln!("[load_dwg] phase entity_loop+post: {:.3}s ({} segs, {} tris)",
         t_entity_loop.elapsed().as_secs_f64(), segments.len(), triangles.len());
+    if profile_load && !top_emitters.is_empty() {
+        top_emitters.sort_by(|a, b| b.0.cmp(&a.0));
+        eprintln!("[load_dwg] top-10 segment emitters:");
+        for (segs, h, name) in top_emitters.iter().take(10) {
+            eprintln!("  {} segs : {} h=0x{:X}", segs, name, h);
+        }
+    }
     eprintln!("[load_dwg] TOTAL: {:.3}s", _t_total.elapsed().as_secs_f64());
     Ok(Scene {
         segments, triangles, bbox, source: "DWG", count_label: label, layouts,
