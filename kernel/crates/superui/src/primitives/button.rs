@@ -47,8 +47,8 @@ impl<'a> CadButton<'a> {
         //   Small  ~ 86 px (icon + label, e.g. "Select All", "Find/Replace")
         let (size_v, icon_size) = match self.size {
             ButtonSize::Large  => (Vec2::new(56.0, metrics::RIBBON_BUTTON_LARGE), metrics::ICON_LG),
-            ButtonSize::Medium => (Vec2::new(72.0, metrics::RIBBON_BUTTON_MEDIUM), metrics::ICON_MD),
-            ButtonSize::Small  => (Vec2::new(86.0, metrics::RIBBON_BUTTON_SMALL), metrics::ICON_SM),
+            ButtonSize::Medium => (Vec2::new(68.0, metrics::RIBBON_BUTTON_MEDIUM), metrics::ICON_MD),
+            ButtonSize::Small  => (Vec2::new(78.0, metrics::RIBBON_BUTTON_SMALL), metrics::ICON_SM),
         };
         let (rect, response) = ui.allocate_exact_size(size_v, Sense::click());
         let painter = ui.painter();
