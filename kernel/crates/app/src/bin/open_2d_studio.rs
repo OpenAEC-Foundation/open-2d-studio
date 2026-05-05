@@ -2148,7 +2148,56 @@ impl App {
     }
 
     /// Open a file picker and append the result as a new tab.
+    ///
+    /// The in-app file picker (`superui::dialogs::file_picker`) shipped
+    /// in `e97746b` / `59899a2` is still rough — the user reported it
+    /// as broken in real-world use ("file picker is het spoor bijster").
+    /// To unblock the Open flow we default back to the native
+    /// `rfd::FileDialog::pick_file()` here. The in-app picker code
+    /// remains intact in `superui` and the wiring below stays in
+    /// place — set the env var `O2D_FILE_PICKER_BETA=1` to opt back
+    /// into it for development work.
     fn open_file_dialog(&mut self) {
+        let beta = std::env::var_os("O2D_FILE_PICKER_BETA")
+            .map(|v| v != "0" && !v.is_empty())
+            .unwrap_or(false);
+        if beta {
+            self.open_file_dialog_in_app();
+        } else {
+            self.open_file_dialog_native();
+        }
+    }
+
+    /// Native rfd Open dialog — the default Open path while the in-app
+    /// picker is being repaired. Picks one DWG/DXF/IFCDraw file and
+    /// kicks off `start_load_into_new_tab`.
+    fn open_file_dialog_native(&mut self) {
+        let starting_dir = self.tabs.iter()
+            .find_map(|t| t.path.as_ref())
+            .and_then(|p| std::path::Path::new(p).parent().map(|d| d.to_path_buf()))
+            .or_else(|| std::env::var_os("USERPROFILE").map(std::path::PathBuf::from))
+            .unwrap_or_else(|| std::path::PathBuf::from("."));
+        let mut dialog = rfd::FileDialog::new()
+            .set_title("Open file")
+            .add_filter("CAD files", &["dwg", "dxf", "ifcdraw"])
+            .add_filter("AutoCAD DWG", &["dwg"])
+            .add_filter("AutoCAD DXF", &["dxf"])
+            .add_filter("IFCDraw", &["ifcdraw"])
+            .add_filter("All files", &["*"]);
+        if starting_dir.is_dir() {
+            dialog = dialog.set_directory(&starting_dir);
+        }
+        if let Some(path) = dialog.pick_file() {
+            let s = path.to_string_lossy().into_owned();
+            eprintln!("[tab open] picked (native): {}", s);
+            self.start_load_into_new_tab(s);
+        }
+    }
+
+    /// In-app file picker — currently behind the `O2D_FILE_PICKER_BETA`
+    /// env var while it's being repaired. Lazily seeds the picker
+    /// state, sets up the preview channel and flags the modal open.
+    fn open_file_dialog_in_app(&mut self) {
         if self.file_picker_state.is_none() {
             let starting_dir = self.tabs.iter()
                 .find_map(|t| t.path.as_ref())
@@ -6970,19 +7019,22 @@ fn build_ribbon_tabs(
                         ],
                     ],
                 }),
+                // 1.0 SELECTION: large `Select` + large `Pan` + 3-row
+                // stack (Select All / Deselect / Find/Replace). Pan
+                // surfaces as its own one-large group right after.
                 RibbonGroup::with_layout("Selection", RibbonGroupLayout::LargeLeft {
                     large: enable(select(lg("select", "Select", IconKind::Move),
                         matches!(tool, ToolMode::Select))),
                     stacks: vec![
                         vec![
-                            b_lbl("pan", "Pan", IconKind::Hand),
                             b_lbl("select_all", "Select All", IconKind::Check),
-                        ],
-                        vec![
                             b_lbl("deselect", "Deselect", IconKind::Cross),
                             b_lbl("find_replace", "Find/Replace", IconKind::Search),
                         ],
                     ],
+                }),
+                RibbonGroup::with_layout(" ", RibbonGroupLayout::LargeOnly {
+                    large: vec![enable(lg("pan", "Pan", IconKind::Hand))],
                 }),
                 RibbonGroup::with_layout("Draw", RibbonGroupLayout::Stack {
                     rows: 2,
@@ -7003,35 +7055,35 @@ fn build_ribbon_tabs(
                     ],
                 }),
                 RibbonGroup::with_layout("Annotate", RibbonGroupLayout::LargeLeft {
+                    // 1.0 layout: large `Aligned` + 3 stack columns with
+                    // 3 rows each. Columns: Linear/Angular/Spot ·
+                    // Radius/Diameter/Leader · Label/Table/Cloud.
                     large: enable(select(lg("dim", "Aligned", IconKind::Dimension),
                         matches!(tool, ToolMode::Dimension))),
-                    // 1.0 layout: 3 stack columns with 3 rows each.
-                    // Columns: Linear/Angular/Spot · Radius/Diameter/Leader
-                    // · Label/Table/Cloud. Our LargeLeft renderer takes the
-                    // first 2 rows of each stack column (see ribbon.rs
-                    // `take(2)`), so we map the most important entries to
-                    // the first 2 slots and pack the 3rd into a 4th column
-                    // until we add 3-row stack support.
                     stacks: vec![
                         vec![
                             b_lbl("dim_linear", "Linear", IconKind::Dimension),
                             b_lbl("dim_angular", "Angular", IconKind::Arc),
+                            b_lbl("dim_spot", "Spot Coord.", IconKind::Tag),
                         ],
                         vec![
                             b_lbl("dim_radius", "Radius", IconKind::Circle),
                             b_lbl("dim_diameter", "Diameter", IconKind::Circle),
-                        ],
-                        vec![
-                            b_lbl("dim_spot", "Spot Coord.", IconKind::Tag),
                             b_lbl("leader", "Leader", IconKind::Line),
                         ],
                         vec![
                             b_lbl("label", "Label", IconKind::Tag),
                             b_lbl("table", "Table", IconKind::Grid),
-                        ],
-                        vec![
                             b_lbl("cloud", "Cloud", IconKind::Spline),
                         ],
+                    ],
+                }),
+                // 1.0 places `Measure` as a trailing large in ANNOTATE;
+                // we surface it in its own group so the multi-large gap
+                // doesn't leak through the layout enum.
+                RibbonGroup::with_layout("Measure", RibbonGroupLayout::LargeOnly {
+                    large: vec![
+                        enable(lg("measure", "Measure", IconKind::Dimension)),
                     ],
                 }),
                 RibbonGroup::with_layout("Modify", RibbonGroupLayout::Stack {
