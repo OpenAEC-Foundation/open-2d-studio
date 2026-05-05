@@ -5424,12 +5424,41 @@ fn build_ribbon_tabs(
 ) -> Vec<RibbonTabDef> {
     let split_h = matches!(split, Some(SplitKind::HorizontalPair(_)));
     let split_v = matches!(split, Some(SplitKind::VerticalPair(_)));
+    // Per user directive 2026-05-04: consolidate the entire ribbon to a
+    // SINGLE "Home" tab that mirrors 1.0's default-active layout
+    // (SELECTION / DRAW / ANNOTATE / MODIFY / EDIT). The 1.0 web app has
+    // 5 tabs (File / Home / Modify / View / IFC) but the user wants
+    // "alles zoveel mogelijk in 1 tabblad". We keep an orange File-style
+    // tab to match the visual treatment in 1.0 — it's just a stub
+    // pseudo-tab that, when clicked, currently shows the same single set
+    // of groups (no separate File menu yet in the Rust shell).
     vec![
         RibbonTabDef {
-            id: "files".into(),
-            label: "Files".into(),
+            id: "home".into(),
+            label: "Home".into(),
             groups: vec![
-                RibbonGroup::new("Files")
+                RibbonGroup::new("Selection")
+                    .button(RibbonButtonDef {
+                        id: "select".into(), label: "Select".into(),
+                        icon: IconKind::Move, size: ButtonSize::Large,
+                        selected: matches!(tool, ToolMode::Select), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "fit_extents".into(), label: "Fit".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "layers".into(), label: "Layers".into(),
+                        icon: IconKind::Hatch, size: ButtonSize::Small,
+                        selected: layers_open, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "properties".into(), label: "Properties".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: properties_open, enabled: true,
+                    }),
+                RibbonGroup::new("Draw")
                     .button(RibbonButtonDef {
                         id: "open".into(), label: "Open".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Large,
@@ -5450,32 +5479,31 @@ fn build_ribbon_tabs(
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: true,
                     }),
-            ],
-        },
-        RibbonTabDef {
-            id: "tools".into(),
-            label: "Tools".into(),
-            groups: vec![
-                RibbonGroup::new("Tools")
+                RibbonGroup::new("Annotate")
                     .button(RibbonButtonDef {
-                        id: "fit_extents".into(), label: "Fit".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Large,
-                        selected: false, enabled: true,
+                        id: "measure".into(), label: "Measure".into(),
+                        icon: IconKind::Dimension, size: ButtonSize::Large,
+                        selected: matches!(tool, ToolMode::Measure), enabled: true,
                     })
                     .button(RibbonButtonDef {
-                        id: "select".into(), label: "Select".into(),
-                        icon: IconKind::Move, size: ButtonSize::Small,
-                        selected: matches!(tool, ToolMode::Select), enabled: true,
+                        id: "dim".into(), label: "Dim".into(),
+                        icon: IconKind::Dimension, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Dimension), enabled: true,
                     })
                     .button(RibbonButtonDef {
-                        id: "move".into(), label: "Move".into(),
-                        icon: IconKind::Move, size: ButtonSize::Small,
-                        selected: matches!(tool, ToolMode::Move), enabled: true,
+                        id: "area".into(), label: "Area".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: matches!(tool, ToolMode::Area), enabled: true,
                     }),
                 RibbonGroup::new("Modify")
                     .button(RibbonButtonDef {
+                        id: "move".into(), label: "Move".into(),
+                        icon: IconKind::Move, size: ButtonSize::Large,
+                        selected: matches!(tool, ToolMode::Move), enabled: true,
+                    })
+                    .button(RibbonButtonDef {
                         id: "rotate".into(), label: "Rotate".into(),
-                        icon: IconKind::Arc, size: ButtonSize::Large,
+                        icon: IconKind::Arc, size: ButtonSize::Small,
                         selected: matches!(tool, ToolMode::Rotate), enabled: true,
                     })
                     .button(RibbonButtonDef {
@@ -5493,60 +5521,7 @@ fn build_ribbon_tabs(
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: true,
                     }),
-                RibbonGroup::new("Measure")
-                    .button(RibbonButtonDef {
-                        id: "measure".into(), label: "Measure".into(),
-                        icon: IconKind::Dimension, size: ButtonSize::Large,
-                        selected: matches!(tool, ToolMode::Measure), enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "dim".into(), label: "Dim".into(),
-                        icon: IconKind::Dimension, size: ButtonSize::Small,
-                        selected: matches!(tool, ToolMode::Dimension), enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "area".into(), label: "Area".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: matches!(tool, ToolMode::Area), enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "clear".into(), label: "Clear".into(),
-                        icon: IconKind::Delete, size: ButtonSize::Small,
-                        selected: false, enabled: true,
-                    }),
-            ],
-        },
-        RibbonTabDef {
-            id: "view".into(),
-            label: "View".into(),
-            groups: vec![
-                RibbonGroup::new("Panels")
-                    .button(RibbonButtonDef {
-                        id: "layers".into(), label: "Layers".into(),
-                        icon: IconKind::Hatch, size: ButtonSize::Small,
-                        selected: layers_open, enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "properties".into(), label: "Properties".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: properties_open, enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "samples".into(), label: "Samples".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: samples_open, enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "perf_hud".into(), label: "Perf HUD".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: perf_hud, enabled: true,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "vsync".into(), label: "VSync".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: false, enabled: true,
-                    }),
-                RibbonGroup::new("Layout")
+                RibbonGroup::new("Edit")
                     .button(RibbonButtonDef {
                         id: "split_h".into(), label: "Split H".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
@@ -5561,17 +5536,20 @@ fn build_ribbon_tabs(
                         id: "unsplit".into(), label: "Unsplit".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: split.is_some(),
-                    }),
-            ],
-        },
-        RibbonTabDef {
-            id: "help".into(),
-            label: "Help".into(),
-            groups: vec![
-                RibbonGroup::new("Help")
+                    })
                     .button(RibbonButtonDef {
-                        id: "about".into(), label: "About".into(),
+                        id: "samples".into(), label: "Samples".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: samples_open, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "perf_hud".into(), label: "Perf HUD".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: perf_hud, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "clear".into(), label: "Clear".into(),
+                        icon: IconKind::Delete, size: ButtonSize::Small,
                         selected: false, enabled: true,
                     }),
             ],

@@ -36,7 +36,9 @@ pub enum IconKind {
 pub fn paint_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32) {
     let center = rect.center();
     let r = rect.width().min(rect.height()) * 0.45;
-    let stroke = Stroke::new((r * 0.12).max(1.2), color);
+    // 1.0's lucide icons render with stroke-width: 2 at 24×24 → 1/12 ratio;
+    // we land slightly above that floor so 14 px Small icons stay legible.
+    let stroke = Stroke::new((r * 0.13).max(1.4), color);
     match kind {
         IconKind::Line => {
             painter.line_segment(
@@ -73,11 +75,45 @@ pub fn paint_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32)
             painter.circle_stroke(center, r * 0.85, stroke);
         }
         IconKind::Rectangle => {
-            let inset = r * 0.85;
-            painter.rect_stroke(
-                Rect::from_center_size(center, egui::vec2(inset * 2.0, inset * 1.4)),
-                0.0,
-                stroke,
+            // Lucide-style "file" / page outline with folded top-right
+            // corner — used widely as the generic placeholder in 1.0
+            // Ribbon button slots, so we upgrade it from a plain box to
+            // something that reads as "document" at a glance.
+            let w = r * 1.5;
+            let h = r * 1.85;
+            let fold = r * 0.55;
+            let top_left   = Pos2::new(center.x - w * 0.5, center.y - h * 0.5);
+            let top_right0 = Pos2::new(center.x + w * 0.5 - fold, center.y - h * 0.5);
+            let top_right1 = Pos2::new(center.x + w * 0.5, center.y - h * 0.5 + fold);
+            let bot_right  = Pos2::new(center.x + w * 0.5, center.y + h * 0.5);
+            let bot_left   = Pos2::new(center.x - w * 0.5, center.y + h * 0.5);
+            // Page outline (5 segments, including the diagonal fold).
+            painter.line_segment([top_left,   top_right0], stroke);
+            painter.line_segment([top_right0, top_right1], stroke);
+            painter.line_segment([top_right1, bot_right ], stroke);
+            painter.line_segment([bot_right,  bot_left  ], stroke);
+            painter.line_segment([bot_left,   top_left  ], stroke);
+            // Folded-corner triangle interior edges.
+            painter.line_segment(
+                [top_right0, Pos2::new(top_right0.x + fold * 0.0, top_right0.y + fold)],
+                Stroke::new(stroke.width * 0.85, color),
+            );
+            painter.line_segment(
+                [Pos2::new(top_right0.x, top_right0.y + fold), top_right1],
+                Stroke::new(stroke.width * 0.85, color),
+            );
+            // Two text-like ruling lines.
+            let lx0 = top_left.x + r * 0.35;
+            let lx1 = bot_right.x - r * 0.35;
+            painter.line_segment(
+                [Pos2::new(lx0, center.y + r * 0.15),
+                 Pos2::new(lx1, center.y + r * 0.15)],
+                Stroke::new(stroke.width * 0.7, color),
+            );
+            painter.line_segment(
+                [Pos2::new(lx0, center.y + r * 0.6),
+                 Pos2::new(lx1 - r * 0.4, center.y + r * 0.6)],
+                Stroke::new(stroke.width * 0.7, color),
             );
         }
         IconKind::Hatch => {
