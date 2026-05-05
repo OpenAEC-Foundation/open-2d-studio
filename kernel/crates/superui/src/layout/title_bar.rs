@@ -115,13 +115,18 @@ impl<'a> TitleBar<'a> {
         };
         // Phosphor glyphs — the egui-phosphor font is installed at app
         // startup so these chars render with proper line-icons. Names
-        // follow lucide-react's naming used in 1.0's TitleBar.tsx.
+        // and ordering follow 1.0's `TitleBar.tsx` `QAT_BUTTONS`
+        // (`DEFAULT_VISIBLE` = undo, redo, new, open, save, save-as,
+        // print, settings) with separators between the QAT groups.
         if qbtn(ui, &mut qx, phosphor("undo"),     1).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
         if qbtn(ui, &mut qx, phosphor("redo"),     2).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
         qsep(ui, &mut qx);
         if qbtn(ui, &mut qx, phosphor("new"),      3).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
         if qbtn(ui, &mut qx, phosphor("open"),     4).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
         if qbtn(ui, &mut qx, phosphor("save"),     5).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
+        // Save-As: phosphor "FloppyDiskArrowDown" (close to lucide's
+        // SaveAs glyph; falls back to plain save in icon::phosphor).
+        if qbtn(ui, &mut qx, egui_phosphor::regular::FLOPPY_DISK_BACK, 9).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
         qsep(ui, &mut qx);
         if qbtn(ui, &mut qx, egui_phosphor::regular::PRINTER, 6).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
         if qbtn(ui, &mut qx, phosphor("settings"), 7).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
