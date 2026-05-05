@@ -55,6 +55,12 @@ impl<'a> TitleBar<'a> {
         if bar_resp.drag_started_by(egui::PointerButton::Primary) {
             actions.push(TitleBarAction::StartDrag);
         }
+        // Double-click anywhere on the bar (outside the QAT/window-controls
+        // sub-rects whose own interact calls win the hit-test) toggles the
+        // maximize state — standard Windows / macOS / Linux titlebar UX.
+        if bar_resp.double_clicked_by(egui::PointerButton::Primary) {
+            actions.push(TitleBarAction::ToggleMaximize);
+        }
         ui.painter().rect_filled(rect, 0.0, palette.titlebar_bg);
         // 1px bottom border, matches 1.0's `border-b border-cad-border`.
         ui.painter().line_segment(
