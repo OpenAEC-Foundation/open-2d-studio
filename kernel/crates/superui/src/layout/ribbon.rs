@@ -135,7 +135,7 @@ impl Ribbon {
         // separator at the right edge.
         let mut group_rects: Vec<(egui::Rect, String)> = Vec::new();
         ui.allocate_ui_at_rect(group_rect, |ui| {
-            ui.horizontal(|ui| {
+            ui.horizontal_top(|ui| {
                 if let Some(active_tab) = self.tabs.iter().find(|t| t.id == self.active) {
                     for group in &active_tab.groups {
                         ui.add_space(6.0);
@@ -145,11 +145,18 @@ impl Ribbon {
                         // DRAW is 2×4 small, MODIFY is 2×3 small, EDIT is
                         // 2×3 small, ANNOTATE is 2×2 medium). Large
                         // buttons stay on their own as a single full-height
-                        // tile. We allocate a fixed-height row and lay out
-                        // by hand using `allocate_exact_size` so column
-                        // widths and the 2-row stacking work the same way
-                        // egui's natural flow does for single rows.
-                        ui.horizontal(|ui| {
+                        // tile.
+                        //
+                        // To keep ALL Large buttons on the same y-band
+                        // across groups (regardless of whether the group
+                        // also contains a 2-row small/medium column), we
+                        // allocate a fixed-height row pinned to the top of
+                        // the group_rect content area and lay out children
+                        // top-aligned inside it. egui's default vertical
+                        // centering inside `horizontal` would otherwise
+                        // shift Large tiles down when neighbours are
+                        // shorter — that's the "gekke sprong".
+                        ui.horizontal_top(|ui| {
                             ui.spacing_mut().item_spacing = egui::vec2(0.0, 0.0);
                             ui.add_space(2.0);
                             let mut i = 0;

@@ -84,16 +84,32 @@ impl<'a> CadButton<'a> {
 
         match self.size {
             ButtonSize::Large => {
-                // Icon on top, label below.
+                // Icon centred in the upper ~60 % of the button's inner
+                // area, label centred in the lower ~40 %, with ~2 px of
+                // breathing room between them.
+                //
+                // Round-9 bumped `RIBBON_BUTTON_LARGE` from 66→72 to stop
+                // the caption clipping; previously we anchored icon to
+                // top and caption to bottom, which left a ~50 px dead
+                // zone in the middle (visible on `Aligned`). Centring
+                // each element inside its band kills the dead zone while
+                // keeping the caption fully visible.
+                let pad = 4.0_f32;
+                let inner_top = rect.top() + pad;
+                let inner_h = (rect.height() - 2.0 * pad).max(1.0);
+                let upper_h = inner_h * 0.60;
+                let lower_h = inner_h * 0.40;
                 if let Some(k) = self.icon {
+                    let icon_cy = inner_top + upper_h * 0.5;
                     let icon_rect = egui::Rect::from_center_size(
-                        egui::pos2(rect.center().x, rect.top() + icon_size * 0.6 + 6.0),
+                        egui::pos2(rect.center().x, icon_cy),
                         egui::vec2(icon_size, icon_size),
                     );
                     paint_icon(painter, icon_rect, k, fg);
                 }
+                let label_cy = inner_top + upper_h + lower_h * 0.5;
                 painter.text(
-                    egui::pos2(rect.center().x, rect.bottom() - 14.0),
+                    egui::pos2(rect.center().x, label_cy),
                     egui::Align2::CENTER_CENTER,
                     self.label,
                     egui::FontId::proportional(11.0),
