@@ -38,6 +38,10 @@ use superui::{
         FileTabBar, FileTabAction, FileTabDef,
         StatusBar, StatusSection,
     },
+    panels::{LeftDock, LeftDockAction, DrawingItem, SheetItem,
+             RightDock, RightDockAction},
+    panels::right_dock::RightDockState,
+    dialogs::{AppMenu, AppMenuAction},
     icon::IconKind,
 };
 
@@ -1075,6 +1079,27 @@ struct App {
     properties_panel_open: bool,
     about_dialog_open: bool,
 
+    // Round 9 — superui side docks. Drawings + Sheets list state.
+    left_dock_open: bool,
+    right_dock_open: bool,
+    drawings_open: bool,
+    sheets_open: bool,
+    drawings: Vec<String>,
+    sheets: Vec<(String, String)>, // (name, subtitle)
+    active_drawing_idx: Option<usize>,
+    active_sheet_idx: Option<usize>,
+    // RightDock form state (Properties).
+    rd_name: String,
+    rd_type: String,
+    rd_show_axes: bool,
+    rd_boundary_enabled: bool,
+    rd_x: f64,
+    rd_y: f64,
+    rd_w: f64,
+    rd_h: f64,
+    // App menu popup state.
+    app_menu_open: bool,
+
     // --- Selection / click tracking ---------------------------------
     lmb_pressed: bool,
     lmb_press_pos: (f32, f32),
@@ -1292,6 +1317,24 @@ impl App {
             layer_panel_open: true,
             properties_panel_open: true,
             about_dialog_open: false,
+            left_dock_open: true,
+            right_dock_open: true,
+            drawings_open: true,
+            sheets_open: true,
+            drawings: vec!["Drawing 1".to_string()],
+            sheets: vec![("Sheet 1".to_string(),
+                          "No number | A3 (420x297mm)".to_string())],
+            active_drawing_idx: Some(0),
+            active_sheet_idx: Some(0),
+            rd_name: "Drawing 1".to_string(),
+            rd_type: "Stand Alone".to_string(),
+            rd_show_axes: true,
+            rd_boundary_enabled: false,
+            rd_x: 0.0,
+            rd_y: 0.0,
+            rd_w: 420.0,
+            rd_h: 297.0,
+            app_menu_open: false,
             lmb_pressed: false, lmb_press_pos: (0.0, 0.0),
             lmb_press_tab: 0,
             lmb_press_rect: (0.0, 0.0, 0.0, 0.0),
@@ -2097,8 +2140,17 @@ impl App {
                                     requested_clear_measurement = true;
                                     requested_clear_annotations = true;
                                 }
-                                "layers"        => { requested_toggle_layer_panel = true; }
-                                "properties"    => { requested_toggle_props_panel = true; }
+                                "layers"        => {
+                                    // Toggle BOTH legacy panel + new
+                                    // LeftDock so the user sees a single
+                                    // consistent state.
+                                    requested_toggle_layer_panel = true;
+                                    self.left_dock_open = !self.left_dock_open;
+                                }
+                                "properties"    => {
+                                    requested_toggle_props_panel = true;
+                                    self.right_dock_open = !self.right_dock_open;
+                                }
                                 "samples"       => { requested_toggle_samples_panel = true; }
                                 "perf_hud"      => { requested_toggle_perf_hud = true; }
                                 "vsync"         => { requested_toggle_present_mode = true; }
@@ -2280,6 +2332,153 @@ impl App {
                                 });
                             });
                     });
+            }
+
+            // ---- Left: superui::LeftDock (Round 9) -----------------
+            // Drawings + Sheets collapsible rail per 1.0 reference.
+            // Sits OUTSIDE (left-of) the legacy LAYERS panel. Toggles
+            // via the ribbon `layers` button (see action match above).
+            if self.left_dock_open {
+                let palette = Theme::Default.palette();
+                let drawings_items: Vec<DrawingItem> = self.drawings.iter()
+                    .map(|n| DrawingItem { name: n.as_str() }).collect();
+                let sheets_items: Vec<SheetItem> = self.sheets.iter()
+                    .map(|(n, s)| SheetItem { name: n.as_str(), subtitle: s.as_str() })
+                    .collect();
+                let mut drawings_open_local = self.drawings_open;
+                let mut sheets_open_local = self.sheets_open;
+                let active_d = self.active_drawing_idx;
+                let active_s = self.active_sheet_idx;
+                let dock_actions = {
+                    let mut collected: Vec<LeftDockAction> = Vec::new();
+                    egui::SidePanel::left("left_dock")
+                        .exact_width(superui::tokens::metrics::LEFT_DOCK_WIDTH)
+                        .resizable(false)
+                        .frame(egui::Frame::none().fill(palette.bg))
+                        .show(ctx, |ui| {
+                            collected = LeftDock::new(
+                                &drawings_items, &sheets_items,
+                                &mut drawings_open_local, &mut sheets_open_local,
+                            )
+                            .active_drawing(active_d)
+                            .active_sheet(active_s)
+                            .show(ui);
+                        });
+                    collected
+                };
+                self.drawings_open = drawings_open_local;
+                self.sheets_open = sheets_open_local;
+                for a in dock_actions {
+                    match a {
+                        LeftDockAction::SelectDrawing(i) => self.active_drawing_idx = Some(i),
+                        LeftDockAction::SelectSheet(i)   => self.active_sheet_idx = Some(i),
+                        LeftDockAction::AddDrawing => {
+                            let n = self.drawings.len() + 1;
+                            self.drawings.push(format!("Drawing {}", n));
+                        }
+                        LeftDockAction::AddSheet => {
+                            let n = self.sheets.len() + 1;
+                            self.sheets.push((
+                                format!("Sheet {}", n),
+                                "No number | A3 (420x297mm)".to_string(),
+                            ));
+                        }
+                        LeftDockAction::OpenSheetAsTab(_i) => {
+                            // Stub — the kernel doesn't yet model sheets as tabs.
+                            eprintln!("[left_dock] OpenSheetAsTab — TODO");
+                        }
+                        LeftDockAction::RenumberSheets => {
+                            for (i, (name, _)) in self.sheets.iter_mut().enumerate() {
+                                *name = format!("Sheet {}", i + 1);
+                            }
+                        }
+                        LeftDockAction::ToggleDrawings | LeftDockAction::ToggleSheets => {
+                            // Already handled by the bool flip inside `show`.
+                        }
+                    }
+                }
+            }
+
+            // ---- Right: superui::RightDock (Round 9) ----------------
+            // Properties panel mirroring 1.0's PropertiesPanel.tsx.
+            // Sits OUTSIDE (right-of) the legacy PROPERTIES panel.
+            if self.right_dock_open {
+                let palette = Theme::Default.palette();
+                let mut name = self.rd_name.clone();
+                let mut type_label = self.rd_type.clone();
+                let mut show_axes = self.rd_show_axes;
+                let mut bounded = self.rd_boundary_enabled;
+                let mut x = self.rd_x;
+                let mut y = self.rd_y;
+                let mut w = self.rd_w;
+                let mut h = self.rd_h;
+                let dock_actions = {
+                    let mut collected: Vec<RightDockAction> = Vec::new();
+                    egui::SidePanel::right("right_dock")
+                        .exact_width(superui::tokens::metrics::RIGHT_DOCK_WIDTH)
+                        .resizable(false)
+                        .frame(egui::Frame::none().fill(palette.bg))
+                        .show(ctx, |ui| {
+                            let st = RightDockState {
+                                name: &mut name,
+                                type_label: &mut type_label,
+                                show_axes: &mut show_axes,
+                                boundary_enabled: &mut bounded,
+                                x: &mut x, y: &mut y, w: &mut w, h: &mut h,
+                                created: "—",
+                                modified: "—",
+                            };
+                            collected = RightDock::new(st).show(ui);
+                        });
+                    collected
+                };
+                self.rd_name = name;
+                self.rd_type = type_label;
+                self.rd_show_axes = show_axes;
+                self.rd_boundary_enabled = bounded;
+                self.rd_x = x; self.rd_y = y; self.rd_w = w; self.rd_h = h;
+                for a in dock_actions {
+                    match a {
+                        RightDockAction::Collapse => self.right_dock_open = false,
+                        RightDockAction::OpenStandardsDialog => {
+                            eprintln!("[right_dock] standards dialog — TODO");
+                        }
+                        RightDockAction::SelectBoundary => {
+                            eprintln!("[right_dock] select boundary — TODO");
+                        }
+                        RightDockAction::FitToContent => {
+                            eprintln!("[right_dock] fit to content — TODO");
+                        }
+                        // Edits already mutated locals above; nothing else to dispatch.
+                        _ => {}
+                    }
+                }
+            }
+
+            // ---- App Menu popup (Round 9) ---------------------------
+            // Anchored to the top-left so it sits below the title-bar
+            // app icon. Returns an `AppMenuAction` when the user clicks
+            // an entry; we route to existing requested_* flags.
+            if self.app_menu_open {
+                let mut open = self.app_menu_open;
+                if let Some(action) = AppMenu::new(egui::pos2(2.0, 32.0))
+                    .show(ctx, &mut open)
+                {
+                    match action {
+                        AppMenuAction::New     => { requested_new_tab = true; }
+                        AppMenuAction::Open    => { requested_menu_open_dialog = true; }
+                        AppMenuAction::Save | AppMenuAction::SaveAs => {
+                            requested_menu_save_as_dxf = true;
+                        }
+                        AppMenuAction::Close => {
+                            // Close active tab.
+                            requested_close_tab = Some(active_tab_idx);
+                        }
+                        AppMenuAction::Exit  => { requested_window_close = true; }
+                        AppMenuAction::About => { requested_toggle_about = true; }
+                    }
+                }
+                self.app_menu_open = open;
             }
 
             // ---- Left: Layer Manager ---------------------------------
@@ -2765,10 +2964,10 @@ impl App {
         if let Some(tab) = requested_ribbon_tab { self.active_ribbon_tab = tab; }
 
         // ---- Title-bar action dispatch -------------------------------
-        // The hamburger app-menu currently has no destination — Phase B
-        // will wire it to a popup. For now, the click is silently
-        // dropped so the button is still functional visually.
-        let _ = requested_toggle_app_menu;
+        // App-menu popup wired (Round 9) — superui::dialogs::AppMenu.
+        if requested_toggle_app_menu {
+            self.app_menu_open = !self.app_menu_open;
+        }
         if requested_window_minimize {
             if let Some(w) = self.window.as_ref() { w.set_minimized(true); }
         }
@@ -5541,6 +5740,31 @@ fn build_ribbon_tabs(
             id: "home".into(),
             label: "Home".into(),
             groups: vec![
+                // Round 9: split file ops into their own FILE group so
+                // they stop colliding with DRAW (1.0 reference uses a
+                // separate File cluster). DRAW now holds real drawing
+                // primitives.
+                RibbonGroup::new("File")
+                    .button(RibbonButtonDef {
+                        id: "open".into(), label: "Open".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Large,
+                        selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "new_tab".into(), label: "New".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "save_as_dxf".into(), label: "Save DXF".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "save_as_ifcx".into(), label: "Save IFCX".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: true,
+                    }),
                 RibbonGroup::new("Selection")
                     .button(RibbonButtonDef {
                         id: "select".into(), label: "Select".into(),
@@ -5564,24 +5788,34 @@ fn build_ribbon_tabs(
                     }),
                 RibbonGroup::new("Draw")
                     .button(RibbonButtonDef {
-                        id: "open".into(), label: "Open".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Large,
-                        selected: false, enabled: true,
+                        id: "draw_line".into(), label: "Line".into(),
+                        icon: IconKind::Line, size: ButtonSize::Small,
+                        selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
-                        id: "new_tab".into(), label: "New Tab".into(),
+                        id: "draw_rect".into(), label: "Rect".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: false, enabled: true,
+                        selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
-                        id: "save_as_dxf".into(), label: "Save As DXF".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: false, enabled: true,
+                        id: "draw_circle".into(), label: "Circle".into(),
+                        icon: IconKind::Circle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
-                        id: "save_as_ifcx".into(), label: "Save As IFCX".into(),
-                        icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: false, enabled: true,
+                        id: "draw_arc".into(), label: "Arc".into(),
+                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_polyline".into(), label: "Polyline".into(),
+                        icon: IconKind::Polyline, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_text".into(), label: "Text".into(),
+                        icon: IconKind::Text, size: ButtonSize::Small,
+                        selected: false, enabled: false,
                     }),
                 RibbonGroup::new("Annotate")
                     .button(RibbonButtonDef {
