@@ -28,6 +28,9 @@ pub struct CadButton<'a> {
     icon: Option<IconKind>,
     selected: bool,
     enabled: bool,
+    /// Show the caption text. Large always shows it; Medium/Small default
+    /// off (icon-only) unless the consumer opts in.
+    show_caption: bool,
 }
 
 impl<'a> CadButton<'a> {
@@ -44,14 +47,20 @@ impl<'a> CadButton<'a> {
             icon: None,
             selected: false,
             enabled: true,
+            // Large always captioned; Medium/Small default to icon-only.
+            show_caption: matches!(size, ButtonSize::Large),
         }
     }
     fn new(label: &'a str, size: ButtonSize) -> Self {
-        Self { label, size, cell_rect: None, icon: None, selected: false, enabled: true }
+        Self {
+            label, size, cell_rect: None, icon: None, selected: false, enabled: true,
+            show_caption: matches!(size, ButtonSize::Large),
+        }
     }
     pub fn icon(mut self, k: IconKind) -> Self { self.icon = Some(k); self }
     pub fn selected(mut self, b: bool) -> Self { self.selected = b; self }
     pub fn enabled(mut self, b: bool) -> Self { self.enabled = b; self }
+    pub fn show_caption(mut self, b: bool) -> Self { self.show_caption = b; self }
 
     pub fn show(self, ui: &mut Ui) -> Response {
         let palette = Theme::Default.palette();
@@ -118,34 +127,47 @@ impl<'a> CadButton<'a> {
                     );
                     paint_icon(painter, icon_rect, k, fg);
                 }
-                let caption_cy = rect.bottom() - pad - caption_size * 0.5 - 2.0;
-                painter.text(
-                    egui::pos2(rect.center().x, caption_cy),
-                    egui::Align2::CENTER_CENTER,
-                    self.label,
-                    egui::FontId::proportional(caption_size),
-                    fg,
-                );
+                if self.show_caption {
+                    let caption_cy = rect.bottom() - pad - caption_size * 0.5 - 2.0;
+                    painter.text(
+                        egui::pos2(rect.center().x, caption_cy),
+                        egui::Align2::CENTER_CENTER,
+                        self.label,
+                        egui::FontId::proportional(caption_size),
+                        fg,
+                    );
+                }
             }
             ButtonSize::Medium | ButtonSize::Small => {
-                // Icon left-anchored, caption to its right, both
-                // centred vertically.
+                // Icon left-anchored, caption to its right (when shown),
+                // both centred vertically. When icon-only the icon is
+                // centred horizontally in the cell.
                 let pad = rg::CELL_PAD;
-                let icon_cx = rect.left() + pad + icon_size * 0.5;
-                let icon_rect = egui::Rect::from_center_size(
-                    egui::pos2(icon_cx, rect.center().y),
-                    egui::vec2(icon_size, icon_size),
-                );
-                if let Some(k) = self.icon {
-                    paint_icon(painter, icon_rect, k, fg);
+                if self.show_caption {
+                    let icon_cx = rect.left() + pad + icon_size * 0.5;
+                    let icon_rect = egui::Rect::from_center_size(
+                        egui::pos2(icon_cx, rect.center().y),
+                        egui::vec2(icon_size, icon_size),
+                    );
+                    if let Some(k) = self.icon {
+                        paint_icon(painter, icon_rect, k, fg);
+                    }
+                    painter.text(
+                        egui::pos2(icon_rect.right() + rg::ICON_CAPTION_GAP, rect.center().y),
+                        egui::Align2::LEFT_CENTER,
+                        self.label,
+                        egui::FontId::proportional(caption_size),
+                        fg,
+                    );
+                } else {
+                    let icon_rect = egui::Rect::from_center_size(
+                        rect.center(),
+                        egui::vec2(icon_size, icon_size),
+                    );
+                    if let Some(k) = self.icon {
+                        paint_icon(painter, icon_rect, k, fg);
+                    }
                 }
-                painter.text(
-                    egui::pos2(icon_rect.right() + rg::ICON_CAPTION_GAP, rect.center().y),
-                    egui::Align2::LEFT_CENTER,
-                    self.label,
-                    egui::FontId::proportional(caption_size),
-                    fg,
-                );
             }
         }
 

@@ -45,6 +45,11 @@ pub struct RibbonButtonDef {
     pub size: crate::primitives::button::ButtonSize,
     pub selected: bool,
     pub enabled: bool,
+    /// Show the caption next to/under the icon. Large buttons normally
+    /// show their caption; Medium/Small default to icon-only and the
+    /// consumer opts in by setting this `true` (e.g. for Stack rows
+    /// like Selection's Select All / Deselect / Find).
+    pub show_caption: bool,
 }
 
 /// Layout shape for a `RibbonGroup`. Picking the right shape per group
@@ -305,9 +310,18 @@ fn compute_group_width(layout: &RibbonGroupLayout) -> f32 {
 fn cell_w_for_button(b: &RibbonButtonDef) -> f32 {
     match b.size {
         crate::primitives::button::ButtonSize::Large => rg::LARGE_W,
-        crate::primitives::button::ButtonSize::Medium => rg::MEDIUM_W,
-        crate::primitives::button::ButtonSize::Small => rg::SMALL_W,
+        crate::primitives::button::ButtonSize::Medium => {
+            if b.show_caption { rg::MEDIUM_W } else { icon_only_cell_w(rg::ICON_MEDIUM) }
+        }
+        crate::primitives::button::ButtonSize::Small => {
+            if b.show_caption { rg::SMALL_W } else { icon_only_cell_w(rg::ICON_SMALL) }
+        }
     }
+}
+
+/// Width of an icon-only cell: icon + symmetric padding on both sides.
+fn icon_only_cell_w(icon: f32) -> f32 {
+    icon + 2.0 * rg::CELL_PAD + 8.0
 }
 
 fn paint_group_cells(
@@ -423,6 +437,7 @@ fn paint_cell(
         .icon(b.icon)
         .selected(b.selected)
         .enabled(b.enabled)
+        .show_caption(b.show_caption || matches!(size, crate::primitives::button::ButtonSize::Large))
         .show(ui);
     if resp.clicked() {
         actions.push(RibbonAction::ButtonClicked(b.id.clone()));

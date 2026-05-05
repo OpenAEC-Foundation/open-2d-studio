@@ -6197,22 +6197,35 @@ fn build_ribbon_tabs(
     let split_h = matches!(split, Some(SplitKind::HorizontalPair(_)));
     let split_v = matches!(split, Some(SplitKind::VerticalPair(_)));
 
+    // Default Small/Medium = icon-only; only Large shows caption.
     fn b(id: &str, label: &str, icon: IconKind) -> RibbonButtonDef {
         RibbonButtonDef {
             id: id.into(), label: label.into(), icon,
             size: ButtonSize::Small, selected: false, enabled: false,
+            show_caption: false,
         }
     }
     fn lg(id: &str, label: &str, icon: IconKind) -> RibbonButtonDef {
         RibbonButtonDef {
             id: id.into(), label: label.into(), icon,
             size: ButtonSize::Large, selected: false, enabled: false,
+            show_caption: true,
         }
     }
     fn md(id: &str, label: &str, icon: IconKind) -> RibbonButtonDef {
         RibbonButtonDef {
             id: id.into(), label: label.into(), icon,
             size: ButtonSize::Medium, selected: false, enabled: false,
+            show_caption: false,
+        }
+    }
+    /// Small icon + inline caption — for Stack rows that read better
+    /// with text (e.g. Selection: Select All / Deselect / Find).
+    fn b_lbl(id: &str, label: &str, icon: IconKind) -> RibbonButtonDef {
+        RibbonButtonDef {
+            id: id.into(), label: label.into(), icon,
+            size: ButtonSize::Small, selected: false, enabled: false,
+            show_caption: true,
         }
     }
     fn enable(mut x: RibbonButtonDef) -> RibbonButtonDef { x.enabled = true; x }
@@ -6227,11 +6240,11 @@ fn build_ribbon_tabs(
                     large: enable(lg("open", "Open", IconKind::Folder)),
                     stacks: vec![
                         vec![
-                            enable(b("new_tab", "New", IconKind::Rectangle)),
-                            enable(b("save_as_dxf", "Save DXF", IconKind::Download)),
+                            enable(b_lbl("new_tab", "New", IconKind::Rectangle)),
+                            enable(b_lbl("save_as_dxf", "Save DXF", IconKind::Download)),
                         ],
                         vec![
-                            enable(b("save_as_ifcdraw", "Save IFCDraw", IconKind::Download)),
+                            enable(b_lbl("save_as_ifcdraw", "Save IFCDraw", IconKind::Download)),
                         ],
                     ],
                 }),
@@ -6240,12 +6253,12 @@ fn build_ribbon_tabs(
                         matches!(tool, ToolMode::Select))),
                     stacks: vec![
                         vec![
-                            b("pan", "Pan", IconKind::Hand),
-                            b("select_all", "Select All", IconKind::Check),
+                            b_lbl("pan", "Pan", IconKind::Hand),
+                            b_lbl("select_all", "Select All", IconKind::Check),
                         ],
                         vec![
-                            b("deselect", "Deselect", IconKind::Cross),
-                            b("find_replace", "Find/Replace", IconKind::Search),
+                            b_lbl("deselect", "Deselect", IconKind::Cross),
+                            b_lbl("find_replace", "Find/Replace", IconKind::Search),
                         ],
                     ],
                 }),
