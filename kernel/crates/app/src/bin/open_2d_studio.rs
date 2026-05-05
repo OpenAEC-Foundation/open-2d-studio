@@ -5945,6 +5945,12 @@ fn build_ribbon_tabs(
                         icon: IconKind::Move, size: ButtonSize::Large,
                         selected: false, enabled: false,
                     }),
+                // DRAW group — 1.0 reference shows a dense 2×~5 icon grid
+                // of drawing primitives. We list all 10 here as Small
+                // buttons so the ribbon flows them across two rows; every
+                // entry is a placeholder until its tool exists.
+                //   Row 1: Line, Rectangle, Arc, Polyline, Text, File/Tpl
+                //   Row 2: Spline, Circle, Ellipse, Region, Image
                 RibbonGroup::new("Draw")
                     .button(RibbonButtonDef {
                         id: "draw_line".into(), label: "Line".into(),
@@ -5952,13 +5958,8 @@ fn build_ribbon_tabs(
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
-                        id: "draw_rect".into(), label: "Rect".into(),
+                        id: "draw_rect".into(), label: "Rectangle".into(),
                         icon: IconKind::Rectangle, size: ButtonSize::Small,
-                        selected: false, enabled: false,
-                    })
-                    .button(RibbonButtonDef {
-                        id: "draw_circle".into(), label: "Circle".into(),
-                        icon: IconKind::Circle, size: ButtonSize::Small,
                         selected: false, enabled: false,
                     })
                     .button(RibbonButtonDef {
@@ -5974,6 +5975,36 @@ fn build_ribbon_tabs(
                     .button(RibbonButtonDef {
                         id: "draw_text".into(), label: "Text".into(),
                         icon: IconKind::Text, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_template".into(), label: "Template".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_spline".into(), label: "Spline".into(),
+                        icon: IconKind::Arc, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_circle".into(), label: "Circle".into(),
+                        icon: IconKind::Circle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_ellipse".into(), label: "Ellipse".into(),
+                        icon: IconKind::Circle, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_region".into(), label: "Region".into(),
+                        icon: IconKind::Hatch, size: ButtonSize::Small,
+                        selected: false, enabled: false,
+                    })
+                    .button(RibbonButtonDef {
+                        id: "draw_image".into(), label: "Image".into(),
+                        icon: IconKind::Rectangle, size: ButtonSize::Small,
                         selected: false, enabled: false,
                     }),
                 RibbonGroup::new("Annotate")
