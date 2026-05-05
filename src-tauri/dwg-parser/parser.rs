@@ -7240,19 +7240,6 @@ impl DwgParser {
         for _ in 0..6 { let _ = reader.read_bs()?; }
         // CALIBRATION: scan ahead to find a BD that decodes near 304.8 (DIMSCALE
         // for the 1_8_mm_0_ style per DXF oracle). Logs offsets when env set.
-        if std::env::var("DWG_DIMSTYLE_SCAN").is_ok() && name == "1_8_mm_0_" {
-            let saved = reader.tell_bit();
-            for skip in 0..200i32 {
-                reader.seek_bit(saved);
-                for _ in 0..skip { let _ = reader.read_bit(); }
-                if let Ok(v) = reader.read_bd() {
-                    if v.is_finite() && (v - 304.8).abs() < 0.5 {
-                        eprintln!("[SCAN] name={} skip_bits={} dimscale_candidate={}", name, skip, v);
-                    }
-                }
-            }
-            reader.seek_bit(saved);
-        }
         // BD chain begins here per §20.4.40.
         let dimscale_raw = reader.read_bd()?;   // DIMSCALE
         let dimasz_raw    = reader.read_bd()?;  // DIMASZ — arrowhead size
@@ -7280,17 +7267,19 @@ impl DwgParser {
         let _dimtfac      = reader.read_bd().unwrap_or(0.0);
         let _dimgap       = reader.read_bd().unwrap_or(0.0);
 
-        // TV chain per §20.4.40: DIMPOST, DIMAPOST, DIMBLK (legacy
-        // single-arrow name pre-R13 — still emitted by AutoCAD even on
-        // R2010 files), DIMBLK1, DIMBLK2. On R2007+ all five live in
-        // the string stream so they're decoupled from any drift in the
-        // main bit body — `read_tv` returns empty on missing stream
-        // without consuming bits, which is safe.
+        // TV chain per ODA OpenDesignSpec §20.4.40: in R2000+, only DIMPOST
+        // and DIMAPOST are TVs in the dimstyle body. DIMBLK/DIMBLK1/DIMBLK2
+        // moved to the HANDLE stream (DXF group 340/343/344 — handle refs to
+        // BLOCK_RECORD entries) and MUST NOT be read as TVs here. The previous
+        // code consumed five TVs which over-ran the string stream and produced
+        // garbage Unicode in dimblk2 (visible via O2D_DWG_DIM_DUMP=1). On
+        // R2007+ that drift didn't shift the main bit cursor (TVs live in the
+        // separate string stream) but it did corrupt the resolved arrow-block
+        // names downstream renderers consult to choose tick/arrow geometry.
         let _dimpost  = reader.read_tv(is_unicode).unwrap_or_default();
         let _dimapost = reader.read_tv(is_unicode).unwrap_or_default();
-        let _dimblk   = reader.read_tv(is_unicode).unwrap_or_default();
-        let dimblk1  = reader.read_tv(is_unicode).unwrap_or_default();
-        let dimblk2  = reader.read_tv(is_unicode).unwrap_or_default();
+        let dimblk1: String = String::new();
+        let dimblk2: String = String::new();
 
         // Sanity clamp — same defensive approach as $LTSCALE in
         // parse_header_vars_from_bits. Subnormal / out-of-range values
@@ -7314,8 +7303,8 @@ impl DwgParser {
 
         if std::env::var("DWG_DEBUG_DIMSTYLE").is_ok() {
             eprintln!(
-                "[DIMSTYLE_OBJ] name={:?} dimscale_raw={} dimtxt_raw={} dimasz_raw={} (resolved {} {} {}) blk1={:?} blk2_chars={}",
-                name, dimscale_raw, dimtxt_raw, dimasz_raw, dimscale, dimtxt, dimasz, dimblk1, dimblk2.chars().count(),
+                "[DIMSTYLE_OBJ] name={:?} dimscale={} dimtxt={} dimasz={} dimblk1={:?} dimblk2={:?}",
+                name, dimscale, dimtxt, dimasz, dimblk1, dimblk2,
             );
         }
 

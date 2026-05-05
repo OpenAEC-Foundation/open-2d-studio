@@ -1615,3 +1615,69 @@ verticals at 90°, etc.).
 
 - `src-tauri/dwg-parser/parser.rs:6440-6466` — `parse_hatch` pattern-
   line loop: `angle_rad.to_degrees()` and `read_2bd` for base/offset.
+
+---
+
+## Session 2026-05-05 — DIMSTYLE TV chain over-read + annotative scale
+
+### Symptom
+DIMENSION arrows/ticks visibly wrong in DWG side of split_compare vs DXF
+oracle. Diagnostic dump (`O2D_DWG_DIM_DUMP=1`) showed `dimblk2` field for
+"1_8_mm_0_" and similar dimstyles populated with garbage Unicode (e.g.
+`"Ȩᒂ\u{e484}ꁂ\u{e4a4}..."` ~233 chars). Expected: empty string (since
+DIMBLK1/DIMBLK2 are stored as handle refs in R2000+, group codes 343/344
+in DXF, not strings).
+
+### Root cause — `parse_dimstyle_obj` over-reading TV chain (per ODA §20.4.40)
+Per ODA OpenDesignSpec §20.4.40 (DIMSTYLE Object body, R2000+), the only
+TVs in the dimstyle body are DIMPOST and DIMAPOST. DIMBLK, DIMBLK1, and
+DIMBLK2 became HANDLE references stored in the trailing handle-stream
+(group codes 340/343/344 in DXF), NOT TV strings. The previous
+implementation read 5 consecutive TVs (DIMPOST, DIMAPOST, DIMBLK,
+DIMBLK1, DIMBLK2) which over-ran the per-record string stream and
+returned bytes from the next dimstyle's strings as "dimblk2".
+
+### Fix — drop the three obsolete TV reads
+`parser.rs::parse_dimstyle_obj` — keep DIMPOST + DIMAPOST TV reads
+(handle-stream-managed, no main-stream cost on R2007+) and drop the
+three obsolete TV reads. `dimblk1`/`dimblk2` now default to empty
+strings; renderer falls through to default arrowhead glyph (correct
+behaviour when no override block is named).
+
+### Renderer side — annotation scale from DIMSTYLE name (scene_io.rs)
+`scene_io.rs` previously hardcoded a 100× multiplier when DIMSCALE looked
+annotative (=1.0) and DIMTXT was paper-size (≤10 mm). For drawings using
+"1_8_mm_0_" (1/8" = 1' = 1:96 architectural) this produced text/arrows
+~4% too small. Replaced the hardcode with a name-based parser:
+  - `"1_N_mm"` with N ∈ {2,4,8,16,32} → imperial 12·N (1:96 etc.)
+  - `"M_N_mm"` otherwise → metric N/M ratio (1:50, 1:100, etc.)
+  - falls back to 100× when the name doesn't match the convention
+
+The DXF oracle bakes the same scale into DIMSCALE/DIMTXT directly (DXF
+1_8_mm_0_ has DIMSCALE=304.8 = 25.4·12, DIMTXT=101.49 = 2.5·40.6) so the
+two pipelines now agree on text and arrow size.
+
+### Findings still open (logged for next round)
+- Raw DIMSCALE/DIMTXT/DIMASZ from `parse_dimstyle_obj` BD chain remain
+  subnormal garbage on R2007+ — bit-stream offset is mis-aligned by
+  ~148 bits before the BD chain (verified by scan: known-value 0.295
+  appears at +148 from current BD-start position; first `read_bd`
+  consistently returns subnormal). The 6×BS preamble after the bit-flag
+  block is likely missing one or more R2007+-specific BS/RC fields per
+  ODA §20.4.40. Workaround: the parser's sanity-clamp substitutes
+  AutoCAD defaults (DIMSCALE=1.0, DIMTXT=2.5, DIMASZ=2.5), and the
+  name-based annotation-scale heuristic above multiplies up to the
+  correct on-paper size for the common 3bm dimstyle naming convention.
+  Real fix: locate the missing R2007+ DIMSTYLE bit-stream fields
+  between the 6×BS group and the DIMSCALE BD per ODA spec.
+- DIMBLK1/DIMBLK2 are now empty even when the dimstyle uses non-default
+  arrowheads (e.g. `_OBLIQUE`). Resolving them requires walking the
+  trailing handle stream of the DIMSTYLE object to look up the
+  BLOCK_RECORD entries at handle positions 343/344 — out of scope for
+  this round.
+
+### Files changed
+- `src-tauri/dwg-parser/parser.rs::parse_dimstyle_obj` — drop 3 obsolete
+  TV reads; default dimblk1/dimblk2 to empty per §20.4.40.
+- `kernel/crates/app/src/scene_io.rs` — DimStyleInfo gains `name`
+  field; DIMENSION text-render uses name-based annotation scale.

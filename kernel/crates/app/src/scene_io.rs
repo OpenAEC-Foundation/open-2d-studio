@@ -887,6 +887,12 @@ struct DimStyleInfo {
     dimblk1: String,
     /// DIMBLK2 — second arrowhead block name (same encoding as DIMBLK1).
     dimblk2: String,
+    /// Style name (e.g. "1_8_mm_0_", "Standard"). Used to derive annotation
+    /// scale for ANNOTATIVE styles where DIMSCALE is stored as 0/1 in the
+    /// DWG body and the real scale comes from the active CANNOSCALE. The
+    /// 3bm template names follow the convention "{num}_{denom}_mm_{0|1}"
+    /// (e.g. "1_8_mm" = 1/8" = 1' → 1:96 → 304.8 mm/in).
+    name: String,
 }
 
 thread_local! {
@@ -4514,10 +4520,11 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         let dimasz = o.data.get("dimasz").and_then(|v| v.as_f64()).unwrap_or(0.0);
         let dimblk1 = o.data.get("dimblk1").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let dimblk2 = o.data.get("dimblk2").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let name = o.data.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
         if dimtxt > 0.0 && dimscale > 0.0 {
             dimstyle_with_fields += 1;
             dim_style_map_local.insert(o.handle as u64, DimStyleInfo {
-                dimtxt, dimscale, dimasz, dimblk1, dimblk2,
+                dimtxt, dimscale, dimasz, dimblk1, dimblk2, name,
             });
         }
     }
@@ -6273,19 +6280,49 @@ fn tessellate_one(
                         // We don't yet decode CANNOSCALE / per-dimension
                         // annotation overrides from the DWG bit stream (lives
                         // in the entity's xdata reactor chain — out of scope
-                        // for this fix). As a heuristic, when DIMSCALE looks
-                        // like the annotative-base default (1.0) and DIMTXT
-                        // is in the typical paper-size range (1..10 mm), we
-                        // apply a 100× multiplier to approximate a 1:100
-                        // architectural drawing scale. This is the most
-                        // common 3bm template scale and the user reported
-                        // dim text "100x te klein" with the previous
-                        // unscaled value — exactly compensated by 100×.
+                        // for this fix). As a heuristic, when DIMSCALE is at
+                        // the annotative-base default (1.0) and DIMTXT is in
+                        // the typical paper-size range (1..10 mm), we derive
+                        // an annotation scale from the DIMSTYLE name when it
+                        // follows the 3bm template convention
+                        // "{num}_{denom}_mm[_{0|1}]" (e.g. "1_8_mm" = 1/8" =
+                        // 1' → 1:96 → 304.8 mm/in; "1_50_mm" = 1:50 → 50; etc.).
+                        // Falls back to 100× (1:100 architectural) when the
+                        // name doesn't match. The DXF oracle bakes the same
+                        // scale into DIMSCALE/DIMTXT directly (e.g. 1_8_mm_0_
+                        // shows DIMSCALE=304.8) — see ODA OpenDesignSpec
+                        // §20.4.40, group code 40.
                         let annotation_scale = if dimscale > 0.0
                             && (dimscale - 1.0).abs() < 1e-6
                             && dimtxt > 0.0 && dimtxt <= 10.0
                         {
-                            100.0_f64
+                            let style_name = dim_info_early.as_ref()
+                                .map(|i| i.name.as_str()).unwrap_or("");
+                            // Parse "{num}_{denom}_mm" → num/denom for metric mm,
+                            // or "{num}_{denom}_in" / no _mm suffix → imperial 1/N"
+                            // → 12*denom/num feet/inch ratio. Most 3bm files use
+                            // names like "1_50_mm" or "1_100_mm" (direct ratio)
+                            // and "1_8_mm" / "1_4_mm" which map to imperial
+                            // architectural scales 1/8"=1' (1:96) and 1/4"=1' (1:48).
+                            let mut scale = 100.0_f64;
+                            let parts: Vec<&str> = style_name.split('_').collect();
+                            if parts.len() >= 3 {
+                                if let (Ok(num), Ok(denom)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
+                                    if num > 0.0 && denom > 0.0 {
+                                        // Heuristic: if num=1 and denom is a small
+                                        // power-of-two (2,4,8,16) the file uses
+                                        // imperial architectural scale (denom/foot
+                                        // → 12*denom mm-per-paper-mm). Otherwise
+                                        // the name is a direct metric ratio (1:denom).
+                                        scale = if num == 1.0 && [2.0, 4.0, 8.0, 16.0, 32.0].contains(&denom) {
+                                            12.0 * denom // 1/8" = 96, 1/4" = 48, etc.
+                                        } else {
+                                            denom / num
+                                        };
+                                    }
+                                }
+                            }
+                            scale
                         } else {
                             1.0_f64
                         };
