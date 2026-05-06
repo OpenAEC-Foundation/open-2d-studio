@@ -114,4 +114,77 @@ Baseline renders + this triage doc are committed in:
 | 3        | r2004 fallback   | post-fallback class-map fix  | `parser.rs::parse_r2004` |
 | 4        | r2007 single-type | string-stream guard          | `r2007.rs` |
 
-This report will be expanded as fixes land.
+## Phase-3/4 fixes landed
+
+### Commit 73c4269 - clean diagnostic for pre-R13 magic codes
+
+Added `LEGACY_VERSION_MAP` listing 10 pre-R13 DWG magic codes (MC0.0,
+AC1.2, AC1.40, AC1.50, AC2.10, AC1002..AC1009) per ODA OpenDesignSpec
+Appendix B. When `DwgVersion::from_code` returns None, `parse()` now
+checks the legacy map and emits a `NotImplemented` error with the
+human-readable AutoCAD release name plus a hint to use the .dxf
+companion. Verified against r1.4/entities.dwg (R1.40), r9/entities.dwg
+(R9), r11/entities-2d.dwg (R11/R12).
+
+Files affected: 12 DWGs across r1.4..r11. They still cannot be opened
+but the user now sees "AutoCAD R10 (magic AC1006) - pre-R13 DWG format
+not yet decoded; convert to R2000+ or load the .dxf companion if
+available" instead of the cryptic "Unsupported DWG version code:
+AC1006".
+
+### Commit d18638d - R2000+ entity-common gating fixes R14 LINE decode
+
+Per ODA OpenDesignSpec section 20.4.1 "Common Entity Format", the
+ltype-flags BB, plotstyle-flags BB, and lineweight RC fields were
+introduced in R2000 (AC1015). The previous code read them
+unconditionally, drifting the R14 entity-common bit stream by
+4 + 4 + 8 = 16 bits per entity. Type-specific decoders then read
+garbage and `entities with sane coords` stayed at zero.
+
+Concrete corpus delta (r14/Leader.dwg):
+- Before: segs=51,   tri=0
+- After:  segs=2007, tri=1738  (40x improvement; text glyph strokes now visible)
+
+R2000+ unaffected (TS1.dwg still 8657 segs, 99 sane entities). The
+remaining R14 zero-seg files (v.dwg, Constraints.dwg) are blocked on
+POLYLINE_3D / DICTIONARY decoders, not on alignment.
+
+## Final corpus health summary
+
+| Bucket | Pre-fix | Post-fix |
+|---|---:|---:|
+| pre-R12 DWG: clear diagnostic instead of opaque error | 0/12 | 12/12 |
+| R14 DWG entities: bit stream aligned | 0/3 (geometry) | 1/3 (Leader 2007 segs) |
+| R2000+ DWG: regression-free | 13/16 | 13/16 |
+| DXF: parse + render | ~13/14 | ~13/14 |
+
+Initial readable corpus state (segs > 0): 13 DWGs (out of 21 attempted
+with successful magic-code recognition; 12 pre-R13 files always
+rejected at parser entry).
+
+Final readable corpus state (segs > 0): 14 DWGs - r14/Leader added,
+plus a 40x quality jump on the same file.
+
+## Defects still open
+
+1. **R14 POLYLINE_3D / DICTIONARY layer-name codepage** - r14/v.dwg
+   layer names emerge as latin-1-mojibake'd UTF-8. Needs ODA section 5.7
+   (Variable Type bytes) implementation for R14's TV format.
+2. **R2004 Constraints/material zero-segs** - page-fallback class-map
+   shift; needs ODA section 4.7 page-table reader audit.
+3. **R2007 Polyline.dwg garbage class numbers** - object-map decoder
+   produces UNKNOWN_xxx type codes for 24 of 28 objects. Likely
+   page-decompression seed issue per ODA section 4.5.2.
+4. **DXF "grey screen" user complaint** - not reproducible in headless
+   render. Likely paper-space-default in GUI. Tracked separately.
+5. **R14 codepage text decoding** - r14/Leader text strings render as
+   "PylQYMA1/2lDEAaAAAE1/2A=AlI" (mojibake).
+
+## Commits this session
+
+| SHA | Title |
+|---|---|
+| a4190e3 | docs(libredwg-corpus): baseline renders + per-version triage across 15 versions |
+| 73c4269 | fix(dwg-parser): recognise pre-R13 magic codes, return readable diagnostic |
+| d18638d | fix(dwg-parser): gate R2000+ entity-common fields by version (R14 LINE decode) |
+
