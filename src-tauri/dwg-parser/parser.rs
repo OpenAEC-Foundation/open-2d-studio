@@ -80,6 +80,37 @@ const VERSION_MAP: &[(&[u8], &str)] = &[
     (b"AC1032", "R2018"),
 ];
 
+// Legacy DWG version codes that we recognise but cannot yet decode. Per ODA
+// OpenDesignSpec Appendix B "AutoCAD Drawing Database (DWG) Format File
+// Version Identifiers", the magic string at byte offset 0 evolved as:
+//   MC0.0   - AutoCAD 1.0  (May 1982)
+//   AC1.2   - AutoCAD 1.2  (Aug 1982)
+//   AC1.40  - AutoCAD 1.40 (Sep 1982)
+//   AC1.50  - AutoCAD 2.05 (Apr 1983)
+//   AC2.10  - AutoCAD 2.10 (Sep 1983)
+//   AC1002  - AutoCAD 2.5  (Jun 1986)
+//   AC1003  - AutoCAD 2.6  (Apr 1987)
+//   AC1004  - AutoCAD R9   (Sep 1987)
+//   AC1006  - AutoCAD R10  (Oct 1988)
+//   AC1009  - AutoCAD R11/R12 (Oct 1990 / Jun 1992)
+//   AC1012  - AutoCAD R13  (Nov 1994) <-- first version we decode
+// These prefixes are useful to surface in diagnostics: returning
+// NotImplemented("R10 (AC1006) decode not yet supported") is much friendlier
+// than the previous opaque "Unsupported DWG version code: AC1006".
+// Magic only — no binary structure decoded.
+const LEGACY_VERSION_MAP: &[(&[u8], &str)] = &[
+    (b"MC0.0\0", "R1.0"),
+    (b"AC1.2\0", "R1.2"),
+    (b"AC1.40", "R1.40"),
+    (b"AC1.50", "R2.05"),
+    (b"AC2.10", "R2.10"),
+    (b"AC1002", "R2.5"),
+    (b"AC1003", "R2.6"),
+    (b"AC1004", "R9"),
+    (b"AC1006", "R10"),
+    (b"AC1009", "R11/R12"),
+];
+
 // Section record IDs (R2000)
 const SECTION_HEADER: u8 = 0;
 const SECTION_CLASSES: u8 = 1;
@@ -326,11 +357,30 @@ impl DwgParser {
             .map(|(_, name)| name.to_string())
             .unwrap_or_else(|| dwg.version_code.clone());
 
-        let ver = DwgVersion::from_code(&dwg.version_code).ok_or_else(|| {
-            DwgError::InvalidBinary(format!(
-                "Unsupported DWG version code: {}", dwg.version_code
-            ))
-        })?;
+        let ver = match DwgVersion::from_code(&dwg.version_code) {
+            Some(v) => v,
+            None => {
+                // Try to recognise legacy pre-R13 magic and emit a readable
+                // diagnostic with the AutoCAD release name. ODA OpenDesignSpec
+                // Appendix B documents these magics; the binary structures
+                // for R12 and earlier differ enough from the AC1012 layout
+                // that we report them as NotImplemented rather than guess.
+                let header_bytes = data[..6.min(data.len())].to_vec();
+                let legacy = LEGACY_VERSION_MAP.iter().find(|(magic, _)| {
+                    header_bytes.starts_with(&magic[..magic.len().min(header_bytes.len())])
+                });
+                if let Some((_, name)) = legacy {
+                    return Err(DwgError::NotImplemented(format!(
+                        "AutoCAD {} (magic {:?}) — pre-R13 DWG format not yet decoded; \
+                         convert to R2000+ or load the .dxf companion if available",
+                        name, dwg.version_code
+                    )));
+                }
+                return Err(DwgError::InvalidBinary(format!(
+                    "Unsupported DWG version code: {}", dwg.version_code
+                )));
+            }
+        };
         self.version = ver;
         dwg.dwg_version = Some(ver);
 
