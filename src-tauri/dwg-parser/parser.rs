@@ -5445,14 +5445,24 @@ impl DwgParser {
             tr!("ltype-scale BD");
             result.insert("linetype_scale".into(), serde_json::json!(reader.read_bd()?));
 
-            // 12. Ltype flags BB + Plotstyle flags BB â€” R2000+ Â§20.4.1.
-            tr!("ltype-flags BB");
-            let ltype_flags = reader.read_bb()?;
-            result.insert("_ltype_flags".into(), serde_json::json!(ltype_flags));
+            // 12. Ltype flags BB + Plotstyle flags BB - R2000+ §20.4.1.
+            // Per ODA OpenDesignSpec §20.4.1 "Common Entity Format", these
+            // flags were introduced in R2000 - R13 and R14 entities don't
+            // carry them. Reading them unconditionally drifts the bit stream
+            // by 4 bits per R14 entity, which scrambles every subsequent LINE
+            // start_x / end_x decode and produces 0 sane coords (verified
+            // against r14/v.dwg from the LibreDWG corpus: 16 LINEs parsed
+            // but every coord garbage; with the guard added, segments emerge
+            // and the bbox stops being [0,0..0,0]).
+            if self.version >= DwgVersion::R2000 {
+                tr!("ltype-flags BB  [R2000+]");
+                let ltype_flags = reader.read_bb()?;
+                result.insert("_ltype_flags".into(), serde_json::json!(ltype_flags));
 
-            tr!("plotstyle-flags BB");
-            let plotstyle_flags = reader.read_bb()?;
-            result.insert("_plotstyle_flags".into(), serde_json::json!(plotstyle_flags));
+                tr!("plotstyle-flags BB  [R2000+]");
+                let plotstyle_flags = reader.read_bb()?;
+                result.insert("_plotstyle_flags".into(), serde_json::json!(plotstyle_flags));
+            }
 
             // 13. R2007+: Material flags BB + Shadow flags RC â€” Â§20.4.1.
             if self.version >= DwgVersion::R2007 {
@@ -5479,9 +5489,15 @@ impl DwgParser {
             let invisibility = reader.read_bs()?;
             result.insert("invisible".into(), serde_json::json!(invisibility != 0));
 
-            // 16. Lineweight RC â€” R2000+ Â§20.4.1.
-            tr!("lineweight RC  [R2000+]");
-            result.insert("lineweight".into(), serde_json::json!(reader.read_byte()?));
+            // 16. Lineweight RC - R2000+ §20.4.1.
+            // Same R2000-introduction story as the ltype/plotstyle flags
+            // above - R13/R14 entities have no lineweight byte. Guarding
+            // shaves 8 bits per pre-R2000 entity, completing the R14
+            // entity-common alignment fix.
+            if self.version >= DwgVersion::R2000 {
+                tr!("lineweight RC  [R2000+]");
+                result.insert("lineweight".into(), serde_json::json!(reader.read_byte()?));
+            }
 
             if trace {
                 eprintln!(
