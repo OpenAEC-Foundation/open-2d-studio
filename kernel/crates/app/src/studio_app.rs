@@ -8339,6 +8339,41 @@ fn build_ribbon_tabs(
 /// Studio gets the full ribbon + editing tools, Viewer strips all
 /// authoring affordances. `args` is everything after `argv[0]`.
 pub fn run(args: Vec<String>, mode: AppMode) -> anyhow::Result<()> {
+    // ---- Windows-only: bind taskbar/Alt-Tab to our explicit AppUserModelID.
+    //
+    // Without this, Windows 10/11 invents an AUMI per-process based on the
+    // host shell behaviour, and the taskbar entry pulls a generic Rust /
+    // command-line default icon instead of the IDI_ICON1 we embedded via
+    // `build.rs` (winres). winit's `Window::set_window_icon` only affects
+    // the title bar painted inside our window â€” the taskbar reads the AUMI
+    // (and through it the .exe resource / .lnk IconLocation). Calling
+    // SetCurrentProcessExplicitAppUserModelID BEFORE any window is created
+    // is the supported MSDN path. See:
+    //   learn.microsoft.com/windows/win32/shell/appids
+    //   learn.microsoft.com/windows/win32/api/shobjidl_core/nf-shobjidl_core-setcurrentprocessexplicitappusermodelid
+    //
+    // Different AUMI per variant so Studio + Viewer don't share a taskbar
+    // group (each gets its own pinnable entry + its own icon).
+    #[cfg(windows)]
+    {
+        use windows::core::PCWSTR;
+        use windows::Win32::UI::Shell::SetCurrentProcessExplicitAppUserModelID;
+        let aumi: Vec<u16> = match mode {
+            AppMode::Viewer => "OpenAEC.Open2DViewer.1\0".encode_utf16().collect(),
+            AppMode::Studio => "OpenAEC.Open2DStudio.1\0".encode_utf16().collect(),
+        };
+        // SAFETY: AUMI buffer is a NUL-terminated UTF-16 string we own for
+        // the lifetime of the call. The function does not retain the
+        // pointer (it copies into the process token). Errors here are
+        // non-fatal â€” log them and continue; worst case taskbar icon
+        // grouping just isn't perfect.
+        unsafe {
+            if let Err(e) = SetCurrentProcessExplicitAppUserModelID(PCWSTR(aumi.as_ptr())) {
+                eprintln!("[branding] SetCurrentProcessExplicitAppUserModelID failed: {:?}", e);
+            }
+        }
+    }
+
     // CLI args:
     //   (none)              â†’ single blank tab.
     //   <base>              â†’ legacy base-path mode: load <base>.dxf + <base>.dwg as two tabs.

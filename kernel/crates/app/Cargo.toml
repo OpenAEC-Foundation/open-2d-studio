@@ -67,6 +67,17 @@ serde_bytes = "0.11"
 # DWG by a comfortable margin.
 zstd = "0.13"
 
+# Windows-only: SetCurrentProcessExplicitAppUserModelID, used so Windows
+# binds our taskbar entry to a stable AppUserModelID (and therefore to
+# the .exe's embedded IDI_ICON1 / .lnk IconLocation) instead of letting
+# Win10/Win11 invent a per-process AUMI that lands on a generic shell
+# icon. Without this call winit's `Window::set_window_icon` only paints
+# the in-window title-bar icon — the taskbar / Alt-Tab / pinned-entry
+# icons stay generic. See:
+#   docs.microsoft.com/en-us/windows/win32/shell/appids
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.58", features = ["Win32_UI_Shell", "Win32_Foundation"] }
+
 [[bin]]
 name = "kernel-app"
 path = "src/main.rs"
