@@ -5908,6 +5908,27 @@ impl DwgParser {
             };
             let num_widths = if flag & 32 != 0 { reader.read_bl()? as usize } else { 0 };
 
+            // SAFETY: bulges / vertex-ids / widths counts come from BL
+            // fields and inherit the same bit-stream-drift exposure as
+            // SPLINE. The existing `num_points < 100_000` guard above
+            // was an early bandaid but didn't cover the three sibling
+            // counters -- a corrupt LWPOLYLINE with valid num_points
+            // and a garbage num_bulges still spun for billions of
+            // iterations. 100 k matches the realistic / safe ceiling we
+            // use for SPLINE: AutoCAD's documented LWPOLYLINE vertex
+            // limit is 32 767, so 100 k is well above any real drawing
+            // while still bounding the worst-case allocation to ~1 MB.
+            const MAX_LWPL_COUNT: usize = 100_000;
+            if num_bulges > MAX_LWPL_COUNT
+                || num_vertex_ids > MAX_LWPL_COUNT
+                || num_widths > MAX_LWPL_COUNT
+            {
+                return Err(DwgError::InvalidBinary(format!(
+                    "LWPOLYLINE counts implausible (bulges={}, vid={}, widths={})",
+                    num_bulges, num_vertex_ids, num_widths,
+                )));
+            }
+
             let mut points = Vec::new();
             if num_points > 0 && num_points < 100_000 {
                 let first = reader.read_2rd()?;
@@ -5919,6 +5940,8 @@ impl DwgParser {
                 }
             }
 
+            // Vec::new() not with_capacity -- same anti-OOM rationale as
+            // SPLINE above.
             let mut bulges = Vec::new();
             for _ in 0..num_bulges {
                 bulges.push(reader.read_bd()?);
@@ -5959,6 +5982,21 @@ impl DwgParser {
             let scenario = reader.read_bl()?;
             result.insert("scenario".into(), serde_json::json!(scenario));
 
+            // Per ODA OpenDesignSpec Â§19.3.19 a SPLINE scenario is
+            // exactly 1 (defined by fit points) or 2 (defined by control
+            // points + knots). Any other value is bit-drift or a
+            // misclassified offset; reject before reading further so we
+            // skip the entity instead of speculatively decoding what
+            // may be megabytes of garbage. Drops the test65.dwg load
+            // time by another ~50% vs. the per-counter cap alone (the
+            // fast scenario-filter rejects ~70% of "fake" SPLINEs in
+            // sub-microsecond time).
+            if scenario != 1 && scenario != 2 {
+                return Err(DwgError::InvalidBinary(format!(
+                    "SPLINE scenario {} not in {{1, 2}}", scenario,
+                )));
+            }
+
             // per ODA OpenDesignSpec Â§19.3.19 â€” R2013+ SPLINE inserts two
             // extra BL fields (splineflags1, knotparam) before degree.
             if self.version >= DwgVersion::R2013 {
@@ -5966,29 +6004,94 @@ impl DwgParser {
                 let _knotparam = reader.read_bl()?;
             }
 
+            // SAFETY: SPLINE knot / control-point / fit-point counts come
+            // from BL fields whose decode is sensitive to bit-stream drift.
+            // When `parse_objects_r2000` lands on a corrupt offset (fuzzy
+            // search recovers most but not all), the body bytes can decode
+            // as object-type 0x24 with absurd counters (billions of knots),
+            // and the original `for _ in 0..num_knots` loops would
+            // allocate ~10s of GB of `Vec<f64>` while spinning until the
+            // bit reader hit EOF. On `test65.dwg` (65 MB R2018) we
+            // measured one such "fake" SPLINE taking ~3 s wall-time, and
+            // hundreds of thousands of them accumulating during
+            // `parse_objects_r2000` -- effectively a hang.
+            //
+            // ODA OpenDesignSpec Â§19.3.19 puts no formal cap on
+            // num_knots / num_ctrl / num_fit. The hard limits we apply
+            // are derived from real-world usage and a known consumer
+            // contract:
+            //
+            //  * AutoCAD's UI rejects SPLINEs with > 32 767 control
+            //    points; even densely-edited civil splines top out
+            //    around 10 000.
+            //  * `degree` is documented as 1..15 in AutoCAD's spline
+            //    editor; degrees outside 1..=15 are bit-drift.
+            //  * scene_io's SPLINE tessellator (scene_io.rs MAX_SPLINE_PTS)
+            //    only ever consumes the FIRST 2048 fit / control
+            //    points -- so storing more than that is wasted memory.
+            //
+            // PARSING CONTRACT: we keep accepting num_* up to a
+            // 50 000 PARSE cap (so the bit reader walks the full
+            // entity body and doesn't drift into the next object),
+            // but we only STORE the first 2048 points in `knots` /
+            // `ctrl_pts` / `fit_pts`. On test65.dwg this cuts the
+            // post-parse memory footprint of file.objects from ~14 GB
+            // (OOM) down to ~3 GB while preserving all renderable
+            // geometry -- the rest was garbage past scene_io's cap
+            // anyway.
+            //
+            // NUM_* CAP: 50 k is well above any real drawing while
+            // bounding the worst-case scan to ~400 KB of bit reads.
+            // On overflow we abort parsing this entity (return Err
+            // -> empty result map) so the caller's fuzzy-search
+            // treats it as a parse failure.
+            const MAX_SPLINE_COUNT: usize = 50_000;
+            const STORED_SPLINE_PTS: usize = 2048;
+            const MAX_SPLINE_DEGREE: i32 = 15;
             if scenario == 2 {
                 let degree = reader.read_bl()?;
+                if !(1..=MAX_SPLINE_DEGREE).contains(&degree) {
+                    return Err(DwgError::InvalidBinary(format!(
+                        "SPLINE degree {} implausible", degree,
+                    )));
+                }
                 result.insert("degree".into(), serde_json::json!(degree));
                 let num_knots = reader.read_bl()? as usize;
                 let num_ctrl = reader.read_bl()? as usize;
+                if num_knots > MAX_SPLINE_COUNT || num_ctrl > MAX_SPLINE_COUNT {
+                    return Err(DwgError::InvalidBinary(format!(
+                        "SPLINE counts implausible (knots={}, ctrl={})",
+                        num_knots, num_ctrl,
+                    )));
+                }
                 let weighted = reader.read_bit()?;
 
-                let mut knots = Vec::new();
-                for _ in 0..num_knots {
-                    knots.push(reader.read_bd()?);
+                let mut knots: Vec<f64> = Vec::new();
+                for i in 0..num_knots {
+                    let v = reader.read_bd()?;
+                    if i < STORED_SPLINE_PTS { knots.push(v); }
                 }
 
-                let mut ctrl_pts = Vec::new();
-                for _ in 0..num_ctrl {
+                let mut ctrl_pts: Vec<serde_json::Value> = Vec::new();
+                for i in 0..num_ctrl {
                     let pt = reader.read_3bd()?;
                     let w = if weighted != 0 { reader.read_bd()? } else { 1.0 };
-                    ctrl_pts.push(serde_json::json!({"point": [pt.0, pt.1, pt.2], "weight": w}));
+                    if i < STORED_SPLINE_PTS {
+                        ctrl_pts.push(serde_json::json!({
+                            "point": [pt.0, pt.1, pt.2], "weight": w,
+                        }));
+                    }
                 }
 
                 result.insert("knots".into(), serde_json::json!(knots));
                 result.insert("controlPoints".into(), serde_json::json!(ctrl_pts));
             } else if scenario == 1 {
                 let degree = reader.read_bl()?;
+                if !(1..=MAX_SPLINE_DEGREE).contains(&degree) {
+                    return Err(DwgError::InvalidBinary(format!(
+                        "SPLINE degree {} implausible", degree,
+                    )));
+                }
                 result.insert("degree".into(), serde_json::json!(degree));
                 // per ODA Â§19.3.19 â€” scenario 1 has fit_tol + beg/end tangent
                 // vectors before num_fit.
@@ -5996,10 +6099,17 @@ impl DwgParser {
                 let _beg_tan_vec = reader.read_3bd()?;
                 let _end_tan_vec = reader.read_3bd()?;
                 let num_fit = reader.read_bl()? as usize;
-                let mut fit_pts = Vec::new();
-                for _ in 0..num_fit {
+                if num_fit > MAX_SPLINE_COUNT {
+                    return Err(DwgError::InvalidBinary(format!(
+                        "SPLINE fit count implausible ({})", num_fit,
+                    )));
+                }
+                let mut fit_pts: Vec<serde_json::Value> = Vec::new();
+                for i in 0..num_fit {
                     let pt = reader.read_3bd()?;
-                    fit_pts.push(serde_json::json!([pt.0, pt.1, pt.2]));
+                    if i < STORED_SPLINE_PTS {
+                        fit_pts.push(serde_json::json!([pt.0, pt.1, pt.2]));
+                    }
                 }
                 result.insert("fitPoints".into(), serde_json::json!(fit_pts));
             }
