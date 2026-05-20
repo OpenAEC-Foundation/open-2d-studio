@@ -4256,7 +4256,35 @@ impl DwgParser {
                 crate::dwg_dbg!("[dwg-dbg]   ...");
             }
         }
-        for (&handle, &file_offset) in &sorted {
+        // O2D_DWG_OBJLOOP_PROGRESS=1 enables per-iter progress + the last
+        // successfully-parsed entity type. Surfaced the SPLINE bottleneck on
+        // test65.dwg (each "fake" SPLINE took ~3s) — see
+        // docs/superpowers/plans/artefacts/huge-file-investigation.md.
+        // Cheap (one TLS env-var lookup + an Instant) so it stays in
+        // production builds as a release-mode tuning aid.
+        let progress = std::env::var("O2D_DWG_OBJLOOP_PROGRESS").is_ok();
+        let t_progress_start = std::time::Instant::now();
+        let total_handles = sorted.len();
+        let mut last_progress_print = std::time::Instant::now();
+        for (i, (&handle, &file_offset)) in sorted.iter().enumerate() {
+            if progress
+                && (i % 10_000 == 0
+                    || last_progress_print.elapsed().as_millis() > 500)
+            {
+                let last_type: String = objects.last()
+                    .map(|o: &DwgObject| o.type_name.clone())
+                    .unwrap_or_default();
+                eprintln!(
+                    "[dwg-progress] parse_objects: {}/{} ({:.1}%) elapsed {:.1}s \
+                     fails={} objects={} h=0x{:X} off={} last_type={}",
+                    i, total_handles,
+                    (i as f64 / total_handles.max(1) as f64) * 100.0,
+                    t_progress_start.elapsed().as_secs_f64(),
+                    fail_count, objects.len(),
+                    handle, file_offset, last_type,
+                );
+                last_progress_print = std::time::Instant::now();
+            }
             // Skip OOB offsets early â€” don't even try parsing
             if file_offset + 4 >= data.len() {
                 fail_count += 1;
