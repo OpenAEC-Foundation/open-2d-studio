@@ -56,6 +56,7 @@ use crate::scene_io::{load_dwg, load_dxf, Scene, TriKind};
 use crate::ifcx_export::write_ifcx_binary;
 use crate::dxf_export::write_dxf_filtered;
 use kernel_spatial::{SegmentEntry, SegmentIndex};
+use kernel_snap::{SnapContext, SnapEngine, SnapMode, SnapModeSet, SnapResult};
 
 // =============================================================================
 // SceneIndex â€” combined acceleration structure for picking + selection rebuild.
@@ -1172,6 +1173,10 @@ struct FileTab {
     /// O(log n + k) and O(siblings) respectively.
     scene_index: Option<SceneIndex>,
 
+    /// Flat `(p1, p2)` view over `scene.segments` for `kernel_snap`.
+    /// Built lazily, invalidated whenever scene_index is invalidated.
+    snap_segments: Option<Vec<([f64; 2], [f64; 2])>>,
+
     /// World-units-per-pixel that the line vertex buffer was last
     /// generated for. Dashed-line strides are baked at scene-build
     /// time using this factor; when the camera zoom moves the scene
@@ -1281,6 +1286,7 @@ impl FileTab {
             annotations: Vec::new(),
             annotation_pipe: None,
             scene_index: None,
+            snap_segments: None,
             last_dash_wpp: 0.0,
             cached_structure_tree: None,
             cached_layer_list: None,
@@ -1366,6 +1372,18 @@ impl FileTab {
         self.scene_index = Some(idx);
     }
 
+    /// Lazily build the flat `(p1, p2)` endpoint view that
+    /// `kernel_snap::SnapContext` consumes. Same lifecycle as
+    /// `scene_index`. Cheap once built.
+    fn ensure_snap_segments(&mut self) {
+        if self.snap_segments.is_some() { return; }
+        let segs: Vec<([f64; 2], [f64; 2])> = self.scene.segments
+            .iter()
+            .map(|s| (s.p1, s.p2))
+            .collect();
+        self.snap_segments = Some(segs);
+    }
+
     fn derive_label(path: Option<&str>) -> String {
         match path {
             Some(p) => std::path::Path::new(p)
@@ -1397,6 +1415,7 @@ impl FileTab {
         // Any scene-mutating path lands here. Drop the cached spatial /
         // entity index so the next pick rebuilds against the new geometry.
         self.scene_index = None;
+        self.snap_segments = None;
         // Structure-tree + layer-list caches are derived from scene
         // contents (not camera). Pure zoom-driven dash rebuilds also
         // flow through here but the scene topology hasn't changed; we
@@ -1732,6 +1751,21 @@ struct App {
     /// Last completed measurement: (p1_world, p2_world, distance).
     last_measurement: Option<([f64; 2], [f64; 2], f64)>,
 
+    // --- Snap (OSNAP) -----------------------------------------------
+    /// Active object-snap modes (bitmask). Default: Endpoint + Midpoint +
+    /// Center + Intersection + Nearest (AutoCAD baseline).
+    snap_modes: SnapModeSet,
+    /// Most recent snap hit, refreshed on every CursorMoved by `update_snap`.
+    current_snap: Option<SnapResult>,
+
+    // --- Measure sub-modes (Length / Area) ---------------------------
+    /// Length vs Area â€” driven from the ribbon Measure buttons. Default Length.
+    measure_sub: MeasureSub,
+    /// In-progress polygon for Measure Area. Right-click / Enter closes.
+    measure_area_in_progress: Vec<[f64; 2]>,
+    /// Last completed area measurement: (perimeter, area).
+    last_measure_area: Option<(f64, f64)>,
+
     // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
     /// First point of an in-progress Dimension placement (world coords).
     dim_p1: Option<[f64; 2]>,
@@ -1929,6 +1963,19 @@ impl Default for AppMode {
     fn default() -> Self { AppMode::Studio }
 }
 
+/// Measure-tool sub-mode. The `Measure` ToolMode is a thin shell that
+/// dispatches by this enum: `Length` is a two-click distance measurement;
+/// `Area` collects N polygon vertices and reports perimeter + enclosed area.
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum MeasureSub {
+    Length,
+    Area,
+}
+
+impl Default for MeasureSub {
+    fn default() -> Self { MeasureSub::Length }
+}
+
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ToolMode {
     Select,
@@ -2063,6 +2110,17 @@ impl App {
             tool_mode: ToolMode::Select,
             measure_p1: None,
             last_measurement: None,
+            // OSNAP defaults â€” Endpoint + Midpoint + Center + Intersection
+            // + Nearest (AutoCAD baseline).
+            snap_modes: SnapModeSet::ENDPOINT
+                | SnapModeSet::MIDPOINT
+                | SnapModeSet::CENTER
+                | SnapModeSet::INTERSECTION
+                | SnapModeSet::NEAREST,
+            current_snap: None,
+            measure_sub: MeasureSub::Length,
+            measure_area_in_progress: Vec::new(),
+            last_measure_area: None,
             // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
             dim_p1: None,
             area_in_progress: Vec::new(),
@@ -2172,6 +2230,7 @@ impl App {
                         tab.label = FileTab::derive_label(Some(&job.path));
                         tab.loading = None;
                         tab.scene_index = None;
+                        tab.snap_segments = None;
                         // GPU buffers will be (re)built on next frame's
                         // rebuild_buffers call, since the active-tab
                         // path always lazy-builds before drawing.
@@ -2192,6 +2251,7 @@ impl App {
                             format!("load FAILED: {}", err),
                         );
                         tab.scene_index = None;
+                        tab.snap_segments = None;
                     }
                 }
                 Ok(LoadingMsg::Cancelled) => {
@@ -2209,6 +2269,7 @@ impl App {
                                 tab.path = None;
                                 tab.label = "(empty)".to_string();
                                 tab.scene_index = None;
+                                tab.snap_segments = None;
                             }
                         } else {
                             self.tabs.remove(job.tab_idx);
@@ -2603,6 +2664,7 @@ impl App {
         tab.undo_stack.clear();
         // Invalidate the spatial index â€” segments are entirely different now.
         tab.scene_index = None;
+        tab.snap_segments = None;
         if let Some(gpu) = self.gpu.as_ref() {
             tab.rebuild_buffers(gpu);
         }
@@ -4700,6 +4762,83 @@ impl App {
         self.world_per_pixel_in(cam, self.canvas_rect)
     }
 
+    /// Refresh `self.current_snap` from the live cursor. Called once per
+    /// CursorMoved after `cursor_world` is updated. Builds the snap
+    /// segment-endpoint cache + spatial index on demand, then runs
+    /// `SnapEngine::query` with the active mode-mask.
+    fn update_snap(&mut self) {
+        if self.snap_modes.is_empty() {
+            self.current_snap = None;
+            return;
+        }
+        let Some(cursor) = self.cursor_world else {
+            self.current_snap = None;
+            return;
+        };
+        let tab_idx = self.focused_tab_idx();
+        let rect = self.focused_canvas_rect();
+        let tolerance_world = {
+            let cam = match self.tabs.get(tab_idx) {
+                Some(t) => t.cam,
+                None => { self.current_snap = None; return; }
+            };
+            let wpp = self.world_per_pixel_in(&cam, rect);
+            let sf = self.window.as_ref()
+                .map(|w| w.scale_factor() as f64).unwrap_or(1.0);
+            (8.0 * sf) * wpp
+        };
+        let Some(tab) = self.tabs.get_mut(tab_idx) else {
+            self.current_snap = None;
+            return;
+        };
+        tab.ensure_scene_index();
+        tab.ensure_snap_segments();
+        let modes = self.snap_modes;
+        let result: Option<SnapResult> = match (
+            tab.scene_index.as_ref(),
+            tab.snap_segments.as_ref(),
+        ) {
+            (Some(si), Some(segs)) => {
+                let ctx = SnapContext {
+                    index: &si.seg_rtree,
+                    segments: segs.as_slice(),
+                    modes,
+                    tolerance_world,
+                    last_pick: None,
+                    ortho_anchor: None,
+                    polar_increment_deg: 45.0,
+                    key_points: &[],
+                    grid_size: 100.0,
+                };
+                SnapEngine::query(cursor, &ctx)
+            }
+            _ => {
+                // No scene yet â€” still allow Origin snap.
+                if modes.contains_mode(SnapMode::Origin) {
+                    let dx = cursor[0]; let dy = cursor[1];
+                    if dx * dx + dy * dy <= tolerance_world * tolerance_world {
+                        Some(SnapResult {
+                            point: [0.0, 0.0],
+                            kind: SnapMode::Origin,
+                            source_eid: None,
+                            source_angle: None,
+                        })
+                    } else { None }
+                } else { None }
+            }
+        };
+        self.current_snap = result;
+    }
+
+    /// Effective click point â€” returns the snap point when a snap is
+    /// active, otherwise the raw world cursor.
+    fn effective_click_point(&self) -> Option<[f64; 2]> {
+        if let Some(snap) = self.current_snap.as_ref() {
+            return Some(snap.point);
+        }
+        self.cursor_world
+    }
+
     /// Is the mouse currently over the active canvas rect (not on a panel)?
     fn mouse_in_canvas(&self) -> bool {
         let (cx, cy, cw, ch) = self.canvas_rect;
@@ -4797,7 +4936,6 @@ impl App {
         sy_px: f32,
         pick_radius_px: f32,
     ) -> Option<usize> {
-        let t_pick_start = Instant::now();
         // World-space pick params have to be computed before the &mut borrow
         // for `ensure_scene_index`, since both `world_per_pixel_in` and
         // `screen_to_world_in` borrow `self` immutably.
@@ -4825,7 +4963,6 @@ impl App {
                 Vec::new()
             }
         };
-        let n_cand = candidates.len();
         for ci in candidates {
             let i = ci as usize;
             let Some(s) = tab.scene.segments.get(i) else { continue; };
@@ -4840,9 +4977,6 @@ impl App {
                 _ => {}
             }
         }
-        let dt = t_pick_start.elapsed().as_secs_f64() * 1000.0;
-        eprintln!("[pick] N={} candidates dt={:.3} ms (n_segs={})",
-            n_cand, dt, tab.scene.segments.len());
         best.map(|(i, _)| i)
     }
 
@@ -5941,11 +6075,7 @@ fn polygon_area(verts: &[[f64; 2]]) -> f64 {
 }
 
 fn rebuild_sel_pipe(tab_opt: Option<&mut FileTab>, gpu: &GpuCtx) {
-    let Some(tab) = tab_opt else { eprintln!("[rebuild_sel_pipe] tab None"); return; };
-    let t_rebuild_start = Instant::now();
-    eprintln!("[rebuild_sel_pipe] selection={:?} hover={:?} n_segs={} n_ent_idx={}",
-        tab.selection, tab.hover, tab.scene.segments.len(), tab.scene.segment_entity_idx.len());
-
+    let Some(tab) = tab_opt else { return; };
     // Build the spatial / entity index lazily â€” same as the pick path.
     tab.ensure_scene_index();
 
@@ -6038,10 +6168,6 @@ fn rebuild_sel_pipe(tab_opt: Option<&mut FileTab>, gpu: &GpuCtx) {
     } else if let Some(pipe) = tab.sel_pipe.as_mut() {
         pipe.upload(&gpu.queue, &verts);
     }
-    eprintln!("[rebuild_sel_pipe] emitted {} verts, vertex_count={}, dt={:.3} ms",
-        verts.len(),
-        tab.sel_pipe.as_ref().map(|p| p.vertex_count).unwrap_or(0),
-        t_rebuild_start.elapsed().as_secs_f64() * 1000.0);
 }
 
 /// Build a 64Ã—64 RGBA window/taskbar icon programmatically â€” avoids the
@@ -6446,6 +6572,11 @@ impl ApplicationHandler for App {
                 // Cache world-space cursor for the Area rubber-band preview.
                 self.cursor_world = self.screen_to_world(self.mouse_pos.0, self.mouse_pos.1);
 
+                // OSNAP â€” refresh `current_snap` from cursor + mode mask.
+                // Microseconds per frame; only does real work when modes
+                // are non-empty AND a tab has segments.
+                self.update_snap();
+
                 // Hover preview â€” only in Select mode and when no LMB drag
                 // is in progress. Scaled pick radius for HiDPI parity with
                 // the click-pick path.
@@ -6550,8 +6681,7 @@ impl ApplicationHandler for App {
                 let egui_wants_input = self.gpu.as_ref()
                     .map(|g| g.egui_ctx.wants_pointer_input()).unwrap_or(false);
                 let in_cube = self.mouse_in_view_cube();
-                eprintln!("[LMB] state={:?} egui_wants={} mouse_in_canvas={} in_cube={} mouse_pos={:?} canvas_rect={:?} tool_mode={:?}",
-                    state, egui_wants_input, self.mouse_in_canvas(), in_cube, self.mouse_pos, self.canvas_rect, self.tool_mode);
+                let _ = egui_wants_input; // diagnostic â€” kept for future gating
                 match state {
                     ElementState::Pressed => {
                         // BUG FIX: don't gate on egui_wants_input â€” it returns
@@ -6572,8 +6702,6 @@ impl ApplicationHandler for App {
                             self.lmb_press_pos = self.mouse_pos;
                             self.lmb_press_tab = self.focused_tab_idx();
                             self.lmb_press_rect = self.focused_canvas_rect();
-                            eprintln!("[LMB Press] latched tab={} rect={:?} dragging={}",
-                                self.lmb_press_tab, self.lmb_press_rect, self.dragging);
                             if self.tool_mode == ToolMode::ZoomRegion {
                                 // ZR â€” latch world-space anchor for the
                                 // zoom-region rectangle. Release commits
@@ -6608,7 +6736,6 @@ impl ApplicationHandler for App {
                         }
                     }
                     ElementState::Released => {
-                        eprintln!("[LMB Release] lmb_pressed={} dragging={}", self.lmb_pressed, self.dragging);
                         if self.lmb_pressed {
                             self.lmb_pressed = false;
                             let dx = self.mouse_pos.0 - self.lmb_press_pos.0;
@@ -6624,9 +6751,6 @@ impl ApplicationHandler for App {
                             let scale_factor = self.window.as_ref()
                                 .map(|w| w.scale_factor() as f32).unwrap_or(1.0);
                             let drift_threshold = (4.0_f32 * scale_factor).max(6.0);
-                            eprintln!("[LMB Release] drift={} threshold={} focus_tab={} focus_rect={:?} tool_mode={:?} mods.shift={} mods.ctrl={}",
-                                drift, drift_threshold, focus_tab, focus_rect, self.tool_mode,
-                                self.modifiers_shift_held(), self.modifiers_ctrl_held());
                             let shift_held = self.modifiers_shift_held();
                             let ctrl_held = self.modifiers_ctrl_held();
                             let additive = shift_held || ctrl_held;
@@ -6683,8 +6807,6 @@ impl ApplicationHandler for App {
                                         let picked = self.pick_segment_at_in(
                                             focus_tab, focus_rect,
                                             self.mouse_pos.0, self.mouse_pos.1, pick_r_px);
-                                        let n_segs = self.tabs.get(focus_tab).map(|t| t.scene.segments.len()).unwrap_or(0);
-                                        eprintln!("[LMB Select] picked={:?} n_segs={} additive={}", picked, n_segs, additive);
                                         if let Some(tab) = self.tabs.get_mut(focus_tab) {
                                             apply_pick_to_selection(tab, picked, additive);
                                         }
