@@ -66,6 +66,14 @@ name = "kernel-app"
 path = "src/main.rs"
 
 [[bin]]
+name = "open_2d_studio"
+path = "src/bin/open_2d_studio.rs"
+
+[[bin]]
+name = "open_2d_viewer"
+path = "src/bin/open_2d_viewer.rs"
+
+[[bin]]
 name = "lz77-variants"
 path = "src/bin/lz77_variants.rs"
 
