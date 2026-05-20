@@ -12,6 +12,29 @@ pub struct FileTabDef {
     pub modified: bool,
 }
 
+/// Truncate `label` from the LEFT side so the *tail* of the filename
+/// stays visible. CAD filenames carry their meaningful identifier at the
+/// end (e.g. `…CP-21.dwg`, `…rev-3.dwg`); a head-truncation would chop
+/// off exactly the part the user needs to distinguish similarly-prefixed
+/// drawings.
+///
+/// If `label` already fits within `max_chars`, it is returned unchanged.
+/// Otherwise we keep the last `max_chars - 1` characters and prepend an
+/// ellipsis: `…tail`.
+///
+/// Uses `chars().count()` (not `len()`) so we don't slice multibyte UTF-8
+/// in the middle of a codepoint.
+pub fn truncate_tail(label: &str, max_chars: usize) -> String {
+    let n = label.chars().count();
+    if n <= max_chars || max_chars == 0 {
+        return label.to_string();
+    }
+    let keep = max_chars.saturating_sub(1).max(1);
+    let skip = n - keep;
+    let tail: String = label.chars().skip(skip).collect();
+    format!("\u{2026}{}", tail)
+}
+
 #[derive(Debug, Clone)]
 pub enum FileTabAction {
     Activate(usize),
@@ -43,17 +66,32 @@ impl<'a> FileTabBar<'a> {
         // body bg — verified via computed styles on the live web app.
         ui.painter().rect_filled(bar_rect, 0.0, palette.titlebar_bg);
 
+        // Tail-truncation: hard cap on visible characters per tab so a
+        // very long DWG/DXF filename can't blow the bar wide and overlap
+        // its neighbours. 24 chars × ~7 px ≈ 168 px label, which leaves
+        // headroom under the 180 px max width. See `truncate_tail`.
+        const MAX_LABEL_CHARS: usize = 24;
         ui.allocate_ui_at_rect(bar_rect, |ui| {
             ui.horizontal_centered(|ui| {
                 ui.add_space(4.0);
                 for tab in self.tabs {
                     let is_active = self.active_id == Some(tab.id);
-                    let label_w = (tab.label.chars().count() as f32 * 7.0).max(60.0).min(180.0);
+                    let display_label = truncate_tail(&tab.label, MAX_LABEL_CHARS);
+                    let was_truncated = display_label.chars().count() < tab.label.chars().count();
+                    let label_w = (display_label.chars().count() as f32 * 7.0).max(60.0).min(180.0);
                     let tab_w = label_w + 36.0; // label + close × + slope
                     let (trect, tresp) = ui.allocate_exact_size(
                         Vec2::new(tab_w, h),
                         Sense::click(),
                     );
+                    // Hover tooltip: full filename — essential when the
+                    // label was tail-truncated so the user can still see
+                    // the leading path / prefix.
+                    let tresp = if was_truncated {
+                        tresp.on_hover_text(&tab.label)
+                    } else {
+                        tresp
+                    };
                     // Active tab pulls down from titlebar onto the body
                     // brown — visually it "leaks" into the ribbon area.
                     // Inactive tabs share the bar's surface tone.
@@ -84,11 +122,13 @@ impl<'a> FileTabBar<'a> {
                             egui::Stroke::new(2.0, palette.accent),
                         );
                     }
-                    // Label
+                    // Label — use the tail-truncated string. Modified
+                    // bullet stays in front of the (possibly truncated)
+                    // text, never gets chopped off.
                     let label_text = if tab.modified {
-                        format!("● {}", tab.label)
+                        format!("\u{25CF} {}", display_label)
                     } else {
-                        tab.label.clone()
+                        display_label.clone()
                     };
                     ui.painter().text(
                         Pos2::new(trect.left() + 8.0, trect.center().y),
@@ -143,5 +183,47 @@ impl<'a> FileTabBar<'a> {
             });
         });
         actions
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_tail;
+
+    #[test]
+    fn short_label_unchanged() {
+        assert_eq!(truncate_tail("foo.dwg", 24), "foo.dwg");
+    }
+
+    #[test]
+    fn exact_length_unchanged() {
+        let s = "a".repeat(24);
+        assert_eq!(truncate_tail(&s, 24), s);
+    }
+
+    #[test]
+    fn long_label_keeps_tail() {
+        let s = "2705_model_Funderingsherstel_Constructietekening.dwg";
+        let out = truncate_tail(s, 24);
+        // Output: ellipsis + last 23 characters.
+        assert!(out.starts_with('\u{2026}'));
+        assert_eq!(out.chars().count(), 24);
+        assert!(out.ends_with(".dwg"));
+        // The meaningful tail must be visible.
+        assert!(out.contains("Constructietekening.dwg"));
+    }
+
+    #[test]
+    fn multibyte_safe() {
+        // Make sure we don't slice mid-codepoint on UTF-8.
+        let s = "ééééééééééééééééééééééééééééé.dwg"; // 33 chars
+        let out = truncate_tail(s, 10);
+        assert_eq!(out.chars().count(), 10);
+        assert!(out.ends_with(".dwg"));
+    }
+
+    #[test]
+    fn zero_max_returns_input() {
+        assert_eq!(truncate_tail("anything", 0), "anything");
     }
 }
