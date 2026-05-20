@@ -4413,6 +4413,24 @@ fn dwg_builtin_ltype_pattern(name_raw: &str) -> Vec<f64> {
         "MV_HIDDEN"      => return vec![2.5, -1.25],
         "MV_CENTER"      => return vec![6.0, -3.0, 3.0, -3.0],
         "MV_HIDDEN_WAND" => return vec![1.5, -1.5],
+        // Per ODA OpenDesignSpec §20.4.55 (LINETYPE) dash-element list:
+        // positive=draw, negative=skip, 0=dot. Dash-dot (CENTER-style)
+        // patterns of the form [draw, -gap, 0, -gap] classify as
+        // kind 3 in `classify_lt_pattern` (drives DASH_PIXEL_PATTERNS[3]
+        // = dash-dot in studio_app.rs). DXF oracle:
+        //   pair.dxf + Funderingsherstel CP-21.dxf — MV_stramien is
+        //   pattern_length=16.0, dashes [8.0, -4.0, 0.0, -4.0].
+        //   MV_niveau is pattern_length=12.0, dashes [10.0, -1.0, 0.0, -1.0].
+        // Added here as a fallback because the R2010 LTYPE-object body
+        // bit-stream still drifts on these 3BM project-specific entries,
+        // leaving `ltype_dashes_map[MV_STRAMIEN]` empty in load_dwg
+        // and the Stramien layer rendered as solid lines instead of the
+        // dash-dot center-line the DXF prescribes.
+        "MV_STRAMIEN"    => return vec![8.0, -4.0, 0.0, -4.0],
+        "MV_NIVEAU"      => return vec![10.0, -1.0, 0.0, -1.0],
+        // pair.dxf — pattern_length=6.6, dashes [5.0, -0.8, 0.0, -0.8]
+        // (another dash-dot center-line, finer scale).
+        "MV_HARTLIJN_STAAL" => return vec![5.0, -0.8, 0.0, -0.8],
         // Revit's own "Hidden" linetype (distinct from AutoCAD HIDDEN) —
         // fixture: 4.7625 / -2.38125.
         "HIDDEN"         => return vec![4.7625, -2.38125],
