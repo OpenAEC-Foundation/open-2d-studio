@@ -3,6 +3,12 @@ name = "kernel-app"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
+build = "build.rs"
+
+[build-dependencies]
+# Embeds Windows .ico resource into the .exe so the taskbar + explorer
+# show the proper Open 2D icon instead of a generic Rust default.
+winres = "0.1"
 
 [dependencies]
 kernel-core = { workspace = true }

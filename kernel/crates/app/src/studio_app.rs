@@ -5847,6 +5847,27 @@ fn rebuild_sel_pipe(tab_opt: Option<&mut FileTab>, gpu: &GpuCtx) {
 /// (#242830) background, cyan-blue (#007ACC) stylised "2D" letters (the
 /// logo) drawn from a 5Ã—7 pixel font scaled 4Ã—4. Matches the ribbon's
 /// colour language.
+/// Pre-rendered PNG asset for the Studio window icon (taskbar + OS
+/// title chrome). 256-px master version — winit downscales as needed.
+const STUDIO_ICON_PNG: &[u8] = include_bytes!("../assets/icon-studio-256.png");
+/// Pre-rendered PNG asset for the Viewer window icon. Same orange
+/// "2D" tile as Studio plus a small eye-badge in the bottom-right so
+/// users can tell the two app variants apart in the taskbar.
+const VIEWER_ICON_PNG: &[u8] = include_bytes!("../assets/icon-viewer-256.png");
+
+fn make_window_icon_for(mode: AppMode) -> Option<winit::window::Icon> {
+    let bytes = match mode {
+        AppMode::Viewer => VIEWER_ICON_PNG,
+        AppMode::Studio => STUDIO_ICON_PNG,
+    };
+    // Decode PNG → RGBA8 buffer via the `image` crate (already in deps).
+    let img = image::load_from_memory(bytes).ok()?.to_rgba8();
+    let (w, h) = img.dimensions();
+    winit::window::Icon::from_rgba(img.into_raw(), w, h).ok()
+}
+
+/// Legacy procedurally-drawn pixel-art icon. Kept as a fallback in
+/// case the PNG asset fails to decode (e.g. a corrupt embed).
 fn make_window_icon() -> Option<winit::window::Icon> {
     const W: u32 = 64;
     const H: u32 = 64;
@@ -5937,7 +5958,10 @@ impl ApplicationHandler for App {
             .with_title(title)
             .with_decorations(false)
             .with_inner_size(winit::dpi::LogicalSize::new(1800, 1000));
-        if let Some(ic) = make_window_icon() {
+        // Use the proper PNG asset (Studio vs Viewer variant). Falls
+        // back to the procedural pixel-art icon if PNG decode fails.
+        let icon = make_window_icon_for(self.mode).or_else(make_window_icon);
+        if let Some(ic) = icon {
             attrs = attrs.with_window_icon(Some(ic));
         }
         let win = Arc::new(event_loop.create_window(attrs).unwrap());
