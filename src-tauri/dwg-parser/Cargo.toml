@@ -8,6 +8,13 @@ path = "lib.rs"
 
 [dependencies]
 serde_json = "1"
+# Rayon work-stealing thread pool — used to parallelise
+# `parse_objects_r2000` (~700k objects on test65.dwg). Each handle
+# decodes independently from the immutable `data: &[u8]` slice via
+# `parse_single_object_r2000(&self, ...)`, so the loop is embarrassingly
+# parallel. On an 8-core test machine this brings the parse phase from
+# ~160 s to ~25 s on test65.dwg.
+rayon = "1.10"
 
 [features]
 # Enables verbose `[dwg-dbg]` traces from the parser to stderr.

@@ -4270,16 +4270,11 @@ impl DwgParser {
         object_map: &HashMap<u32, usize>,
         _classes: &[DwgClass],
     ) -> Vec<DwgObject> {
-        let mut objects = Vec::new();
+        use rayon::prelude::*;
 
         let mut sorted: Vec<_> = object_map.iter().collect();
         sorted.sort_by_key(|&(h, _)| *h);
 
-        let mut fail_count = 0usize;
-        let mut fail_inbounds = 0usize;
-        let mut fail_samples: Vec<String> = Vec::new();
-        let mut fail_inbounds_samples: Vec<String> = Vec::new();
-        let mut fail_inbounds_offsets: Vec<usize> = Vec::new();
         crate::dwg_dbg!("[dwg-dbg] parse_objects_r2000: {} handles, data.len={}", sorted.len(), data.len());
         // Show first 5 and last 5 offsets
         for (i, (&h, &off)) in sorted.iter().enumerate() {
@@ -4289,117 +4284,237 @@ impl DwgParser {
                 crate::dwg_dbg!("[dwg-dbg]   ...");
             }
         }
-        // O2D_DWG_OBJLOOP_PROGRESS=1 enables per-iter progress + the last
-        // successfully-parsed entity type. Surfaced the SPLINE bottleneck on
-        // test65.dwg (each "fake" SPLINE took ~3s) — see
+
+        // O2D_DWG_OBJLOOP_PROGRESS=1 enables progress reporting.
+        // Surfaced the SPLINE bottleneck on test65.dwg
+        // (each "fake" SPLINE took ~3s) -- see
         // docs/superpowers/plans/artefacts/huge-file-investigation.md.
-        // Cheap (one TLS env-var lookup + an Instant) so it stays in
-        // production builds as a release-mode tuning aid.
         let progress = std::env::var("O2D_DWG_OBJLOOP_PROGRESS").is_ok();
         let t_progress_start = std::time::Instant::now();
         let total_handles = sorted.len();
-        let mut last_progress_print = std::time::Instant::now();
-        for (i, (&handle, &file_offset)) in sorted.iter().enumerate() {
-            if progress
-                && (i % 10_000 == 0
-                    || last_progress_print.elapsed().as_millis() > 500)
-            {
-                let last_type: String = objects.last()
-                    .map(|o: &DwgObject| o.type_name.clone())
-                    .unwrap_or_default();
-                eprintln!(
-                    "[dwg-progress] parse_objects: {}/{} ({:.1}%) elapsed {:.1}s \
-                     fails={} objects={} h=0x{:X} off={} last_type={}",
-                    i, total_handles,
-                    (i as f64 / total_handles.max(1) as f64) * 100.0,
-                    t_progress_start.elapsed().as_secs_f64(),
-                    fail_count, objects.len(),
-                    handle, file_offset, last_type,
-                );
-                last_progress_print = std::time::Instant::now();
-            }
-            // Cancellation: poll the process-global flag every 256 handles
-            // so a user clicking Cancel on the loading overlay bails the
-            // dominant inner loop within ~1-2s on big files (113k objects
-            // on test65.dwg, used to take ~12s). We can't return Err from
-            // here because the signature is `Vec<DwgObject>` — instead we
-            // break out and let `DwgParser::parse` translate the flag to
-            // `DwgError::Cancelled`. See dwg-parser/lib.rs::LOAD_CANCELLED.
-            if i & 0xFF == 0 && crate::check_cancelled() {
-                crate::dwg_dbg!("[dwg-dbg] parse_objects_r2000: cancelled at i={}/{} (objects={}, fails={})",
-                    i, total_handles, objects.len(), fail_count);
-                break;
-            }
-            // Skip OOB offsets early â€” don't even try parsing
-            if file_offset + 4 >= data.len() {
-                fail_count += 1;
-                continue;
-            }
-            // Try primary offset first
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                self.parse_single_object_r2000(data, handle, file_offset)
-            }));
-            match &result {
-                Ok(Ok(obj)) => {
-                    objects.push(obj.clone());
-                    continue;
-                }
-                Ok(Err(e)) => {
-                    let is_oob = file_offset >= data.len();
-                    if !is_oob {
-                        fail_inbounds += 1;
-                        fail_inbounds_offsets.push(file_offset);
-                        if fail_inbounds_samples.len() < 20 {
-                            let end = (file_offset + 16).min(data.len());
-                            let raw: String = data[file_offset..end].iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ");
-                            fail_inbounds_samples.push(format!("h=0x{:X}@{} err={:?} raw=[{}]",
-                                handle, file_offset, e, raw));
-                        }
-                    }
-                    if fail_samples.len() < 10 {
-                        // Show raw bytes at offset for diagnosis
-                        let end = (file_offset + 16).min(data.len());
-                        let raw: String = if file_offset < data.len() {
-                            data[file_offset..end].iter().map(|b| format!("{:02x}", b)).collect::<Vec<_>>().join(" ")
-                        } else { "OOB".into() };
-                        fail_samples.push(format!("h=0x{:X}@{} err={:?} raw=[{}]",
-                            handle, file_offset, e, raw));
-                    }
-                    fail_count += 1;
-                }
-                Err(_panic) => {
-                    if fail_samples.len() < 10 {
-                        fail_samples.push(format!("h=0x{:X}@{} PANIC", handle, file_offset));
-                    }
-                    fail_count += 1;
-                }
-            }
 
-            // For R2004+, try nearby offsets (Â±2, Â±4, Â±6, Â±8) to handle CRC
-            // alignment shifts. Only try for in-bounds offsets.
-            // DO NOT extend the search much further â€” wider windows produce
-            // false positives where random bytes happen to MS-decode as a
-            // small object, polluting the result set with garbage coordinates
-            // that render as tens of thousands of spurious line segments.
-            if self.version.is_r2004_plus() && file_offset + 4 < data.len() {
-                'fuzzy: for delta in &[2usize, 4, 6, 8] {
-                    for &off in &[file_offset.wrapping_sub(*delta), file_offset + *delta] {
-                        if off >= data.len() || off < 4 { continue; }
-                        let r = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                            self.parse_single_object_r2000(data, handle, off)
+        // PARALLELISATION (rayon):
+        //
+        // `parse_single_object_r2000(&self, ...)` reads only immutable
+        // state (`self.version`, `self.class_map`, `self.use_string_stream`)
+        // and the immutable `data: &[u8]` slice. Every handle decodes
+        // from a known byte offset with a local bit-cursor and emits a
+        // freshly-allocated `DwgObject`. That makes the handle list
+        // embarrassingly parallel: throw it at a rayon work-stealing
+        // pool, gather per-handle results, then reassemble.
+        //
+        // We chunk into batches of 1024 handles so each work item does
+        // enough useful work to amortise rayon's scheduling overhead
+        // (~µs per task) while still letting the pool re-balance load
+        // when one batch hits an unusually expensive entity (e.g. a
+        // legitimate dense SPLINE).
+        //
+        // Result ordering: rayon's `par_iter().collect()` preserves the
+        // input order, so the resulting `Vec<DwgObject>` matches the
+        // sequential output one-for-one. We rely on this for
+        // `resolve_handles`'s "scan in-order for the first LAYER /
+        // BLOCK_HEADER" semantics.
+        //
+        // Cancellation: each task polls `check_cancelled()` once per
+        // batch start, so a user-flipped flag halts new tasks within
+        // ~1024 handles (sub-second even on a slow machine).
+        const CHUNK: usize = 1024;
+        struct HandleOutcome {
+            object: Option<DwgObject>,
+            // Fail bookkeeping per handle. None on success, Some(...) on
+            // any failure path -- the caller aggregates counts after
+            // join.
+            fail_kind: FailKind,
+            handle: u32,
+            file_offset: usize,
+            err_repr: Option<String>,
+        }
+        #[derive(Clone, Copy)]
+        enum FailKind {
+            None,           // parsed OK at primary or fuzzy offset
+            Oob,            // offset out of bounds
+            InBoundsParse,  // parse_single_object returned Err
+            Panic,          // catch_unwind tripped
+        }
+        let chunks_total = total_handles.div_ceil(CHUNK);
+        let progress_done = std::sync::atomic::AtomicUsize::new(0);
+        let per_handle: Vec<HandleOutcome> = sorted
+            .par_chunks(CHUNK)
+            .flat_map_iter(|chunk| {
+                // Per-chunk cancellation check + progress emit. We do
+                // the eprintln on the rayon worker thread; output may
+                // interleave from multiple workers but the per-line
+                // format is unambiguous so the user can still read it.
+                if crate::check_cancelled() {
+                    // Return an empty iterator -> the parent collects
+                    // whatever was already produced and the top-level
+                    // `DwgParser::parse` translates this to
+                    // DwgError::Cancelled via the same flag check it
+                    // already does on return.
+                    return Vec::new().into_iter();
+                }
+                let done = progress_done.fetch_add(chunk.len(),
+                    std::sync::atomic::Ordering::Relaxed);
+                if progress
+                    && (done / CHUNK) % 10 == 0
+                {
+                    eprintln!(
+                        "[dwg-progress] parse_objects: ~{}/{} ({:.1}%) chunks={}/{} elapsed {:.1}s",
+                        done, total_handles,
+                        (done as f64 / total_handles.max(1) as f64) * 100.0,
+                        done / CHUNK, chunks_total,
+                        t_progress_start.elapsed().as_secs_f64(),
+                    );
+                }
+                let mut out: Vec<HandleOutcome> = Vec::with_capacity(chunk.len());
+                for &(&handle, &file_offset) in chunk {
+                    // Skip OOB offsets early -- don't even try parsing.
+                    if file_offset + 4 >= data.len() {
+                        out.push(HandleOutcome {
+                            object: None,
+                            fail_kind: FailKind::Oob,
+                            handle,
+                            file_offset,
+                            err_repr: None,
+                        });
+                        continue;
+                    }
+                    // Try primary offset first.
+                    let result = std::panic::catch_unwind(
+                        std::panic::AssertUnwindSafe(|| {
+                            self.parse_single_object_r2000(data, handle, file_offset)
                         }));
-                        if let Ok(Ok(obj)) = r {
-                            let type_ok = obj_type_name(obj.type_num).is_some()
-                                || obj.type_num >= 500;
-                            if type_ok {
-                                fail_count -= 1; // recovered
-                                objects.push(obj);
-                                break 'fuzzy;
+                    match result {
+                        Ok(Ok(obj)) => {
+                            out.push(HandleOutcome {
+                                object: Some(obj),
+                                fail_kind: FailKind::None,
+                                handle,
+                                file_offset,
+                                err_repr: None,
+                            });
+                            continue;
+                        }
+                        Ok(Err(e)) => {
+                            // Fall through to fuzzy attempt.
+                            let err_repr = Some(format!("{:?}", e));
+                            // For R2004+, try nearby offsets to handle CRC alignment shifts.
+                            let mut recovered: Option<DwgObject> = None;
+                            if self.version.is_r2004_plus() && file_offset + 4 < data.len() {
+                                'fuzzy: for delta in &[2usize, 4, 6, 8] {
+                                    for &off in &[file_offset.wrapping_sub(*delta), file_offset + *delta] {
+                                        if off >= data.len() || off < 4 { continue; }
+                                        let r = std::panic::catch_unwind(
+                                            std::panic::AssertUnwindSafe(|| {
+                                                self.parse_single_object_r2000(data, handle, off)
+                                            }));
+                                        if let Ok(Ok(obj)) = r {
+                                            let type_ok = obj_type_name(obj.type_num).is_some()
+                                                || obj.type_num >= 500;
+                                            if type_ok {
+                                                recovered = Some(obj);
+                                                break 'fuzzy;
+                                            }
+                                        }
+                                    }
+                                }
                             }
+                            out.push(HandleOutcome {
+                                object: recovered,
+                                fail_kind: FailKind::InBoundsParse,
+                                handle,
+                                file_offset,
+                                err_repr,
+                            });
+                        }
+                        Err(_panic) => {
+                            out.push(HandleOutcome {
+                                object: None,
+                                fail_kind: FailKind::Panic,
+                                handle,
+                                file_offset,
+                                err_repr: None,
+                            });
                         }
                     }
                 }
+                out.into_iter()
+            })
+            .collect();
+
+        // ----------- Aggregate into the legacy fail bookkeeping --------
+        // Done outside the parallel section so the diagnostic vectors
+        // stay single-thread (cheaper than per-chunk locking, and these
+        // are only used for `dwg_dbg!` prints when `dwg-debug` is on).
+        let mut objects: Vec<DwgObject> = Vec::with_capacity(per_handle.len());
+        let mut fail_count = 0usize;
+        let mut fail_inbounds = 0usize;
+        let mut fail_samples: Vec<String> = Vec::new();
+        let mut fail_inbounds_samples: Vec<String> = Vec::new();
+        let mut fail_inbounds_offsets: Vec<usize> = Vec::new();
+
+        for h in per_handle {
+            match h.fail_kind {
+                FailKind::None => {
+                    if let Some(obj) = h.object {
+                        objects.push(obj);
+                    }
+                }
+                FailKind::Oob => {
+                    fail_count += 1;
+                }
+                FailKind::InBoundsParse => {
+                    if let Some(obj) = h.object {
+                        // Fuzzy-recovery: counted as success.
+                        objects.push(obj);
+                    } else {
+                        fail_count += 1;
+                        fail_inbounds += 1;
+                        fail_inbounds_offsets.push(h.file_offset);
+                        if fail_inbounds_samples.len() < 20 {
+                            let end = (h.file_offset + 16).min(data.len());
+                            let raw: String = data[h.file_offset..end].iter()
+                                .map(|b| format!("{:02x}", b))
+                                .collect::<Vec<_>>().join(" ");
+                            fail_inbounds_samples.push(format!(
+                                "h=0x{:X}@{} err={} raw=[{}]",
+                                h.handle, h.file_offset,
+                                h.err_repr.as_deref().unwrap_or("?"), raw,
+                            ));
+                        }
+                        if fail_samples.len() < 10 {
+                            let end = (h.file_offset + 16).min(data.len());
+                            let raw: String = if h.file_offset < data.len() {
+                                data[h.file_offset..end].iter()
+                                    .map(|b| format!("{:02x}", b))
+                                    .collect::<Vec<_>>().join(" ")
+                            } else { "OOB".into() };
+                            fail_samples.push(format!(
+                                "h=0x{:X}@{} err={} raw=[{}]",
+                                h.handle, h.file_offset,
+                                h.err_repr.as_deref().unwrap_or("?"), raw,
+                            ));
+                        }
+                    }
+                }
+                FailKind::Panic => {
+                    fail_count += 1;
+                    if fail_samples.len() < 10 {
+                        fail_samples.push(format!(
+                            "h=0x{:X}@{} PANIC", h.handle, h.file_offset,
+                        ));
+                    }
+                }
             }
+        }
+
+        if progress {
+            eprintln!(
+                "[dwg-progress] parse_objects: done {}/{} ({} OK, {} failed) elapsed {:.1}s",
+                objects.len() + fail_count, total_handles,
+                objects.len(), fail_count,
+                t_progress_start.elapsed().as_secs_f64(),
+            );
         }
         if fail_count > 0 {
             crate::dwg_dbg!("[dwg-dbg] parse_objects: {} failures out of {} handles ({} in-bounds, {} OOB)",
