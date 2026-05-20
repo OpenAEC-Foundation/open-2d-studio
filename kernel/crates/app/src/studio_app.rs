@@ -4841,9 +4841,12 @@ impl App {
         }
 
         // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
-        // Rebuild annotation pipe every frame for each tab so dash-length and
-        // text-size track the current zoom, and the rubber band from last
-        // Area vertex to cursor is fresh. Cheap: few-dozen dims max per tab.
+        // Rebuild annotation pipe for the active tab (and split partner if
+        // any). Inactive tabs are never painted so there's no need to
+        // re-bake their dash strides every frame â€” they'll regenerate
+        // when the user activates them. The function itself short-circuits
+        // when the tab has no annotations + no in-progress polygon
+        // (common case for Viewer mode + most Studio drawings).
         {
             let gpu_ref: &GpuCtx = gpu;
             let active_tab_idx_local = self.active_tab;
@@ -4852,12 +4855,25 @@ impl App {
                 if self.tool_mode == ToolMode::Area && !self.area_in_progress.is_empty() {
                     Some(self.area_in_progress.clone())
                 } else { None };
-            for i in 0..self.tabs.len() {
-                let in_prog_ref = if i == active_tab_idx_local {
-                    in_progress.as_deref()
-                } else { None };
-                let cur = if i == active_tab_idx_local { cur_world } else { None };
-                rebuild_annotation_pipe(self.tabs.get_mut(i), in_prog_ref, cur, gpu_ref);
+            // Active tab â€” with in-progress polygon + cursor for rubber-band.
+            rebuild_annotation_pipe(
+                self.tabs.get_mut(active_tab_idx_local),
+                in_progress.as_deref(),
+                cur_world,
+                gpu_ref,
+            );
+            // Split partner (if any) â€” no in-progress polygon, no cursor.
+            // Only one extra rebuild call vs the old O(n_tabs) loop.
+            let partner = Self::split_partner(&self.tabs, active_tab_idx_local);
+            if let Some(other) = partner {
+                if other != active_tab_idx_local {
+                    rebuild_annotation_pipe(
+                        self.tabs.get_mut(other),
+                        None,
+                        None,
+                        gpu_ref,
+                    );
+                }
             }
         }
 
