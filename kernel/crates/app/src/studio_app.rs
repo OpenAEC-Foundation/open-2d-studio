@@ -1457,6 +1457,21 @@ impl FileTab {
         list
     }
 
+    /// Cheap, no-allocation layer count for the status-bar counter.
+    /// Populates the cache on first call after a scene mutation, then
+    /// returns the cached vec's length. Avoids the full `clone()` that
+    /// `layer_list_cached` does just to call `.len()` â€” over a 60-fps
+    /// session that adds up to gigabytes of churn on a 100-layer scene.
+    fn layer_count_cached(&mut self, default_color: u32) -> usize {
+        if let Some(cached) = &self.cached_layer_list {
+            return cached.len();
+        }
+        let list = derive_layer_list(&self.scene, default_color);
+        let n = list.len();
+        self.cached_layer_list = Some(list);
+        n
+    }
+
     /// Get a cached structure-browser TreeNode. First call after scene
     /// mutation walks segments + entity ids and allocates HashMaps;
     /// later calls clone the cached node. Cleared by rebuild_buffers.
@@ -3055,10 +3070,18 @@ impl App {
         let last_measure_area_snapshot: Option<(f64, f64)> = self.last_measure_area;
         let cursor_world_snapshot: Option<[f64; 2]> = self.cursor_world;
         let status_zoom: f64 = self.tabs.get(active_tab_idx).map(|t| t.cam.zoom).unwrap_or(1.0);
-        let status_total_layers: usize = self.tabs.get(active_tab_idx)
+        let status_total_layers: usize = self.tabs.get_mut(active_tab_idx)
             .map(|t| {
+                // CRITICAL: when the scene has no parsed layer table
+                // (`scene.layer_names` empty), `derive_layer_list` walks
+                // every segment + every triangle in the scene and builds
+                // a BTreeMap. On a 700k-segment DWG that's ~3-5 ms per
+                // frame for a status-bar counter. Route through the
+                // per-tab `layer_count_cached` (no-alloc length read
+                // after first build). Cache is invalidated by any
+                // scene-mutating path (rebuild_buffers / scene-swap).
                 if !t.scene.layer_names.is_empty() { t.scene.layer_names.len() }
-                else { derive_layer_list(&t.scene, DEFAULT_LINE_COLOR).len() }
+                else { t.layer_count_cached(DEFAULT_LINE_COLOR) }
             }).unwrap_or(0);
         let status_hidden_layers: usize = self.tabs.get(active_tab_idx)
             .map(|t| t.hidden_layers.len()).unwrap_or(0);
