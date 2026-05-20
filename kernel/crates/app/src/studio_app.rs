@@ -420,6 +420,121 @@ fn paint_world_axes(
 /// big buttons (48Ã—52) and small-label stacks (3 Ã— 22 px) are centred on a
 /// common vertical axis so the group looks balanced regardless of which
 /// primitives it mixes.
+
+/// Paint an OSNAP marker at the snap-hit point. Shape encodes the mode
+/// (AutoCAD convention): square=Endpoint, triangle=Midpoint, circle=Center,
+/// X=Intersection, inverted-T=Perpendicular, hour-glass=Nearest, etc.
+fn paint_snap_marker(
+    painter: &egui::Painter,
+    canvas_rect_logical: egui::Rect,
+    snap_point_screen: egui::Pos2,
+    kind: SnapMode,
+) {
+    if !canvas_rect_logical.contains(snap_point_screen) {
+        return;
+    }
+    let p = snap_point_screen;
+    let r = 6.0_f32;
+    let color = egui::Color32::from_rgb(255, 220, 60);
+    let halo = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 150);
+    let stroke = egui::Stroke::new(1.8, color);
+    let halo_stroke = egui::Stroke::new(3.4, halo);
+    match kind {
+        SnapMode::Endpoint => {
+            let rect = egui::Rect::from_center_size(p, egui::vec2(r * 2.0, r * 2.0));
+            painter.rect_stroke(rect, 0.0, halo_stroke);
+            painter.rect_stroke(rect, 0.0, stroke);
+        }
+        SnapMode::Midpoint => {
+            let pts = vec![
+                egui::pos2(p.x, p.y - r),
+                egui::pos2(p.x - r * 0.866, p.y + r * 0.5),
+                egui::pos2(p.x + r * 0.866, p.y + r * 0.5),
+            ];
+            painter.add(egui::Shape::closed_line(pts.clone(), halo_stroke));
+            painter.add(egui::Shape::closed_line(pts, stroke));
+        }
+        SnapMode::Center => {
+            painter.circle_stroke(p, r, halo_stroke);
+            painter.circle_stroke(p, r, stroke);
+            painter.circle_filled(p, 1.0, color);
+        }
+        SnapMode::Intersection => {
+            painter.line_segment(
+                [egui::pos2(p.x - r, p.y - r), egui::pos2(p.x + r, p.y + r)],
+                halo_stroke);
+            painter.line_segment(
+                [egui::pos2(p.x - r, p.y + r), egui::pos2(p.x + r, p.y - r)],
+                halo_stroke);
+            painter.line_segment(
+                [egui::pos2(p.x - r, p.y - r), egui::pos2(p.x + r, p.y + r)],
+                stroke);
+            painter.line_segment(
+                [egui::pos2(p.x - r, p.y + r), egui::pos2(p.x + r, p.y - r)],
+                stroke);
+        }
+        SnapMode::Perpendicular => {
+            let bar_w = r;
+            let h = r * 1.2;
+            painter.line_segment(
+                [egui::pos2(p.x - bar_w, p.y + h * 0.5),
+                 egui::pos2(p.x + bar_w, p.y + h * 0.5)],
+                halo_stroke);
+            painter.line_segment(
+                [egui::pos2(p.x, p.y - h * 0.5),
+                 egui::pos2(p.x, p.y + h * 0.5)],
+                halo_stroke);
+            painter.line_segment(
+                [egui::pos2(p.x - bar_w, p.y + h * 0.5),
+                 egui::pos2(p.x + bar_w, p.y + h * 0.5)],
+                stroke);
+            painter.line_segment(
+                [egui::pos2(p.x, p.y - h * 0.5),
+                 egui::pos2(p.x, p.y + h * 0.5)],
+                stroke);
+        }
+        SnapMode::Nearest => {
+            let pts1 = vec![
+                egui::pos2(p.x - r, p.y - r),
+                egui::pos2(p.x + r, p.y - r),
+                egui::pos2(p.x, p.y),
+            ];
+            let pts2 = vec![
+                egui::pos2(p.x - r, p.y + r),
+                egui::pos2(p.x + r, p.y + r),
+                egui::pos2(p.x, p.y),
+            ];
+            painter.add(egui::Shape::closed_line(pts1.clone(), halo_stroke));
+            painter.add(egui::Shape::closed_line(pts2.clone(), halo_stroke));
+            painter.add(egui::Shape::closed_line(pts1, stroke));
+            painter.add(egui::Shape::closed_line(pts2, stroke));
+        }
+        SnapMode::Parallel | SnapMode::Tangent | SnapMode::Alignment => {
+            painter.circle_stroke(p, r, halo_stroke);
+            painter.circle_stroke(p, r, stroke);
+        }
+        SnapMode::Origin => {
+            painter.circle_stroke(p, r, halo_stroke);
+            painter.line_segment(
+                [egui::pos2(p.x - r, p.y), egui::pos2(p.x + r, p.y)],
+                halo_stroke);
+            painter.line_segment(
+                [egui::pos2(p.x, p.y - r), egui::pos2(p.x, p.y + r)],
+                halo_stroke);
+            painter.circle_stroke(p, r, stroke);
+            painter.line_segment(
+                [egui::pos2(p.x - r, p.y), egui::pos2(p.x + r, p.y)],
+                stroke);
+            painter.line_segment(
+                [egui::pos2(p.x, p.y - r), egui::pos2(p.x, p.y + r)],
+                stroke);
+        }
+        SnapMode::Grid => {
+            painter.circle_filled(p, 2.0, color);
+        }
+    }
+}
+
 /// 2D view-cube / nav-disk widget painted in the bottom-right corner of
 /// the canvas. For 2D CAD the "cube" is a compass-wheel: a dark disk
 /// with 4 cardinal arrows that rotate with the camera, a centre "Fit"
@@ -2871,7 +2986,7 @@ impl App {
             .and_then(|t| t.selection.first().copied());
         let prop_segment = prop_selection_idx.and_then(|i|
             self.tabs.get(active_tab_idx).and_then(|t| t.scene.segments.get(i).copied()));
-        let prop_selection_count: usize = self.selected_entity_ids_in(active_tab_idx).len();
+        let prop_selection_count: usize = self.selected_entity_count_in(active_tab_idx);
         let prop_scene_total = self.tabs.get(active_tab_idx).map(|t| t.scene.segments.len()).unwrap_or(0);
         let prop_tab_label = self.tabs.get(active_tab_idx).map(|t| t.label.clone()).unwrap_or_default();
 
@@ -2921,9 +3036,17 @@ impl App {
         // Status bar snapshots â€” cursor coords, camera zoom, layer counts,
         // active tab label. Cheap to compute; always needed at bottom of frame.
         let status_cursor_world = self.cursor_world;
-        // Snap + Measure snapshots for the status-bar toolbar.
+        // Snap + Measure snapshots â€” status-bar toolbar + canvas overlay.
         let snap_modes_snapshot: SnapModeSet = self.snap_modes;
+        let snap_result_snapshot: Option<SnapResult> = self.current_snap.clone();
         let measure_sub_snapshot: MeasureSub = self.measure_sub;
+        let measure_p1_snapshot: Option<[f64; 2]> = self.measure_p1;
+        let measure_area_inprog_snapshot: Vec<[f64; 2]> =
+            self.measure_area_in_progress.clone();
+        let last_measurement_len_snapshot: Option<([f64; 2], [f64; 2], f64)> =
+            self.last_measurement;
+        let last_measure_area_snapshot: Option<(f64, f64)> = self.last_measure_area;
+        let cursor_world_snapshot: Option<[f64; 2]> = self.cursor_world;
         let status_zoom: f64 = self.tabs.get(active_tab_idx).map(|t| t.cam.zoom).unwrap_or(1.0);
         let status_total_layers: usize = self.tabs.get(active_tab_idx)
             .map(|t| {
@@ -4063,6 +4186,176 @@ impl App {
                         active_cam_zoom,
                         active_cam_rotation,
                     );
+
+                    // World-to-screen helper (logical px) shared by the
+                    // OSNAP marker and the Measure overlay below.
+                    let world_to_screen = |w: [f64; 2]| -> egui::Pos2 {
+                        let cx = rect.center().x;
+                        let cy = rect.center().y;
+                        let hh = rect.height().max(1.0) as f64;
+                        let wpp = (2.0 / active_cam_zoom) / hh;
+                        let wx_off = w[0] - active_cam_pan.0 - active_cam_origin[0];
+                        let wy_off = w[1] - active_cam_pan.1 - active_cam_origin[1];
+                        let th = active_cam_rotation;
+                        let (ct, st) = (th.cos(), th.sin());
+                        let ex = ct * wx_off - st * wy_off;
+                        let ey = st * wx_off + ct * wy_off;
+                        egui::pos2(cx + (ex / wpp) as f32, cy - (ey / wpp) as f32)
+                    };
+
+                    // OSNAP marker â€” paint at the snapped world point
+                    // (refreshed each CursorMoved via `update_snap`).
+                    if let Some(snap) = snap_result_snapshot.as_ref() {
+                        let sp = world_to_screen(snap.point);
+                        paint_snap_marker(ui.painter(), rect, sp, snap.kind);
+                    }
+
+                    // Measure-tool overlay (Length + Area) â€” rubber-band
+                    // from the first click to the live snap-effective
+                    // cursor, plus a floating label with the running
+                    // length / area / perimeter.
+                    if current_tool_mode == ToolMode::Measure {
+                        let painter = ui.painter();
+                        let stroke = egui::Stroke::new(
+                            1.4, egui::Color32::from_rgb(255, 200, 60),
+                        );
+                        let halo = egui::Stroke::new(
+                            3.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 140),
+                        );
+                        let font = egui::FontId::proportional(11.0);
+                        let txt_color = egui::Color32::from_rgb(255, 230, 120);
+                        let outline_color = egui::Color32::from_black_alpha(180);
+                        let outlined_text = |p: &egui::Painter, anchor: egui::Align2,
+                                             pos: egui::Pos2, t: &str| {
+                            for (ox, oy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+                                p.text(
+                                    egui::pos2(pos.x + ox, pos.y + oy),
+                                    anchor, t, font.clone(), outline_color,
+                                );
+                            }
+                            p.text(pos, anchor, t, font.clone(), txt_color);
+                        };
+                        // LENGTH rubber-band.
+                        if measure_sub_snapshot == MeasureSub::Length {
+                            if let (Some(p1), Some(eff)) = (
+                                measure_p1_snapshot,
+                                snap_result_snapshot.as_ref()
+                                    .map(|s| s.point)
+                                    .or(cursor_world_snapshot),
+                            ) {
+                                let s1 = world_to_screen(p1);
+                                let s2 = world_to_screen(eff);
+                                painter.line_segment([s1, s2], halo);
+                                painter.line_segment([s1, s2], stroke);
+                                let dx = eff[0] - p1[0];
+                                let dy = eff[1] - p1[1];
+                                let d = (dx * dx + dy * dy).sqrt();
+                                let mid = egui::pos2(
+                                    (s1.x + s2.x) * 0.5,
+                                    (s1.y + s2.y) * 0.5 - 12.0,
+                                );
+                                let txt = format!(
+                                    "{:.2} mm  ({:.4} m @ 1:100)",
+                                    d, d * 0.0001,
+                                );
+                                outlined_text(painter, egui::Align2::CENTER_CENTER, mid, &txt);
+                            }
+                        }
+                        // AREA in-progress.
+                        if measure_sub_snapshot == MeasureSub::Area
+                            && !measure_area_inprog_snapshot.is_empty()
+                        {
+                            let verts_screen: Vec<egui::Pos2> =
+                                measure_area_inprog_snapshot.iter()
+                                    .map(|&p| world_to_screen(p)).collect();
+                            for i in 0..verts_screen.len().saturating_sub(1) {
+                                painter.line_segment([verts_screen[i], verts_screen[i + 1]], halo);
+                                painter.line_segment([verts_screen[i], verts_screen[i + 1]], stroke);
+                            }
+                            if let (Some(last), Some(eff)) = (
+                                measure_area_inprog_snapshot.last().copied(),
+                                snap_result_snapshot.as_ref()
+                                    .map(|s| s.point)
+                                    .or(cursor_world_snapshot),
+                            ) {
+                                let a = world_to_screen(last);
+                                let b = world_to_screen(eff);
+                                painter.line_segment([a, b], halo);
+                                painter.line_segment([a, b], stroke);
+                            }
+                            if measure_area_inprog_snapshot.len() >= 3 {
+                                let first = world_to_screen(measure_area_inprog_snapshot[0]);
+                                let last = world_to_screen(
+                                    *measure_area_inprog_snapshot.last().unwrap());
+                                let dx = first.x - last.x;
+                                let dy = first.y - last.y;
+                                let len = (dx * dx + dy * dy).sqrt().max(1.0);
+                                let ux = dx / len;
+                                let uy = dy / len;
+                                let dash = 6.0_f32;
+                                let gap = 4.0_f32;
+                                let mut t = 0.0_f32;
+                                while t < len {
+                                    let t2 = (t + dash).min(len);
+                                    painter.line_segment(
+                                        [egui::pos2(last.x + ux * t, last.y + uy * t),
+                                         egui::pos2(last.x + ux * t2, last.y + uy * t2)],
+                                        stroke);
+                                    t += dash + gap;
+                                }
+                            }
+                            if let (Some(eff), Some(last)) = (
+                                snap_result_snapshot.as_ref().map(|s| s.point)
+                                    .or(cursor_world_snapshot),
+                                measure_area_inprog_snapshot.last().copied(),
+                            ) {
+                                let mut perim = 0.0_f64;
+                                let v = &measure_area_inprog_snapshot;
+                                for i in 0..v.len().saturating_sub(1) {
+                                    let dx = v[i + 1][0] - v[i][0];
+                                    let dy = v[i + 1][1] - v[i][1];
+                                    perim += (dx * dx + dy * dy).sqrt();
+                                }
+                                let dx = eff[0] - last[0];
+                                let dy = eff[1] - last[1];
+                                perim += (dx * dx + dy * dy).sqrt();
+                                let mut a_verts: Vec<[f64; 2]> = v.clone();
+                                a_verts.push(eff);
+                                let area = polygon_area(&a_verts);
+                                let mid = world_to_screen(eff);
+                                let pos = egui::pos2(mid.x + 16.0, mid.y + 16.0);
+                                let txt = format!(
+                                    "Area: {:.3} mÂ²  Perim: {:.2} mm",
+                                    area * 1e-6, perim,
+                                );
+                                outlined_text(painter, egui::Align2::LEFT_CENTER, pos, &txt);
+                            }
+                        }
+                        if let Some((p1, p2, d)) = last_measurement_len_snapshot {
+                            let s1 = world_to_screen(p1);
+                            let s2 = world_to_screen(p2);
+                            let mid = egui::pos2(
+                                (s1.x + s2.x) * 0.5,
+                                (s1.y + s2.y) * 0.5 - 12.0,
+                            );
+                            let txt = format!(
+                                "Length: {:.2} mm  ({:.4} m @ 1:100)",
+                                d, d * 0.0001,
+                            );
+                            outlined_text(painter, egui::Align2::CENTER_CENTER, mid, &txt);
+                        }
+                        if let Some((perim, area)) = last_measure_area_snapshot {
+                            if let Some(cur) = cursor_world_snapshot {
+                                let mid = world_to_screen(cur);
+                                let pos = egui::pos2(mid.x + 16.0, mid.y + 16.0);
+                                let txt = format!(
+                                    "Area: {:.3} mÂ²  Perimeter: {:.2} mm",
+                                    area * 1e-6, perim,
+                                );
+                                outlined_text(painter, egui::Align2::LEFT_CENTER, pos, &txt);
+                            }
+                        }
+                    }
 
                     // Loading overlay â€” drawn whenever the active tab is
                     // a placeholder waiting for a background-thread load
@@ -5208,6 +5501,54 @@ impl App {
         out.sort();
         out.dedup();
         out
+    }
+
+    /// Cheap O(n_sel) count of unique selected entity ids â€” no Vec alloc,
+    /// no sort. Used by status-bar + properties-panel labels which read
+    /// this every frame; the full Vec from `selected_entity_ids_in` was
+    /// being rebuilt + sorted just to call `.len()` on it.
+    fn selected_entity_count_in(&self, tab_idx: usize) -> usize {
+        let Some(tab) = self.tabs.get(tab_idx) else { return 0; };
+        if tab.selection.is_empty() { return 0; }
+        if tab.scene.segment_entity_idx.len() != tab.scene.segments.len() {
+            return 0;
+        }
+        // Tab selection lists are small (typically <50 picks even after a
+        // generous drag-box). For huge selections (Ctrl+A on 113k entities)
+        // we'd want a HashSet, but at that scale the cost is dominated by
+        // the GPU sel_pipe rebuild, not this counter. Linear scan with
+        // last-seen comparison handles the common case.
+        let mut count = 0usize;
+        let mut last: Option<u32> = None;
+        let mut seen: Option<std::collections::HashSet<u32>> = None;
+        for &i in tab.selection.iter() {
+            let Some(&eid) = tab.scene.segment_entity_idx.get(i) else { continue; };
+            // Adjacent same-eid runs (most common: a drag-box hits all
+            // segments of one polyline in order) â€” no allocation.
+            if Some(eid) == last { continue; }
+            // Promote to HashSet only when we've seen enough distinct
+            // ids to outweigh the O(n) linear-set cost.
+            if let Some(set) = seen.as_mut() {
+                if set.insert(eid) { count += 1; }
+            } else {
+                count += 1;
+                if count >= 8 {
+                    // Move what we've counted into a HashSet for the rest.
+                    let mut s = std::collections::HashSet::with_capacity(tab.selection.len());
+                    for &j in tab.selection.iter() {
+                        if let Some(&e2) = tab.scene.segment_entity_idx.get(j) {
+                            s.insert(e2);
+                        }
+                    }
+                    count = s.len();
+                    seen = Some(s);
+                    last = Some(eid);
+                    continue;
+                }
+            }
+            last = Some(eid);
+        }
+        count
     }
 
     #[allow(dead_code)]
