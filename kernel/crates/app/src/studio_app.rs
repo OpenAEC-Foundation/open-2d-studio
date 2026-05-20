@@ -4012,16 +4012,31 @@ impl App {
                                 let length = ((seg.p2[0]-seg.p1[0]).powi(2)
                                     + (seg.p2[1]-seg.p1[1]).powi(2)).sqrt();
                                 let layer_key = layer_key_for_color(seg.color);
-                                let scene_ref = self.tabs.get(active_tab_idx).map(|t| &t.scene);
-                                let (entity_name, entity_count) = match scene_ref {
-                                    Some(scene) if scene.segment_entity_idx.len() == scene.segments.len()
-                                        && idx < scene.segment_entity_idx.len() =>
+                                let tab_ref = self.tabs.get(active_tab_idx);
+                                let (entity_name, entity_count) = match tab_ref {
+                                    Some(tab)
+                                        if tab.scene.segment_entity_idx.len()
+                                            == tab.scene.segments.len()
+                                        && idx < tab.scene.segment_entity_idx.len() =>
                                     {
-                                        let eid = scene.segment_entity_idx[idx];
-                                        let name = scene.entity_names.get(eid as usize).cloned()
+                                        let eid = tab.scene.segment_entity_idx[idx];
+                                        let name = tab.scene.entity_names.get(eid as usize).cloned()
                                             .unwrap_or_else(|| format!("entity #{}", eid));
-                                        let count = scene.segment_entity_idx.iter()
-                                            .filter(|&&x| x == eid).count();
+                                        // Prefer the cached entity â†’ segs map
+                                        // (built lazily on first pick/hover);
+                                        // O(1) Vec::len. Fall back to the
+                                        // O(n_segs) linear filter only on cold
+                                        // scenes where the index hasn't been
+                                        // built yet â€” by the time the user has
+                                        // a segment selected the index almost
+                                        // always exists.
+                                        let count = tab.scene_index.as_ref()
+                                            .and_then(|si| si.entity_to_segs.get(eid as usize))
+                                            .map(|v| v.len())
+                                            .unwrap_or_else(|| {
+                                                tab.scene.segment_entity_idx.iter()
+                                                    .filter(|&&x| x == eid).count()
+                                            });
                                         (Some(name), count)
                                     }
                                     _ => (None, 1),
