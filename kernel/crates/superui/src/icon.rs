@@ -1,7 +1,15 @@
 //! Icons — a small hand-drawn CAD-specific set + a bridge to
 //! `egui-phosphor` for everything else (lucide-react replacement).
+//!
+//! Strategy: each `IconKind` first tries `phosphor_glyph()` for a
+//! canonical Phosphor private-use char. If one exists the icon is
+//! painted via the loaded egui-phosphor font (clean, lucide-equivalent
+//! line glyph that scales perfectly at every size). Variants without a
+//! good Phosphor match fall through to the original hand-painted code.
+//! This swap restores the 1.0 visual identity (FolderOpen, FilePlus,
+//! FloppyDisk, …) without breaking the ribbon's `IconKind` API.
 
-use egui::{Color32, Painter, Rect, Stroke, Pos2};
+use egui::{Color32, FontId, Painter, Rect, Stroke, Pos2};
 
 /// Phase 1 essential CAD icons. Hand-painted via egui::Painter so we
 /// don't depend on raster/font assets for these. Other 1.0 icons
@@ -84,10 +92,95 @@ pub enum IconKind {
     Cross,
 }
 
-/// Paint an icon centred in `rect` using the given color. Stroke
-/// thickness scales with rect size so the same IconKind looks right
-/// at large/medium/small button sizes.
+impl IconKind {
+    /// Canonical Phosphor private-use char for this variant. Returning
+    /// `Some(..)` makes `paint_icon` route through the egui-phosphor
+    /// font (clean lucide-equivalent line glyph). Returning `None` keeps
+    /// the hand-drawn fallback (for CAD-specific shapes without a good
+    /// Phosphor match).
+    ///
+    /// Mappings target the 1.0 lucide-react glyphs:
+    ///   Folder → FolderOpen, Rectangle → File, Move → ArrowsOutCardinal,
+    ///   Settings → Gear, Eye → Eye, Hand → Hand, …
+    pub fn phosphor_glyph(self) -> Option<&'static str> {
+        use egui_phosphor::regular as ph;
+        Some(match self {
+            // File-group (1.0 Lucide: FolderOpen / FilePlus / FloppyDisk / FileText)
+            IconKind::Folder    => ph::FOLDER_OPEN,
+            IconKind::Rectangle => ph::FILE,            // generic "document"
+            // Selection / Navigation
+            IconKind::Move      => ph::ARROWS_OUT_CARDINAL,
+            IconKind::Hand      => ph::HAND,
+            // View navigation
+            IconKind::ZoomIn    => ph::MAGNIFYING_GLASS_PLUS,
+            IconKind::ZoomOut   => ph::MAGNIFYING_GLASS_MINUS,
+            IconKind::FitAll    => ph::CORNERS_OUT,
+            IconKind::Eye       => ph::EYE,
+            IconKind::Grid      => ph::GRID_NINE,
+            IconKind::Settings  => ph::GEAR,
+            IconKind::Layers    => ph::STACK,
+            IconKind::Search    => ph::MAGNIFYING_GLASS,
+            // Modify
+            IconKind::Mirror    => ph::FLIP_HORIZONTAL,
+            IconKind::Rotate    => ph::ARROW_COUNTER_CLOCKWISE,
+            IconKind::Scale     => ph::ARROWS_OUT,
+            IconKind::Copy      => ph::COPY,
+            IconKind::Cut       => ph::SCISSORS,
+            IconKind::Paste     => ph::CLIPBOARD,
+            IconKind::Delete    => ph::TRASH,
+            IconKind::Refresh   => ph::ARROWS_CLOCKWISE,
+            // Drawing primitives
+            IconKind::Circle    => ph::CIRCLE,
+            IconKind::Text      => ph::TEXT_T,
+            IconKind::Image     => ph::IMAGE,
+            IconKind::Tag       => ph::TAG,
+            IconKind::Ruler     => ph::RULER,
+            IconKind::Group     => ph::CUBE,
+            IconKind::Ungroup   => ph::SQUARES_FOUR,
+            // Marks
+            IconKind::Check     => ph::CHECK,
+            IconKind::Cross     => ph::X,
+            IconKind::Download  => ph::DOWNLOAD_SIMPLE,
+            // CAD-specific glyphs with no clean phosphor equivalent
+            // — keep hand-painted (the originals already read well).
+            IconKind::Line | IconKind::Arc | IconKind::Polyline |
+            IconKind::Hatch | IconKind::Dimension | IconKind::Spline |
+            IconKind::Ellipse => return None,
+        })
+    }
+}
+
+/// Paint an icon centred in `rect` using the given color. If the kind
+/// has a Phosphor mapping (see `IconKind::phosphor_glyph`) the glyph is
+/// rendered via the egui-phosphor font; otherwise we fall through to
+/// the hand-drawn primitives. Stroke thickness scales with rect size so
+/// the same IconKind looks right at Large/Medium/Small button sizes.
 pub fn paint_icon(painter: &Painter, rect: Rect, kind: IconKind, color: Color32) {
+    if let Some(glyph) = kind.phosphor_glyph() {
+        // egui-phosphor glyphs are sized as text — the visual size of
+        // the glyph is roughly `font_size * 0.85` in cap height. We pick
+        // the font size so the glyph fills ~ inner 100 % of the square
+        // cell. Phosphor glyphs are designed on a 256-px grid and
+        // render crisply at any size.
+        let cell = rect.width().min(rect.height());
+        let font_size = cell * 1.15; // empirical: matches lucide weight
+        painter.text(
+            rect.center(),
+            egui::Align2::CENTER_CENTER,
+            glyph,
+            FontId::new(font_size, egui::FontFamily::Proportional),
+            color,
+        );
+        return;
+    }
+    paint_icon_handdrawn(painter, rect, kind, color);
+}
+
+/// Hand-painted fallback for CAD-specific glyphs without a clean
+/// Phosphor equivalent (Line, Arc, Polyline, Hatch, Dimension, Spline,
+/// Ellipse). Each glyph is drawn into the inner 80 % of `rect` with a
+/// uniform stroke width so it visually matches the Phosphor weight.
+fn paint_icon_handdrawn(painter: &Painter, rect: Rect, kind: IconKind, color: Color32) {
     let center = rect.center();
     // Normalize: every glyph is drawn into the inner 80 % of the rect
     // ("inner safe zone"). r = 0.40 * min(w, h) so the bounding box
