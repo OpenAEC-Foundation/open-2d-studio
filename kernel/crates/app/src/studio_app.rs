@@ -265,6 +265,152 @@ impl RibbonStyle {
 
 const RIBBON: RibbonStyle = RibbonStyle::dark();
 
+/// World-origin XY-axes glyph â€” a small UCS-icon-style cross painted at
+/// world (0,0) so the user can see where the drawing's origin sits
+/// regardless of pan/zoom. Pans + zooms with the camera (NOT screen-
+/// anchored). Red X-arrow, green Y-arrow, small "0" label at the cross.
+///
+/// Only paints when (0,0) maps to a screen position within ~50 px of the
+/// canvas rect â€” otherwise the glyph would be off-screen and useless.
+///
+/// `canvas_rect_logical` is the LOGICAL-pixel canvas area (from
+/// `ui.available_rect_before_wrap`). The cam snapshot's pan / zoom /
+/// rotation / origin drive the world-to-screen transform â€” mirrors
+/// `world_to_screen_*_helper` exactly except in logical pixels.
+fn paint_world_axes(
+    painter: &egui::Painter,
+    canvas_rect_logical: egui::Rect,
+    cam_origin: [f64; 2],
+    cam_pan: (f64, f64),
+    cam_zoom: f64,
+    cam_rotation: f64,
+) {
+    if !canvas_rect_logical.width().is_finite()
+        || !canvas_rect_logical.height().is_finite()
+        || canvas_rect_logical.width() <= 1.0
+        || canvas_rect_logical.height() <= 1.0
+    {
+        return;
+    }
+    // Transform world (0,0) to logical-pixel screen coordinates.
+    // Mirrors `world_to_screen_x/y_helper` but the rect here is in
+    // LOGICAL pixels (egui CentralPanel) so no ppp division is needed.
+    let cx = canvas_rect_logical.center().x;
+    let cy = canvas_rect_logical.center().y;
+    let h = canvas_rect_logical.height().max(1.0) as f64;
+    let wpp = (2.0 / cam_zoom) / h;
+    let wx_off = 0.0 - cam_pan.0 - cam_origin[0];
+    let wy_off = 0.0 - cam_pan.1 - cam_origin[1];
+    let th = cam_rotation;
+    let (ct, st) = (th.cos(), th.sin());
+    let ex = ct * wx_off - st * wy_off;
+    let ey = st * wx_off + ct * wy_off;
+    let sx = cx + (ex / wpp) as f32;
+    let sy = cy - (ey / wpp) as f32;
+    let origin_screen = egui::pos2(sx, sy);
+
+    // Off-screen culling. Allow the glyph to remain visible when the
+    // origin itself is just outside the canvas (within ~50 px), since
+    // the arrows extend ~24 px and the label hugs the origin.
+    let cull_margin = 50.0_f32;
+    let visible_rect = canvas_rect_logical.expand(cull_margin);
+    if !visible_rect.contains(origin_screen) {
+        return;
+    }
+
+    // Screen-space sizing â€” axes do NOT scale with zoom (otherwise they'd
+    // become huge or vanish). Always ~24 px tall.
+    let arm_len = 24.0_f32;
+    let arrowhead = 5.0_f32;
+    let red = egui::Color32::from_rgb(0xD4, 0x44, 0x44);
+    let green = egui::Color32::from_rgb(0x44, 0xD4, 0x44);
+    // Screen +Y is DOWN, world +Y is UP â€” so the world Y-arrow points
+    // up on screen (negative screen Y).
+    let x_tip = egui::pos2(sx + arm_len, sy);
+    let y_tip = egui::pos2(sx, sy - arm_len);
+
+    // Slight halo behind the lines so they read against any background.
+    let halo = egui::Color32::from_rgba_unmultiplied(0, 0, 0, 130);
+    painter.line_segment(
+        [origin_screen, x_tip],
+        egui::Stroke::new(3.5, halo),
+    );
+    painter.line_segment(
+        [origin_screen, y_tip],
+        egui::Stroke::new(3.5, halo),
+    );
+
+    // X-axis (red).
+    painter.line_segment(
+        [origin_screen, x_tip],
+        egui::Stroke::new(1.8, red),
+    );
+    // X arrowhead â€” simple convex triangle.
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            x_tip,
+            egui::pos2(x_tip.x - arrowhead, sy - arrowhead * 0.6),
+            egui::pos2(x_tip.x - arrowhead, sy + arrowhead * 0.6),
+        ],
+        red,
+        egui::Stroke::NONE,
+    ));
+
+    // Y-axis (green).
+    painter.line_segment(
+        [origin_screen, y_tip],
+        egui::Stroke::new(1.8, green),
+    );
+    // Y arrowhead.
+    painter.add(egui::Shape::convex_polygon(
+        vec![
+            y_tip,
+            egui::pos2(sx - arrowhead * 0.6, y_tip.y + arrowhead),
+            egui::pos2(sx + arrowhead * 0.6, y_tip.y + arrowhead),
+        ],
+        green,
+        egui::Stroke::NONE,
+    ));
+
+    // Axis letter labels next to the arrow tips. Small halo per label
+    // so they remain legible on white/black scenes.
+    let font = egui::FontId::proportional(11.0);
+    let label_color = egui::Color32::from_rgb(230, 230, 230);
+    let x_lbl_pos = egui::pos2(x_tip.x + 4.0, x_tip.y - 6.0);
+    let y_lbl_pos = egui::pos2(y_tip.x - 4.0, y_tip.y - 12.0);
+    for &(pos, txt) in &[
+        (x_lbl_pos, "X"),
+        (y_lbl_pos, "Y"),
+    ] {
+        // Outline (4 cardinal offsets) for readability against any bg.
+        for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+            painter.text(
+                egui::pos2(pos.x + dx, pos.y + dy),
+                egui::Align2::LEFT_TOP,
+                txt,
+                font.clone(),
+                egui::Color32::from_black_alpha(180),
+            );
+        }
+        painter.text(pos, egui::Align2::LEFT_TOP, txt, font.clone(), label_color);
+    }
+
+    // Small "0" label just below-left of the origin for clarity.
+    let zero_pos = egui::pos2(sx - 10.0, sy + 3.0);
+    let small_font = egui::FontId::proportional(9.0);
+    for (dx, dy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+        painter.text(
+            egui::pos2(zero_pos.x + dx, zero_pos.y + dy),
+            egui::Align2::LEFT_TOP,
+            "0",
+            small_font.clone(),
+            egui::Color32::from_black_alpha(180),
+        );
+    }
+    painter.text(zero_pos, egui::Align2::LEFT_TOP, "0",
+        small_font, egui::Color32::from_rgb(210, 210, 210));
+}
+
 /// Ribbon group â€” a vertical stack with a row of buttons, a thin 1 px top
 /// and bottom hair-line, and a small uppercase label below. The subtle
 /// border framing boxes the group without adding visual noise.
@@ -2615,6 +2761,15 @@ impl App {
         // a plain f64 so the egui closure doesn't borrow `self.tabs`.
         let active_cam_rotation: f64 = self.tabs.get(active_tab_idx)
             .map(|t| t.cam.rotation).unwrap_or(0.0);
+        // Full active-cam snapshot for the world-axes glyph (paints at
+        // world (0,0)). Same rationale as `active_cam_rotation` â€” avoid
+        // borrowing `self.tabs` inside the egui closure.
+        let active_cam_origin: [f64; 2] = self.tabs.get(active_tab_idx)
+            .map(|t| t.cam.origin).unwrap_or([0.0, 0.0]);
+        let active_cam_pan: (f64, f64) = self.tabs.get(active_tab_idx)
+            .map(|t| (t.cam.pan_x, t.cam.pan_y)).unwrap_or((0.0, 0.0));
+        let active_cam_zoom: f64 = self.tabs.get(active_tab_idx)
+            .map(|t| t.cam.zoom).unwrap_or(1.0);
 
         // Layout list for the ACTIVE tab.
         let active_layouts: Vec<(String, [f64; 4])> = self.tabs.get(active_tab_idx)
@@ -3734,6 +3889,20 @@ impl App {
                             1.0,
                             egui::Color32::from_rgba_unmultiplied(80, 86, 94, 110),
                         ),
+                    );
+
+                    // World-origin XY-axes glyph â€” pans + zooms with the
+                    // camera, anchored to world (0,0). Drawn after the
+                    // scene pass (egui paints after wgpu) and after the
+                    // canvas inset border, so it sits on top of geometry
+                    // but below interactive overlays like the view-cube.
+                    paint_world_axes(
+                        ui.painter(),
+                        rect,
+                        active_cam_origin,
+                        active_cam_pan,
+                        active_cam_zoom,
+                        active_cam_rotation,
                     );
 
                     // Loading overlay â€” drawn whenever the active tab is
