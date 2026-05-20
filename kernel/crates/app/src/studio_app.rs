@@ -5986,6 +5986,21 @@ fn rebuild_annotation_pipe(
     gpu: &GpuCtx,
 ) {
     let Some(tab) = tab_opt else { return; };
+    // Fast-path: nothing to draw and no pipe yet â†’ skip every per-frame
+    // alloc + GPU touch. This is the common case for both Viewer mode
+    // and Studio scenes that haven't placed any annotations. Without this
+    // gate the function allocated a fresh `Vec<Vertex>` and pushed an
+    // empty buffer to the GPU queue every frame for every tab.
+    let no_in_progress = in_progress_polygon.map(|p| p.is_empty()).unwrap_or(true);
+    if tab.annotations.is_empty() && no_in_progress {
+        if let Some(pipe) = tab.annotation_pipe.as_mut() {
+            // Pipe exists from earlier â€” mark it empty so the scene pass
+            // skips the draw and we avoid the upload.
+            pipe.vertex_count = 0;
+        }
+        return;
+    }
+
     let origin = tab.cam.origin;
     let dim_color: u32 = 0xFFFFCC55;   // amber
     let area_color: u32 = 0xFF66CCFF;  // cyan
@@ -7554,6 +7569,15 @@ fn build_ribbon_tabs(
                             lg("zoom_out", "Zoom Out", IconKind::ZoomOut),
                         ],
                     }),
+                    // Measure tools â€” allowed in Viewer (read-only, no
+                    // scene mutation). User can still inspect distances
+                    // and areas without authoring rights.
+                    RibbonGroup::with_layout("Measure", RibbonGroupLayout::LargeOnly {
+                        large: vec![
+                            enable(lg("measure_length", "Length", IconKind::Dimension)),
+                            enable(lg("measure_area",   "Area",   IconKind::Dimension)),
+                        ],
+                    }),
                     RibbonGroup::with_layout("Panels", RibbonGroupLayout::Stack {
                         rows: 2,
                         buttons: vec![
@@ -7690,7 +7714,8 @@ fn build_ribbon_tabs(
                 // doesn't leak through the layout enum.
                 RibbonGroup::with_layout("Measure", RibbonGroupLayout::LargeOnly {
                     large: vec![
-                        enable(lg("measure", "Measure", IconKind::Dimension)),
+                        enable(lg("measure_length", "Length", IconKind::Dimension)),
+                        enable(lg("measure_area",   "Area",   IconKind::Dimension)),
                     ],
                 }),
                 RibbonGroup::with_layout("Modify", RibbonGroupLayout::Stack {
