@@ -1167,11 +1167,14 @@ impl FileTab {
             return true;
         }
         let ratio = wpp_now / self.last_dash_wpp;
-        // ~6% threshold â€” at 8 px stride that bounds dash-boundary drift
-        // to ~0.5 px before we re-bake. Tighter than the original 12%
-        // because users notice shimmer/breathing of pattern edges well
-        // below the 1-pixel just-noticeable-difference for solid lines.
-        ratio < 0.94 || ratio > 1.06
+        // ~15% threshold — wider than 6% so that mid-zoom GPU buffer
+        // rebuilds don't stall the wheel. At 8 px stride that's ≤1.2 px
+        // dash-boundary drift between rebuilds — still well below the
+        // 2-3 px JND for pattern breathing on a typical 100% DPI
+        // monitor. Big drawings (100k+ segments) felt sluggish during
+        // continuous wheel zoom at 6% — the rebuild was firing every
+        // 1-2 notches.
+        ratio < 0.87 || ratio > 1.15
     }
 
     /// Get a cached, layer-grouped layer list for the LAYERS panel.
@@ -6691,11 +6694,17 @@ impl ApplicationHandler for App {
                 }
             }
             WindowEvent::MouseWheel { delta, .. } => {
+                // Per-tick zoom feel: a standard mouse wheel emits
+                // LineDelta(_, ±1.0) per notch; a precision wheel /
+                // trackpad emits PixelDelta in 1-30 px chunks. Map both
+                // to a roughly comparable scale, then apply a 0.45×
+                // exponent so one notch ≈ 1.45× zoom (was 1.30× — felt
+                // sluggish on big drawings).
                 let scroll = match delta {
                     MouseScrollDelta::LineDelta(_, y) => y,
-                    MouseScrollDelta::PixelDelta(p) => p.y as f32 / 100.0,
+                    MouseScrollDelta::PixelDelta(p) => p.y as f32 / 50.0,
                 };
-                let factor = (1.0 + scroll as f64 * 0.30).clamp(0.3, 4.0);
+                let factor = (1.0 + scroll as f64 * 0.45).clamp(0.25, 4.0);
                 if !self.mouse_in_canvas() { return; }
                 // Mouse-anchored zoom: offset from canvas centre in world
                 // pre-zoom coords, shift origin by delta * (1 - 1/factor).
