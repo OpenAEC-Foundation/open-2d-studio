@@ -38,7 +38,7 @@ use superui::{
         TitleBar, TitleBarAction,
         Ribbon, RibbonAction, RibbonTabId, RibbonTabDef, RibbonGroup, RibbonGroupLayout, RibbonButtonDef, ButtonSize,
         FileTabBar, FileTabAction, FileTabDef,
-        StatusBar, StatusSection,
+        StatusBar, StatusSection, StatusBarAction,
     },
     panels::{LeftDock, LeftDockAction, DrawingItem, SheetItem,
              RightDock, RightDockAction,
@@ -2921,6 +2921,9 @@ impl App {
         // Status bar snapshots â€” cursor coords, camera zoom, layer counts,
         // active tab label. Cheap to compute; always needed at bottom of frame.
         let status_cursor_world = self.cursor_world;
+        // Snap + Measure snapshots for the status-bar toolbar.
+        let snap_modes_snapshot: SnapModeSet = self.snap_modes;
+        let measure_sub_snapshot: MeasureSub = self.measure_sub;
         let status_zoom: f64 = self.tabs.get(active_tab_idx).map(|t| t.cam.zoom).unwrap_or(1.0);
         let status_total_layers: usize = self.tabs.get(active_tab_idx)
             .map(|t| {
@@ -2955,6 +2958,12 @@ impl App {
         let mut requested_toggle_samples_panel = false;
         let mut requested_close_samples = false;
         let mut requested_tool_mode: Option<ToolMode> = None;
+        // OSNAP toggle â€” set when the user clicks a snap-mode button in
+        // the status bar. The bit is xor'd into `self.snap_modes` after
+        // the egui closure ends (when we no longer hold the borrow).
+        let mut requested_snap_toggle: Option<SnapModeSet> = None;
+        // Measure sub-mode change â€” also arms the Measure tool.
+        let mut requested_measure_sub: Option<MeasureSub> = None;
         let mut pending_selection_rebuild: bool = false;
         let mut requested_clear_measurement = false;
         // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
@@ -3364,6 +3373,21 @@ impl App {
                     } else {
                         "Layer 0".to_string()
                     };
+                    // OSNAP quick-toggle row â€” one button per common
+                    // mode. Highlighted when the bit is on. Click flips
+                    // the bit via the `StatusBarAction::Toggled(id)`
+                    // path below.
+                    let snap_toggle = |id: &str, label: &str, m: SnapModeSet| -> StatusSection {
+                        StatusSection::Toggle {
+                            label: label.to_string(),
+                            on: snap_modes_snapshot.contains(m),
+                            id: id.to_string(),
+                        }
+                    };
+                    let measure_len_on = current_tool_mode == ToolMode::Measure
+                        && measure_sub_snapshot == MeasureSub::Length;
+                    let measure_area_on = current_tool_mode == ToolMode::Measure
+                        && measure_sub_snapshot == MeasureSub::Area;
                     let sections = vec![
                         StatusSection::Text(x_str),
                         StatusSection::Text(y_str),
@@ -3373,14 +3397,54 @@ impl App {
                         StatusSection::Text("Scale: 1:100".to_string()),
                         StatusSection::Text(layer_str),
                         StatusSection::Text("ORTHO".to_string()),
-                        StatusSection::Text("White Background".to_string()),
+                        // OSNAP toggle row â€” inline with the rest of the
+                        // status bar. Click to flip a snap mode.
+                        StatusSection::Text("OSNAP:".to_string()),
+                        snap_toggle("snap_endpoint",     "End",  SnapModeSet::ENDPOINT),
+                        snap_toggle("snap_midpoint",     "Mid",  SnapModeSet::MIDPOINT),
+                        snap_toggle("snap_center",       "Cen",  SnapModeSet::CENTER),
+                        snap_toggle("snap_intersection", "Int",  SnapModeSet::INTERSECTION),
+                        snap_toggle("snap_perpendicular","Per",  SnapModeSet::PERPENDICULAR),
+                        snap_toggle("snap_nearest",      "Near", SnapModeSet::NEAREST),
                         StatusSection::Text(format!("Tool: {}", tool_str)),
+                        // Measure sub-mode toggles â€” only visible/click-
+                        // able when the Measure tool is armed (but they
+                        // pre-arm Measure on click as a convenience).
+                        StatusSection::Toggle {
+                            label: "Len".to_string(),
+                            on: measure_len_on,
+                            id: "measure_length".to_string(),
+                        },
+                        StatusSection::Toggle {
+                            label: "Area".to_string(),
+                            on: measure_area_on,
+                            id: "measure_area".to_string(),
+                        },
                         StatusSection::Spacer,
                         StatusSection::Text("IFC".to_string()),
                         StatusSection::Text(format!("Selected: {}", prop_selection_count)),
                         StatusSection::Text(format!("Objects: {}", prop_scene_total)),
                     ];
-                    let _actions = StatusBar::new(sections).show(ui);
+                    let actions = StatusBar::new(sections).show(ui);
+                    for a in actions {
+                        if let StatusBarAction::Toggled(id) = a {
+                            match id.as_str() {
+                                "snap_endpoint"     => requested_snap_toggle = Some(SnapModeSet::ENDPOINT),
+                                "snap_midpoint"     => requested_snap_toggle = Some(SnapModeSet::MIDPOINT),
+                                "snap_center"       => requested_snap_toggle = Some(SnapModeSet::CENTER),
+                                "snap_intersection" => requested_snap_toggle = Some(SnapModeSet::INTERSECTION),
+                                "snap_perpendicular"=> requested_snap_toggle = Some(SnapModeSet::PERPENDICULAR),
+                                "snap_nearest"      => requested_snap_toggle = Some(SnapModeSet::NEAREST),
+                                "measure_length"    => {
+                                    requested_measure_sub = Some(MeasureSub::Length);
+                                }
+                                "measure_area"      => {
+                                    requested_measure_sub = Some(MeasureSub::Area);
+                                }
+                                _ => {}
+                            }
+                        }
+                    }
                 });
 
             // ---- Bottom (above statusbar): Model/Layout tabs -----------
@@ -4320,6 +4384,23 @@ impl App {
         if requested_clear_measurement {
             self.last_measurement = None;
             self.measure_p1 = None;
+        }
+        // OSNAP â€” flip the requested bit in self.snap_modes. The marker
+        // refreshes on the next CursorMoved; we don't call `update_snap`
+        // here because the GPU is still borrowed by the outer render loop.
+        if let Some(bit) = requested_snap_toggle {
+            self.snap_modes.toggle(bit);
+        }
+        // Measure sub-mode change â€” also arms the Measure tool, clears
+        // any stale in-progress state, and wipes the last result so the
+        // floating label doesn't linger across sub-modes.
+        if let Some(sub) = requested_measure_sub {
+            self.measure_sub = sub;
+            self.tool_mode = ToolMode::Measure;
+            self.measure_p1 = None;
+            self.measure_area_in_progress.clear();
+            self.last_measurement = None;
+            self.last_measure_area = None;
         }
         // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
         if requested_clear_annotations {
