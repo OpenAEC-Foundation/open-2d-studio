@@ -100,25 +100,60 @@ impl AppMenuPanel {
         let mut actions: Vec<AppMenuAction> = Vec::new();
         let palette = Theme::Default.palette();
 
-        egui::SidePanel::left("app_menu_panel")
-            .exact_width(PANEL_WIDTH)
-            .resizable(false)
-            .frame(egui::Frame::none().fill(palette.panel_bg))
+        // Office-style backstage view: the menu must START right under
+        // the titlebar and COVER the ribbon + tabbar + canvas. egui's
+        // `SidePanel::left` inherits whichever vertical band is left
+        // after the TopBottomPanel stack — i.e. it starts below the
+        // ribbon, not below the titlebar. So we render via `Area` at
+        // an absolute (left=0, top=TITLEBAR_HEIGHT) position with
+        // foreground ordering so it paints over the ribbon and any
+        // dock content.
+        let screen_h = ctx.screen_rect().height();
+        let panel_rect = egui::Rect::from_min_size(
+            egui::pos2(0.0, crate::tokens::metrics::TITLEBAR_HEIGHT),
+            egui::vec2(PANEL_WIDTH, (screen_h - crate::tokens::metrics::TITLEBAR_HEIGHT).max(100.0)),
+        );
+
+        // Scrim: dim the area behind the panel and swallow clicks so
+        // clicking the canvas doesn't accidentally interact with
+        // geometry while the menu is open.
+        egui::Area::new(egui::Id::new("app_menu_scrim"))
+            .order(egui::Order::Foreground)
+            .anchor(egui::Align2::LEFT_TOP, egui::vec2(0.0, 0.0))
+            .interactable(true)
             .show(ctx, |ui| {
-                paint_panel(ui, &palette, self.is_viewer, &mut actions);
+                let screen = ctx.screen_rect();
+                let (full, resp) = ui.allocate_exact_size(screen.size(), egui::Sense::click());
+                ui.painter().rect_filled(
+                    full,
+                    0.0,
+                    egui::Color32::from_rgba_unmultiplied(0, 0, 0, 96),
+                );
+                if resp.clicked() {
+                    if let Some(pos) = resp.interact_pointer_pos() {
+                        if !panel_rect.contains(pos) {
+                            actions.push(AppMenuAction::Close);
+                        }
+                    }
+                }
             });
 
-        // Catch click-outside: any primary click that lands east of the
-        // panel's right edge should close. (egui's `SidePanel::left`
-        // already swallows clicks inside its rect, so this filter
-        // doesn't fire on in-panel clicks.)
-        if ctx.input(|i| i.pointer.any_click()) {
-            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
-                if pos.x > PANEL_WIDTH {
-                    actions.push(AppMenuAction::Close);
-                }
-            }
-        }
+        // The panel itself — foreground layer, fixed rect.
+        egui::Area::new(egui::Id::new("app_menu_panel"))
+            .order(egui::Order::Tooltip)
+            .fixed_pos(panel_rect.min)
+            .show(ctx, |ui| {
+                let resp = ui.allocate_rect(panel_rect, egui::Sense::hover());
+                let _ = resp;
+                ui.painter().rect_filled(panel_rect, 0.0, palette.panel_bg);
+                let mut child = ui.new_child(
+                    egui::UiBuilder::new()
+                        .max_rect(panel_rect)
+                        .layout(egui::Layout::top_down(egui::Align::Min)),
+                );
+                child.set_clip_rect(panel_rect);
+                paint_panel(&mut child, &palette, self.is_viewer, &mut actions);
+            });
 
         actions
     }
