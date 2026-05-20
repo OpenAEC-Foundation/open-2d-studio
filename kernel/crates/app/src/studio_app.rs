@@ -2990,7 +2990,10 @@ impl App {
         let prop_scene_total = self.tabs.get(active_tab_idx).map(|t| t.scene.segments.len()).unwrap_or(0);
         let prop_tab_label = self.tabs.get(active_tab_idx).map(|t| t.label.clone()).unwrap_or_default();
 
-        let recent_files_snapshot: Vec<String> = self.recent_files.clone();
+        // `recent_files_snapshot` removed â€” snapshot was never read by the
+        // egui closure but allocated a fresh Vec<String> per frame. The
+        // recent-files menu lives in the AppMenuPanel pathway which
+        // borrows `self.recent_files` directly under its own scope.
         let current_tool_mode = self.tool_mode;
         // Drag-box snapshot â€” overlay is shown when LMB is down in Select
         // mode and drift exceeds the same HiDPI-scaled threshold the
@@ -3014,9 +3017,13 @@ impl App {
         let drag_box_p2: (f32, f32) = self.mouse_pos;
         let drag_box_crossing: bool = drag_box_p2.0 < drag_box_p1.0;
         let drag_box_zoom: bool = self.tool_mode == ToolMode::ZoomRegion;
-        let last_measurement_snapshot = self.last_measurement;
+        // `last_measurement_snapshot` removed â€” unused, kept indirectly
+        // via `last_measurement_len_snapshot` below (which the status-bar
+        // measure overlay reads).
         let show_perf_hud_snapshot = self.show_perf_hud;
-        let present_mode_snapshot = self.present_mode;
+        // `present_mode_snapshot` removed â€” the Perf HUD now formats the
+        // mode label inline from `self.present_mode` when assembling
+        // `hud_text` below.
         let about_dialog_open_snapshot = self.about_dialog_open;
         let current_split_snapshot: Option<SplitKind> = self.tabs.get(active_tab_idx)
             .and_then(|t| t.split_kind);
@@ -3055,8 +3062,9 @@ impl App {
             }).unwrap_or(0);
         let status_hidden_layers: usize = self.tabs.get(active_tab_idx)
             .map(|t| t.hidden_layers.len()).unwrap_or(0);
-        let status_tab_label: String = self.tabs.get(active_tab_idx)
-            .map(|t| t.label.clone()).unwrap_or_default();
+        // `status_tab_label` removed â€” the active tab label is shown
+        // via the FileTabBar (whose `tab_labels[active]` is the same
+        // value); status-bar consumers don't need a second copy.
 
         // --- Intents gathered from the closure --------------------------
         let mut requested_activate_tab: Option<usize> = None;
