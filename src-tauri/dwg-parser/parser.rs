@@ -399,6 +399,16 @@ impl DwgParser {
             }
         }
 
+        // Cancellation surface: the inner loops (parse_objects_r2000 etc.)
+        // poll LOAD_CANCELLED every ~256 iterations and break out early
+        // when the host flips it. They can't `Err(...)` directly because
+        // their signature is `Vec<DwgObject>`. We check here and convert
+        // a flagged state into a clean `DwgError::Cancelled`. See
+        // lib.rs::LOAD_CANCELLED for the host contract.
+        if crate::check_cancelled() {
+            return Err(DwgError::Cancelled);
+        }
+
         // Resolve handle references â†’ layer names, linetype names, etc.
         resolve_handles(&mut dwg, data, self.version);
 
@@ -712,6 +722,14 @@ impl DwgParser {
                 }
             }
 
+            // Cancellation: poll the host flag at every HANDLES sub-section
+            // boundary. R13/R14/R2000 files are small enough that this is
+            // usually a single pass, but big legacy files (R2000 saved with
+            // huge BLOCK_RECORD tables) still benefit. See
+            // dwg-parser/lib.rs::LOAD_CANCELLED.
+            if crate::check_cancelled() {
+                return object_map;
+            }
             pos += 2 + section_size;
         }
 
@@ -840,6 +858,13 @@ impl DwgParser {
                 if last_handle > 0 && last_loc >= 0 {
                     object_map.insert(last_handle as u32, last_loc as usize);
                 }
+                // Cancellation: poll the host flag every 256 entries so the
+                // R2004 object-map decode (typically the longest pre-objects
+                // phase on R2004/R2010/R2013 files) bails quickly when the
+                // user clicks Cancel. See dwg-parser/lib.rs::LOAD_CANCELLED.
+                if entry_count & 0xFF == 0 && crate::check_cancelled() {
+                    return object_map;
+                }
             }
 
             pos += 2 + section_size;
@@ -966,6 +991,14 @@ impl DwgParser {
 
                     if last_handle > 0 && last_loc >= 0 {
                         object_map.insert(last_handle as u32, last_loc as usize);
+                    }
+                    // Cancellation: long object-map decode on huge R2018
+                    // files (test65.dwg has > 100k entries) — poll every
+                    // 256 entries so the user can bail before we get to
+                    // the actual object-parse phase. See
+                    // dwg-parser/lib.rs::LOAD_CANCELLED.
+                    if entry_count & 0xFF == 0 && crate::check_cancelled() {
+                        return object_map;
                     }
                 }
                 pos += 2 + section_size;
@@ -4284,6 +4317,18 @@ impl DwgParser {
                     handle, file_offset, last_type,
                 );
                 last_progress_print = std::time::Instant::now();
+            }
+            // Cancellation: poll the process-global flag every 256 handles
+            // so a user clicking Cancel on the loading overlay bails the
+            // dominant inner loop within ~1-2s on big files (113k objects
+            // on test65.dwg, used to take ~12s). We can't return Err from
+            // here because the signature is `Vec<DwgObject>` — instead we
+            // break out and let `DwgParser::parse` translate the flag to
+            // `DwgError::Cancelled`. See dwg-parser/lib.rs::LOAD_CANCELLED.
+            if i & 0xFF == 0 && crate::check_cancelled() {
+                crate::dwg_dbg!("[dwg-dbg] parse_objects_r2000: cancelled at i={}/{} (objects={}, fails={})",
+                    i, total_handles, objects.len(), fail_count);
+                break;
             }
             // Skip OOB offsets early â€” don't even try parsing
             if file_offset + 4 >= data.len() {

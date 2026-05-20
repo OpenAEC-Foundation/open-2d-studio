@@ -4566,8 +4566,23 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         t_phase.elapsed().as_secs_f64(), bytes.len());
     t_phase = std::time::Instant::now();
     let mut parser = DwgParser::new();
-    let file = parser.parse(&bytes)
-        .map_err(|e| anyhow::anyhow!("DWG parse failed: {:?}", e))?;
+    // Wire the host cancel flag into the parser's process-global static
+    // BEFORE calling parse. The button handler in studio_app::paint_loading_overlay
+    // also writes the static directly, so this is a belt-and-suspenders
+    // refresh — but it matters if a previous cancel left the static stuck
+    // (we clear it in spawn_load_job, but only after the worker thread
+    // takes a TLS-snapshot of the Arc).
+    dwg_parser::LOAD_CANCELLED.store(check_load_cancel(), Ordering::Relaxed);
+    let file = parser.parse(&bytes).map_err(|e| {
+        // dwg-parser emits DwgError::Cancelled when our parser-side polls
+        // catch a flipped LOAD_CANCELLED. Surface it as LoadCancelled so
+        // the worker thread routes it to LoadingMsg::Cancelled instead of
+        // showing a failure dialog. See dwg-parser/error.rs::DwgError.
+        if matches!(e, dwg_parser::DwgError::Cancelled) {
+            return anyhow::Error::new(LoadCancelled);
+        }
+        anyhow::anyhow!("DWG parse failed: {:?}", e)
+    })?;
     eprintln!("[load_dwg] phase parse: {:.3}s ({} objects)",
         t_phase.elapsed().as_secs_f64(), file.objects.len());
     bail_if_cancelled()?;

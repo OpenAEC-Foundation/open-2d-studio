@@ -7653,6 +7653,11 @@ fn spawn_load_job(path: String, tab_idx: usize) -> LoadingJob {
     let path_for_thread = path.clone();
     let cancel = Arc::new(AtomicBool::new(false));
     let cancel_for_worker = cancel.clone();
+    // Reset the dwg-parser process-global cancel flag so a previous
+    // cancelled load doesn't pre-cancel this one. The host Arc has its
+    // own fresh `false` state already; the parser static is shared
+    // across the process. See dwg-parser/lib.rs::LOAD_CANCELLED.
+    dwg_parser::reset_cancelled();
     std::thread::Builder::new()
         .name(format!("load:{}", short_path(&path)))
         .spawn(move || {
@@ -7785,8 +7790,11 @@ fn paint_loading_overlay(
     painter.rect_filled(fill, 2.0, egui::Color32::from_rgb(80, 160, 230));
 
     // Cancel button. Skipped when no cancel flag is supplied. When
-    // clicked we set the worker's cancel flag - the worker observes
-    // it at the next entity-loop boundary and returns LoadCancelled.
+    // clicked we set the worker's cancel flag AND the dwg-parser
+    // process-global flag - the worker observes the Arc<AtomicBool>
+    // at scene_io entity-loop boundaries and the parser observes
+    // its static flag inside parse_objects_r2000 / parse_object_map_*
+    // every 256 iterations.
     if let Some(flag) = cancel_flag {
         let already = flag.load(Ordering::Relaxed);
         let btn_w = 96.0_f32;
@@ -7800,6 +7808,11 @@ fn paint_loading_overlay(
         let resp = ui.put(btn_rect, btn);
         if resp.clicked() && !already {
             flag.store(true, Ordering::Relaxed);
+            // The dwg-parser crate lives behind a clean-room API
+            // boundary and can't see the host's Arc, so it polls a
+            // process-global static instead. Mirror the click here.
+            // See dwg-parser/lib.rs::LOAD_CANCELLED.
+            dwg_parser::LOAD_CANCELLED.store(true, Ordering::Relaxed);
             eprintln!("[load] cancel requested by user");
         }
     }

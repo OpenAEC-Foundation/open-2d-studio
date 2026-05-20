@@ -12,6 +12,12 @@ pub enum DwgError {
 
     /// Feature not yet implemented.
     NotImplemented(String),
+
+    /// Host requested cancellation via `LOAD_CANCELLED` mid-parse. Not
+    /// an error in the usual sense — the host's load worker downcasts
+    /// to this variant and reports a clean cancel to the UI instead of
+    /// surfacing a failure dialog.
+    Cancelled,
 }
 
 impl std::fmt::Display for DwgError {
@@ -21,6 +27,7 @@ impl std::fmt::Display for DwgError {
             DwgError::Io(e) => write!(f, "I/O error: {}", e),
             DwgError::InvalidBinary(msg) => write!(f, "Invalid DWG binary: {}", msg),
             DwgError::NotImplemented(msg) => write!(f, "Not implemented: {}", msg),
+            DwgError::Cancelled => write!(f, "DWG parse cancelled by host"),
         }
     }
 }
