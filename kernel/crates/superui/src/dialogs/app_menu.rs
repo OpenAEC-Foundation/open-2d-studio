@@ -1,70 +1,330 @@
-//! `AppMenu` — basic floating popup for the title-bar app icon.
-//! Mirrors the 1.0 React `AppMenu` (File menu): New / Open / Save /
-//! Save As / Close / Exit / About.
+//! `AppMenuPanel` — full-height left-side slide-out File menu, matching
+//! the Open Geotechniek Studio reference (sibling product). Replaces the
+//! older floating-popup `AppMenu` (kept as a backwards-compatible thin
+//! shim so existing call-sites keep compiling).
 //!
-//! Wiring expectation: pass a screen position (typically the bottom-left
-//! of the title-bar icon) and a mutable `bool` so the consumer can
-//! close the popup. Returns `Some(AppMenuAction)` on click; the
-//! consumer dispatches and decides whether to also flip `open` to
-//! false.
+//! Layout (per reference screenshot):
+//!   ┌──────────────────────────┐  ← 280 px exact width
+//!   │ ← Bestand                │  ← orange header 32 px
+//!   ├──────────────────────────┤
+//!   │ ⊕ Nieuw          Ctrl+N  │  ← row 40 px, icon + label + shortcut
+//!   │ 📂 Openen        Ctrl+O  │
+//!   │ 💾 Opslaan       Ctrl+S  │  (Studio only)
+//!   │ 💾 Opslaan als…  Ctrl+⇧+S │  (Studio only)
+//!   │ 🖨 Afdrukken     Ctrl+P  │
+//!   ├──────────────────────────┤  ← separator
+//!   │ ⬇ Importeren            │  (Studio only)
+//!   │ ⬆ Exporteren            │  (Studio only)
+//!   │ 🧩 Extensies            │
+//!   ├──────────────────────────┤
+//!   │ ⚙ Voorkeuren    Ctrl+,  │
+//!   │ ℹ Over                  │
+//!   │ × Afsluiten    Alt+F4   │
+//!   └──────────────────────────┘
+//!
+//! Wiring expectation (consumer side, `studio_app.rs`):
+//! ```ignore
+//! if self.app_menu_open {
+//!     for action in AppMenuPanel::new()
+//!         .is_viewer(self.mode == AppMode::Viewer)
+//!         .show(ctx)
+//!     {
+//!         match action {
+//!             AppMenuAction::New        => { requested_new_tab = true; }
+//!             AppMenuAction::Open       => { requested_menu_open_dialog = true; }
+//!             AppMenuAction::Save | AppMenuAction::SaveAs => {
+//!                 requested_menu_save_as_dxf = true;
+//!             }
+//!             AppMenuAction::Close      => { self.app_menu_open = false; }
+//!             AppMenuAction::Exit       => { requested_window_close = true; }
+//!             AppMenuAction::About      => { requested_toggle_about = true; }
+//!             AppMenuAction::Print
+//!             | AppMenuAction::Import
+//!             | AppMenuAction::Export
+//!             | AppMenuAction::Extensions
+//!             | AppMenuAction::Preferences => { /* TODO */ }
+//!         }
+//!     }
+//! }
+//! ```
 
 use crate::theme::Theme;
-use egui::{Context, Pos2};
+use egui::{Color32, Context, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 
-#[derive(Debug, Clone, Copy)]
+/// Actions surfaced by the `AppMenuPanel`. The consumer routes each
+/// variant to its existing dispatch flag (or stubs the new ones with a
+/// TODO until they're implemented).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum AppMenuAction {
     New,
     Open,
     Save,
     SaveAs,
-    Close,
-    Exit,
+    Print,
+    Import,
+    Export,
+    Extensions,
+    Preferences,
     About,
+    Exit,
+    /// User asked to close the panel (back-arrow click OR click on the
+    /// dimmed area outside the panel). Consumer should flip its
+    /// `app_menu_open` flag to `false`.
+    Close,
 }
 
-pub struct AppMenu {
-    anchor: Pos2,
+/// Full-height left-side File menu panel. Renders via
+/// `egui::SidePanel::left("app_menu_panel")` so it sits over the
+/// existing left dock + canvas without disturbing their layout.
+pub struct AppMenuPanel {
+    is_viewer: bool,
 }
 
-impl AppMenu {
-    pub fn new(anchor: Pos2) -> Self { Self { anchor } }
+impl Default for AppMenuPanel {
+    fn default() -> Self { Self { is_viewer: false } }
+}
 
-    pub fn show(self, ctx: &Context, open: &mut bool) -> Option<AppMenuAction> {
-        if !*open { return None; }
+impl AppMenuPanel {
+    /// Create a new panel — defaults to Studio mode (all items visible).
+    pub fn new() -> Self { Self::default() }
+
+    /// Trim items that don't apply in Viewer mode (Save, SaveAs, Import,
+    /// Export are hidden). Already gated at the handler level — this is
+    /// purely for UI clarity so users don't see disabled rows.
+    pub fn is_viewer(mut self, b: bool) -> Self { self.is_viewer = b; self }
+
+    /// Paint the panel and collect actions. Returns the list of clicks
+    /// that occurred this frame (usually 0 or 1 — but `Vec` keeps the
+    /// API symmetrical with the other superui widgets like `LeftDock`).
+    pub fn show(self, ctx: &Context) -> Vec<AppMenuAction> {
+        let mut actions: Vec<AppMenuAction> = Vec::new();
         let palette = Theme::Default.palette();
-        let mut chosen: Option<AppMenuAction> = None;
-        let mut local_open = *open;
-        egui::Window::new("app_menu")
-            .title_bar(false)
+
+        egui::SidePanel::left("app_menu_panel")
+            .exact_width(PANEL_WIDTH)
             .resizable(false)
-            .collapsible(false)
-            .open(&mut local_open)
-            .fixed_pos(self.anchor)
-            .frame(egui::Frame::popup(&ctx.style())
-                .fill(palette.panel_bg)
-                .stroke(egui::Stroke::new(1.0, palette.border)))
+            .frame(egui::Frame::none().fill(palette.panel_bg))
             .show(ctx, |ui| {
-                ui.set_min_width(180.0);
-                let mut item = |ui: &mut egui::Ui, label: &str, action: AppMenuAction| {
-                    if ui.add(egui::Button::new(label).frame(false)
-                        .min_size(egui::vec2(ui.available_width(), 22.0)))
-                        .clicked()
-                    {
-                        chosen = Some(action);
-                    }
-                };
-                item(ui, "New",     AppMenuAction::New);
-                item(ui, "Open…",   AppMenuAction::Open);
-                ui.separator();
-                item(ui, "Save",    AppMenuAction::Save);
-                item(ui, "Save As…", AppMenuAction::SaveAs);
-                ui.separator();
-                item(ui, "Close",   AppMenuAction::Close);
-                item(ui, "Exit",    AppMenuAction::Exit);
-                ui.separator();
-                item(ui, "About",   AppMenuAction::About);
+                paint_panel(ui, &palette, self.is_viewer, &mut actions);
             });
-        *open = local_open;
+
+        // Catch click-outside: any primary click that lands east of the
+        // panel's right edge should close. (egui's `SidePanel::left`
+        // already swallows clicks inside its rect, so this filter
+        // doesn't fire on in-panel clicks.)
+        if ctx.input(|i| i.pointer.any_click()) {
+            if let Some(pos) = ctx.input(|i| i.pointer.interact_pos()) {
+                if pos.x > PANEL_WIDTH {
+                    actions.push(AppMenuAction::Close);
+                }
+            }
+        }
+
+        actions
+    }
+}
+
+/// Total panel width — matches the reference screenshot.
+const PANEL_WIDTH: f32 = 280.0;
+/// Orange header bar height (matches the title-bar height).
+const HEADER_HEIGHT: f32 = 32.0;
+/// Each menu row height — leaves enough room for icon + label + shortcut.
+const ROW_HEIGHT: f32 = 40.0;
+/// Active/hover left-edge accent stripe thickness.
+const ACCENT_STRIPE: f32 = 3.0;
+
+fn paint_panel(
+    ui: &mut Ui,
+    palette: &crate::theme::Palette,
+    is_viewer: bool,
+    out: &mut Vec<AppMenuAction>,
+) {
+    // ---- Header bar (orange) -----------------------------------------
+    let avail_w = ui.available_width();
+    let (hdr_rect, hdr_resp) = ui.allocate_exact_size(
+        Vec2::new(avail_w, HEADER_HEIGHT),
+        Sense::click(),
+    );
+    ui.painter().rect_filled(hdr_rect, 0.0, palette.accent);
+    // Back-arrow glyph + "Bestand" label.
+    let arrow_x = hdr_rect.left() + 12.0;
+    ui.painter().text(
+        Pos2::new(arrow_x, hdr_rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        egui_phosphor::regular::ARROW_LEFT,
+        egui::FontId::new(16.0, egui::FontFamily::Proportional),
+        palette.fg,
+    );
+    ui.painter().text(
+        Pos2::new(arrow_x + 24.0, hdr_rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        "Bestand",
+        egui::FontId::new(14.0, egui::FontFamily::Proportional),
+        palette.fg,
+    );
+    if hdr_resp.clicked() {
+        out.push(AppMenuAction::Close);
+    }
+
+    // ---- Items -------------------------------------------------------
+    // Group 1: file ops (New / Open / Save / SaveAs / Print).
+    item(ui, palette, "Nieuw",        egui_phosphor::regular::FILE_PLUS,
+        Some("Ctrl+N"), 1, AppMenuAction::New, out);
+    item(ui, palette, "Openen",       egui_phosphor::regular::FOLDER_OPEN,
+        Some("Ctrl+O"), 2, AppMenuAction::Open, out);
+    if !is_viewer {
+        item(ui, palette, "Opslaan",      egui_phosphor::regular::FLOPPY_DISK,
+            Some("Ctrl+S"), 3, AppMenuAction::Save, out);
+        item(ui, palette, "Opslaan als\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
+            Some("Ctrl+Shift+S"), 4, AppMenuAction::SaveAs, out);
+    }
+    item(ui, palette, "Afdrukken",    egui_phosphor::regular::PRINTER,
+        Some("Ctrl+P"), 5, AppMenuAction::Print, out);
+
+    separator(ui, palette);
+
+    // Group 2: import / export / extensions.
+    if !is_viewer {
+        item(ui, palette, "Importeren",   egui_phosphor::regular::DOWNLOAD_SIMPLE,
+            None, 6, AppMenuAction::Import, out);
+        item(ui, palette, "Exporteren",   egui_phosphor::regular::UPLOAD_SIMPLE,
+            None, 7, AppMenuAction::Export, out);
+    }
+    item(ui, palette, "Extensies",    egui_phosphor::regular::PUZZLE_PIECE,
+        None, 8, AppMenuAction::Extensions, out);
+
+    separator(ui, palette);
+
+    // Group 3: preferences / about / exit.
+    item(ui, palette, "Voorkeuren",   egui_phosphor::regular::GEAR,
+        Some("Ctrl+,"), 9, AppMenuAction::Preferences, out);
+    item(ui, palette, "Over",         egui_phosphor::regular::INFO,
+        None, 10, AppMenuAction::About, out);
+    item(ui, palette, "Afsluiten",    egui_phosphor::regular::SIGN_OUT,
+        Some("Alt+F4"), 11, AppMenuAction::Exit, out);
+}
+
+/// Render a single menu row. Hover gets a left orange stripe + soft
+/// amber tint (`palette.accent` at ~14 % alpha).
+fn item(
+    ui: &mut Ui,
+    palette: &crate::theme::Palette,
+    label: &str,
+    glyph: &'static str,
+    shortcut: Option<&str>,
+    id_key: u32,
+    action: AppMenuAction,
+    out: &mut Vec<AppMenuAction>,
+) {
+    let avail_w = ui.available_width();
+    let (rect, resp) = ui.allocate_exact_size(
+        Vec2::new(avail_w, ROW_HEIGHT),
+        Sense::click(),
+    );
+    let id = ui.id().with(("app_menu_item", id_key));
+    let resp = resp.on_hover_cursor(egui::CursorIcon::PointingHand);
+    let resp = ui.interact(rect, id, Sense::click()).union(resp);
+
+    // Hover/selected backdrop — soft amber tint.
+    if resp.hovered() {
+        let bg = Color32::from_rgba_unmultiplied(
+            palette.accent.r(), palette.accent.g(), palette.accent.b(), 36,
+        );
+        ui.painter().rect_filled(rect, 0.0, bg);
+        // 3 px left orange accent stripe.
+        let stripe = Rect::from_min_max(
+            rect.min,
+            Pos2::new(rect.left() + ACCENT_STRIPE, rect.bottom()),
+        );
+        ui.painter().rect_filled(stripe, 0.0, palette.accent);
+    }
+
+    // Icon (left, ~16 px).
+    let icon_x = rect.left() + 18.0;
+    ui.painter().text(
+        Pos2::new(icon_x, rect.center().y),
+        egui::Align2::CENTER_CENTER,
+        glyph,
+        egui::FontId::new(16.0, egui::FontFamily::Proportional),
+        palette.fg,
+    );
+
+    // Label (centre-left).
+    ui.painter().text(
+        Pos2::new(icon_x + 18.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        label,
+        egui::FontId::new(13.0, egui::FontFamily::Proportional),
+        palette.fg,
+    );
+
+    // Shortcut text (right-aligned, dim).
+    if let Some(sc) = shortcut {
+        ui.painter().text(
+            Pos2::new(rect.right() - 14.0, rect.center().y),
+            egui::Align2::RIGHT_CENTER,
+            sc,
+            egui::FontId::new(11.0, egui::FontFamily::Proportional),
+            palette.fg_dim,
+        );
+    }
+
+    if resp.clicked() {
+        out.push(action);
+    }
+}
+
+/// Paint a single 1 px horizontal separator with a small vertical gap
+/// above and below — matches the visual rhythm of the reference.
+fn separator(ui: &mut Ui, palette: &crate::theme::Palette) {
+    let avail_w = ui.available_width();
+    let (rect, _) = ui.allocate_exact_size(Vec2::new(avail_w, 9.0), Sense::hover());
+    ui.painter().line_segment(
+        [Pos2::new(rect.left() + 12.0, rect.center().y),
+         Pos2::new(rect.right() - 12.0, rect.center().y)],
+        Stroke::new(1.0, palette.border),
+    );
+}
+
+// ----------------------------------------------------------------------
+// Backwards-compatible shim — the original `AppMenu` floating popup is
+// kept as a thin re-export so any out-of-tree caller (or other agent's
+// in-flight branch) keeps compiling. It now just delegates to the new
+// panel and ignores its `anchor` argument — the panel always slides in
+// from the left edge of the viewport. Mark deprecated so new code reaches
+// for `AppMenuPanel` instead.
+// ----------------------------------------------------------------------
+
+/// Deprecated wrapper that pretends to be a floating popup but now
+/// delegates to `AppMenuPanel`. Prefer `AppMenuPanel::new().show(ctx)`
+/// directly.
+#[deprecated(note = "use `AppMenuPanel` directly")]
+pub struct AppMenu {
+    _anchor: Pos2,
+}
+
+#[allow(deprecated)]
+impl AppMenu {
+    /// Construct from an anchor position (ignored — kept for source
+    /// compatibility with the old popup API).
+    pub fn new(anchor: Pos2) -> Self { Self { _anchor: anchor } }
+
+    /// Show the new panel. `open` is flipped to `false` when the user
+    /// clicks an item, the back arrow, or outside the panel — so old
+    /// call-sites that toggled this flag continue to work unchanged.
+    pub fn show(self, ctx: &Context, open: &mut bool) -> Option<AppMenuAction> {
+        if !*open {
+            return None;
+        }
+        let actions = AppMenuPanel::new().show(ctx);
+        // The new panel can emit multiple actions per frame (e.g. an
+        // item click + a Close due to outside-click being detected in
+        // the same frame). Pick the first non-Close action; otherwise
+        // return Close to preserve the popup-style "one click = one
+        // action" contract.
+        let chosen = actions.iter().find(|a| !matches!(a, AppMenuAction::Close))
+            .copied()
+            .or_else(|| actions.iter().find(|a| matches!(a, AppMenuAction::Close)).copied());
         if chosen.is_some() {
             *open = false;
         }

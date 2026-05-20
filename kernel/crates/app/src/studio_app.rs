@@ -44,7 +44,7 @@ use superui::{
              RightDock, RightDockAction,
              StructureTree, StructureTreeAction, TreeNode, NodeKind},
     panels::right_dock::RightDockState,
-    dialogs::{AppMenu, AppMenuAction},
+    dialogs::{AppMenuAction, AppMenuPanel},
     icon::IconKind,
 };
 
@@ -3480,30 +3480,63 @@ impl App {
                 }
             }
 
-            // ---- App Menu popup (Round 9) ---------------------------
-            // Anchored to the top-left so it sits below the title-bar
-            // app icon. Returns an `AppMenuAction` when the user clicks
-            // an entry; we route to existing requested_* flags.
+            // ---- App Menu side panel --------------------------------
+            // Full-height left-side panel matching the Open
+            // Geotechniek Studio reference. Slides in when the user
+            // clicks the title-bar "2D" logo (sets `app_menu_open`).
+            // Each click is routed to the existing `requested_*`
+            // flags; new items (Print / Import / Export / Extensions /
+            // Preferences) are TODO no-ops for now.
             if self.app_menu_open {
-                let mut open = self.app_menu_open;
-                if let Some(action) = AppMenu::new(egui::pos2(2.0, 32.0))
-                    .show(ctx, &mut open)
-                {
+                let is_viewer = self.mode == AppMode::Viewer;
+                let actions = AppMenuPanel::new()
+                    .is_viewer(is_viewer)
+                    .show(ctx);
+                for action in actions {
                     match action {
-                        AppMenuAction::New     => { requested_new_tab = true; }
-                        AppMenuAction::Open    => { requested_menu_open_dialog = true; }
-                        AppMenuAction::Save | AppMenuAction::SaveAs => {
+                        AppMenuAction::New     => { requested_new_tab = true; self.app_menu_open = false; }
+                        AppMenuAction::Open    => { requested_menu_open_dialog = true; self.app_menu_open = false; }
+                        AppMenuAction::Save
+                        | AppMenuAction::SaveAs => {
                             requested_menu_save_as_dxf = true;
+                            self.app_menu_open = false;
+                        }
+                        AppMenuAction::Print => {
+                            // TODO: wire to a future Print/PDF export pipeline.
+                            self.app_menu_open = false;
+                        }
+                        AppMenuAction::Import => {
+                            // TODO: wire to a future Importeren dispatcher
+                            // (DXF / DWG / IFC / image overlay).
+                            self.app_menu_open = false;
+                        }
+                        AppMenuAction::Export => {
+                            // TODO: wire to a future Exporteren dispatcher
+                            // (DXF / DWG / IFC / PDF / SVG).
+                            self.app_menu_open = false;
+                        }
+                        AppMenuAction::Extensions => {
+                            // TODO: open extension manager dialog.
+                            self.app_menu_open = false;
+                        }
+                        AppMenuAction::Preferences => {
+                            // TODO: open Voorkeuren / Settings dialog.
+                            self.app_menu_open = false;
+                        }
+                        AppMenuAction::About => {
+                            requested_toggle_about = true;
+                            self.app_menu_open = false;
+                        }
+                        AppMenuAction::Exit => {
+                            requested_window_close = true;
+                            self.app_menu_open = false;
                         }
                         AppMenuAction::Close => {
-                            // Close active tab.
-                            requested_close_tab = Some(active_tab_idx);
+                            // Back-arrow click or outside-the-panel click.
+                            self.app_menu_open = false;
                         }
-                        AppMenuAction::Exit  => { requested_window_close = true; }
-                        AppMenuAction::About => { requested_toggle_about = true; }
                     }
                 }
-                self.app_menu_open = open;
             }
 
             // ---- File picker modal (replaces native rfd Open) -------

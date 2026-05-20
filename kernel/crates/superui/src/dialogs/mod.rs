@@ -14,7 +14,9 @@ pub mod file_picker;
 pub mod file_preview;
 pub mod file_version;
 
-pub use app_menu::{AppMenu, AppMenuAction};
+#[allow(deprecated)]
+pub use app_menu::AppMenu;
+pub use app_menu::{AppMenuAction, AppMenuPanel};
 pub use file_picker::{FilePicker, FilePickerAction, FilePickerState, PreviewEntry, PreviewProvider};
 pub use file_preview::rasterize_segments;
 pub use file_version::detect_version;
