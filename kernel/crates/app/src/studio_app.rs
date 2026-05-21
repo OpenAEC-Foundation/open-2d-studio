@@ -8369,6 +8369,20 @@ fn build_ribbon_tabs(
                     RibbonGroup::with_layout(" ", RibbonGroupLayout::LargeOnly {
                         large: vec![enable(lg("pan", "Pan", IconKind::Pan))],
                     }),
+                    // Edit -- minimal-edit surface in the Viewer port:
+                    // Move (M), Delete (Del) and Explode (X). Three
+                    // small icon+caption rows so the group sits
+                    // compactly next to Selection / Pan without forcing
+                    // a wide Large tile.
+                    RibbonGroup::with_layout("Edit", RibbonGroupLayout::Stack {
+                        rows: 2,
+                        buttons: vec![
+                            enable(select(b_lbl("move", "Move", IconKind::Move),
+                                matches!(tool, ToolMode::Move))),
+                            enable(b_lbl("delete", "Delete", IconKind::Delete)),
+                            enable(b_lbl("explode", "Explode", IconKind::Ungroup)),
+                        ],
+                    }),
                     // Annotate group is authoring-only — omitted from
                     // Viewer ribbon (Phase 2). The viewer is strictly
                     // read-only so leaving disabled placeholders adds
