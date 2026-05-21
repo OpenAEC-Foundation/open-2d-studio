@@ -1,10 +1,23 @@
 //! Theme tokens — palette + apply-to-egui helpers.
 //!
 //! Phase 1 ships only the Default theme (warm dark brown with amber
-//! accent, matching 1.0 globals.css `[data-theme="default"]`). Other
-//! 1.0 themes (dark, light, blue, amber-navy, deep-forge,
-//! high-contrast) are deferred to a later phase per user decision and
-//! currently fall through to the Default palette.
+//! accent, matching the canonical viewer mockup design tokens at the
+//! top of `docs/superpowers/mockups/Open2DViewerMockup.jsx`).
+//!
+//! Mockup spec (verbatim):
+//!   bg            = #3E3636   (ribbon content, canvas chrome)
+//!   surface       = #4A4242   (titlebar, ribbon top-row, statusbar, panel headers)
+//!   surface-hi    = #564E4E   (elevated/dropdowns)
+//!   accent        = #D97706   (File tab fill, active button, logo)
+//!   accent-hover  = #B45309
+//!   accent-soft   = rgba(217,119,6,0.18)
+//!   hover         = rgba(217,119,6,0.10)
+//!   border        = rgba(217,119,6,0.25)
+//!   border-light  = rgba(217,119,6,0.15)
+//!   text          = #F5F0EB
+//!   text-dim      = rgba(245,240,235,0.6)
+//!   text-muted    = rgba(245,240,235,0.4)
+//!   close-red     = #c42b1c
 
 use egui::Color32;
 
@@ -28,10 +41,20 @@ pub struct Palette {
     pub bg: Color32,
     pub fg: Color32,
     pub fg_dim: Color32,
+    /// Even dimmer text — mockup `textMuted` (alpha 0.4).
+    pub fg_muted: Color32,
     pub accent: Color32,
     pub accent_hover: Color32,
+    /// Soft accent fill (mockup `accentSoft` alpha 0.18).
+    pub accent_soft: Color32,
+    /// Standard border colour (alpha 0.25 of accent).
     pub border: Color32,
+    /// Lighter border (alpha 0.15 of accent) used as inter-group divider.
+    pub border_light: Color32,
+    /// Hover background (alpha 0.10 of accent).
+    pub hover: Color32,
     pub panel_bg: Color32,
+    pub surface_hi: Color32,
     pub button_bg: Color32,
     pub button_hover: Color32,
     pub button_active: Color32,
@@ -44,49 +67,54 @@ pub struct Palette {
 
 impl Theme {
     pub fn palette(&self) -> Palette {
-        // Default palette — values from 1.0 src/styles/globals.css
-        // [data-theme="default"] block:
-        //   --theme-bg            #3E3636  (warm dark brown)
-        //   --theme-surface       #4a4242  (panel / dropdown / grid)
-        //   --theme-surface-elevated #564e4e
-        //   --theme-text          #F5F0EB
-        //   --theme-text-dim      rgba(245,240,235,0.6)  -> ~ #93908C on #3E3636
-        //   --theme-accent        #D97706  (amber)
-        //   --theme-accent-hover  #B45309
-        //   --theme-border        rgba(217,119,6,0.25)   -> ~ #5E4521 on #3E3636
-        //   ribbon-tab gradient   #4a4242 -> #443c3c
-        // titlebar/status/close-red have no dedicated tokens in 1.0;
-        // we derive them: titlebar = surface-elevated, status = bg
-        // (slightly darker variant), close_red = standard close red.
-        // Verified against live 1.0 (https://open-2d-studio.open-aec.com/)
-        // computed styles:
-        //   --cad-surface  = rgb(74, 66, 66)  = #4A4242   (titlebar, file-tab bar,
-        //                                                   status bar background)
-        //   --cad-bg       = #3E3636                       (body / ribbon area)
-        // The ribbon tab strip and content area are TRANSPARENT in 1.0 — they
-        // show the body brown through. Inactive ribbon tabs and the active tab
-        // both sit on this body background; the active tab gets only an orange
-        // bottom accent line, no separate fill.
+        // ---- Exact mockup token values ---------------------------------
+        // Direct mapping of the JSX `Token = { ... }` block.
+        let accent       = Color32::from_rgb(0xD9, 0x77, 0x06);
+        let accent_hover = Color32::from_rgb(0xB4, 0x53, 0x09);
+        // Translucent fills are precomputed with the warm-brown body
+        // (#3E3636) as backdrop so the alpha-flatten reads correctly on
+        // egui's opaque painter (we don't always blend).
+        // accent at alpha 0.10 over #3E3636 → ~ #4A3E33
+        let hover        = Color32::from_rgba_unmultiplied(0xD9, 0x77, 0x06, 26);
+        // accent at alpha 0.18 over #3E3636 → soft amber tint
+        let accent_soft  = Color32::from_rgba_unmultiplied(0xD9, 0x77, 0x06, 46);
+        // accent at alpha 0.25 → border colour
+        let border       = Color32::from_rgba_unmultiplied(0xD9, 0x77, 0x06, 64);
+        // accent at alpha 0.15 → lighter divider
+        let border_light = Color32::from_rgba_unmultiplied(0xD9, 0x77, 0x06, 38);
+        let bg           = Color32::from_rgb(0x3E, 0x36, 0x36);
+        let surface      = Color32::from_rgb(0x4A, 0x42, 0x42);
+        let surface_hi   = Color32::from_rgb(0x56, 0x4E, 0x4E);
+        let text         = Color32::from_rgb(0xF5, 0xF0, 0xEB);
+        // text alpha 0.6 → flatten over surface (#4A4242):
+        //   r = 0xF5*0.6 + 0x4A*0.4 ≈ 0xA8
+        let text_dim     = Color32::from_rgb(0xA8, 0xA1, 0x9B);
+        // text alpha 0.4 → flatten over surface (#4A4242):
+        //   r = 0xF5*0.4 + 0x4A*0.6 ≈ 0x84
+        let text_muted   = Color32::from_rgb(0x88, 0x82, 0x7E);
+        let close_red    = Color32::from_rgb(0xC4, 0x2B, 0x1C);
+
         Palette {
-            bg:                   Color32::from_rgb(0x3E, 0x36, 0x36),
-            fg:                   Color32::from_rgb(0xF5, 0xF0, 0xEB),
-            fg_dim:               Color32::from_rgb(0x93, 0x90, 0x8C),
-            accent:               Color32::from_rgb(0xD9, 0x77, 0x06),
-            accent_hover:         Color32::from_rgb(0xB4, 0x53, 0x09),
-            border:               Color32::from_rgb(0x5E, 0x45, 0x21),
-            panel_bg:             Color32::from_rgb(0x4A, 0x42, 0x42),
-            button_bg:            Color32::from_rgb(0x4A, 0x42, 0x42),
-            button_hover:         Color32::from_rgb(0x56, 0x4E, 0x4E),
-            button_active:        Color32::from_rgb(0xD9, 0x77, 0x06),
-            // Ribbon tab strip + content background match the body `bg`
-            // (transparent over body in the React app).
-            ribbon_tab_bg:        Color32::from_rgb(0x3E, 0x36, 0x36),
-            ribbon_tab_active_bg: Color32::from_rgb(0x3E, 0x36, 0x36),
-            // Status bar uses the cad-surface tone (h-6 bg-cad-surface).
-            status_bg:            Color32::from_rgb(0x4A, 0x42, 0x42),
-            // Title bar uses cad-surface (h-8 bg-cad-surface in TitleBar.tsx).
-            titlebar_bg:          Color32::from_rgb(0x4A, 0x42, 0x42),
-            close_red:            Color32::from_rgb(0xE8, 0x1C, 0x3C),
+            bg,
+            fg:                   text,
+            fg_dim:               text_dim,
+            fg_muted:             text_muted,
+            accent,
+            accent_hover,
+            accent_soft,
+            border,
+            border_light,
+            hover,
+            panel_bg:             surface,
+            surface_hi,
+            button_bg:            surface,
+            button_hover:         surface_hi,
+            button_active:        accent,
+            ribbon_tab_bg:        bg,
+            ribbon_tab_active_bg: bg,
+            status_bg:            surface,
+            titlebar_bg:          surface,
+            close_red,
         }
     }
 }
