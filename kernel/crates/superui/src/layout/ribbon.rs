@@ -23,7 +23,7 @@ use crate::primitives::CadButton;
 use crate::icon::IconKind;
 use crate::theme::Theme;
 use crate::tokens::{metrics, ribbon_grid as rg};
-use egui::{Sense, Ui, Vec2};
+use egui::{Color32, Sense, Ui, Vec2};
 
 pub type RibbonTabId = String;
 
@@ -120,52 +120,73 @@ impl Ribbon {
         let palette = Theme::Default.palette();
 
         // --------------------- Tab strip ---------------------
+        // Mockup spec (lines 594-627): 28 px tall, gradient from
+        // `surface` to `#443c3c`, 1 px `border-light` bottom border, tabs
+        // use 6 px 16 px padding, font-size 12, weight 500. File tab is
+        // a special orange-filled affordance.
         let avail_w = ui.available_width();
         let tab_h = metrics::RIBBON_TAB_HEIGHT;
         let (tab_rect, _) = ui.allocate_exact_size(Vec2::new(avail_w, tab_h), Sense::hover());
-        ui.painter().rect_filled(tab_rect, 0.0, palette.ribbon_tab_bg);
+        ui.painter().rect_filled(tab_rect, 0.0, palette.panel_bg);
+        // 1 px border-light bottom border across the whole strip.
+        ui.painter().line_segment(
+            [egui::pos2(tab_rect.left(), tab_rect.bottom() - 0.5),
+             egui::pos2(tab_rect.right(), tab_rect.bottom() - 0.5)],
+            egui::Stroke::new(1.0, palette.border_light),
+        );
         ui.allocate_ui_at_rect(tab_rect, |ui| {
-            ui.horizontal_centered(|ui| {
+            // Mockup uses `items-end px-2 gap-2` — push tabs to bottom of
+            // the 28 px strip and add 8 px padding on the left.
+            ui.horizontal(|ui| {
+                ui.add_space(8.0);
                 for tab in &self.tabs {
                     let is_active = tab.id == self.active;
                     let is_file_special = {
                         let lc = tab.id.to_ascii_lowercase();
                         lc == "file" || lc == "files"
                     };
-                    // Match 1.0 `Ribbon.css` line 22: padding 6px 16px,
-                    // font-size 12px, weight 500. We use 32 px horizontal
-                    // padding (≈ 2 × 16) so the click-target matches the
-                    // CSS box.
                     let font = egui::FontId::proportional(12.0);
                     let label_w = ui.painter().layout_no_wrap(
                         tab.label.clone(), font.clone(), palette.fg,
                     ).rect.width();
+                    // Mockup: padding 6 px 16 px ≈ 32 px horizontal.
                     let (trect, tresp) = ui.allocate_exact_size(
                         Vec2::new(label_w + 32.0, tab_h),
                         Sense::click(),
                     );
-                    // 1.0 active tab uses content-bg fill (blends into
-                    // the strip below); inactive tabs are tab-bg + dim
-                    // text; hover lifts to fg + hover-bg. The File tab is
-                    // a special always-orange affordance.
                     let (bg, label_color) = if is_file_special {
+                        // File tab — always orange, white text.
                         let fill = if tresp.hovered() { palette.accent_hover }
                                    else                { palette.accent };
-                        (fill, palette.fg)
+                        (fill, Color32::WHITE)
                     } else if is_active {
-                        (palette.ribbon_tab_active_bg, palette.fg)
+                        // Active tab — content-bg fill so it merges into
+                        // the body below; bordered with `border-light`.
+                        (palette.bg, palette.fg)
                     } else if tresp.hovered() {
-                        (palette.button_hover, palette.fg)
+                        (palette.hover, palette.fg)
                     } else {
-                        (palette.ribbon_tab_bg, palette.fg_dim)
+                        (Color32::TRANSPARENT, palette.fg_dim)
                     };
-                    // Match 1.0's `border-radius: 4px 4px 0 0` — round
-                    // top corners only so the active tab visually merges
-                    // into the content strip at its bottom edge.
                     let rounding = egui::Rounding {
                         nw: 4.0, ne: 4.0, sw: 0.0, se: 0.0,
                     };
-                    ui.painter().rect_filled(trect, rounding, bg);
+                    if bg != Color32::TRANSPARENT {
+                        ui.painter().rect_filled(trect, rounding, bg);
+                    }
+                    // Inactive non-File tabs have transparent border;
+                    // active gets a 1 px border-light outline.
+                    if is_active && !is_file_special {
+                        ui.painter().rect_stroke(trect, rounding,
+                            egui::Stroke::new(1.0, palette.border_light));
+                        // Cover the bottom of the active tab so it
+                        // visually merges into the content strip.
+                        ui.painter().rect_filled(
+                            egui::Rect::from_min_max(
+                                egui::pos2(trect.left() + 1.0, trect.bottom() - 1.0),
+                                egui::pos2(trect.right() - 1.0, trect.bottom() + 1.0)),
+                            egui::Rounding::ZERO, palette.bg);
+                    }
                     ui.painter().text(
                         trect.center(),
                         egui::Align2::CENTER_CENTER,
@@ -176,6 +197,7 @@ impl Ribbon {
                     if tresp.clicked() && !is_active {
                         actions.push(RibbonAction::TabChanged(tab.id.clone()));
                     }
+                    ui.add_space(2.0);
                 }
             });
         });
