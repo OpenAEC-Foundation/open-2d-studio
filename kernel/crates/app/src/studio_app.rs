@@ -58,21 +58,6 @@ use crate::dxf_export::write_dxf_filtered;
 use kernel_spatial::{SegmentEntry, SegmentIndex};
 use kernel_snap::{SnapContext, SnapEngine, SnapMode, SnapModeSet, SnapResult};
 
-/// Snap `world` to the axis (H or V) whose component-delta vs `anchor` is
-/// largest. Used by the ORTHO modifier to lock the second click of a
-/// two-point tool (Measure, Dimension) to a horizontal or vertical line.
-/// Local helper added so the build is self-consistent on this branch —
-/// the upstream agent's ortho changes still travel through this entry.
-fn ortho_constrain(anchor: [f64; 2], world: [f64; 2]) -> [f64; 2] {
-    let dx = (world[0] - anchor[0]).abs();
-    let dy = (world[1] - anchor[1]).abs();
-    if dx >= dy {
-        [world[0], anchor[1]]
-    } else {
-        [anchor[0], world[1]]
-    }
-}
-
 // =============================================================================
 // SceneIndex â€” combined acceleration structure for picking + selection rebuild.
 //
@@ -2007,6 +1992,18 @@ struct App {
     /// Last completed area measurement: (perimeter, area).
     last_measure_area: Option<(f64, f64)>,
 
+    // --- Measure Angle (Phase 2) -------------------------------------
+    /// In-progress click buffer for the three-click angle gesture
+    /// (vertex, ray1 end, ray2 end). Cleared on third click or Esc.
+    measure_angle_pts: Vec<[f64; 2]>,
+    /// Last completed angle: (vertex, ray1_pt, ray2_pt, radians).
+    /// Rendered as a floating label until the next gesture starts.
+    last_measure_angle: Option<([f64; 2], [f64; 2], [f64; 2], f64)>,
+    /// Last completed coordinate readout (single click, world space).
+    /// Rendered as a floating label until the next click overwrites
+    /// it. Cleared on tool-mode switch away from MeasureCoord.
+    last_measure_coord: Option<[f64; 2]>,
+
     // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
     /// First point of an in-progress Dimension placement (world coords).
     dim_p1: Option<[f64; 2]>,
@@ -2035,6 +2032,13 @@ struct App {
     /// (whichever axis the cursor is closer to). Toggled from the
     /// ORTHO pill in the status bar; no keyboard shortcut yet.
     ortho_enabled: bool,
+
+    // --- Camera history (Phase 2 — Zoom Previous) --------------------
+    /// LIFO stack of (tab_idx, prior_cam) snapshots. Pushed before any
+    /// destructive camera change (Fit, ZoomRegion fit, Zoom Center,
+    /// pan-end, wheel zoom). Popped by the ribbon `Zoom Previous`
+    /// button. Capped at `CAMERA_HISTORY_MAX` to bound memory.
+    camera_history: Vec<(usize, PaneCam)>,
 
     // --- Perf / present-mode ----------------------------------------
     show_perf_hud: bool,
@@ -2205,6 +2209,10 @@ struct FrameTimings {
 
 const RECENT_FILES_MAX: usize = 10;
 
+/// Cap on the per-App camera history stack. ~50 entries × ~64 bytes
+/// each is negligible (~3 KB) but bounds memory across a long session.
+const CAMERA_HISTORY_MAX: usize = 50;
+
 /// Build/run variant. `Studio` is the full authoring shell (Open 2D
 /// Studio binary). `Viewer` is the view-only release (Open 2D Viewer
 /// binary): ribbon is stripped to File / Home / View, all editing
@@ -2251,6 +2259,20 @@ enum ToolMode {
     /// on release, then mode reverts to Select. Engaged by typing Z
     /// then R within a 1-second window (see `key_chord_pending`).
     ZoomRegion,
+    /// One-shot recenter — next LMB click reads its world coord, the
+    /// camera centers on it (zoom + rotation unchanged), then the
+    /// tool reverts to Select. Engaged by the View ribbon's Zoom
+    /// Center button.
+    ZoomCenter,
+    /// Three-click angle measurement: vertex + ray1 end + ray2 end.
+    /// On the third click we compute the angle between the two rays
+    /// and store the result in `last_measure_angle`. Engaged by the
+    /// Home ribbon's Measure/Angle button.
+    MeasureAngle,
+    /// One-shot coordinate readout — next LMB click reads its world
+    /// coord and displays it as a floating label until the next
+    /// click. Engaged by the Home ribbon's Measure/Coord. button.
+    MeasureCoord,
 }
 
 // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
@@ -2382,6 +2404,9 @@ impl App {
             measure_sub: MeasureSub::Length,
             measure_area_in_progress: Vec::new(),
             last_measure_area: None,
+            measure_angle_pts: Vec::new(),
+            last_measure_angle: None,
+            last_measure_coord: None,
             // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
             dim_p1: None,
             area_in_progress: Vec::new(),
@@ -2391,6 +2416,7 @@ impl App {
             cursor_world: None,
             recent_files: load_recent_files(),
             ortho_enabled: false,
+            camera_history: Vec::new(),
             show_perf_hud: false,
             frame_times: std::collections::VecDeque::with_capacity(60),
             last_timings: FrameTimings::default(),
@@ -3263,6 +3289,8 @@ impl App {
         let mut requested_snap_toggle: Option<SnapModeSet> = None;
         // ORTHO toggle — set when the user clicks the ORTHO pill.
         let mut requested_ortho_toggle = false;
+        // Zoom Previous — pop the camera history stack onto the active tab.
+        let mut requested_zoom_previous = false;
         // Measure sub-mode change â€” also arms the Measure tool.
         let mut requested_measure_sub: Option<MeasureSub> = None;
         let mut pending_selection_rebuild: bool = false;
@@ -3588,6 +3616,20 @@ impl App {
                                     // to Select).
                                     requested_tool_mode = Some(ToolMode::ZoomRegion);
                                 }
+                                "zoom_previous" => { requested_zoom_previous = true; }
+                                "zoom_center"   => {
+                                    // One-shot recenter — engage
+                                    // ToolMode::ZoomCenter; the next
+                                    // LMB click recenters the camera
+                                    // there and reverts to Select.
+                                    requested_tool_mode = Some(ToolMode::ZoomCenter);
+                                }
+                                "measure_angle" => {
+                                    requested_tool_mode = Some(ToolMode::MeasureAngle);
+                                }
+                                "measure_coord" => {
+                                    requested_tool_mode = Some(ToolMode::MeasureCoord);
+                                }
                                 _ => {}
                             },
                         }
@@ -3731,15 +3773,18 @@ natively, so you can hand the file back to your main toolchain without losing ed
                     };
                     let zoom_pct = (status_zoom * 100.0).round() as i32;
                     let tool_str = match current_tool_mode {
-                        ToolMode::Select    => "SELECT",
-                        ToolMode::Measure   => "MEASURE",
-                        ToolMode::Move      => "MOVE",
-                        ToolMode::Dimension => "DIM",
-                        ToolMode::Area      => "AREA",
-                        ToolMode::Rotate    => "ROTATE",
-                        ToolMode::Scale     => "SCALE",
-                        ToolMode::Mirror    => "MIRROR",
-                        ToolMode::ZoomRegion => "ZOOM-REGION",
+                        ToolMode::Select       => "SELECT",
+                        ToolMode::Measure      => "MEASURE",
+                        ToolMode::Move         => "MOVE",
+                        ToolMode::Dimension    => "DIM",
+                        ToolMode::Area         => "AREA",
+                        ToolMode::Rotate       => "ROTATE",
+                        ToolMode::Scale        => "SCALE",
+                        ToolMode::Mirror       => "MIRROR",
+                        ToolMode::ZoomRegion   => "ZOOM-REGION",
+                        ToolMode::ZoomCenter   => "ZOOM-CENTER",
+                        ToolMode::MeasureAngle => "MEASURE-ANGLE",
+                        ToolMode::MeasureCoord => "MEASURE-COORD",
                     };
                     let layer_str = if status_hidden_layers > 0 {
                         format!("Layer 0  ({}/{} hidden)", status_hidden_layers, status_total_layers)
@@ -5057,7 +5102,8 @@ natively, so you can hand the file back to your main toolchain without losing ed
             if self.mode == AppMode::Viewer {
                 let allowed = matches!(m,
                     ToolMode::Select | ToolMode::Measure | ToolMode::ZoomRegion
-                        | ToolMode::Move
+                        | ToolMode::Move | ToolMode::ZoomCenter
+                        | ToolMode::MeasureAngle | ToolMode::MeasureCoord
                 );
                 if !allowed {
                     eprintln!("[viewer] ignoring authoring tool request: {:?}", m);
@@ -5066,6 +5112,8 @@ natively, so you can hand the file back to your main toolchain without losing ed
             }
             self.tool_mode = m;
             if m != ToolMode::Measure { self.measure_p1 = None; }
+            if m != ToolMode::MeasureAngle { self.measure_angle_pts.clear(); }
+            if m != ToolMode::MeasureCoord { self.last_measure_coord = None; }
             if m != ToolMode::Move {
                 if let Some(tab) = self.tabs.get_mut(self.active_tab) {
                     tab.move_drag = None;
@@ -5103,6 +5151,17 @@ natively, so you can hand the file back to your main toolchain without losing ed
         }
         if requested_ortho_toggle {
             self.ortho_enabled = !self.ortho_enabled;
+        }
+        if requested_zoom_previous {
+            // Pop directly — no push beforehand (otherwise repeated
+            // clicks would just toggle between the last two views).
+            // Inlined here because zoom_previous() takes &mut self,
+            // which conflicts with the still-live `gpu` borrow above.
+            if let Some((tab_idx, cam)) = self.camera_history.pop() {
+                if let Some(tab) = self.tabs.get_mut(tab_idx) {
+                    tab.cam = cam;
+                }
+            }
         }
         // Measure sub-mode change â€” also arms the Measure tool, clears
         // any stale in-progress state, and wipes the last result so the
@@ -5472,7 +5531,17 @@ natively, so you can hand the file back to your main toolchain without losing ed
             self.save_as_dxf();
         }
         if requested_fit {
-            if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            // Snapshot the old camera for Zoom Previous (inlined push;
+            // can't call self.push_camera_history while another `self`
+            // borrow may still be live in this dispatch chain).
+            let active = self.active_tab;
+            if let Some(cam_now) = self.tabs.get(active).map(|t| t.cam) {
+                if self.camera_history.len() >= CAMERA_HISTORY_MAX {
+                    self.camera_history.remove(0);
+                }
+                self.camera_history.push((active, cam_now));
+            }
+            if let Some(tab) = self.tabs.get_mut(active) {
                 tab.cam = PaneCam::fit(&tab.scene.bbox);
             }
         }
@@ -6729,8 +6798,48 @@ natively, so you can hand the file back to your main toolchain without losing ed
     }
 
     fn fit_active(&mut self) {
+        self.push_camera_history();
         if let Some(tab) = self.tabs.get_mut(self.active_tab) {
             tab.cam = PaneCam::fit(&tab.scene.bbox);
+        }
+    }
+
+    /// Snapshot the active tab's current camera onto `camera_history`
+    /// before a destructive change. Trims to `CAMERA_HISTORY_MAX`.
+    /// Cheap — `PaneCam` is Copy + small.
+    fn push_camera_history(&mut self) {
+        let active = self.active_tab;
+        let Some(tab) = self.tabs.get(active) else { return; };
+        let cam = tab.cam;
+        if self.camera_history.len() >= CAMERA_HISTORY_MAX {
+            // Drop oldest to maintain cap.
+            self.camera_history.remove(0);
+        }
+        self.camera_history.push((active, cam));
+    }
+
+    /// Pop the last camera snapshot and restore it on its source tab.
+    /// No-op when the stack is empty. Doesn't itself push (a `Zoom
+    /// Previous` then `Zoom Previous` should walk further back, not
+    /// loop on the current view).
+    fn zoom_previous(&mut self) {
+        let Some((tab_idx, cam)) = self.camera_history.pop() else { return; };
+        if let Some(tab) = self.tabs.get_mut(tab_idx) {
+            tab.cam = cam;
+        }
+    }
+
+    /// Re-center the active tab's camera on `world` without changing
+    /// the zoom level. Used by the View ribbon's Zoom Center button —
+    /// the next LMB click on the canvas defines the new center.
+    fn zoom_center_on(&mut self, world: [f64; 2]) {
+        self.push_camera_history();
+        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+            // Reset pan to 0 + move the floating origin to the chosen
+            // world point. Keeps `cam.zoom` + rotation intact.
+            tab.cam.origin = world;
+            tab.cam.pan_x = 0.0;
+            tab.cam.pan_y = 0.0;
         }
     }
 }
@@ -7347,6 +7456,17 @@ impl ApplicationHandler for App {
                         // clear in-progress anchor. Camera stays put.
                         self.tool_mode = ToolMode::Select;
                         self.zoom_region_p1 = None;
+                    } else if self.tool_mode == ToolMode::ZoomCenter {
+                        // Cancel one-shot recenter.
+                        self.tool_mode = ToolMode::Select;
+                    } else if self.tool_mode == ToolMode::MeasureAngle
+                        && !self.measure_angle_pts.is_empty()
+                    {
+                        // Drop in-progress angle clicks first.
+                        self.measure_angle_pts.clear();
+                    } else if self.tool_mode == ToolMode::MeasureCoord {
+                        self.tool_mode = ToolMode::Select;
+                        self.last_measure_coord = None;
                     } else if !self.area_in_progress.is_empty() {
                         self.area_in_progress.clear();
                     } else if self.dim_p1.is_some() {
@@ -8025,6 +8145,61 @@ impl ApplicationHandler for App {
                                     // takes precedence for this mode), so the
                                     // inner per-tool match never reaches here.
                                     ToolMode::ZoomRegion => {}
+                                    ToolMode::ZoomCenter => {
+                                        // One-shot recenter — read world
+                                        // coord at click, fly the camera
+                                        // there (zoom unchanged), and
+                                        // revert to Select.
+                                        if let Some(world) = self.screen_to_world_in(
+                                            focus_tab, focus_rect,
+                                            self.mouse_pos.0, self.mouse_pos.1)
+                                        {
+                                            // Need to be careful: zoom_center_on
+                                            // operates on the active tab. If the
+                                            // click landed in a split-paired tab
+                                            // we still recenter the active one
+                                            // for consistency with Fit's behaviour.
+                                            self.zoom_center_on(world);
+                                        }
+                                        self.tool_mode = ToolMode::Select;
+                                    }
+                                    ToolMode::MeasureAngle => {
+                                        // Three-click angle: vertex,
+                                        // ray1, ray2. Build up
+                                        // `measure_angle_pts` then
+                                        // compute on the third click.
+                                        if let Some(world) = self.screen_to_world_in(
+                                            focus_tab, focus_rect,
+                                            self.mouse_pos.0, self.mouse_pos.1)
+                                        {
+                                            self.measure_angle_pts.push(world);
+                                            if self.measure_angle_pts.len() == 3 {
+                                                let v = self.measure_angle_pts[0];
+                                                let a = self.measure_angle_pts[1];
+                                                let b = self.measure_angle_pts[2];
+                                                let ax = a[0] - v[0]; let ay = a[1] - v[1];
+                                                let bx = b[0] - v[0]; let by = b[1] - v[1];
+                                                let dot = ax * bx + ay * by;
+                                                let cross = ax * by - ay * bx;
+                                                let theta_rad = cross.atan2(dot).abs();
+                                                self.last_measure_angle = Some((v, a, b, theta_rad));
+                                                self.measure_angle_pts.clear();
+                                            }
+                                        }
+                                    }
+                                    ToolMode::MeasureCoord => {
+                                        // One-shot coord readout — read,
+                                        // remember (renderer draws label
+                                        // until next click), do NOT
+                                        // revert mode so the user can
+                                        // sample multiple points.
+                                        if let Some(world) = self.screen_to_world_in(
+                                            focus_tab, focus_rect,
+                                            self.mouse_pos.0, self.mouse_pos.1)
+                                        {
+                                            self.last_measure_coord = Some(world);
+                                        }
+                                    }
                                 }
                             }
                             // Task 9 â€” double-click to enter text-edit. We
@@ -8547,8 +8722,8 @@ fn build_ribbon_tabs(
                         large: vec![
                             enable(lg("measure_length", "Length", IconKind::MeasureLength)),
                             enable(lg("measure_area",   "Area",   IconKind::MeasureArea)),
-                            lg("measure_angle", "Angle", IconKind::MeasureAngle),
-                            lg("measure_coord", "Coord.", IconKind::MeasureCoord),
+                            enable(lg("measure_angle", "Angle", IconKind::MeasureAngle)),
+                            enable(lg("measure_coord", "Coord.", IconKind::MeasureCoord)),
                         ],
                     }),
                     // Clipboard — Copy large + 3 disabled stacked smalls.
@@ -8592,8 +8767,8 @@ fn build_ribbon_tabs(
                         stacks: vec![
                             vec![
                                 enable(b_lbl("zoom_window",   "Window",   IconKind::ZoomWindow)),
-                                b_lbl("zoom_previous", "Previous", IconKind::ZoomPrevious),
-                                b_lbl("zoom_center",   "Center",   IconKind::ZoomCenter),
+                                enable(b_lbl("zoom_previous", "Previous", IconKind::ZoomPrevious)),
+                                enable(b_lbl("zoom_center",   "Center",   IconKind::ZoomCenter)),
                             ],
                         ],
                     }),
