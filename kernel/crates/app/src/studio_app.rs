@@ -4101,23 +4101,71 @@ impl App {
 
             // ---- Right: Properties ----------------------------------
             if properties_panel_open {
+                let palette = superui::theme::Theme::Default.palette();
                 egui::SidePanel::right("properties")
-                    .default_width(260.0)
+                    .default_width(superui::tokens::metrics::RIGHT_DOCK_WIDTH)
                     .min_width(200.0)
                     .resizable(true)
+                    .frame(egui::Frame::none().fill(palette.bg))
                     .show(ctx, |ui| {
-                        side_panel_header(ui, "PROPERTIES", || {}, &mut |hdr| {
+                        side_panel_header(ui, "Properties", || {}, &mut |hdr| {
                             if hdr.chevron_clicked {
                                 requested_toggle_props_panel = true;
                             }
                         });
-                        ui.label(
-                            egui::RichText::new(format!("Tab: {}  Â·  {} segs",
-                                prop_tab_label, prop_scene_total))
-                                .size(11.0)
-                                .color(egui::Color32::from_rgb(150, 156, 164)),
-                        );
-                        ui.separator();
+                        // Mockup spec (lines 867-875): subtitle two lines —
+                        // tab breadcrumb (fg-muted 11 px) + filename · segs
+                        // (fg-dim).
+                        ui.add_space(6.0);
+                        ui.horizontal(|ui| {
+                            ui.add_space(10.0);
+                            ui.label(
+                                egui::RichText::new(format!("Tab: {}  ·  {} segs",
+                                    prop_tab_label, prop_scene_total))
+                                    .size(11.0)
+                                    .color(palette.fg_dim),
+                            );
+                        });
+                        ui.add_space(4.0);
+                        // 1 px divider (mockup `border-light`).
+                        let div = ui.allocate_exact_size(
+                            egui::vec2(ui.available_width(), 1.0), egui::Sense::hover()).0;
+                        ui.painter().line_segment(
+                            [div.left_center(), div.right_center()],
+                            egui::Stroke::new(1.0, palette.border_light));
+                        ui.add_space(6.0);
+                        // "No selection" card (mockup lines 872-876) —
+                        // surface bg, 1 px border-light, padding 10 px,
+                        // shown when there's nothing picked AND no multi-
+                        // select count.
+                        if prop_selection_count == 0 && prop_selection_idx.is_none() {
+                            let card_w = ui.available_width() - 16.0;
+                            ui.horizontal(|ui| {
+                                ui.add_space(8.0);
+                                ui.vertical(|ui| {
+                                    let (card_rect, _) = ui.allocate_exact_size(
+                                        egui::vec2(card_w, 56.0), egui::Sense::hover());
+                                    ui.painter().rect_filled(card_rect, 4.0, palette.panel_bg);
+                                    ui.painter().rect_stroke(card_rect, 4.0,
+                                        egui::Stroke::new(1.0, palette.border_light));
+                                    ui.painter().text(
+                                        egui::pos2(card_rect.left() + 12.0, card_rect.top() + 18.0),
+                                        egui::Align2::LEFT_CENTER,
+                                        "No selection",
+                                        egui::FontId::proportional(12.0),
+                                        palette.fg,
+                                    );
+                                    ui.painter().text(
+                                        egui::pos2(card_rect.left() + 12.0, card_rect.bottom() - 16.0),
+                                        egui::Align2::LEFT_CENTER,
+                                        "Click a line segment or IFC element to inspect.",
+                                        egui::FontId::proportional(10.5),
+                                        palette.fg_dim,
+                                    );
+                                });
+                            });
+                            ui.add_space(8.0);
+                        }
                         // Multi-select summary first â€” wins over the
                         // single-entity inspector when N > 1.
                         if prop_selection_count > 1 {
