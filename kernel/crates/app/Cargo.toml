@@ -122,5 +122,9 @@ path = "src/bin/oracle_diff.rs"
 name = "ifcx-size-check"
 path = "src/bin/ifcx_size_check.rs"
 
+[[bin]]
+name = "ifcdraw-bench"
+path = "src/bin/ifcdraw_bench.rs"
+
 [lib]
 path = "src/lib.rs"
