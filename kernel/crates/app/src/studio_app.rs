@@ -3742,7 +3742,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
                     //          view-mode select, Tool: <name>
                     //   RIGHT: Terminal icon, IFC toggle, Selected:N,
                     //          Objects:N, FPS
-                    let sections = vec![
+                    let mut sections: Vec<StatusSection> = vec![
                         StatusSection::Text(x_str),
                         StatusSection::Text(y_str),
                         StatusSection::Text(cursor_str),
@@ -3781,14 +3781,19 @@ natively, so you can hand the file back to your main toolchain without losing ed
                             id: "measure_area".to_string(),
                         },
                         StatusSection::Spacer,
-                        StatusSection::Toggle {
+                    ];
+                    // IFC toggle — authoring-only affordance; the
+                    // viewer has no IFC tab + IFC panel so the toggle
+                    // would be misleading. Hide entirely in Viewer mode.
+                    if !matches!(app_mode_snapshot, AppMode::Viewer) {
+                        sections.push(StatusSection::Toggle {
                             label: "IFC".to_string(),
                             on: false,
                             id: "ifc_panel".to_string(),
-                        },
-                        StatusSection::Text(format!("Selected: {}", prop_selection_count)),
-                        StatusSection::Text(format!("Objects: {}", prop_scene_total)),
-                    ];
+                        });
+                    }
+                    sections.push(StatusSection::Text(format!("Selected: {}", prop_selection_count)));
+                    sections.push(StatusSection::Text(format!("Objects: {}", prop_scene_total)));
                     let actions = StatusBar::new(sections).show(ui);
                     for a in actions {
                         if let StatusBarAction::Toggled(id) = a {
