@@ -58,6 +58,21 @@ use crate::dxf_export::write_dxf_filtered;
 use kernel_spatial::{SegmentEntry, SegmentIndex};
 use kernel_snap::{SnapContext, SnapEngine, SnapMode, SnapModeSet, SnapResult};
 
+/// Snap `world` to the axis (H or V) whose component-delta vs `anchor` is
+/// largest. Used by the ORTHO modifier to lock the second click of a
+/// two-point tool (Measure, Dimension) to a horizontal or vertical line.
+/// Local helper added so the build is self-consistent on this branch —
+/// the upstream agent's ortho changes still travel through this entry.
+fn ortho_constrain(anchor: [f64; 2], world: [f64; 2]) -> [f64; 2] {
+    let dx = (world[0] - anchor[0]).abs();
+    let dy = (world[1] - anchor[1]).abs();
+    if dx >= dy {
+        [world[0], anchor[1]]
+    } else {
+        [anchor[0], world[1]]
+    }
+}
+
 // =============================================================================
 // SceneIndex â€” combined acceleration structure for picking + selection rebuild.
 //
@@ -2014,6 +2029,13 @@ struct App {
     // --- Recent files ------------------------------------------------
     recent_files: Vec<String>,
 
+    // --- ORTHO mode (Phase 2) ----------------------------------------
+    /// When true, two-click gestures (Measure, Dimension) constrain
+    /// the second click to be horizontal or vertical from the first
+    /// (whichever axis the cursor is closer to). Toggled from the
+    /// ORTHO pill in the status bar; no keyboard shortcut yet.
+    ortho_enabled: bool,
+
     // --- Perf / present-mode ----------------------------------------
     show_perf_hud: bool,
     frame_times: std::collections::VecDeque<std::time::Duration>,
@@ -2368,6 +2390,7 @@ impl App {
             zoom_region_p1: None,
             cursor_world: None,
             recent_files: load_recent_files(),
+            ortho_enabled: false,
             show_perf_hud: false,
             frame_times: std::collections::VecDeque::with_capacity(60),
             last_timings: FrameTimings::default(),
@@ -3160,6 +3183,7 @@ impl App {
         // mode label inline from `self.present_mode` when assembling
         // `hud_text` below.
         let about_dialog_open_snapshot = self.about_dialog_open;
+        let ortho_enabled_snapshot = self.ortho_enabled;
         let save_as_dwg_modal_snapshot = self.save_as_dwg_modal_open;
         let current_split_snapshot: Option<SplitKind> = self.tabs.get(active_tab_idx)
             .and_then(|t| t.split_kind);
@@ -3237,6 +3261,8 @@ impl App {
         // the status bar. The bit is xor'd into `self.snap_modes` after
         // the egui closure ends (when we no longer hold the borrow).
         let mut requested_snap_toggle: Option<SnapModeSet> = None;
+        // ORTHO toggle — set when the user clicks the ORTHO pill.
+        let mut requested_ortho_toggle = false;
         // Measure sub-mode change â€” also arms the Measure tool.
         let mut requested_measure_sub: Option<MeasureSub> = None;
         let mut pending_selection_rebuild: bool = false;
@@ -3757,7 +3783,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
                         // Phase 1.
                         StatusSection::Toggle {
                             label: "Ortho".to_string(),
-                            on: false,
+                            on: ortho_enabled_snapshot,
                             id: "ortho".to_string(),
                         },
                         // OSNAP strip — 6 toggles preceded by a static
@@ -3810,6 +3836,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
                                 "measure_area"      => {
                                     requested_measure_sub = Some(MeasureSub::Area);
                                 }
+                                "ortho"             => { requested_ortho_toggle = true; }
                                 _ => {}
                             }
                         }
@@ -5073,6 +5100,9 @@ natively, so you can hand the file back to your main toolchain without losing ed
         // here because the GPU is still borrowed by the outer render loop.
         if let Some(bit) = requested_snap_toggle {
             self.snap_modes.toggle(bit);
+        }
+        if requested_ortho_toggle {
+            self.ortho_enabled = !self.ortho_enabled;
         }
         // Measure sub-mode change â€” also arms the Measure tool, clears
         // any stale in-progress state, and wipes the last result so the
@@ -7016,6 +7046,23 @@ fn rebuild_annotation_pipe(
     }
 }
 
+/// ORTHO constraint — given the first click `p1` and an unconstrained
+/// second-click `p2`, snap `p2` to be horizontally or vertically aligned
+/// with `p1` (whichever axis has the larger absolute delta wins). Used
+/// by Measure + Dimension when the ORTHO status-bar pill is on. AutoCAD
+/// uses the same "dominant axis" rule.
+fn ortho_constrain(p1: [f64; 2], p2: [f64; 2]) -> [f64; 2] {
+    let dx = (p2[0] - p1[0]).abs();
+    let dy = (p2[1] - p1[1]).abs();
+    if dx >= dy {
+        // Snap to horizontal axis (preserve x, lock y to p1.y).
+        [p2[0], p1[1]]
+    } else {
+        // Snap to vertical axis (preserve y, lock x to p1.x).
+        [p1[0], p2[1]]
+    }
+}
+
 /// Shoelace formula for a simple polygon (world units^2). Absolute so winding doesn't matter.
 fn polygon_area(verts: &[[f64; 2]]) -> f64 {
     let n = verts.len();
@@ -7789,6 +7836,11 @@ impl ApplicationHandler for App {
                                             match self.measure_p1 {
                                                 None => { self.measure_p1 = Some(world); }
                                                 Some(p1) => {
+                                                    // ORTHO — snap second click to H or V
+                                                    // axis from p1 (closer of |dx|, |dy| wins).
+                                                    let world = if self.ortho_enabled {
+                                                        ortho_constrain(p1, world)
+                                                    } else { world };
                                                     let ddx = world[0] - p1[0];
                                                     let ddy = world[1] - p1[1];
                                                     let dist = (ddx*ddx + ddy*ddy).sqrt();
@@ -7808,6 +7860,9 @@ impl ApplicationHandler for App {
                                             match self.dim_p1 {
                                                 None => { self.dim_p1 = Some(world); }
                                                 Some(p1) => {
+                                                    let world = if self.ortho_enabled {
+                                                        ortho_constrain(p1, world)
+                                                    } else { world };
                                                     if let Some(tab) = self.tabs.get_mut(focus_tab) {
                                                         tab.annotations.push(Annotation::LinearDim {
                                                             p1, p2: world, offset: 0.0,
