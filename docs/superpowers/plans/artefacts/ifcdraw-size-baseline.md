@@ -34,3 +34,29 @@ Generated: 2026-05-21 22:18:55
 | **TOTAL** | **13,0 MB** | **28,2 MB** | **2,163** | | | | | | |
 
 
+
+## Round comparison: R0 vs R1 vs R2
+
+R0 = baseline (msgpack + q16 + zstd-19). R1 = + delta + zigzag-LEB128 on coord blobs. R2 = + RLE-pack per-segment/per-triangle metadata.
+
+| File | Src | R0 ifc | R0 ratio | R1 ifc | R1 ratio | R2 ifc | R2 ratio | < 1.0? |
+|---|---:|---:|---:|---:|---:|---:|---:|:---:|
+| `20250602 Ontwerp Landekensdijk 4.dwg` | 1.02 MB | 492.4 KB | 0.470 | 199.8 KB | 0.191 | 180.6 KB | 0.172 | yes |
+| `20251110_2024.14-001 Nieuwe toestand121224 (1).dwg` | 1.29 MB | 15.4 KB | 0.012 | 66.1 KB | 0.050 | 36.2 KB | 0.027 | yes |
+| `20251110_2024.14-001 Nieuwe toestand121224.dwg` | 1.29 MB | 15.4 KB | 0.012 | 66.3 KB | 0.050 | 36.2 KB | 0.027 | yes |
+| `2627_3BM_CP-21_DWG_16-02-2026.dwg` | 679.6 KB | 12.92 MB | 19.469 | 1.25 MB | 1.878 | 1.20 MB | 1.803 | **NO** |
+| `2705_model Funderingsherstel - Constructie - Sheet - CP-21 - Constructietekening.dwg` | 233.4 KB | 1.37 MB | 6.031 | 447.9 KB | 1.919 | 442.5 KB | 1.896 | **NO** |
+| `2705_model Funderingsherstel - Constructie - Sheet - CP-21 - Constructietekening.dxf` | 1.45 MB | 1.51 MB | 1.045 | 471.4 KB | 0.318 | 465.9 KB | 0.315 | yes |
+| `TO-01 Kadastrale situatie.dwg` | 157.0 KB | 720.7 KB | 4.591 | 180.1 KB | 1.148 | 179.9 KB | 1.146 | **NO** |
+| `TO-02 Gevelaanzichten.dwg` | 981.8 KB | 509.3 KB | 0.519 | 170.6 KB | 0.174 | 165.5 KB | 0.169 | yes |
+| `TO-05 Dakoverzicht.dwg` | 208.8 KB | 171.9 KB | 0.823 | 68.6 KB | 0.329 | 67.8 KB | 0.325 | yes |
+| `TO-06 Doorsneden.dwg` | 600.6 KB | 695.1 KB | 1.157 | 224.0 KB | 0.373 | 219.0 KB | 0.365 | yes |
+| `TO-07.1 Principe details 01-11.dwg` | 375.2 KB | 1.92 MB | 5.241 | 381.3 KB | 1.016 | 375.2 KB | 1.000 | **NO** |
+| `TO-07.2 Principe details 12-24.dwg` | 1004.4 KB | 1.84 MB | 1.872 | 984.5 KB | 0.980 | 938.0 KB | 0.934 | yes |
+| `TO-07.3 Principe details 25-31.dwg` | 410.1 KB | 1.31 MB | 3.283 | 371.8 KB | 0.907 | 345.6 KB | 0.843 | yes |
+| `TO-07.4 Principe details 32-41.dwg` | 759.3 KB | 995.8 KB | 1.312 | 266.7 KB | 0.351 | 262.2 KB | 0.345 | yes |
+| `Tekenwerk Controle 01Overzicht 2 - Tekenwerk Controle 01.dwg` | 1.06 MB | 318.9 KB | 0.295 | 105.5 KB | 0.098 | 103.4 KB | 0.096 | yes |
+| `pair.dwg` | 1.07 MB | 2.25 MB | 2.114 | 651.3 KB | 0.597 | 645.6 KB | 0.592 | yes |
+| `prefab-beton-C35_45-ligger-combinatievloer-VBI-2D.dwg` | 23.5 KB | 221 B | 0.009 | 480 B | 0.020 | 499 B | 0.021 | yes |
+| `waaldijk_herwijnen.dwg` | 565.4 KB | 1.22 MB | 2.216 | 396.5 KB | 0.701 | 388.5 KB | 0.687 | yes |
+| **TOTAL** | **13.03 MB** | **28.20 MB** | **2.163** | **6.18 MB** | **0.474** | **5.94 MB** | **0.455** | |
