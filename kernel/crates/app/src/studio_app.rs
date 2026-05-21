@@ -4910,16 +4910,18 @@ impl App {
             }
         }
         if let Some(mut m) = requested_tool_mode {
-            // Viewer mode: collapse every authoring tool back to Select.
-            // The ribbon already strips those buttons, but file-tab paste
-            // and other paths can still surface them â€” guard here so it
-            // also covers programmatic dispatch / future plumbing.
+            // Viewer mode: collapse every authoring *creation* tool back
+            // to Select. The minimal-edit surface (Move / Delete /
+            // Explode) IS allowed here per the viewer-port scope --
+            // strict authoring tools (Rotate / Scale / Mirror /
+            // Dimension / Area) still snap to Select.
             if self.mode == AppMode::Viewer {
                 let allowed = matches!(m,
                     ToolMode::Select | ToolMode::Measure | ToolMode::ZoomRegion
+                        | ToolMode::Move
                 );
                 if !allowed {
-                    eprintln!("[viewer] ignoring editing tool request: {:?}", m);
+                    eprintln!("[viewer] ignoring authoring tool request: {:?}", m);
                     m = ToolMode::Select;
                 }
             }
@@ -7095,9 +7097,12 @@ impl ApplicationHandler for App {
                     }
                     else { event_loop.exit(); }
                 }
-                KeyCode::Delete | KeyCode::Backspace if self.mode != AppMode::Viewer => {
+                KeyCode::Delete | KeyCode::Backspace => {
                     // Frame-deferred so we mutate scene + GPU together at
-                    // the top of the next render cycle.
+                    // the top of the next render cycle. Allowed in Viewer
+                    // mode too -- minimal-edit surface (delete element,
+                    // delete layer, explode block, move) is the
+                    // documented viewer-port scope.
                     self.requested_delete = true;
                 }
                 KeyCode::KeyF => self.fit_active(),
@@ -8224,22 +8229,10 @@ fn build_ribbon_tabs(
                     RibbonGroup::with_layout(" ", RibbonGroupLayout::LargeOnly {
                         large: vec![enable(lg("pan", "Pan", IconKind::Pan))],
                     }),
-                    // Annotate — visible but disabled (read-only viewer).
-                    RibbonGroup::with_layout("Annotate", RibbonGroupLayout::LargeLeft {
-                        large: lg("dim_linear_large", "Linear", IconKind::LinearDim),
-                        stacks: vec![
-                            vec![
-                                b_lbl("dim_angular", "Angular", IconKind::AngularDim),
-                                b_lbl("dim_radius",  "Radius",  IconKind::RadiusDim),
-                                b_lbl("dim_diameter","Diameter",IconKind::DiameterDim),
-                            ],
-                            vec![
-                                b_lbl("leader", "Leader", IconKind::Leader),
-                                b_lbl("label",  "Label",  IconKind::Label),
-                                b_lbl("table",  "Table",  IconKind::Table),
-                            ],
-                        ],
-                    }),
+                    // Annotate group is authoring-only — omitted from
+                    // Viewer ribbon (Phase 2). The viewer is strictly
+                    // read-only so leaving disabled placeholders adds
+                    // visual noise without affordance.
                     // Measure — 4 large buttons with the dedicated
                     // mockup glyphs (Length tape, Area pentagon, Angle
                     // rays-arc, Coord. crosshair).
