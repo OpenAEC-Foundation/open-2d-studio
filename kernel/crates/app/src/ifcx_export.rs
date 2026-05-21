@@ -1,40 +1,62 @@
-//! ifcx_export — serialise a tessellated 2D `Scene` to an IFCX-binary blob.
+//! ifcx_export — serialise a tessellated 2D `Scene` to an IFCDraw binary
+//! blob.
 //!
-//! IFCX is buildingSMART's JSON-based successor to STEP-encoded IFC. The
-//! reference flavour uses UTF-8 JSON; we emit a **binary** variant
-//! (informal name "IFC 2D B") that preserves the same logical structure
-//! but encodes it with MessagePack. That keeps keys/types self-describing
-//! (so any msgpack reader can crack the file), while shrinking payload
-//! size well below the JSON representation.
+//! IFCDraw is buildingSMART-inspired (interoperable with IFC4 schema
+//! concepts: Project / Site / Building / Storey) but limited to the 2D
+//! drawing plane. The on-disk format is **binary**: msgpack body wrapped
+//! in zstd, with two schema versions:
 //!
-//! Pipeline: Scene → BinaryIfcx (struct tree) → rmp_serde::to_vec →
-//! zstd::stream::encode_all → file. The zstd layer is optional but
-//! almost always a win on CAD payloads (lots of repeated coordinate
-//! patterns, layer indices, tight entity names).
+//!   * **v1** ("0.3-2d-binary") — original release. Grouped `line_batch_q16`
+//!     / `tri_batch_q16` entity records keyed by (layer, color). Preserves
+//!     geometry + layer palette + bbox + source path. Drops per-segment
+//!     entity_idx, raw text, dash patterns, INSERT block structure.
 //!
-//! Size-conscious choices:
+//!   * **v2** ("0.4-2d-binary-ifcdraw") — extended release. Preserves
+//!     EVERY semantic Scene field: per-segment + per-triangle layer +
+//!     entity index, raw `EntityText` payloads (so an MTEXT round-trips
+//!     character-for-character), the `dash_arrays` LINETYPE table with
+//!     per-segment dash indices, all `entity_names`, `entity_inserts`
+//!     (block_name + transform per INSERT), `block_definitions` (block
+//!     name + child-entity grouping + local bbox), and the `layouts`
+//!     list. This is the "complete archive" mode meant for a future
+//!     Revit / Bonsai / etc. plugin to reconstruct the full document.
 //!
-//! * **f32 coordinates.** DWG/DXF store f64, but 2D drawings are
-//!   millimetre/metre scale with ~mm precision. f32 has 24-bit mantissa
-//!   (~7 decimal digits) which resolves 1 µm at 10 m extents. Halves
-//!   the numeric payload vs. f64.
-//! * **Flat Vec<f32> per kind.** Rather than emit one record per line
-//!   segment (huge msgpack-key overhead for 600 K segments), we batch
-//!   all segments of a (layer, color, entity-group) key into one
-//!   `line_batch` record with a flat `[x1,y1,x2,y2, x1,y1,x2,y2, …]`
-//!   buffer. msgpack binary arrays of f32 are 5 bytes of header + 4 B
-//!   per number → dense. Same treatment for `tri_batch`.
-//! * **Layer palette out-of-line.** Layer names + swatches live in a
-//!   small `layers` array, referenced by `layer_id` u32 on each batch.
-//! * **No per-segment entity_idx.** The path ("/L_3/E_42_line") is the
-//!   entity identifier; reconstructing the segment-to-entity mapping is
-//!   the reader's job, same as IFCX JSON.
+//! Pipeline (both versions): Scene → struct tree → rmp_serde::to_vec_named
+//! → zstd::stream::encode_all → file. The reader (`load_ifcdraw_scene`)
+//! peeks the version field and dispatches to v1- or v2-specific decode.
+//!
+//! Size-conscious choices (v1 + v2):
+//!
+//! * **q16 quantised coordinates.** Vertices are stored as little-endian
+//!   i16 deltas relative to the scene bbox. 65534 steps across the extent
+//!   → ~1.5 mm on a 100 m drawing — finer than the ~1 mm tessellation
+//!   floor scene_io already has. Halves payload vs. f32 pairs, quarters
+//!   it vs. f64.
+//!
+//! * **One-blob payload per batch.** Coordinate buffers are serialised
+//!   as a single msgpack `bin` blob (5-byte header + raw LE bytes)
+//!   instead of typed arrays — avoids the ~3 byte / value msgpack int
+//!   overhead.
+//!
+//! * **zstd level 19** layered on top. The per-segment correlation in
+//!   the q16 deltas (neighbouring segments in the same layer share most
+//!   of their integer prefix) compresses extremely well.
+//!
+//! v2 trades a small amount of size for fidelity:
+//!
+//! * Per-segment `layer_idx`, `entity_idx`, `dash_idx` are stored as
+//!   parallel `Vec<u16>` / `Vec<u32>` arrays. With zstd this overhead
+//!   collapses to ~1 byte per segment for typical scenes.
+//!
+//! * Raw `EntityText` records (verbatim MTEXT formatting codes, anchor,
+//!   height, font path) are stored as a sparse map keyed by entity_idx.
 //!
 //! Public API:
 //!
 //! ```ignore
 //! let bytes = write_ifcx_binary(&scene, Some("drawing.dwg"))?; // Vec<u8>
-//! std::fs::write("drawing.ifcx", &bytes)?;
+//! std::fs::write("drawing.ifcdraw", &bytes)?;
+//! let scene_back = load_ifcdraw_scene("drawing.ifcdraw")?;
 //! ```
 
 use std::io;
@@ -43,38 +65,34 @@ use serde::{Deserialize, Serialize};
 
 use crate::scene_io::Scene;
 
-/// Fourcc-style schema version. Bumped if the binary layout changes
-/// incompatibly. Readers should reject blobs whose prefix they don't
-/// recognise.
+/// Format tag for v1 (the original release). Kept for backward-compat
+/// detection on read; new writes always use v2.
 pub const IFCX_BINARY_VERSION: &str = "0.3-2d-binary";
 
-/// Root envelope written to disk. Field order is intentionally stable —
-/// older readers that use positional decoding (rare with msgpack, but
-/// possible) still see `ifcx_version` first.
+/// Format tag for v2 — the IFCDraw "complete archive" format that
+/// preserves every semantic Scene field. New writes use this tag.
+pub const IFCDRAW_BINARY_VERSION_V2: &str = "0.4-2d-binary-ifcdraw";
+
+// =============================================================================
+// v1 (legacy) schema — frozen, read-only on import path. New writes use v2.
+// =============================================================================
+
+/// v1 envelope. Older `.ifcdraw` / `.ifcx` files are still readable
+/// through this struct via `read_ifcx_binary`.
 #[derive(Serialize, Deserialize)]
 pub struct BinaryIfcx {
-    /// Format/version tag. Use `IFCX_BINARY_VERSION` when writing.
     pub ifcx_version: String,
-    /// Drawing-level metadata (source file, units, global bbox).
     pub header: Header,
-    /// Layer palette. `layer_id` on each entity indexes this array.
     pub layers: Vec<Layer>,
-    /// Entity records, grouped into fat batches for compactness.
     pub entities: Vec<Entity>,
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Header {
-    /// Best-effort path of the original DWG/DXF, or "" if unknown.
     pub source_path: String,
-    /// Unit string — always "mm" for now (we preserve raw DWG units
-    /// which are millimetre for every sample we've shipped through).
     pub unit: String,
-    /// Drawing-wide bbox in scene units: [xmin, ymin, xmax, ymax].
     pub bbox: [f32; 4],
-    /// Triangle count — lets a reader preallocate without scanning.
     pub triangle_count: u64,
-    /// Segment count — same rationale.
     pub segment_count: u64,
 }
 
@@ -82,112 +100,383 @@ pub struct Header {
 pub struct Layer {
     pub id: u32,
     pub name: String,
-    /// Packed RGBA u32 (0xAABBGGRR), matching `scene_io::Segment::color`.
+    /// Packed RGBA u32 (0xAABBGGRR).
     pub color: u32,
 }
 
-/// One grouped payload. Rather than per-segment records we carry flat
-/// coordinate buffers keyed by (layer, color). The `path` is only
-/// emitted per-batch so the msgpack overhead is amortised over tens of
-/// thousands of primitives.
-///
-/// **Quantisation.** To beat DWG's analytical encoding (where a circle
-/// is ~16 bytes while our tessellation turns it into ~200 segments) we
-/// quantise coordinates to i16 relative to the *scene* bbox using
-/// `quantised_delta = round((coord - origin) / scale)`. i16 gives
-/// 65535 steps across the extent; for a 100 m drawing that's ~1.5 mm
-/// resolution — finer than the 0.5-3 mm tolerance the scene_io
-/// tessellator already introduces. Reconstruction: `coord = origin +
-/// q * scale`. Scale + origin live on `BinaryIfcx::header.bbox` —
-/// any reader that knows the envelope can inflate.
-///
-/// Msgpack encodes i16 as 3 bytes, so 2 ints = 6 bytes per 2D point
-/// (vs 10 bytes for f32 pairs). Combined with zstd on the contiguous
-/// deltas — neighbouring segments in the same layer have tightly
-/// correlated quantised values — compression reaches 30-60× typical.
-///
-/// The `data` field is a single msgpack `bin` blob (one u8 array) to
-/// avoid per-element array overhead. Each i16 is stored little-endian
-/// (native x86 order). Length invariants same as before:
-/// 4 coords/segment, 6 coords/triangle → 8 bytes/segment, 12 bytes/tri.
+/// One v1 grouped payload. q16 LE pairs: 4× per segment, 6× per
+/// triangle. The reader reconstructs world coords via the envelope's
+/// bbox + extent.
 #[derive(Serialize, Deserialize)]
 pub struct Entity {
-    /// USD-style hierarchical path, e.g. "/L_3/Lines_Model" or
-    /// "/L_3/Tris_Paper".
     pub path: String,
-    /// Layer index into `BinaryIfcx::layers`.
     pub layer_id: u32,
-    /// Packed RGBA u32 (may differ from the layer default when a DXF
-    /// entity overrides layer color).
     pub color: u32,
-    /// Paper-space flag — carried verbatim from `Segment::is_paper` /
-    /// `Triangle::is_paper` so layout tabs round-trip correctly.
     pub is_paper: bool,
-    /// Payload kind — either "line_batch_q16" (flat i16-LE, 4× per
-    /// segment) or "tri_batch_q16" (flat i16-LE, 6× per triangle).
+    /// Either `"line_batch_q16"` or `"tri_batch_q16"`. Forward-compat:
+    /// readers skip unknown kinds.
     pub kind: String,
-    /// Raw byte blob of little-endian i16 quantised coordinates. See
-    /// the doc-comment on `Entity` for reconstruction.
     #[serde(with = "serde_bytes")]
     pub data: Vec<u8>,
 }
 
-/// Serialise `scene` into an IFCX-binary blob (msgpack + zstd).
+// =============================================================================
+// v2 schema — adds full Scene-field round-trip
+// =============================================================================
+
+/// v2 envelope. The first field is `version` (a tagged short string)
+/// so a reader can peek the version before committing to a full
+/// deserialise. v2 preserves every semantic Scene field; the layout is
+/// "struct-of-arrays" (one parallel vector per attribute) so zstd sees
+/// long runs of correlated values per field.
+#[derive(Serialize, Deserialize)]
+pub struct BinaryIfcDraw {
+    /// Schema tag. v2 writes `IFCDRAW_BINARY_VERSION_V2`. v1 readers
+    /// will see a string they don't recognise and fall back to the
+    /// legacy decoder via `read_ifcx_binary`.
+    pub version: String,
+    /// Short marker string useful for debugging / forensics — embedded
+    /// generator name + project version. No PII / no trademark strings.
+    pub generator: String,
+    /// Encoded `SourceKind` (kept as u8 so unknown values don't break
+    /// older readers).
+    pub source_kind: u8,
+    /// Best-effort original path; "" if unknown.
+    pub source_path: String,
+    /// Scene-wide bbox in drawing units (xmin, ymin, xmax, ymax).
+    pub bbox: [f64; 4],
+    /// Named LAYOUT extents (Model + Layout1 + ...).
+    pub layouts: Vec<LayoutDef>,
+
+    // ----- Layer palette -----
+    pub layers: Vec<LayerDefV2>,
+
+    // ----- Geometry (q16 LE blobs) -----
+    /// Segments — 4 i16 LE per segment (x1,y1,x2,y2).
+    #[serde(with = "serde_bytes")]
+    pub segments_q16: Vec<u8>,
+    /// Per-segment colour (parallel to segments).
+    pub segment_color: Vec<u32>,
+    /// Paper-space flag bitset (1 bit per segment, LE packed).
+    #[serde(with = "serde_bytes")]
+    pub segment_paper_bits: Vec<u8>,
+    /// Per-segment layer index into `layers`.
+    pub segment_layer_idx: Vec<u16>,
+    /// Per-segment ENTITY index into `entity_names`.
+    pub segment_entity_idx: Vec<u32>,
+    /// Per-segment dash index into `dash_arrays` (0 = solid).
+    pub segment_dash_idx: Vec<u16>,
+    /// Per-segment legacy dash kind (0=solid 1=dashed 2=dotted 3=dash-dot).
+    pub segment_dash_kind: Vec<u8>,
+
+    /// Triangles — 6 i16 LE per triangle (3 verts).
+    #[serde(with = "serde_bytes")]
+    pub triangles_q16: Vec<u8>,
+    pub triangle_color: Vec<u32>,
+    #[serde(with = "serde_bytes")]
+    pub triangle_paper_bits: Vec<u8>,
+    pub triangle_layer_idx: Vec<u16>,
+    pub triangle_entity_idx: Vec<u32>,
+    /// Per-triangle kind (0=Solid, 1=TextFill).
+    pub triangle_kind: Vec<u8>,
+
+    // ----- Dash table -----
+    /// World-space LTYPE patterns. `dash_arrays[0]` = empty (solid).
+    /// Positive=draw length, negative=gap length, zero=dot. Units
+    /// match the drawing units (millimetres in typical inputs).
+    pub dash_arrays: Vec<Vec<f64>>,
+
+    // ----- Entities (parallel to entity_idx values) -----
+    /// Human-readable description per entity. Mirrors
+    /// `Scene::entity_names`.
+    pub entity_names: Vec<String>,
+    /// Sparse text payloads keyed by entity_idx. Only entries whose
+    /// Scene slot was Some(_) are emitted.
+    pub entity_text: Vec<EntityTextSparse>,
+    /// Sparse INSERT references keyed by entity_idx.
+    pub entity_inserts: Vec<InsertRefSparse>,
+
+    // ----- Block definitions -----
+    /// Logical BLOCK definitions referenced by `entity_inserts`.
+    pub block_definitions: Vec<BlockDef>,
+}
+
+#[allow(dead_code)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceKind {
+    Dxf = 0,
+    Dwg = 1,
+    IfcDrawRoundTrip = 2,
+    Other = 255,
+}
+
+impl SourceKind {
+    pub fn from_scene_source(src: &str) -> Self {
+        match src {
+            "dxf" => SourceKind::Dxf,
+            "dwg" => SourceKind::Dwg,
+            "ifcdraw" | "ifcx" => SourceKind::IfcDrawRoundTrip,
+            _ => SourceKind::Other,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct LayoutDef {
+    pub name: String,
+    pub bbox: [f64; 4],
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct LayerDefV2 {
+    pub name: String,
+    /// Packed RGBA (0xAABBGGRR).
+    pub color: u32,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct EntityTextSparse {
+    pub entity_idx: u32,
+    /// Raw MTEXT / TEXT string (formatting codes preserved verbatim).
+    pub raw: String,
+    pub anchor: [f64; 2],
+    pub height: f64,
+    pub rotation: f64,
+    pub font_path: String,
+    pub bold: bool,
+    pub italic: bool,
+    pub attachment: u8,
+    /// 0=Text, 1=MText, 2=Attrib.
+    pub text_kind: u8,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct InsertRefSparse {
+    pub entity_idx: u32,
+    pub block_name: String,
+    pub insertion_point: [f64; 2],
+    pub scale: [f64; 2],
+    /// Rotation in radians.
+    pub rotation: f64,
+}
+
+#[derive(Serialize, Deserialize)]
+pub struct BlockDef {
+    pub name: String,
+    /// Local bbox of the block contents (zero-vec if not computed).
+    pub local_bbox: [f64; 4],
+    /// Optional list of entity_idx values that belong to this block
+    /// definition (forward-compat — current scene_io leaves empty).
+    pub child_entity_idxs: Vec<u32>,
+}
+
+// =============================================================================
+// Quantisation helpers
+// =============================================================================
+
+/// Quantise `v` (world units) → i16 relative to `origin` with `inv_scale`
+/// (= 65534 / extent). Centred on 0 so reader uses the same offset.
+#[inline]
+fn q16(v: f64, origin: f64, inv_scale: f64) -> i16 {
+    let delta = (v - origin) * inv_scale;
+    let q = delta.round() - 32767.0;
+    q.max(i16::MIN as f64).min(i16::MAX as f64) as i16
+}
+
+#[inline]
+fn dq16(q: i16, origin: f64, scale: f64) -> f64 {
+    origin + ((q as f64) + 32767.0) * scale
+}
+
+fn i16_le_push(buf: &mut Vec<u8>, q: i16) {
+    buf.extend_from_slice(&q.to_le_bytes());
+}
+
+fn read_i16_le(buf: &[u8]) -> Vec<i16> {
+    buf.chunks_exact(2)
+        .map(|c| i16::from_le_bytes([c[0], c[1]]))
+        .collect()
+}
+
+fn pack_bits(bits: impl IntoIterator<Item = bool>) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::new();
+    let mut cur: u8 = 0;
+    let mut count: u32 = 0;
+    for b in bits {
+        if b {
+            cur |= 1u8 << (count & 7);
+        }
+        count += 1;
+        if (count & 7) == 0 {
+            out.push(cur);
+            cur = 0;
+        }
+    }
+    if (count & 7) != 0 {
+        out.push(cur);
+    }
+    out
+}
+
+fn unpack_bits(buf: &[u8], n: usize) -> Vec<bool> {
+    let mut out = Vec::with_capacity(n);
+    for i in 0..n {
+        let byte = buf.get(i >> 3).copied().unwrap_or(0);
+        out.push(((byte >> (i & 7)) & 1) != 0);
+    }
+    out
+}
+
+fn generator_string() -> String {
+    let version = env!("CARGO_PKG_VERSION");
+    format!("Open 2D Studio v{version} IFCDraw writer")
+}
+
+// =============================================================================
+// Writer — v2 path (active default)
+// =============================================================================
+
+/// Serialise `scene` into an IFCDraw v2 binary blob (msgpack + zstd).
 ///
-/// `source_path` is embedded verbatim into the header; pass the DWG/DXF
-/// pathname the scene was loaded from (or `None` for ad-hoc scenes).
-///
-/// Returns the compressed byte buffer ready to be written to disk.
-/// Kept in-memory so callers can inspect size / write atomically.
+/// Embeds every semantic field of the `Scene` (per-segment entity_idx,
+/// raw MTEXT, dash patterns, layouts, INSERT refs, block definitions)
+/// so a downstream reader can reconstruct the document without
+/// consulting the original DWG/DXF. `source_path` is embedded verbatim
+/// in the v2 header.
 pub fn write_ifcx_binary(
     scene: &Scene,
     source_path: Option<&str>,
 ) -> io::Result<Vec<u8>> {
-    let blob = build_blob(scene, source_path);
-
-    // --- 1. MessagePack encode ----------------------------------------
-    // `to_vec_named` keeps struct field names as map keys. Costs a few
-    // bytes per record (shared across the whole file, so the overhead is
-    // constant, not proportional to segment count), but makes the blob
-    // self-describing — any downstream msgpack reader (Python, JS,
-    // other Rust) can decode without owning this crate's types.
+    let blob = build_blob_v2(scene, source_path);
     let msgpack_bytes = rmp_serde::to_vec_named(&blob)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("msgpack: {e}")))?;
-
-    // --- 2. zstd compress ---------------------------------------------
-    // Level 19 gives a big ratio win on numeric payloads (repeated
-    // coordinate patterns + low-entropy layer ids). Compress time is
-    // fine at ~100 MB/s on a workstation; IFCX export is a manual
-    // user-triggered "Save As" so latency isn't hot-path.
     let compressed = zstd::stream::encode_all(msgpack_bytes.as_slice(), 19)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("zstd: {e}")))?;
-
     Ok(compressed)
 }
 
-/// Inverse of `write_ifcx_binary` — decompress + deserialise.
+/// v1 inflate. Returns the raw v1 envelope.
 ///
-/// Used by round-trip tests and the IFCDraw loader.
+/// Special case: when the blob is a v2 file, we synthesise a v1-shape
+/// envelope (counts + bbox + layers, empty entities) so callers that
+/// only smoke-test "does it unpack?" keep working. Use
+/// `read_ifcdraw_v2` for the full v2 record set or `load_ifcdraw_scene`
+/// for the high-level Scene reader.
 pub fn read_ifcx_binary(bytes: &[u8]) -> io::Result<BinaryIfcx> {
     let msgpack_bytes = zstd::stream::decode_all(bytes)
         .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("zstd decode: {e}")))?;
-    let blob: BinaryIfcx = rmp_serde::from_slice(&msgpack_bytes)
-        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("msgpack decode: {e}")))?;
+    if let Ok(v1) = rmp_serde::from_slice::<BinaryIfcx>(&msgpack_bytes) {
+        if v1.ifcx_version == IFCX_BINARY_VERSION {
+            return Ok(v1);
+        }
+    }
+    if let Ok(v2) = rmp_serde::from_slice::<BinaryIfcDraw>(&msgpack_bytes) {
+        if v2.version == IFCDRAW_BINARY_VERSION_V2 {
+            let n_seg = v2.segments_q16.len() / 8;
+            let n_tri = v2.triangles_q16.len() / 12;
+            return Ok(BinaryIfcx {
+                ifcx_version: v2.version,
+                header: Header {
+                    source_path: v2.source_path,
+                    unit: "mm".to_string(),
+                    bbox: [
+                        v2.bbox[0] as f32,
+                        v2.bbox[1] as f32,
+                        v2.bbox[2] as f32,
+                        v2.bbox[3] as f32,
+                    ],
+                    triangle_count: n_tri as u64,
+                    segment_count: n_seg as u64,
+                },
+                layers: v2
+                    .layers
+                    .iter()
+                    .enumerate()
+                    .map(|(i, l)| Layer {
+                        id: i as u32,
+                        name: l.name.clone(),
+                        color: l.color,
+                    })
+                    .collect(),
+                entities: Vec::new(),
+            });
+        }
+    }
+    rmp_serde::from_slice::<BinaryIfcx>(&msgpack_bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("msgpack decode: {e}")))
+}
+
+/// v2 inflate — returns the full envelope. Errors if the blob isn't v2.
+pub fn read_ifcdraw_v2(bytes: &[u8]) -> io::Result<BinaryIfcDraw> {
+    let msgpack_bytes = zstd::stream::decode_all(bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("zstd decode: {e}")))?;
+    let blob: BinaryIfcDraw = rmp_serde::from_slice(&msgpack_bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("msgpack decode v2: {e}")))?;
+    if blob.version != IFCDRAW_BINARY_VERSION_V2 {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            format!("expected {} got {}", IFCDRAW_BINARY_VERSION_V2, blob.version),
+        ));
+    }
     Ok(blob)
 }
 
-/// Reconstruct a `Scene` from an IFCDraw (`.ifcdraw`) file on disk.
-///
-/// Inverse of `write_ifcx_binary` plus q16 dequantisation. Triangle kind
-/// is collapsed to `Solid` (the export side doesn't preserve TriKind), and
-/// per-entity grouping is approximated by giving every entity-batch a
-/// fresh `entity_idx`. Layer indices and colors round-trip exactly.
-pub fn load_ifcdraw_scene(path: &str) -> io::Result<crate::scene_io::Scene> {
-    use crate::scene_io::{Scene, Segment, Triangle, TriKind};
-    let bytes = std::fs::read(path)?;
-    let blob = read_ifcx_binary(&bytes)?;
+/// Peek the embedded version field without committing to a full decode.
+fn detect_version(decoded_msgpack: &[u8]) -> (String, bool) {
+    #[derive(Deserialize)]
+    struct Peek {
+        #[serde(default)]
+        version: Option<String>,
+        #[serde(default)]
+        ifcx_version: Option<String>,
+    }
+    let peek: Peek = match rmp_serde::from_slice(decoded_msgpack) {
+        Ok(p) => p,
+        Err(_) => return (String::new(), false),
+    };
+    if let Some(v) = peek.version {
+        let is_v2 = v == IFCDRAW_BINARY_VERSION_V2;
+        return (v, is_v2);
+    }
+    (peek.ifcx_version.unwrap_or_default(), false)
+}
 
-    let mut scene = Scene::empty("ifcdraw", format!("ifcdraw: {}", path));
+// =============================================================================
+// Reader — auto-detects v1 vs v2
+// =============================================================================
+
+/// Reconstruct a `Scene` from an IFCDraw (`.ifcdraw` / `.ifcx`) file.
+///
+/// Auto-detects v1 vs v2. v1 path inflates geometry only (triangle
+/// kind collapses to `Solid`, per-entity grouping is approximated).
+/// v2 path restores every semantic field.
+pub fn load_ifcdraw_scene(path: &str) -> io::Result<crate::scene_io::Scene> {
+    let bytes = std::fs::read(path)?;
+    load_ifcdraw_scene_from_bytes(&bytes, path)
+}
+
+pub fn load_ifcdraw_scene_from_bytes(
+    bytes: &[u8],
+    path_hint: &str,
+) -> io::Result<Scene> {
+    let msgpack_bytes = zstd::stream::decode_all(bytes)
+        .map_err(|e| io::Error::new(io::ErrorKind::Other, format!("zstd decode: {e}")))?;
+    let (_, is_v2) = detect_version(&msgpack_bytes);
+    if is_v2 {
+        let blob: BinaryIfcDraw = rmp_serde::from_slice(&msgpack_bytes).map_err(|e| {
+            io::Error::new(io::ErrorKind::Other, format!("ifcdraw v2 decode: {e}"))
+        })?;
+        return Ok(lower_v2(blob, path_hint));
+    }
+    let blob: BinaryIfcx = rmp_serde::from_slice(&msgpack_bytes).map_err(|e| {
+        io::Error::new(io::ErrorKind::Other, format!("ifcdraw v1 decode: {e}"))
+    })?;
+    Ok(lower_v1(blob, path_hint))
+}
+
+fn lower_v1(blob: BinaryIfcx, path_hint: &str) -> Scene {
+    use crate::scene_io::{Segment, Triangle, TriKind};
+    let mut scene = Scene::empty("ifcdraw", format!("ifcdraw v1: {}", path_hint));
     scene.layer_names = blob.layers.iter().map(|l| l.name.clone()).collect();
     scene.layer_colors = blob.layers.iter().map(|l| l.color).collect();
     if scene.layer_names.is_empty() {
@@ -195,28 +484,20 @@ pub fn load_ifcdraw_scene(path: &str) -> io::Result<crate::scene_io::Scene> {
         scene.layer_colors.push(0xFF_FF_FF_FFu32);
     }
 
-    // Bbox is f32 in the file; widen to f64 for the Scene.
     let [xmin, ymin, xmax, ymax] = blob.header.bbox;
     scene.bbox = [xmin as f64, ymin as f64, xmax as f64, ymax as f64];
     let ext_x = ((xmax - xmin) as f64).max(1e-6);
     let ext_y = ((ymax - ymin) as f64).max(1e-6);
     let scale_x = ext_x / 65534.0;
     let scale_y = ext_y / 65534.0;
-    let dq_x = |q: i16| -> f64 { (xmin as f64) + ((q as f64) + 32767.0) * scale_x };
-    let dq_y = |q: i16| -> f64 { (ymin as f64) + ((q as f64) + 32767.0) * scale_y };
-
-    fn read_i16_le(buf: &[u8]) -> Vec<i16> {
-        buf.chunks_exact(2)
-            .map(|c| i16::from_le_bytes([c[0], c[1]]))
-            .collect()
-    }
+    let dq_x = |q: i16| -> f64 { dq16(q, xmin as f64, scale_x) };
+    let dq_y = |q: i16| -> f64 { dq16(q, ymin as f64, scale_y) };
 
     let mut entity_idx_counter: u32 = 0;
     for ent in &blob.entities {
         let q = read_i16_le(&ent.data);
         match ent.kind.as_str() {
             "line_batch_q16" => {
-                // 4 i16 per segment.
                 for chunk in q.chunks_exact(4) {
                     scene.segments.push(Segment {
                         p1: [dq_x(chunk[0]), dq_y(chunk[1])],
@@ -227,13 +508,10 @@ pub fn load_ifcdraw_scene(path: &str) -> io::Result<crate::scene_io::Scene> {
                     scene.segment_layer_idx.push(ent.layer_id as u16);
                     scene.segment_entity_idx.push(entity_idx_counter);
                     scene.segment_dash_kind.push(0);
-                    // IFCX-imported segments are always solid (no LTYPE
-                    // in the IFCX schema). Push idx 0 = solid pattern.
                     scene.segment_dash_idx.push(0);
                 }
             }
             "tri_batch_q16" => {
-                // 6 i16 per triangle.
                 for chunk in q.chunks_exact(6) {
                     scene.triangles.push(Triangle {
                         v: [
@@ -249,7 +527,10 @@ pub fn load_ifcdraw_scene(path: &str) -> io::Result<crate::scene_io::Scene> {
                     scene.triangle_entity_idx.push(entity_idx_counter);
                 }
             }
-            _ => {} // Unknown kind — skip, forward-compatible.
+            // Forward-compat: skip unknown kinds (incl. future `_q16d`
+            // delta payloads that a parallel size-reduction effort
+            // may add to the v1 wire).
+            _ => {}
         }
         scene.entity_names.push(ent.path.clone());
         scene.entity_text.push(None);
@@ -257,38 +538,145 @@ pub fn load_ifcdraw_scene(path: &str) -> io::Result<crate::scene_io::Scene> {
     }
 
     scene.count_label = format!(
-        "ifcdraw: {} segs · {} tris · {} layers",
+        "ifcdraw v1: {} segs · {} tris · {} layers",
         scene.segments.len(),
         scene.triangles.len(),
         scene.layer_names.len(),
     );
-    Ok(scene)
+    scene
+}
+
+fn lower_v2(blob: BinaryIfcDraw, path_hint: &str) -> Scene {
+    use crate::scene_io::{EntityText, Segment, TextKind, TriKind, Triangle};
+
+    let mut scene = Scene::empty("ifcdraw", format!("ifcdraw v2: {}", path_hint));
+
+    scene.layer_names = blob.layers.iter().map(|l| l.name.clone()).collect();
+    scene.layer_colors = blob.layers.iter().map(|l| l.color).collect();
+    if scene.layer_names.is_empty() {
+        scene.layer_names.push("0".into());
+        scene.layer_colors.push(0xFF_FF_FF_FFu32);
+    }
+
+    scene.bbox = blob.bbox;
+    let [xmin, ymin, xmax, ymax] = blob.bbox;
+    let ext_x = (xmax - xmin).max(1e-6);
+    let ext_y = (ymax - ymin).max(1e-6);
+    let scale_x = ext_x / 65534.0;
+    let scale_y = ext_y / 65534.0;
+    let dq_x = |q: i16| -> f64 { dq16(q, xmin, scale_x) };
+    let dq_y = |q: i16| -> f64 { dq16(q, ymin, scale_y) };
+
+    scene.layouts = blob
+        .layouts
+        .iter()
+        .map(|l| (l.name.clone(), l.bbox))
+        .collect();
+    scene.dash_arrays = blob.dash_arrays.clone();
+    if scene.dash_arrays.is_empty() {
+        scene.dash_arrays.push(Vec::new());
+    }
+
+    scene.entity_names = blob.entity_names.clone();
+    scene.entity_text = vec![None; scene.entity_names.len()];
+    for et in &blob.entity_text {
+        let idx = et.entity_idx as usize;
+        if idx < scene.entity_text.len() {
+            scene.entity_text[idx] = Some(EntityText {
+                raw: et.raw.clone(),
+                anchor: et.anchor,
+                height: et.height,
+                rotation: et.rotation,
+                font_path: et.font_path.clone(),
+                bold: et.bold,
+                italic: et.italic,
+                attachment: et.attachment,
+                kind: match et.text_kind {
+                    1 => TextKind::MText,
+                    2 => TextKind::Attrib,
+                    _ => TextKind::Text,
+                },
+            });
+        }
+    }
+
+    // Segments
+    let seg_q = read_i16_le(&blob.segments_q16);
+    let n_seg = seg_q.len() / 4;
+    let seg_paper = unpack_bits(&blob.segment_paper_bits, n_seg);
+    for i in 0..n_seg {
+        let c = &seg_q[i * 4..i * 4 + 4];
+        let color = blob.segment_color.get(i).copied().unwrap_or(0xFF_FF_FF_FFu32);
+        let is_paper = seg_paper.get(i).copied().unwrap_or(false);
+        scene.segments.push(Segment {
+            p1: [dq_x(c[0]), dq_y(c[1])],
+            p2: [dq_x(c[2]), dq_y(c[3])],
+            color,
+            is_paper,
+        });
+        scene
+            .segment_layer_idx
+            .push(blob.segment_layer_idx.get(i).copied().unwrap_or(0));
+        scene
+            .segment_entity_idx
+            .push(blob.segment_entity_idx.get(i).copied().unwrap_or(0));
+        scene
+            .segment_dash_idx
+            .push(blob.segment_dash_idx.get(i).copied().unwrap_or(0));
+        scene
+            .segment_dash_kind
+            .push(blob.segment_dash_kind.get(i).copied().unwrap_or(0));
+    }
+
+    // Triangles
+    let tri_q = read_i16_le(&blob.triangles_q16);
+    let n_tri = tri_q.len() / 6;
+    let tri_paper = unpack_bits(&blob.triangle_paper_bits, n_tri);
+    for i in 0..n_tri {
+        let c = &tri_q[i * 6..i * 6 + 6];
+        let color = blob.triangle_color.get(i).copied().unwrap_or(0xFF_FF_FF_FFu32);
+        let is_paper = tri_paper.get(i).copied().unwrap_or(false);
+        let kind = match blob.triangle_kind.get(i).copied().unwrap_or(0) {
+            1 => TriKind::TextFill,
+            _ => TriKind::Solid,
+        };
+        scene.triangles.push(Triangle {
+            v: [
+                [dq_x(c[0]), dq_y(c[1])],
+                [dq_x(c[2]), dq_y(c[3])],
+                [dq_x(c[4]), dq_y(c[5])],
+            ],
+            color,
+            is_paper,
+            kind,
+        });
+        scene
+            .triangle_layer_idx
+            .push(blob.triangle_layer_idx.get(i).copied().unwrap_or(0));
+        scene
+            .triangle_entity_idx
+            .push(blob.triangle_entity_idx.get(i).copied().unwrap_or(0));
+    }
+
+    scene.count_label = format!(
+        "ifcdraw v2: {} segs · {} tris · {} layers · {} entities · {} blocks",
+        scene.segments.len(),
+        scene.triangles.len(),
+        scene.layer_names.len(),
+        scene.entity_names.len(),
+        blob.block_definitions.len(),
+    );
+    scene
 }
 
 // =============================================================================
-// Internals
+// Writer — v2 builder
 // =============================================================================
 
-/// Quantise a world-space coordinate to i16 relative to `origin` and
-/// `inv_scale` (= 1 / ((extent) / 65534)). Clamped to i16 range so
-/// out-of-bbox stray vertices can't wrap.
-#[inline]
-fn q16(v: f64, origin: f64, inv_scale: f64) -> i16 {
-    let delta = (v - origin) * inv_scale;
-    // Centre the range on 0 (useful + symmetric; the reader uses the
-    // same offset so signing is transparent).
-    let q = delta.round() - 32767.0;
-    q.max(i16::MIN as f64).min(i16::MAX as f64) as i16
-}
-
-fn build_blob(scene: &Scene, source_path: Option<&str>) -> BinaryIfcx {
-    // --- Layers -------------------------------------------------------
-    // The scene already carries a parallel layer index. We copy it
-    // verbatim; if it's empty (DWG without layer tables) we synthesise
-    // a single fallback entry so every entity has a valid layer_id.
-    let layers: Vec<Layer> = if scene.layer_names.is_empty() {
-        vec![Layer {
-            id: 0,
+fn build_blob_v2(scene: &Scene, source_path: Option<&str>) -> BinaryIfcDraw {
+    // ----- Layer palette -----
+    let layers: Vec<LayerDefV2> = if scene.layer_names.is_empty() {
+        vec![LayerDefV2 {
             name: "0".into(),
             color: 0xFF_FF_FF_FFu32,
         }]
@@ -296,185 +684,339 @@ fn build_blob(scene: &Scene, source_path: Option<&str>) -> BinaryIfcx {
         scene
             .layer_names
             .iter()
-            .zip(scene.layer_colors.iter())
-            .enumerate()
-            .map(|(i, (name, color))| Layer {
-                id: i as u32,
+            .zip(
+                scene
+                    .layer_colors
+                    .iter()
+                    .copied()
+                    .chain(std::iter::repeat(0xFF_FF_FF_FFu32)),
+            )
+            .map(|(name, color)| LayerDefV2 {
                 name: name.clone(),
-                color: *color,
+                color,
             })
             .collect()
     };
 
-    let n_layers = layers.len() as u32;
-    let layer_of_seg = |i: usize| -> u32 {
-        scene
-            .segment_layer_idx
-            .get(i)
-            .map(|&l| (l as u32).min(n_layers.saturating_sub(1)))
-            .unwrap_or(0)
-    };
-    let layer_of_tri = |i: usize| -> u32 {
-        scene
-            .triangle_layer_idx
-            .get(i)
-            .map(|&l| (l as u32).min(n_layers.saturating_sub(1)))
-            .unwrap_or(0)
-    };
-
-    // --- Quantisation parameters --------------------------------------
-    // Map [bbox.min, bbox.max] → i16. 65534 steps (we reserve the
-    // sentinel endpoints) across the extent. For a 100 m drawing: ~1.5
-    // mm resolution, well below the ~1 mm tessellation noise already
-    // present in scene_io. 1 px fudge added to the extent so verts on
-    // the bbox border don't clip to the sentinel.
+    // ----- Quantisation parameters -----
     let (xmin, ymin, xmax, ymax) = (scene.bbox[0], scene.bbox[1], scene.bbox[2], scene.bbox[3]);
     let ext_x = (xmax - xmin).max(1e-6);
     let ext_y = (ymax - ymin).max(1e-6);
     let inv_sx = 65534.0 / ext_x;
     let inv_sy = 65534.0 / ext_y;
 
-    // --- Group segments by (layer, color, is_paper) --------------------
-    // Using a Vec<(key, Vec<i16>)> + linear scan because we expect
-    // O(100) unique layer×color combos, not O(600 K). Avoids a HashMap
-    // hash/rehash cost per segment.
-    let mut seg_groups: Vec<((u32, u32, bool), Vec<i16>)> = Vec::new();
+    // ----- Segments -----
+    let n_seg = scene.segments.len();
+    let mut segments_q16 = Vec::with_capacity(n_seg * 8);
+    let mut segment_color = Vec::with_capacity(n_seg);
+    let mut paper_bits = Vec::with_capacity(n_seg);
+    let mut segment_layer_idx = Vec::with_capacity(n_seg);
+    let mut segment_entity_idx = Vec::with_capacity(n_seg);
+    let mut segment_dash_idx = Vec::with_capacity(n_seg);
+    let mut segment_dash_kind = Vec::with_capacity(n_seg);
     for (i, s) in scene.segments.iter().enumerate() {
-        let key = (layer_of_seg(i), s.color, s.is_paper);
-        let buf = match seg_groups.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, buf)) => buf,
-            None => {
-                seg_groups.push((key, Vec::new()));
-                &mut seg_groups.last_mut().unwrap().1
-            }
-        };
-        buf.push(q16(s.p1[0], xmin, inv_sx));
-        buf.push(q16(s.p1[1], ymin, inv_sy));
-        buf.push(q16(s.p2[0], xmin, inv_sx));
-        buf.push(q16(s.p2[1], ymin, inv_sy));
+        i16_le_push(&mut segments_q16, q16(s.p1[0], xmin, inv_sx));
+        i16_le_push(&mut segments_q16, q16(s.p1[1], ymin, inv_sy));
+        i16_le_push(&mut segments_q16, q16(s.p2[0], xmin, inv_sx));
+        i16_le_push(&mut segments_q16, q16(s.p2[1], ymin, inv_sy));
+        segment_color.push(s.color);
+        paper_bits.push(s.is_paper);
+        segment_layer_idx.push(scene.segment_layer_idx.get(i).copied().unwrap_or(0));
+        segment_entity_idx.push(scene.segment_entity_idx.get(i).copied().unwrap_or(0));
+        segment_dash_idx.push(scene.segment_dash_idx.get(i).copied().unwrap_or(0));
+        segment_dash_kind.push(scene.segment_dash_kind.get(i).copied().unwrap_or(0));
     }
+    let segment_paper_bits = pack_bits(paper_bits);
 
-    // --- Group triangles by (layer, color, is_paper) -------------------
-    let mut tri_groups: Vec<((u32, u32, bool), Vec<i16>)> = Vec::new();
+    // ----- Triangles -----
+    let n_tri = scene.triangles.len();
+    let mut triangles_q16 = Vec::with_capacity(n_tri * 12);
+    let mut triangle_color = Vec::with_capacity(n_tri);
+    let mut tri_paper_bits = Vec::with_capacity(n_tri);
+    let mut triangle_layer_idx = Vec::with_capacity(n_tri);
+    let mut triangle_entity_idx = Vec::with_capacity(n_tri);
+    let mut triangle_kind = Vec::with_capacity(n_tri);
     for (i, t) in scene.triangles.iter().enumerate() {
-        let key = (layer_of_tri(i), t.color, t.is_paper);
-        let buf = match tri_groups.iter_mut().find(|(k, _)| *k == key) {
-            Some((_, buf)) => buf,
-            None => {
-                tri_groups.push((key, Vec::new()));
-                &mut tri_groups.last_mut().unwrap().1
-            }
-        };
         for v in &t.v {
-            buf.push(q16(v[0], xmin, inv_sx));
-            buf.push(q16(v[1], ymin, inv_sy));
+            i16_le_push(&mut triangles_q16, q16(v[0], xmin, inv_sx));
+            i16_le_push(&mut triangles_q16, q16(v[1], ymin, inv_sy));
+        }
+        triangle_color.push(t.color);
+        tri_paper_bits.push(t.is_paper);
+        triangle_layer_idx.push(scene.triangle_layer_idx.get(i).copied().unwrap_or(0));
+        triangle_entity_idx.push(scene.triangle_entity_idx.get(i).copied().unwrap_or(0));
+        triangle_kind.push(match t.kind {
+            crate::scene_io::TriKind::Solid => 0u8,
+            crate::scene_io::TriKind::TextFill => 1u8,
+        });
+    }
+    let triangle_paper_bits = pack_bits(tri_paper_bits);
+
+    // ----- Layouts -----
+    let layouts: Vec<LayoutDef> = scene
+        .layouts
+        .iter()
+        .map(|(name, bbox)| LayoutDef {
+            name: name.clone(),
+            bbox: *bbox,
+        })
+        .collect();
+
+    // ----- Entity sparse tables -----
+    let mut entity_text = Vec::new();
+    for (eid, slot) in scene.entity_text.iter().enumerate() {
+        if let Some(t) = slot {
+            entity_text.push(EntityTextSparse {
+                entity_idx: eid as u32,
+                raw: t.raw.clone(),
+                anchor: t.anchor,
+                height: t.height,
+                rotation: t.rotation,
+                font_path: t.font_path.clone(),
+                bold: t.bold,
+                italic: t.italic,
+                attachment: t.attachment,
+                text_kind: match t.kind {
+                    crate::scene_io::TextKind::Text => 0,
+                    crate::scene_io::TextKind::MText => 1,
+                    crate::scene_io::TextKind::Attrib => 2,
+                },
+            });
         }
     }
 
-    // Serialise each i16 buffer as a little-endian byte blob — that
-    // keeps it as one msgpack `bin` field (5-byte header + raw bytes)
-    // instead of an array of typed integers (3 bytes per value).
-    fn i16_to_le_bytes(v: &[i16]) -> Vec<u8> {
-        let mut out = Vec::with_capacity(v.len() * 2);
-        for &x in v {
-            out.extend_from_slice(&x.to_le_bytes());
+    // INSERT refs are extracted from entity_names that match
+    // `INSERT "<block_name>"`. The full insertion-point / scale /
+    // rotation aren't preserved in the Scene yet (geometry is
+    // expanded into children at parse time), so we only record the
+    // block name + a zero transform. A future DWG/DXF loader pass
+    // can fill in the real transform without bumping the wire format.
+    let mut entity_inserts: Vec<InsertRefSparse> = Vec::new();
+    let mut seen_block_names: Vec<String> = Vec::new();
+    for (eid, name) in scene.entity_names.iter().enumerate() {
+        if let Some(block) = parse_insert_name(name) {
+            entity_inserts.push(InsertRefSparse {
+                entity_idx: eid as u32,
+                block_name: block.clone(),
+                insertion_point: [0.0, 0.0],
+                scale: [1.0, 1.0],
+                rotation: 0.0,
+            });
+            if !seen_block_names.iter().any(|n| n == &block) {
+                seen_block_names.push(block);
+            }
         }
-        out
     }
 
-    // --- Emit entity records ------------------------------------------
-    let mut entities: Vec<Entity> = Vec::with_capacity(seg_groups.len() + tri_groups.len());
-    for (idx, ((layer_id, color, is_paper), buf)) in seg_groups.into_iter().enumerate() {
-        entities.push(Entity {
-            path: format!(
-                "/L_{}/Lines_{}_{}",
-                layer_id,
-                if is_paper { "Paper" } else { "Model" },
-                idx
-            ),
-            layer_id,
-            color,
-            is_paper,
-            kind: "line_batch_q16".into(),
-            data: i16_to_le_bytes(&buf),
-        });
-    }
-    for (idx, ((layer_id, color, is_paper), buf)) in tri_groups.into_iter().enumerate() {
-        entities.push(Entity {
-            path: format!(
-                "/L_{}/Tris_{}_{}",
-                layer_id,
-                if is_paper { "Paper" } else { "Model" },
-                idx
-            ),
-            layer_id,
-            color,
-            is_paper,
-            kind: "tri_batch_q16".into(),
-            data: i16_to_le_bytes(&buf),
-        });
-    }
+    let block_definitions: Vec<BlockDef> = seen_block_names
+        .into_iter()
+        .map(|name| BlockDef {
+            name,
+            local_bbox: [0.0, 0.0, 0.0, 0.0],
+            child_entity_idxs: Vec::new(),
+        })
+        .collect();
 
-    // --- Header -------------------------------------------------------
-    let bbox = [
-        scene.bbox[0] as f32,
-        scene.bbox[1] as f32,
-        scene.bbox[2] as f32,
-        scene.bbox[3] as f32,
-    ];
-    let header = Header {
+    BinaryIfcDraw {
+        version: IFCDRAW_BINARY_VERSION_V2.to_string(),
+        generator: generator_string(),
+        source_kind: SourceKind::from_scene_source(scene.source) as u8,
         source_path: source_path.unwrap_or("").to_string(),
-        unit: "mm".to_string(),
-        bbox,
-        triangle_count: scene.triangles.len() as u64,
-        segment_count: scene.segments.len() as u64,
-    };
-
-    BinaryIfcx {
-        ifcx_version: IFCX_BINARY_VERSION.to_string(),
-        header,
+        bbox: [xmin, ymin, xmax, ymax],
+        layouts,
         layers,
-        entities,
+
+        segments_q16,
+        segment_color,
+        segment_paper_bits,
+        segment_layer_idx,
+        segment_entity_idx,
+        segment_dash_idx,
+        segment_dash_kind,
+
+        triangles_q16,
+        triangle_color,
+        triangle_paper_bits,
+        triangle_layer_idx,
+        triangle_entity_idx,
+        triangle_kind,
+
+        dash_arrays: scene.dash_arrays.clone(),
+        entity_names: scene.entity_names.clone(),
+        entity_text,
+        entity_inserts,
+        block_definitions,
+    }
+}
+
+/// Parse `INSERT "name"` → `Some(name)`. Tolerates the trailing `\"`-quote
+/// pair the DXF/DWG loaders embed in `entity_names`.
+fn parse_insert_name(s: &str) -> Option<String> {
+    let s = s.trim_start();
+    let rest = s.strip_prefix("INSERT")?;
+    let rest = rest.trim_start();
+    let stripped = if let Some(inner) = rest.strip_prefix('"') {
+        inner.strip_suffix('"').unwrap_or(inner)
+    } else {
+        rest
+    };
+    if stripped.is_empty() {
+        None
+    } else {
+        Some(stripped.to_string())
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::scene_io::{Segment, Triangle, TriKind};
+    use crate::scene_io::{EntityText, Segment, TextKind, Triangle, TriKind};
 
     fn synth_scene() -> Scene {
-        let mut s = Scene::empty("test", "test".into());
+        let mut s = Scene::empty("dwg", "test".into());
         s.layer_names = vec!["0".into(), "WALLS".into()];
         s.layer_colors = vec![0xFF_FF_FF_FFu32, 0xFF_00_00_FFu32];
         s.segments = vec![
-            Segment { p1: [0.0, 0.0], p2: [10.0, 0.0], color: 0, is_paper: false },
-            Segment { p1: [10.0, 0.0], p2: [10.0, 10.0], color: 0, is_paper: false },
-        ];
-        s.segment_layer_idx = vec![0, 1];
-        s.triangles = vec![
-            Triangle {
-                v: [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
-                color: 0,
+            Segment {
+                p1: [0.0, 0.0],
+                p2: [10.0, 0.0],
+                color: 0xAABBCCDDu32,
                 is_paper: false,
-                kind: TriKind::Solid,
+            },
+            Segment {
+                p1: [10.0, 0.0],
+                p2: [10.0, 10.0],
+                color: 0xAABBCCDDu32,
+                is_paper: true,
             },
         ];
+        s.segment_layer_idx = vec![0, 1];
+        s.segment_entity_idx = vec![0, 1];
+        s.segment_dash_idx = vec![0, 1];
+        s.segment_dash_kind = vec![0, 1];
+        s.dash_arrays = vec![Vec::new(), vec![12.7, -6.35]];
+        s.triangles = vec![Triangle {
+            v: [[0.0, 0.0], [1.0, 0.0], [0.0, 1.0]],
+            color: 0,
+            is_paper: false,
+            kind: TriKind::TextFill,
+        }];
         s.triangle_layer_idx = vec![1];
+        s.triangle_entity_idx = vec![2];
         s.bbox = [0.0, 0.0, 10.0, 10.0];
+        s.layouts = vec![
+            ("Model".to_string(), [0.0, 0.0, 10.0, 10.0]),
+            ("Sheet 1".to_string(), [-2.0, -2.0, 12.0, 12.0]),
+        ];
+        s.entity_names = vec![
+            "LINE".to_string(),
+            "MTEXT".to_string(),
+            "INSERT \"PILE_SYMBOL\"".to_string(),
+        ];
+        s.entity_text = vec![
+            None,
+            Some(EntityText {
+                raw: r"\fArial|b1;Hello".to_string(),
+                anchor: [5.0, 5.0],
+                height: 2.5,
+                rotation: 0.0,
+                font_path: "Arial.ttf".to_string(),
+                bold: true,
+                italic: false,
+                attachment: 1,
+                kind: TextKind::MText,
+            }),
+            None,
+        ];
         s
     }
 
     #[test]
-    fn round_trip() {
-        let scene = synth_scene();
-        let bytes = write_ifcx_binary(&scene, Some("test.dxf")).unwrap();
-        let back = read_ifcx_binary(&bytes).unwrap();
+    fn v1_legacy_round_trip_still_passes() {
+        // Build a raw v1 envelope so we exercise the back-compat reader
+        // path with the exact shape older releases produced.
+        let blob = BinaryIfcx {
+            ifcx_version: IFCX_BINARY_VERSION.to_string(),
+            header: Header {
+                source_path: "x.dxf".into(),
+                unit: "mm".into(),
+                bbox: [0.0, 0.0, 10.0, 10.0],
+                triangle_count: 0,
+                segment_count: 0,
+            },
+            layers: vec![Layer {
+                id: 0,
+                name: "0".into(),
+                color: 0xFF_FF_FF_FFu32,
+            }],
+            entities: vec![],
+        };
+        let msgpack = rmp_serde::to_vec_named(&blob).unwrap();
+        let compressed = zstd::stream::encode_all(msgpack.as_slice(), 3).unwrap();
+        let back = read_ifcx_binary(&compressed).unwrap();
         assert_eq!(back.ifcx_version, IFCX_BINARY_VERSION);
+
+        let scene = load_ifcdraw_scene_from_bytes(&compressed, "old.ifcdraw").unwrap();
+        assert_eq!(scene.layer_names, vec!["0"]);
+        assert!(scene.count_label.contains("v1"));
+    }
+
+    #[test]
+    fn v2_round_trip_preserves_all_fields() {
+        let scene = synth_scene();
+        let bytes = write_ifcx_binary(&scene, Some("test.dwg")).unwrap();
+        let scene_back = load_ifcdraw_scene_from_bytes(&bytes, "test.ifcdraw").unwrap();
+
+        assert_eq!(scene_back.segments.len(), 2);
+        assert_eq!(scene_back.triangles.len(), 1);
+        assert_eq!(scene_back.layer_names, vec!["0", "WALLS"]);
+        assert_eq!(
+            scene_back.layer_colors,
+            vec![0xFF_FF_FF_FFu32, 0xFF_00_00_FFu32]
+        );
+        assert_eq!(scene_back.segment_layer_idx, vec![0, 1]);
+        assert_eq!(scene_back.segment_entity_idx, vec![0, 1]);
+        assert_eq!(scene_back.segment_dash_idx, vec![0, 1]);
+        assert_eq!(scene_back.segment_dash_kind, vec![0, 1]);
+        assert!(!scene_back.segments[0].is_paper);
+        assert!(scene_back.segments[1].is_paper);
+        assert_eq!(scene_back.dash_arrays.len(), 2);
+        assert_eq!(scene_back.dash_arrays[0], Vec::<f64>::new());
+        assert_eq!(scene_back.dash_arrays[1], vec![12.7, -6.35]);
+        assert_eq!(scene_back.triangles[0].kind, TriKind::TextFill);
+        assert_eq!(scene_back.triangle_layer_idx, vec![1]);
+        assert_eq!(scene_back.triangle_entity_idx, vec![2]);
+        assert_eq!(scene_back.layouts.len(), 2);
+        assert_eq!(scene_back.layouts[0].0, "Model");
+        assert_eq!(scene_back.layouts[1].0, "Sheet 1");
+        assert_eq!(scene_back.entity_names.len(), 3);
+        assert_eq!(scene_back.entity_names[2], "INSERT \"PILE_SYMBOL\"");
+        let mtext = scene_back.entity_text[1].as_ref().unwrap();
+        assert_eq!(mtext.raw, r"\fArial|b1;Hello");
+        assert_eq!(mtext.height, 2.5);
+        assert_eq!(mtext.kind, TextKind::MText);
+        assert!(mtext.bold);
+    }
+
+    #[test]
+    fn v2_blob_is_back_compatible_via_read_ifcx_binary() {
+        // Bench tool (`ifcdraw-bench`) smoke-tests the saved blob via
+        // `read_ifcx_binary`. After the v2 bump it must still get a
+        // usable envelope (synthetic header), not a decode error.
+        let scene = synth_scene();
+        let bytes = write_ifcx_binary(&scene, Some("test.dwg")).unwrap();
+        let back = read_ifcx_binary(&bytes).unwrap();
+        assert_eq!(back.ifcx_version, IFCDRAW_BINARY_VERSION_V2);
         assert_eq!(back.header.segment_count, 2);
         assert_eq!(back.header.triangle_count, 1);
-        assert_eq!(back.layers.len(), 2);
-        // Two segment batches (different layer_ids) + one triangle batch.
-        assert_eq!(back.entities.len(), 3);
+    }
+
+    #[test]
+    fn parse_insert_name_handles_typical_cases() {
+        assert_eq!(parse_insert_name("INSERT \"FOO\""), Some("FOO".into()));
+        assert_eq!(parse_insert_name("INSERT \"A4_grid\""), Some("A4_grid".into()));
+        assert_eq!(parse_insert_name("LINE"), None);
+        assert_eq!(parse_insert_name("INSERT \"\""), None);
+        assert_eq!(parse_insert_name("INSERT BLOCKNAME"), Some("BLOCKNAME".into()));
     }
 }
