@@ -92,6 +92,139 @@ fn bail_if_cancelled() -> anyhow::Result<()> {
 }
 
 // =============================================================================
+// Per-load DASH TABLE — collects world-space LTYPE patterns
+// =============================================================================
+//
+// `emit_dashed` (the legacy world-stride emitter) calls `dash_record_*` to
+// push the resolved WORLD-SPACE dash pattern into a thread-local table.
+// At the end of `load_dxf` / `load_dwg`, `dash_take_for_scene()` drains
+// the table and returns (per-segment idx Vec, deduplicated patterns Vec)
+// — these populate the new `Scene::segment_dash_idx` and
+// `Scene::dash_arrays` fields. The legacy `segment_dash_kind` field stays
+// in parallel so the existing renderer keeps compiling unchanged; a
+// follow-up commit will swap the renderer over to the new world-array
+// path with true LTSCALE behaviour.
+//
+// Threading model mirrors `LOAD_CANCEL`: loaders run on a worker thread
+// so the thread-local lives there. Callers that don't reset (mockup
+// binaries that load multiple files on the same thread) get fresh state
+// each load because `load_dxf` / `load_dwg` call `dash_reset()` at the
+// top.
+
+struct ScopedDashTable {
+    arrays: Vec<Vec<f64>>,
+    per_segment_idx: Vec<u16>,
+    lookup: HashMap<u64, u16>,
+}
+
+impl ScopedDashTable {
+    fn new() -> Self {
+        Self {
+            arrays: vec![Vec::new()], // idx 0 = solid
+            per_segment_idx: Vec::new(),
+            lookup: HashMap::new(),
+        }
+    }
+
+    fn pattern_key(pattern: &[f64]) -> u64 {
+        use std::hash::{Hash, Hasher};
+        let mut h = std::collections::hash_map::DefaultHasher::new();
+        pattern.len().hash(&mut h);
+        for &v in pattern {
+            // Q12: quantise to 1e-12 grid in world units. Well below
+            // any drawing-scale dash element so it never collapses
+            // distinct patterns; above sub-micron float noise so
+            // patterns that differ only by BLOCK / INSERT-scale jitter
+            // still dedupe.
+            let q = (v * 1.0e12).round() as i64;
+            q.hash(&mut h);
+        }
+        h.finish()
+    }
+
+    fn intern(&mut self, pattern: &[f64]) -> u16 {
+        if pattern.is_empty() { return 0; }
+        let total_abs: f64 = pattern.iter().map(|x| x.abs()).sum();
+        if !total_abs.is_finite() || total_abs <= 1e-9 { return 0; }
+        let key = Self::pattern_key(pattern);
+        if let Some(&idx) = self.lookup.get(&key) {
+            return idx;
+        }
+        if self.arrays.len() >= u16::MAX as usize {
+            return 0;
+        }
+        let idx = self.arrays.len() as u16;
+        self.arrays.push(pattern.to_vec());
+        self.lookup.insert(key, idx);
+        idx
+    }
+}
+
+thread_local! {
+    static DASH_TABLE: std::cell::RefCell<ScopedDashTable> =
+        std::cell::RefCell::new(ScopedDashTable::new());
+}
+
+/// Reset the thread-local DashTable. Called at the top of `load_dxf` /
+/// `load_dwg` so each load starts fresh.
+fn dash_reset() {
+    DASH_TABLE.with(|t| *t.borrow_mut() = ScopedDashTable::new());
+}
+
+/// Pad `per_segment_idx` up to `segments_len` with 0 (solid).
+fn dash_pad_to(segments_len: usize) {
+    DASH_TABLE.with(|t| {
+        let mut t = t.borrow_mut();
+        if t.per_segment_idx.len() < segments_len {
+            t.per_segment_idx.resize(segments_len, 0u16);
+        }
+    });
+}
+
+/// Truncate `per_segment_idx` to `segments_len` (for pathological-entity
+/// drop-back paths in `load_dwg`).
+fn dash_truncate(segments_len: usize) {
+    DASH_TABLE.with(|t| {
+        let mut t = t.borrow_mut();
+        if t.per_segment_idx.len() > segments_len {
+            t.per_segment_idx.truncate(segments_len);
+        }
+    });
+}
+
+/// Intern a world-space pattern and push its idx onto
+/// `per_segment_idx`. Called by `emit_dashed` after the segment push.
+fn dash_record(pattern: &[f64]) {
+    DASH_TABLE.with(|t| {
+        let mut t = t.borrow_mut();
+        let idx = t.intern(pattern);
+        t.per_segment_idx.push(idx);
+    });
+}
+
+/// Apply a keep-mask filter to `per_segment_idx` (for the coord-cap
+/// and p90 outlier paths in `load_dwg`).
+fn dash_retain(keep: &[bool], n_before: usize) {
+    DASH_TABLE.with(|t| {
+        let mut t = t.borrow_mut();
+        if t.per_segment_idx.len() == n_before {
+            let mut idx = 0;
+            t.per_segment_idx.retain(|_| { let k = keep[idx]; idx += 1; k });
+        }
+    });
+}
+
+/// Extract the table for inclusion in the final Scene. Replaces the
+/// thread-local with a fresh empty one so callers that load multiple
+/// files in sequence on the same thread don't leak state.
+fn dash_take_for_scene() -> (Vec<u16>, Vec<Vec<f64>>) {
+    DASH_TABLE.with(|t| {
+        let old = std::mem::replace(&mut *t.borrow_mut(), ScopedDashTable::new());
+        (old.per_segment_idx, old.arrays)
+    })
+}
+
+// =============================================================================
 // Public types
 // =============================================================================
 
@@ -216,8 +349,8 @@ pub struct Scene {
     /// TEXT/MTEXT branches. Consumed by re_tessellate_text_entity()
     /// on edit-commit.
     pub entity_text: Vec<Option<EntityText>>,
-    /// Per-segment dash style — parallel to `segments`. Encodes the
-    /// LINETYPE classification, NOT the world-unit dash pattern. Values:
+    /// Per-segment dash KIND classification (legacy field — used by the
+    /// current SCREEN-fixed renderer in studio_app.rs). Values:
     ///   0 = solid (continuous, no dashing)
     ///   1 = dashed
     ///   2 = dotted
@@ -225,12 +358,31 @@ pub struct Scene {
     /// At scene-build time we push ONE long solid segment per LINE/POLY
     /// entity even when its LINETYPE calls for dashing — the actual dash
     /// strokes are generated PER-FRAME in `build_verts` using the
-    /// camera's world-per-pixel factor. That keeps the dash STRIDE
-    /// constant on screen across all zoom levels (the previous behaviour
-    /// emitted world-space dashes which became invisible when zoomed
-    /// out and grossly oversized when zoomed in). For SCREEN-FIXED dash
-    /// strides see the per-kind tables in build_verts.
+    /// camera's world-per-pixel factor. The renderer is being migrated
+    /// to read the new world-space fields below (`segment_dash_idx` +
+    /// `dash_arrays`) for true LTSCALE behaviour; once that lands this
+    /// field can be removed.
     pub segment_dash_kind: Vec<u8>,
+    /// Per-segment index into `dash_arrays` — parallel to `segments`.
+    /// Value 0 is reserved for "solid" (no dashing). Any other value
+    /// `i` resolves to `dash_arrays[i as usize]`, a DXF/DWG LINETYPE
+    /// dash pattern in WORLD UNITS:
+    ///   - positive value = draw run length (world units)
+    ///   - negative value = gap length (world units)
+    ///   - zero           = dot (rendered as ~1 screen pixel)
+    /// Stored verbatim so the renderer can convert to per-frame
+    /// screen-pixel strides with true AutoCAD LTSCALE behaviour: at
+    /// 1× zoom a 12.7 mm CENTER dash is 12.7 mm on the canvas; at 4×
+    /// zoom-in it is 4× larger. A MIN_SCREEN_PX floor in the renderer
+    /// keeps the pattern visible at extreme zoom-out.
+    pub segment_dash_idx: Vec<u16>,
+    /// Deduplicated table of WORLD-SPACE dash patterns. `dash_arrays[0]`
+    /// is empty and means solid. Subsequent entries are the alternating
+    /// draw/gap arrays from LINETYPE records (see `segment_dash_idx`
+    /// docs for the sign convention). Typical scenes hold a handful of
+    /// entries (CENTER, HIDDEN, DASHED, DASHDOT, …) covering thousands
+    /// of segments, so the storage overhead is negligible.
+    pub dash_arrays: Vec<Vec<f64>>,
 }
 
 impl Scene {
@@ -252,6 +404,10 @@ impl Scene {
             layouts: Vec::new(),
             entity_text: Vec::new(),
             segment_dash_kind: Vec::new(),
+            // idx 0 reserved for "solid" so a default-zero
+            // segment_dash_idx push resolves to a valid empty pattern.
+            segment_dash_idx: Vec::new(),
+            dash_arrays: vec![Vec::new()],
         }
     }
 }
@@ -768,13 +924,20 @@ fn emit_dashed(
     if (dx * dx + dy * dy).sqrt() <= f64::EPSILON { return; }
     // Bring dash_kinds up to segments.len() before pushing — covers
     // any raw Segment.push that happened between the last emit_dashed
-    // and now.
+    // and now. Mirror the same pad on the thread-local world-space
+    // dash table (`segment_dash_idx`) so both parallel arrays stay
+    // index-aligned with `segments`.
     if dash_kinds.len() < segments.len() {
         dash_kinds.resize(segments.len(), 0u8);
     }
+    dash_pad_to(segments.len());
     let kind = classify_lt_pattern(pattern);
     segments.push(Segment { p1, p2, color, is_paper: false });
     dash_kinds.push(kind);
+    // Push the resolved WORLD pattern into the thread-local table
+    // (dedup'd; idx 0 = solid for empty / degenerate patterns).
+    // Consumed at end-of-load via `dash_take_for_scene`.
+    dash_record(pattern);
     expand_bbox(bbox, p1[0], p1[1]);
     expand_bbox(bbox, p2[0], p2[1]);
 }
@@ -1810,6 +1973,10 @@ fn parse_viewports_from_dxf(path: &str) -> Vec<ViewportParsed> {
 
 pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
     bail_if_cancelled()?;
+    // Reset the per-load thread-local dash table. emit_dashed pushes
+    // resolved world-space LTYPE patterns into it as the entity loop
+    // runs; drained into Scene fields by dash_take_for_scene below.
+    dash_reset();
     let drawing = dxf::Drawing::load_file(path)?;
     bail_if_cancelled()?;
     // Manual HATCH pass — dxf-0.5 drops HATCH entities silently.
@@ -2416,6 +2583,12 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
         let mut scratch_tris: Vec<Triangle> = Vec::new();
         let mut scratch_bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
         let mut scratch_dash_kind: Vec<u8> = Vec::new();
+        // Snapshot the thread-local world-space dash-idx Vec length
+        // BEFORE the scratch pass. The scratch tessellation pushes
+        // records via emit_dashed into the same thread-local — we
+        // need to know where the scratch contribution starts so we
+        // can re-map indices through the clip+commit loop below.
+        let dash_idx_snap = DASH_TABLE.with(|t| t.borrow().per_segment_idx.len());
         let mut _vp_cancel_counter: usize = 0;
         for entity in drawing.entities() {
             _vp_cancel_counter = _vp_cancel_counter.wrapping_add(1);
@@ -2470,10 +2643,31 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
         if scratch_dash_kind.len() < scratch_segs.len() {
             scratch_dash_kind.resize(scratch_segs.len(), 0u8);
         }
+        // Capture the thread-local idx contribution from the scratch
+        // pass (one entry per scratch segment), then rewind so the
+        // clip+commit loop below can re-push the surviving indices in
+        // lockstep with the surviving `segments` pushes.
+        let scratch_dash_idx: Vec<u16> = DASH_TABLE.with(|t| {
+            let mut t = t.borrow_mut();
+            // Pad scratch contribution to match scratch_segs.len()
+            // (raw scratch Segment.push from CIRCLE/ARC bypasses
+            // emit_dashed and so doesn't bump per_segment_idx).
+            let want_len = dash_idx_snap + scratch_segs.len();
+            if t.per_segment_idx.len() < want_len {
+                t.per_segment_idx.resize(want_len, 0u16);
+            }
+            let take = t.per_segment_idx.split_off(dash_idx_snap);
+            take
+        });
         for (i, s) in scratch_segs.into_iter().enumerate() {
             if let Some((p1, p2)) = clip_segment_to_rect(s.p1, s.p2, rect) {
                 segments.push(Segment { p1, p2, color: s.color, is_paper: true });
                 segment_dash_kind.push(scratch_dash_kind.get(i).copied().unwrap_or(0));
+                DASH_TABLE.with(|t| {
+                    t.borrow_mut().per_segment_idx.push(
+                        scratch_dash_idx.get(i).copied().unwrap_or(0)
+                    );
+                });
             }
         }
         for t in scratch_tris {
@@ -2593,10 +2787,12 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
     }
     // Same tail-pad for the parallel dash-kind buffer — anything that
     // bypassed emit_dashed (hatch pattern lines, viewport projection
-    // raw push, sheet frames, viewport outlines) is solid.
+    // raw push, sheet frames, viewport outlines) is solid. Same tail
+    // pad for the thread-local world-space dash idx buffer.
     if segment_dash_kind.len() < segments.len() {
         segment_dash_kind.resize(segments.len(), 0u8);
     }
+    dash_pad_to(segments.len());
     // Entity-idx tail pad: any segments that slipped past the main /
     // hatch / paper loops (viewport projection pass, sheet overlays) get
     // a sentinel entity group of their own so the viewer's entity-
@@ -2626,6 +2822,7 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
             entity_text.iter().filter(|t| t.is_some()).count(),
         );
     }
+    let (segment_dash_idx, dash_arrays) = dash_take_for_scene();
     Ok(Scene {
         segments, triangles, bbox, source: "DXF", count_label: label, layouts,
         layer_names: layer_names_ordered,
@@ -2634,6 +2831,7 @@ pub fn load_dxf(path: &str) -> anyhow::Result<Scene> {
         segment_entity_idx, triangle_entity_idx, entity_names,
         entity_text,
         segment_dash_kind,
+        segment_dash_idx, dash_arrays,
     })
 }
 
@@ -4558,6 +4756,9 @@ fn dwg_resolve_ltype_pattern(
 pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     use dwg_parser::DwgParser;
     bail_if_cancelled()?;
+    // Reset the per-load thread-local dash table; drained at end via
+    // dash_take_for_scene below.
+    dash_reset();
     let _t_total = std::time::Instant::now();
     let mut t_phase = std::time::Instant::now();
     let bytes = std::fs::read(path)?;
@@ -5403,10 +5604,12 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
             );
             // Pad dash-kind for any raw segments produced inside the
             // INSERT expansion (CIRCLE/ARC tessellation inside blocks
-            // bypasses emit_dashed).
+            // bypasses emit_dashed). Same pad for the world-space
+            // per-segment dash idx in the thread-local table.
             if segment_dash_kind.len() < segments.len() {
                 segment_dash_kind.resize(segments.len(), 0u8);
             }
+            dash_pad_to(segments.len());
         } else {
             if let Some(cat) = tessellate_one(
                 &obj.type_name, &dv, &identity,
@@ -5420,9 +5623,12 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
             }
             // Pad dash-kind for any raw `Segment.push` inside tessellate_one
             // that ran between the last emit_dashed call and end-of-entity.
+            // Same pad for the world-space per-segment dash idx in the
+            // thread-local table.
             if segment_dash_kind.len() < segments.len() {
                 segment_dash_kind.resize(segments.len(), 0u8);
             }
+            dash_pad_to(segments.len());
             let added = segments.len() - seg_before;
             if trace_insert && added > 100 {
                 eprintln!(
@@ -5473,6 +5679,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
             if segment_dash_kind.len() > seg_before {
                 segment_dash_kind.truncate(seg_before);
             }
+            dash_truncate(seg_before);
             seg_delta = 0;
             // Drop tris emitted by this entity in lockstep so the
             // parallel arrays stay aligned.
@@ -5536,6 +5743,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                 if segment_dash_kind.len() > seg_before {
                     segment_dash_kind.truncate(seg_before);
                 }
+                dash_truncate(seg_before);
                 seg_delta = 0;
                 triangles.truncate(tri_before);
                 tri_delta = 0;
@@ -5716,6 +5924,9 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         let mut scratch_tris: Vec<Triangle> = Vec::new();
         let mut scratch_bbox = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
         let mut scratch_dash_kind: Vec<u8> = Vec::new();
+        // Snapshot the thread-local world-dash-idx Vec before the
+        // scratch pass — see the parallel comment in load_dxf above.
+        let dash_idx_snap = DASH_TABLE.with(|t| t.borrow().per_segment_idx.len());
         let mut vp_scratch_counts = [0u32; 15];
         for src in &file.objects {
             if !src.is_entity { continue; }
@@ -5794,14 +6005,29 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         }
         // Clip + commit. Keep scratch_dash_kind aligned with scratch_segs
         // before consuming so each clipped output can carry through its
-        // dash kind.
+        // dash kind. Same treatment for the thread-local world-dash-idx
+        // contribution from this scratch pass — split off and re-push in
+        // lockstep with the surviving clipped segments.
         if scratch_dash_kind.len() < scratch_segs.len() {
             scratch_dash_kind.resize(scratch_segs.len(), 0u8);
         }
+        let scratch_dash_idx: Vec<u16> = DASH_TABLE.with(|t| {
+            let mut t = t.borrow_mut();
+            let want_len = dash_idx_snap + scratch_segs.len();
+            if t.per_segment_idx.len() < want_len {
+                t.per_segment_idx.resize(want_len, 0u16);
+            }
+            t.per_segment_idx.split_off(dash_idx_snap)
+        });
         for (i, seg) in scratch_segs.into_iter().enumerate() {
             if let Some((a, b)) = clip_segment_to_rect(seg.p1, seg.p2, rect) {
                 segments.push(Segment { p1: a, p2: b, color: seg.color, is_paper: true });
                 segment_dash_kind.push(scratch_dash_kind.get(i).copied().unwrap_or(0));
+                DASH_TABLE.with(|t| {
+                    t.borrow_mut().per_segment_idx.push(
+                        scratch_dash_idx.get(i).copied().unwrap_or(0)
+                    );
+                });
                 vp_projected_segs += 1;
             }
         }
@@ -5942,6 +6168,8 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                 idx = 0;
                 segment_dash_kind.retain(|_| { let k = keep[idx]; idx += 1; k });
             }
+            // Same retain for the thread-local world-space dash idx.
+            dash_retain(&keep, n_before);
             let mut sources: Vec<(u32, usize)> = by_entity.into_iter().collect();
             sources.sort_by(|a, b| b.1.cmp(&a.1));
             let top: Vec<String> = sources.iter().take(5).map(|(eid, n)| {
@@ -6063,6 +6291,8 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
                     idx = 0;
                     segment_dash_kind.retain(|_| { let k = keep[idx]; idx += 1; k });
                 }
+                // Same retain for the thread-local world-space dash idx.
+                dash_retain(&keep, n_before);
                 let mut sources: Vec<(u32, usize)> = by_entity.into_iter().collect();
                 sources.sort_by(|a, b| b.1.cmp(&a.1));
                 let top: Vec<String> = sources.iter().take(5).map(|(eid, n)| {
@@ -6126,6 +6356,8 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     if segment_dash_kind.len() < segments.len() {
         segment_dash_kind.resize(segments.len(), 0u8);
     }
+    // And for the thread-local world-space dash idx buffer.
+    dash_pad_to(segments.len());
     while triangle_layer_idx.len() < triangles.len() {
         triangle_layer_idx.push(0);
     }
@@ -6172,6 +6404,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         }
     }
     eprintln!("[load_dwg] TOTAL: {:.3}s", _t_total.elapsed().as_secs_f64());
+    let (segment_dash_idx, dash_arrays) = dash_take_for_scene();
     Ok(Scene {
         segments, triangles, bbox, source: "DWG", count_label: label, layouts,
         layer_names: layer_names_ordered,
@@ -6180,6 +6413,7 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         segment_entity_idx, triangle_entity_idx, entity_names,
         entity_text,
         segment_dash_kind,
+        segment_dash_idx, dash_arrays,
     })
 }
 

@@ -227,6 +227,9 @@ pub fn load_ifcdraw_scene(path: &str) -> io::Result<crate::scene_io::Scene> {
                     scene.segment_layer_idx.push(ent.layer_id as u16);
                     scene.segment_entity_idx.push(entity_idx_counter);
                     scene.segment_dash_kind.push(0);
+                    // IFCX-imported segments are always solid (no LTYPE
+                    // in the IFCX schema). Push idx 0 = solid pattern.
+                    scene.segment_dash_idx.push(0);
                 }
             }
             "tri_batch_q16" => {
