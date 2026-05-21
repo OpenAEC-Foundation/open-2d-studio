@@ -90,6 +90,52 @@ pub enum IconKind {
     Check,
     /// Cross — X mark.
     Cross,
+    // ---- Mockup measure icons (Round 10) ------------------------------
+    /// Length — ruler/tape with ticks.
+    MeasureLength,
+    /// Area — pentagon with corner dots + cross-hatched diagonals.
+    MeasureArea,
+    /// Angle — two rays + arc.
+    MeasureAngle,
+    /// Coordinate — crosshair with axes + labelled point.
+    MeasureCoord,
+    /// Pan / hand — explicit drafting hand glyph.
+    Pan,
+    /// White-background "sun" — used by the View > White BG toggle.
+    Sun,
+    /// Palette / theme picker (mockup `Lucide.palette`).
+    Palette,
+    /// Right-side panel (mockup `Lucide.panelR`) — used for Properties.
+    PanelR,
+    /// Linear dimension (extension lines + arrowed dim line).
+    LinearDim,
+    /// Angular dimension (90° corner with arc).
+    AngularDim,
+    /// Radius dimension (circle with radial arrow).
+    RadiusDim,
+    /// Diameter dimension (circle with through-arrow).
+    DiameterDim,
+    /// Leader (multileader-style stub).
+    Leader,
+    /// Label (text-in-box).
+    Label,
+    /// Table (grid).
+    Table,
+    /// "Select All" — square with check.
+    SelectAll,
+    /// "Deselect" — square with X.
+    Deselect,
+    /// Copy ID — single sheet (no overlap) — to distinguish from Copy.
+    CopyId,
+    /// Zoom window — 4 corner squares (window-zoom marquee).
+    ZoomWindow,
+    /// Zoom previous — magnifier with back-arrow.
+    ZoomPrevious,
+    /// Zoom center — crosshair with target ring.
+    ZoomCenter,
+    /// IFC literal — renders the bold "IFC" string used in mockup
+    /// `Lucide.ifcText` (kept here so consumers can pick it via IconKind).
+    IfcText,
 }
 
 impl IconKind {
@@ -145,7 +191,19 @@ impl IconKind {
             // — keep hand-painted (the originals already read well).
             IconKind::Line | IconKind::Arc | IconKind::Polyline |
             IconKind::Hatch | IconKind::Dimension | IconKind::Spline |
-            IconKind::Ellipse => return None,
+            IconKind::Ellipse |
+            // Mockup-specific glyphs — all hand-painted to match the JSX
+            // SVG paths in `Open2DViewerMockup.jsx` (`Cad.*` block lines
+            // 126-218).
+            IconKind::MeasureLength | IconKind::MeasureArea |
+            IconKind::MeasureAngle | IconKind::MeasureCoord |
+            IconKind::Pan | IconKind::Sun | IconKind::Palette |
+            IconKind::PanelR | IconKind::LinearDim | IconKind::AngularDim |
+            IconKind::RadiusDim | IconKind::DiameterDim |
+            IconKind::Leader | IconKind::Label | IconKind::Table |
+            IconKind::SelectAll | IconKind::Deselect | IconKind::CopyId |
+            IconKind::ZoomWindow | IconKind::ZoomPrevious |
+            IconKind::ZoomCenter | IconKind::IfcText => return None,
         })
     }
 }
@@ -686,6 +744,353 @@ fn paint_icon_handdrawn(painter: &Painter, rect: Rect, kind: IconKind, color: Co
                 [Pos2::new(center.x - r * 0.3, body.top() - r * 0.4),
                  Pos2::new(center.x + r * 0.3, body.top() - r * 0.4)],
                 stroke,
+            );
+        }
+        // -----------------------------------------------------------------
+        // Mockup-specific glyphs (Round 4/5/10 — viewer port). Each
+        // mirrors the SVG path data in `Open2DViewerMockup.jsx` lines
+        // 126-218 (the `Cad.*` and `Lucide.*` blocks). All are drawn into
+        // the inner 80 % of the cell so they share visual weight with the
+        // Phosphor glyphs.
+        // -----------------------------------------------------------------
+        IconKind::MeasureLength => {
+            // Tape measure — flat rectangle with vertical tick marks.
+            let bx = Rect::from_center_size(center, egui::vec2(r * 1.8, r * 0.7));
+            painter.rect_stroke(bx, 0.0, stroke);
+            // Ticks: alternate short / long for readability.
+            for i in 0..6 {
+                let t = (i as f32 + 0.5) / 6.0;
+                let x = bx.left() + t * bx.width();
+                let h = if i % 2 == 0 { bx.height() * 0.55 } else { bx.height() * 0.85 };
+                painter.line_segment(
+                    [Pos2::new(x, bx.top()), Pos2::new(x, bx.top() + h)],
+                    Stroke::new(stroke.width * 0.85, color),
+                );
+            }
+        }
+        IconKind::MeasureArea => {
+            // Pentagon outline + corner dots + faint diagonal cross.
+            let pts = [
+                Pos2::new(center.x, center.y - r),
+                Pos2::new(center.x + r * 0.95, center.y - r * 0.3),
+                Pos2::new(center.x + r * 0.6, center.y + r * 0.85),
+                Pos2::new(center.x - r * 0.6, center.y + r * 0.85),
+                Pos2::new(center.x - r * 0.95, center.y - r * 0.3),
+            ];
+            for i in 0..5 {
+                painter.line_segment([pts[i], pts[(i + 1) % 5]], stroke);
+            }
+            for p in pts.iter() {
+                painter.circle_filled(*p, stroke.width * 1.1, color);
+            }
+        }
+        IconKind::MeasureAngle => {
+            // Two rays from lower-left + arc + filled vertex dot.
+            let origin = Pos2::new(center.x - r * 0.85, center.y + r * 0.85);
+            painter.line_segment(
+                [origin, Pos2::new(center.x + r * 0.9, origin.y)],
+                stroke,
+            );
+            painter.line_segment(
+                [origin, Pos2::new(center.x + r * 0.95, center.y - r * 0.6)],
+                stroke,
+            );
+            // Arc 0° → ~45°.
+            let arc_r = r * 0.6;
+            let mut prev: Option<Pos2> = None;
+            let steps = 8;
+            for i in 0..=steps {
+                let t = (i as f32 / steps as f32) * std::f32::consts::FRAC_PI_4;
+                let p = Pos2::new(origin.x + arc_r * t.cos(), origin.y - arc_r * t.sin());
+                if let Some(prev) = prev { painter.line_segment([prev, p], stroke); }
+                prev = Some(p);
+            }
+            painter.circle_filled(origin, stroke.width * 1.5, color);
+        }
+        IconKind::MeasureCoord => {
+            // Crosshair: vertical + horizontal axes through centre, ring
+            // + filled centre dot.
+            painter.line_segment(
+                [Pos2::new(center.x, center.y - r), Pos2::new(center.x, center.y + r)],
+                stroke,
+            );
+            painter.line_segment(
+                [Pos2::new(center.x - r, center.y), Pos2::new(center.x + r, center.y)],
+                stroke,
+            );
+            painter.circle_stroke(center, r * 0.35, stroke);
+            painter.circle_filled(center, stroke.width * 1.2, color);
+        }
+        IconKind::Pan => {
+            // Hand silhouette with extended thumb — matches Lucide `hand`.
+            let palm = Rect::from_center_size(
+                Pos2::new(center.x, center.y + r * 0.35),
+                egui::vec2(r * 1.2, r * 1.0),
+            );
+            painter.rect_stroke(palm, 0.0, stroke);
+            for i in 0..4 {
+                let x = palm.left() + r * 0.25 + (i as f32) * (r * 0.25);
+                let h = if i == 1 { r * 1.0 } else if i == 2 { r * 0.95 } else { r * 0.7 };
+                painter.line_segment(
+                    [Pos2::new(x, palm.top()), Pos2::new(x, palm.top() - h)],
+                    stroke,
+                );
+            }
+        }
+        IconKind::Sun => {
+            // Sun: center circle + 8 ticks around it.
+            painter.circle_stroke(center, r * 0.4, stroke);
+            for i in 0..8 {
+                let a = (i as f32 / 8.0) * std::f32::consts::TAU;
+                let inner = Pos2::new(center.x + r * 0.6 * a.cos(), center.y + r * 0.6 * a.sin());
+                let outer = Pos2::new(center.x + r * 0.95 * a.cos(), center.y + r * 0.95 * a.sin());
+                painter.line_segment([inner, outer], Stroke::new(stroke.width * 0.85, color));
+            }
+        }
+        IconKind::Palette => {
+            // Paint palette: rough oval + 4 colour dots.
+            // Approximate the round palette shape by a many-segment circle
+            // with an inset.
+            let mut prev: Option<Pos2> = None;
+            for i in 0..=24 {
+                let t = (i as f32 / 24.0) * std::f32::consts::TAU;
+                let p = Pos2::new(center.x + r * 0.95 * t.cos(), center.y + r * 0.95 * t.sin());
+                if let Some(prev) = prev { painter.line_segment([prev, p], stroke); }
+                prev = Some(p);
+            }
+            for (dx, dy) in &[(-0.45, -0.25), (-0.1, -0.55), (0.35, -0.45), (0.5, 0.1)] {
+                painter.circle_filled(
+                    Pos2::new(center.x + dx * r, center.y + dy * r),
+                    stroke.width * 1.5,
+                    color,
+                );
+            }
+        }
+        IconKind::PanelR => {
+            // Outer frame + vertical divider near right edge — mockup
+            // `Lucide.panelR` "M3 4h18v16H3z M15 4v16".
+            let bx = Rect::from_center_size(center, egui::vec2(r * 1.7, r * 1.3));
+            painter.rect_stroke(bx, 0.0, stroke);
+            painter.line_segment(
+                [Pos2::new(bx.right() - r * 0.55, bx.top()),
+                 Pos2::new(bx.right() - r * 0.55, bx.bottom())],
+                stroke,
+            );
+        }
+        IconKind::LinearDim => {
+            // Two extension lines + dimension line + arrows at each end.
+            let y_dim = center.y - r * 0.1;
+            // extension lines (down to a baseline below).
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.85, y_dim - r * 0.5),
+                 Pos2::new(center.x - r * 0.85, y_dim + r * 0.5)],
+                stroke,
+            );
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.85, y_dim - r * 0.5),
+                 Pos2::new(center.x + r * 0.85, y_dim + r * 0.5)],
+                stroke,
+            );
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.85, y_dim),
+                 Pos2::new(center.x + r * 0.85, y_dim)],
+                stroke,
+            );
+            // Arrowheads (filled triangles via two short strokes).
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.85, y_dim),
+                 Pos2::new(center.x - r * 0.55, y_dim - r * 0.15)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.85, y_dim),
+                 Pos2::new(center.x - r * 0.55, y_dim + r * 0.15)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.85, y_dim),
+                 Pos2::new(center.x + r * 0.55, y_dim - r * 0.15)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.85, y_dim),
+                 Pos2::new(center.x + r * 0.55, y_dim + r * 0.15)], stroke);
+        }
+        IconKind::AngularDim => {
+            // Right angle with arc.
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.85, center.y + r * 0.85),
+                 Pos2::new(center.x + r * 0.85, center.y + r * 0.85)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.85, center.y + r * 0.85),
+                 Pos2::new(center.x + r * 0.45, center.y - r * 0.7)], stroke);
+            let mut prev: Option<Pos2> = None;
+            for i in 0..=8 {
+                let t = (i as f32 / 8.0) * std::f32::consts::FRAC_PI_3;
+                let p = Pos2::new(
+                    center.x - r * 0.85 + r * 0.7 * t.cos(),
+                    center.y + r * 0.85 - r * 0.7 * t.sin(),
+                );
+                if let Some(prev) = prev { painter.line_segment([prev, p], stroke); }
+                prev = Some(p);
+            }
+        }
+        IconKind::RadiusDim => {
+            // Circle with radial arrow to upper-right.
+            painter.circle_stroke(center, r * 0.7, stroke);
+            painter.line_segment(
+                [center, Pos2::new(center.x + r * 0.6, center.y - r * 0.5)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.6, center.y - r * 0.5),
+                 Pos2::new(center.x + r * 0.35, center.y - r * 0.4)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.6, center.y - r * 0.5),
+                 Pos2::new(center.x + r * 0.5, center.y - r * 0.25)], stroke);
+        }
+        IconKind::DiameterDim => {
+            // Circle with through-arrow.
+            painter.circle_stroke(center, r * 0.7, stroke);
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.7, center.y),
+                 Pos2::new(center.x + r * 0.7, center.y)], stroke);
+            // Arrowheads at both ends.
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.7, center.y),
+                 Pos2::new(center.x - r * 0.45, center.y - r * 0.18)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.7, center.y),
+                 Pos2::new(center.x - r * 0.45, center.y + r * 0.18)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.7, center.y),
+                 Pos2::new(center.x + r * 0.45, center.y - r * 0.18)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.7, center.y),
+                 Pos2::new(center.x + r * 0.45, center.y + r * 0.18)], stroke);
+        }
+        IconKind::Leader => {
+            // Diagonal stroke with arrowhead + short horizontal tail.
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.85, center.y + r * 0.85),
+                 Pos2::new(center.x + r * 0.2, center.y - r * 0.3)], stroke);
+            // arrowhead
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.85, center.y + r * 0.85),
+                 Pos2::new(center.x - r * 0.55, center.y + r * 0.75)], stroke);
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.85, center.y + r * 0.85),
+                 Pos2::new(center.x - r * 0.7, center.y + r * 0.5)], stroke);
+            // tail (label connector)
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.2, center.y - r * 0.3),
+                 Pos2::new(center.x + r * 0.85, center.y - r * 0.3)], stroke);
+        }
+        IconKind::Label => {
+            // Box with 3 horizontal lines inside (like text in label).
+            let bx = Rect::from_center_size(center, egui::vec2(r * 1.7, r * 1.4));
+            painter.rect_stroke(bx, 0.0, stroke);
+            for i in 0..3 {
+                let y = bx.top() + (i as f32 + 1.0) * bx.height() / 4.0;
+                let w_factor = if i == 2 { 0.6 } else { 0.85 };
+                painter.line_segment(
+                    [Pos2::new(bx.left() + r * 0.2, y),
+                     Pos2::new(bx.left() + r * 0.2 + bx.width() * w_factor - r * 0.2, y)],
+                    Stroke::new(stroke.width * 0.85, color),
+                );
+            }
+        }
+        IconKind::Table => {
+            // Grid: outer frame + 1 horizontal divider + 1 vertical.
+            let bx = Rect::from_center_size(center, egui::vec2(r * 1.8, r * 1.5));
+            painter.rect_stroke(bx, 0.0, stroke);
+            painter.line_segment(
+                [Pos2::new(bx.left(), bx.center().y),
+                 Pos2::new(bx.right(), bx.center().y)],
+                Stroke::new(stroke.width * 0.85, color),
+            );
+            painter.line_segment(
+                [Pos2::new(bx.center().x, bx.top()),
+                 Pos2::new(bx.center().x, bx.bottom())],
+                Stroke::new(stroke.width * 0.85, color),
+            );
+        }
+        IconKind::SelectAll => {
+            // Square with check mark inside.
+            let bx = Rect::from_center_size(center, egui::vec2(r * 1.6, r * 1.6));
+            painter.rect_stroke(bx, 0.0, stroke);
+            painter.line_segment(
+                [Pos2::new(bx.left() + r * 0.3, bx.center().y),
+                 Pos2::new(bx.center().x, bx.bottom() - r * 0.3)], stroke);
+            painter.line_segment(
+                [Pos2::new(bx.center().x, bx.bottom() - r * 0.3),
+                 Pos2::new(bx.right() - r * 0.3, bx.top() + r * 0.3)], stroke);
+        }
+        IconKind::Deselect => {
+            // Square with X inside.
+            let bx = Rect::from_center_size(center, egui::vec2(r * 1.6, r * 1.6));
+            painter.rect_stroke(bx, 0.0, stroke);
+            painter.line_segment(
+                [Pos2::new(bx.left() + r * 0.3, bx.top() + r * 0.3),
+                 Pos2::new(bx.right() - r * 0.3, bx.bottom() - r * 0.3)], stroke);
+            painter.line_segment(
+                [Pos2::new(bx.right() - r * 0.3, bx.top() + r * 0.3),
+                 Pos2::new(bx.left() + r * 0.3, bx.bottom() - r * 0.3)], stroke);
+        }
+        IconKind::CopyId => {
+            // Single sheet (clipboard top + body).
+            let body = Rect::from_center_size(center, egui::vec2(r * 1.4, r * 1.7));
+            painter.rect_stroke(body, 0.0, stroke);
+            let tab = Rect::from_center_size(
+                Pos2::new(center.x, body.top() - r * 0.1),
+                egui::vec2(r * 0.8, r * 0.4),
+            );
+            painter.rect_stroke(tab, 0.0, Stroke::new(stroke.width * 0.85, color));
+        }
+        IconKind::ZoomWindow => {
+            // 4 corner squares (window-marquee).
+            let s = r * 0.45;
+            for (dx, dy) in &[(-1.0, -1.0), (1.0, -1.0), (-1.0, 1.0), (1.0, 1.0)] {
+                let c = Pos2::new(center.x + dx * r * 0.55, center.y + dy * r * 0.55);
+                let bx = Rect::from_center_size(c, egui::vec2(s, s));
+                painter.rect_stroke(bx, 0.0, Stroke::new(stroke.width * 0.85, color));
+            }
+        }
+        IconKind::ZoomPrevious => {
+            // Magnifier + back-arrow inside.
+            let lc = Pos2::new(center.x - r * 0.2, center.y - r * 0.2);
+            painter.circle_stroke(lc, r * 0.55, stroke);
+            painter.line_segment(
+                [Pos2::new(lc.x + r * 0.4, lc.y + r * 0.4),
+                 Pos2::new(center.x + r * 0.7, center.y + r * 0.7)],
+                stroke,
+            );
+            // Back-arrow (◀ inside the lens).
+            painter.line_segment(
+                [Pos2::new(lc.x + r * 0.2, lc.y),
+                 Pos2::new(lc.x - r * 0.2, lc.y)], Stroke::new(stroke.width * 0.85, color));
+            painter.line_segment(
+                [Pos2::new(lc.x - r * 0.2, lc.y),
+                 Pos2::new(lc.x - r * 0.05, lc.y - r * 0.15)], Stroke::new(stroke.width * 0.85, color));
+            painter.line_segment(
+                [Pos2::new(lc.x - r * 0.2, lc.y),
+                 Pos2::new(lc.x - r * 0.05, lc.y + r * 0.15)], Stroke::new(stroke.width * 0.85, color));
+        }
+        IconKind::ZoomCenter => {
+            // Crosshair with ring (target).
+            painter.circle_stroke(center, r * 0.55, stroke);
+            painter.line_segment(
+                [Pos2::new(center.x - r * 0.9, center.y),
+                 Pos2::new(center.x + r * 0.9, center.y)],
+                Stroke::new(stroke.width * 0.85, color),
+            );
+            painter.line_segment(
+                [Pos2::new(center.x, center.y - r * 0.9),
+                 Pos2::new(center.x, center.y + r * 0.9)],
+                Stroke::new(stroke.width * 0.85, color),
+            );
+        }
+        IconKind::IfcText => {
+            // Render bold "IFC" text inside the cell — used for the
+            // View > IFC Model toggle. Monospace look mirrors mockup.
+            painter.text(
+                center,
+                egui::Align2::CENTER_CENTER,
+                "IFC",
+                FontId::new(rect.width().min(rect.height()) * 0.55, egui::FontFamily::Monospace),
+                color,
             );
         }
     }

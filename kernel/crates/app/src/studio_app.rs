@@ -8019,7 +8019,29 @@ fn build_ribbon_tabs(
     // closure dispatch block.
     // -----------------------------------------------------------------
     if matches!(mode, AppMode::Viewer) {
-        let mut tabs: Vec<RibbonTabDef> = vec![
+        // Viewer ribbon layout — mirrors the canonical mockup at
+        // `docs/superpowers/mockups/Open2DViewerMockup.jsx` (lines
+        // 632-754). Tabs: File | Home | View.
+        //
+        // Home groups (left-to-right):
+        //   Selection — Select (L) · Pan (L) · stack3 Select All /
+        //               Deselect / Find (Find disabled)
+        //   Annotate  — Linear (L disabled) · stack3 disabled
+        //               Angular/Radius/Diameter · stack3 disabled
+        //               Leader/Label/Table
+        //   Measure   — Length (L) · Area (L) · Angle (L) · Coord. (L)
+        //   Clipboard — Copy (L) · stack3 Copy ID / Cut(disabled) /
+        //               Delete(disabled)
+        //   Panels    — Layers (L toggle) · Properties (L toggle)
+        //
+        // View groups:
+        //   Navigate   — Pan (L)
+        //   Zoom       — Fit All (L) · Zoom In (L) · Zoom Out (L) ·
+        //                stack3 Window/Previous/Center
+        //   Display    — Grid (L toggle) · White BG (L toggle)
+        //   Appearance — Theme (L) + Theme picker dropdown
+        //   Panels     — IFC Model (L toggle, disabled — visible only)
+        let tabs: Vec<RibbonTabDef> = vec![
             RibbonTabDef {
                 id: "file".into(),
                 label: "File".into(),
@@ -8029,47 +8051,67 @@ fn build_ribbon_tabs(
                 id: "home".into(),
                 label: "Home".into(),
                 groups: vec![
-                    RibbonGroup::with_layout("File", RibbonGroupLayout::LargeOnly {
-                        large: vec![ enable(lg("open", "Open", IconKind::Folder)) ],
-                    }),
                     RibbonGroup::with_layout("Selection", RibbonGroupLayout::LargeLeft {
                         large: enable(select(lg("select", "Select", IconKind::Move),
                             matches!(tool, ToolMode::Select))),
                         stacks: vec![
                             vec![
-                                b_lbl("select_all", "Select All", IconKind::Check),
-                                b_lbl("deselect", "Deselect", IconKind::Cross),
-                                b_lbl("find_replace", "Find/Replace", IconKind::Search),
+                                enable(b_lbl("select_all", "Select All", IconKind::SelectAll)),
+                                enable(b_lbl("deselect", "Deselect", IconKind::Deselect)),
+                                b_lbl("find_replace", "Find", IconKind::Search),
                             ],
                         ],
                     }),
+                    // Pan stays as its own large to match mockup "Selection"
+                    // group ordering (Select | Pan | stack).
                     RibbonGroup::with_layout(" ", RibbonGroupLayout::LargeOnly {
-                        large: vec![enable(lg("pan", "Pan", IconKind::Hand))],
+                        large: vec![enable(lg("pan", "Pan", IconKind::Pan))],
                     }),
-                    RibbonGroup::with_layout("View", RibbonGroupLayout::LargeOnly {
-                        large: vec![
-                            enable(lg("fit_extents", "Fit All", IconKind::FitAll)),
-                            lg("zoom_in", "Zoom In", IconKind::ZoomIn),
-                            lg("zoom_out", "Zoom Out", IconKind::ZoomOut),
+                    // Annotate — visible but disabled (read-only viewer).
+                    RibbonGroup::with_layout("Annotate", RibbonGroupLayout::LargeLeft {
+                        large: lg("dim_linear_large", "Linear", IconKind::LinearDim),
+                        stacks: vec![
+                            vec![
+                                b_lbl("dim_angular", "Angular", IconKind::AngularDim),
+                                b_lbl("dim_radius",  "Radius",  IconKind::RadiusDim),
+                                b_lbl("dim_diameter","Diameter",IconKind::DiameterDim),
+                            ],
+                            vec![
+                                b_lbl("leader", "Leader", IconKind::Leader),
+                                b_lbl("label",  "Label",  IconKind::Label),
+                                b_lbl("table",  "Table",  IconKind::Table),
+                            ],
                         ],
                     }),
-                    // Measure tools â€” allowed in Viewer (read-only, no
-                    // scene mutation). User can still inspect distances
-                    // and areas without authoring rights.
+                    // Measure — 4 large buttons with the dedicated
+                    // mockup glyphs (Length tape, Area pentagon, Angle
+                    // rays-arc, Coord. crosshair).
                     RibbonGroup::with_layout("Measure", RibbonGroupLayout::LargeOnly {
                         large: vec![
-                            enable(lg("measure_length", "Length", IconKind::Dimension)),
-                            enable(lg("measure_area",   "Area",   IconKind::Dimension)),
+                            enable(lg("measure_length", "Length", IconKind::MeasureLength)),
+                            enable(lg("measure_area",   "Area",   IconKind::MeasureArea)),
+                            lg("measure_angle", "Angle", IconKind::MeasureAngle),
+                            lg("measure_coord", "Coord.", IconKind::MeasureCoord),
                         ],
                     }),
-                    RibbonGroup::with_layout("Panels", RibbonGroupLayout::Stack {
-                        rows: 2,
-                        buttons: vec![
-                            { let mut x = enable(b("layers", "Layers", IconKind::Layers));
+                    // Clipboard — Copy large + 3 disabled stacked smalls.
+                    RibbonGroup::with_layout("Clipboard", RibbonGroupLayout::LargeLeft {
+                        large: lg("copy_to_clipboard", "Copy", IconKind::Copy),
+                        stacks: vec![
+                            vec![
+                                b_lbl("copy_id", "Copy ID", IconKind::CopyId),
+                                b_lbl("cut",     "Cut",     IconKind::Cut),
+                                b_lbl("delete",  "Delete",  IconKind::Delete),
+                            ],
+                        ],
+                    }),
+                    // Panels — Layers + Properties as 2 toggleable Large.
+                    RibbonGroup::with_layout("Panels", RibbonGroupLayout::LargeOnly {
+                        large: vec![
+                            { let mut x = enable(lg("layers", "Layers", IconKind::Layers));
                               x.selected = layers_open; x },
-                            { let mut x = enable(b("properties", "Properties", IconKind::Rectangle));
+                            { let mut x = enable(lg("properties", "Properties", IconKind::PanelR));
                               x.selected = properties_open; x },
-                            enable(b("structure", "Structure", IconKind::Folder)),
                         ],
                     }),
                 ],
@@ -8079,33 +8121,44 @@ fn build_ribbon_tabs(
                 label: "View".into(),
                 groups: vec![
                     RibbonGroup::with_layout("Navigate", RibbonGroupLayout::LargeOnly {
-                        large: vec![lg("pan", "Pan", IconKind::Hand)],
+                        large: vec![enable(lg("pan", "Pan", IconKind::Pan))],
                     }),
-                    RibbonGroup::with_layout("Zoom", RibbonGroupLayout::LargeOnly {
-                        large: vec![
-                            lg("zoom_in", "Zoom In", IconKind::ZoomIn),
-                            lg("zoom_out", "Zoom Out", IconKind::ZoomOut),
-                            enable(lg("fit_extents", "Fit All", IconKind::FitAll)),
+                    RibbonGroup::with_layout("Zoom", RibbonGroupLayout::LargeLeft {
+                        large: enable(lg("fit_extents", "Fit All", IconKind::FitAll)),
+                        stacks: vec![
+                            vec![
+                                enable(b_lbl("zoom_in",  "Zoom In",  IconKind::ZoomIn)),
+                                enable(b_lbl("zoom_out", "Zoom Out", IconKind::ZoomOut)),
+                            ],
+                            vec![
+                                b_lbl("zoom_window",   "Window",   IconKind::ZoomWindow),
+                                b_lbl("zoom_previous", "Previous", IconKind::ZoomPrevious),
+                                b_lbl("zoom_center",   "Center",   IconKind::ZoomCenter),
+                            ],
                         ],
                     }),
                     RibbonGroup::with_layout("Display", RibbonGroupLayout::LargeOnly {
                         large: vec![
-                            lg("white_bg", "White BG", IconKind::Eye),
+                            { let mut x = enable(lg("grid", "Grid", IconKind::Grid));
+                              x.selected = true; x },
+                            lg("white_bg", "White BG", IconKind::Sun),
                         ],
                     }),
-                    RibbonGroup::with_layout("Diagnostics", RibbonGroupLayout::Stack {
-                        rows: 2,
-                        buttons: vec![
-                            { let mut x = enable(b("perf_hud", "Perf HUD", IconKind::Dimension));
-                              x.selected = perf_hud; x },
-                            enable(b("about", "About", IconKind::Eye)),
-                        ],
+                    RibbonGroup::with_layout("Appearance", RibbonGroupLayout::LargeOnly {
+                        large: vec![enable(lg("theme", "Theme", IconKind::Palette))],
+                    }),
+                    // IFC Model toggle — visible disabled per mockup spec.
+                    RibbonGroup::with_layout("Panels", RibbonGroupLayout::LargeOnly {
+                        large: vec![lg("ifc_panel", "IFC Model", IconKind::IfcText)],
                     }),
                 ],
             },
         ];
-        // Devtools is dev-only; keep it for viewer too when env opt-in.
-        let _ = split; let _ = samples_open;
+        // Phase 2 will wire the new buttons; for now they're cosmetic
+        // placeholders. Suppress unused-var warnings for now.
+        let _ = split;
+        let _ = samples_open;
+        let _ = perf_hud;
         return tabs;
     }
 
