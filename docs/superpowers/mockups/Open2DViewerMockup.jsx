@@ -473,6 +473,14 @@ function Open2DViewerMockup() {
   const [activeFileTab, setActiveFileTab] = useState('Constructietekening');
   const [activeTool, setActiveTool] = useState('select');
   const [ortho, setOrtho] = useState(false);
+  // OSNAP toggles in the status bar. End/Mid/Cen default ON, Int/Per/Near
+  // default OFF (Int + Near over-trigger and steal the cursor — toggle on
+  // via this strip when needed). Matches the Rust default in
+  // studio_app.rs after commit a42d9c4.
+  const [snaps, setSnaps] = useState({
+    End: true,  Mid: true,  Cen: true,
+    Int: false, Per: false, Near: false,
+  });
   const [grid, setGrid] = useState(true);
   const [whiteBg, setWhiteBg] = useState(false);
   const [layersOpen, setLayersOpen] = useState(true);
@@ -962,6 +970,32 @@ function Open2DViewerMockup() {
         <StatusBtn active={ortho} accent="green" onClick={() => setOrtho(!ortho)} title="Ortho Mode [F8]">
           ORTHO
         </StatusBtn>
+
+        {/* OSNAP strip — End/Mid/Cen on default, Int/Per/Near off default. */}
+        <div className="flex items-center gap-1">
+          <span style={{ fontSize: 10, letterSpacing: 0.5, color: Token.textMuted, marginRight: 4 }}>OSNAP</span>
+          {Object.entries(snaps).map(([k, v]) => (
+            <button
+              key={k}
+              onClick={() => setSnaps((s) => ({ ...s, [k]: !s[k] }))}
+              title={({
+                End: 'Endpoint',  Mid: 'Midpoint',  Cen: 'Center',
+                Int: 'Intersection', Per: 'Perpendicular', Near: 'Nearest',
+              })[k]}
+              style={{
+                padding: '0 6px', height: 18, fontSize: 10,
+                letterSpacing: 0.4, textTransform: 'uppercase',
+                borderRadius: 2,
+                background: v ? Token.accent : 'transparent',
+                color: v ? '#fff' : Token.textDim,
+                border: `1px solid ${v ? Token.accent : Token.borderLight}`,
+                cursor: 'pointer',
+              }}
+            >
+              {k}
+            </button>
+          ))}
+        </div>
 
         {/* View mode */}
         <select className="px-1 py-0.5 rounded font-mono outline-none" style={{
