@@ -63,6 +63,11 @@ pub enum RibbonGroupLayout {
     /// columns of small/medium buttons on the right. Use for groups
     /// like Annotate (`Aligned` + linear/angular/spot stacks).
     LargeLeft { large: RibbonButtonDef, stacks: Vec<Vec<RibbonButtonDef>> },
+    /// Multiple left-anchored large tiles followed by one or more stack
+    /// columns of small/medium buttons. Use for groups that need >1
+    /// headline action AND a stack column, e.g. View tab Zoom group
+    /// (Fit All · Zoom In · Zoom Out · stack3 Window/Previous/Center).
+    LargesPlusStacks { larges: Vec<RibbonButtonDef>, stacks: Vec<Vec<RibbonButtonDef>> },
     /// 2-row × N-col grid of small (or medium) cells. Use for tool
     /// inventories like Draw / Edit / Modify.
     Stack { rows: u8, buttons: Vec<RibbonButtonDef> },
@@ -304,6 +309,20 @@ fn compute_group_width(layout: &RibbonGroupLayout) -> f32 {
                 + stack_count * stack_w
                 + (stack_count - 1.0).max(0.0) * rg::CELL_GAP_H
         }
+        RibbonGroupLayout::LargesPlusStacks { larges, stacks } => {
+            let n_larges = larges.len() as f32;
+            let large_w = n_larges * rg::LARGE_W + (n_larges - 1.0).max(0.0) * rg::CELL_GAP_H;
+            let stack_count = stacks.len() as f32;
+            if stack_count == 0.0 { return large_w + 2.0 * rg::GROUP_PAD_X; }
+            let stack_w = stacks
+                .iter()
+                .map(|col| col.iter().map(cell_w_for_button).fold(0.0_f32, f32::max))
+                .fold(0.0_f32, f32::max);
+            large_w
+                + rg::CELL_GAP_H
+                + stack_count * stack_w
+                + (stack_count - 1.0).max(0.0) * rg::CELL_GAP_H
+        }
         RibbonGroupLayout::Stack { rows, buttons } => {
             let rows = (*rows).max(1) as usize;
             let cols = (buttons.len() + rows - 1) / rows;
@@ -378,6 +397,37 @@ fn paint_group_cells(
                     rg::LARGE_W, rg::LARGE_H,
                     crate::primitives::button::ButtonSize::Large, actions);
                 x += rg::LARGE_W + rg::CELL_GAP_H;
+            }
+        }
+        RibbonGroupLayout::LargesPlusStacks { larges, stacks } => {
+            for b in larges {
+                paint_cell(ui, b, egui::pos2(x, y),
+                    rg::LARGE_W, rg::LARGE_H,
+                    crate::primitives::button::ButtonSize::Large, actions);
+                x += rg::LARGE_W + rg::CELL_GAP_H;
+            }
+            if !stacks.is_empty() {
+                let max_rows = stacks
+                    .iter()
+                    .map(|c| c.len().min(3))
+                    .max()
+                    .unwrap_or(2)
+                    .max(2) as f32;
+                let inner_band = rg::INNER_H - rg::INNER_PAD_TOP;
+                let cell_h = (inner_band - (max_rows - 1.0) * rg::CELL_GAP_V) / max_rows;
+                for col in stacks {
+                    let cell_w = col.iter().map(cell_w_for_button).fold(0.0_f32, f32::max);
+                    for (i, b) in col.iter().take(max_rows as usize).enumerate() {
+                        let cy = y + i as f32 * (cell_h + rg::CELL_GAP_V);
+                        let size = match b.size {
+                            crate::primitives::button::ButtonSize::Large
+                                => crate::primitives::button::ButtonSize::Small,
+                            s => s,
+                        };
+                        paint_cell(ui, b, egui::pos2(x, cy), cell_w, cell_h, size, actions);
+                    }
+                    x += cell_w + rg::CELL_GAP_H;
+                }
             }
         }
         RibbonGroupLayout::LargeLeft { large, stacks } => {

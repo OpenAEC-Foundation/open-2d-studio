@@ -8123,13 +8123,16 @@ fn build_ribbon_tabs(
                     RibbonGroup::with_layout("Navigate", RibbonGroupLayout::LargeOnly {
                         large: vec![enable(lg("pan", "Pan", IconKind::Pan))],
                     }),
-                    RibbonGroup::with_layout("Zoom", RibbonGroupLayout::LargeLeft {
-                        large: enable(lg("fit_extents", "Fit All", IconKind::FitAll)),
+                    // Mockup: 3 Large buttons (Fit All, Zoom In, Zoom Out)
+                    // followed by a stack3 of small buttons (Window,
+                    // Previous, Center).
+                    RibbonGroup::with_layout("Zoom", RibbonGroupLayout::LargesPlusStacks {
+                        larges: vec![
+                            enable(lg("fit_extents", "Fit All", IconKind::FitAll)),
+                            enable(lg("zoom_in",  "Zoom In",  IconKind::ZoomIn)),
+                            enable(lg("zoom_out", "Zoom Out", IconKind::ZoomOut)),
+                        ],
                         stacks: vec![
-                            vec![
-                                enable(b_lbl("zoom_in",  "Zoom In",  IconKind::ZoomIn)),
-                                enable(b_lbl("zoom_out", "Zoom Out", IconKind::ZoomOut)),
-                            ],
                             vec![
                                 b_lbl("zoom_window",   "Window",   IconKind::ZoomWindow),
                                 b_lbl("zoom_previous", "Previous", IconKind::ZoomPrevious),
