@@ -174,6 +174,16 @@ pub struct BinaryIfcDraw {
     pub segment_dash_idx: Vec<u16>,
     /// Per-segment legacy dash kind (0=solid 1=dashed 2=dotted 3=dash-dot).
     pub segment_dash_kind: Vec<u8>,
+    /// RLE-packed bundle of (color, layer_idx, entity_idx, dash_idx,
+    /// dash_kind) — see `pack_segment_meta` for the byte layout. When
+    /// non-empty the loader uses this and ignores the legacy parallel
+    /// `segment_color` / `segment_layer_idx` / `segment_entity_idx` /
+    /// `segment_dash_idx` / `segment_dash_kind` fields (which the writer
+    /// blanks out to avoid double-storing). When empty the loader falls
+    /// back to the legacy fields — backward compat for v2 blobs written
+    /// before this packer landed.
+    #[serde(default, with = "serde_bytes")]
+    pub segment_meta_packed: Vec<u8>,
 
     /// Encoding tag for `triangles_q16`. Same semantics as
     /// `segments_encoding`. `#[serde(default)] = 0`.
@@ -189,6 +199,10 @@ pub struct BinaryIfcDraw {
     pub triangle_entity_idx: Vec<u32>,
     /// Per-triangle kind (0=Solid, 1=TextFill).
     pub triangle_kind: Vec<u8>,
+    /// RLE-packed bundle of (color, layer_idx, entity_idx, tri_kind)
+    /// for triangles — same semantics as `segment_meta_packed`.
+    #[serde(default, with = "serde_bytes")]
+    pub triangle_meta_packed: Vec<u8>,
 
     // ----- Dash table -----
     /// World-space LTYPE patterns. `dash_arrays[0]` = empty (solid).
@@ -505,6 +519,212 @@ fn delta_decode_triangles_q16(buf: &[u8]) -> Vec<u8> {
     out
 }
 
+// -----------------------------------------------------------------------------
+// Per-segment / per-triangle metadata RLE packer
+// -----------------------------------------------------------------------------
+// The v2 schema stores 5 parallel arrays per direction:
+//   segment_color (u32) + segment_layer_idx (u16) + segment_entity_idx (u32)
+//   + segment_dash_idx (u16) + segment_dash_kind (u8)   ≈ 13 B / segment
+// On typical CAD content these are dominated by long runs of identical
+// `(color, layer, dash)` tuples — every segment in the same entity shares
+// them, and entities run for tens / hundreds of segments. zstd does help
+// after the fact, but the msgpack envelope still writes 13 raw bytes per
+// segment first, which inflates the in-memory peak and hurts small files
+// (the zstd dictionary doesn't warm up on a 100 KB scene).
+//
+// The packer below collapses those 5 arrays into one zstd-friendly byte
+// blob. Layout per run:
+//   varint(count)                    — non-zero, terminating sentinel = 0
+//   zigzag-varint(color_delta_u32)   — delta vs. previous run's color
+//   varint(layer_idx)
+//   varint(dash_idx)
+//   varint(dash_kind)
+//   zigzag-varint(entity_idx_delta)  — delta vs. previous run's entity_idx
+// Typical run on a single ENTITY: count=N, then 5 deltas that are mostly
+// 0 (one byte each in zigzag). After zstd, 5 zero-bytes per run collapse
+// to a fraction of a bit.
+//
+// Reader falls back to the legacy parallel-vector form when the packed
+// blob is empty — that's the back-compat path for existing v2 blobs.
+
+const META_PACK_VERSION: u8 = 1;
+
+fn pack_segment_meta(
+    n: usize,
+    color: &[u32],
+    layer_idx: &[u16],
+    entity_idx: &[u32],
+    dash_idx: &[u16],
+    dash_kind: &[u8],
+) -> Vec<u8> {
+    if n == 0 {
+        return Vec::new();
+    }
+    let mut out = Vec::new();
+    out.push(META_PACK_VERSION);
+    let mut prev_color: u32 = 0;
+    let mut prev_eid: u32 = 0;
+    let mut i = 0usize;
+    while i < n {
+        // Find next run of identical (color, layer, eid, dash_idx, dash_kind).
+        let c = color.get(i).copied().unwrap_or(0);
+        let l = layer_idx.get(i).copied().unwrap_or(0);
+        let e = entity_idx.get(i).copied().unwrap_or(0);
+        let d = dash_idx.get(i).copied().unwrap_or(0);
+        let k = dash_kind.get(i).copied().unwrap_or(0);
+        let mut count: u32 = 1;
+        let mut j = i + 1;
+        while j < n
+            && color.get(j).copied().unwrap_or(0)        == c
+            && layer_idx.get(j).copied().unwrap_or(0)    == l
+            && entity_idx.get(j).copied().unwrap_or(0)   == e
+            && dash_idx.get(j).copied().unwrap_or(0)     == d
+            && dash_kind.get(j).copied().unwrap_or(0)    == k
+        {
+            count += 1;
+            j += 1;
+        }
+        varint_write(&mut out, count);
+        // color: zigzag delta
+        write_zz(&mut out, (c as i64 - prev_color as i64) as i32);
+        varint_write(&mut out, l as u32);
+        varint_write(&mut out, d as u32);
+        varint_write(&mut out, k as u32);
+        // entity_idx: zigzag delta
+        write_zz(&mut out, (e as i64 - prev_eid as i64) as i32);
+        prev_color = c;
+        prev_eid = e;
+        i = j;
+    }
+    // Sentinel terminating run-count: 0 (varint 0x00).
+    out.push(0);
+    out
+}
+
+/// Inverse of `pack_segment_meta`. On an empty / truncated stream
+/// returns all-zero defaults for the requested length.
+fn unpack_segment_meta(
+    buf: &[u8],
+    n: usize,
+) -> (Vec<u32>, Vec<u16>, Vec<u32>, Vec<u16>, Vec<u8>) {
+    let mut color = Vec::with_capacity(n);
+    let mut layer = Vec::with_capacity(n);
+    let mut eid = Vec::with_capacity(n);
+    let mut dash_idx = Vec::with_capacity(n);
+    let mut dash_kind = Vec::with_capacity(n);
+    if buf.is_empty() || buf[0] != META_PACK_VERSION {
+        // No packed metadata — let caller fall back to legacy fields.
+        return (color, layer, eid, dash_idx, dash_kind);
+    }
+    let mut pos: usize = 1;
+    let mut prev_color: u32 = 0;
+    let mut prev_eid: u32 = 0;
+    while pos < buf.len() {
+        let count = match varint_read(buf, &mut pos) { Some(c) => c, None => break };
+        if count == 0 { break; } // terminating sentinel
+        let d_color = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let layer_v = match varint_read(buf, &mut pos) { Some(v) => v as u16, None => break };
+        let dash_iv = match varint_read(buf, &mut pos) { Some(v) => v as u16, None => break };
+        let dash_kv = match varint_read(buf, &mut pos) { Some(v) => v as u8, None => break };
+        let d_eid   = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let c = (prev_color as i64 + d_color as i64) as u32;
+        let e = (prev_eid as i64 + d_eid as i64) as u32;
+        prev_color = c;
+        prev_eid = e;
+        for _ in 0..count {
+            if color.len() >= n { break; }
+            color.push(c);
+            layer.push(layer_v);
+            eid.push(e);
+            dash_idx.push(dash_iv);
+            dash_kind.push(dash_kv);
+        }
+        if color.len() >= n { break; }
+    }
+    (color, layer, eid, dash_idx, dash_kind)
+}
+
+/// Triangle metadata packer — same layout as `pack_segment_meta` minus
+/// the dash fields (triangles have none) plus a per-run `tri_kind` byte.
+fn pack_triangle_meta(
+    n: usize,
+    color: &[u32],
+    layer_idx: &[u16],
+    entity_idx: &[u32],
+    tri_kind: &[u8],
+) -> Vec<u8> {
+    if n == 0 { return Vec::new(); }
+    let mut out = Vec::new();
+    out.push(META_PACK_VERSION);
+    let mut prev_color: u32 = 0;
+    let mut prev_eid: u32 = 0;
+    let mut i = 0usize;
+    while i < n {
+        let c = color.get(i).copied().unwrap_or(0);
+        let l = layer_idx.get(i).copied().unwrap_or(0);
+        let e = entity_idx.get(i).copied().unwrap_or(0);
+        let k = tri_kind.get(i).copied().unwrap_or(0);
+        let mut count: u32 = 1;
+        let mut j = i + 1;
+        while j < n
+            && color.get(j).copied().unwrap_or(0)      == c
+            && layer_idx.get(j).copied().unwrap_or(0)  == l
+            && entity_idx.get(j).copied().unwrap_or(0) == e
+            && tri_kind.get(j).copied().unwrap_or(0)   == k
+        {
+            count += 1;
+            j += 1;
+        }
+        varint_write(&mut out, count);
+        write_zz(&mut out, (c as i64 - prev_color as i64) as i32);
+        varint_write(&mut out, l as u32);
+        varint_write(&mut out, k as u32);
+        write_zz(&mut out, (e as i64 - prev_eid as i64) as i32);
+        prev_color = c;
+        prev_eid = e;
+        i = j;
+    }
+    out.push(0);
+    out
+}
+
+fn unpack_triangle_meta(
+    buf: &[u8],
+    n: usize,
+) -> (Vec<u32>, Vec<u16>, Vec<u32>, Vec<u8>) {
+    let mut color = Vec::with_capacity(n);
+    let mut layer = Vec::with_capacity(n);
+    let mut eid = Vec::with_capacity(n);
+    let mut kind = Vec::with_capacity(n);
+    if buf.is_empty() || buf[0] != META_PACK_VERSION {
+        return (color, layer, eid, kind);
+    }
+    let mut pos: usize = 1;
+    let mut prev_color: u32 = 0;
+    let mut prev_eid: u32 = 0;
+    while pos < buf.len() {
+        let count = match varint_read(buf, &mut pos) { Some(c) => c, None => break };
+        if count == 0 { break; }
+        let d_color = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let layer_v = match varint_read(buf, &mut pos) { Some(v) => v as u16, None => break };
+        let kind_v  = match varint_read(buf, &mut pos) { Some(v) => v as u8, None => break };
+        let d_eid   = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let c = (prev_color as i64 + d_color as i64) as u32;
+        let e = (prev_eid as i64 + d_eid as i64) as u32;
+        prev_color = c;
+        prev_eid = e;
+        for _ in 0..count {
+            if color.len() >= n { break; }
+            color.push(c);
+            layer.push(layer_v);
+            eid.push(e);
+            kind.push(kind_v);
+        }
+        if color.len() >= n { break; }
+    }
+    (color, layer, eid, kind)
+}
+
 // =============================================================================
 // Writer — v2 path (active default)
 // =============================================================================
@@ -782,9 +1002,26 @@ fn lower_v2(blob: BinaryIfcDraw, path_hint: &str) -> Scene {
     let seg_q = read_i16_le(&segments_le);
     let n_seg = seg_q.len() / 4;
     let seg_paper = unpack_bits(&blob.segment_paper_bits, n_seg);
+
+    // Metadata: prefer the RLE-packed bundle when present, else legacy
+    // parallel vectors. Packed reader yields aligned Vec<u32/u16/u8>
+    // arrays for indexed lookup below.
+    let (sm_color, sm_layer, sm_eid, sm_dash_idx, sm_dash_kind) =
+        if !blob.segment_meta_packed.is_empty() {
+            unpack_segment_meta(&blob.segment_meta_packed, n_seg)
+        } else {
+            (
+                blob.segment_color.clone(),
+                blob.segment_layer_idx.clone(),
+                blob.segment_entity_idx.clone(),
+                blob.segment_dash_idx.clone(),
+                blob.segment_dash_kind.clone(),
+            )
+        };
+
     for i in 0..n_seg {
         let c = &seg_q[i * 4..i * 4 + 4];
-        let color = blob.segment_color.get(i).copied().unwrap_or(0xFF_FF_FF_FFu32);
+        let color = sm_color.get(i).copied().unwrap_or(0xFF_FF_FF_FFu32);
         let is_paper = seg_paper.get(i).copied().unwrap_or(false);
         scene.segments.push(Segment {
             p1: [dq_x(c[0]), dq_y(c[1])],
@@ -794,16 +1031,16 @@ fn lower_v2(blob: BinaryIfcDraw, path_hint: &str) -> Scene {
         });
         scene
             .segment_layer_idx
-            .push(blob.segment_layer_idx.get(i).copied().unwrap_or(0));
+            .push(sm_layer.get(i).copied().unwrap_or(0));
         scene
             .segment_entity_idx
-            .push(blob.segment_entity_idx.get(i).copied().unwrap_or(0));
+            .push(sm_eid.get(i).copied().unwrap_or(0));
         scene
             .segment_dash_idx
-            .push(blob.segment_dash_idx.get(i).copied().unwrap_or(0));
+            .push(sm_dash_idx.get(i).copied().unwrap_or(0));
         scene
             .segment_dash_kind
-            .push(blob.segment_dash_kind.get(i).copied().unwrap_or(0));
+            .push(sm_dash_kind.get(i).copied().unwrap_or(0));
     }
 
     // Triangles
@@ -814,11 +1051,24 @@ fn lower_v2(blob: BinaryIfcDraw, path_hint: &str) -> Scene {
     let tri_q = read_i16_le(&triangles_le);
     let n_tri = tri_q.len() / 6;
     let tri_paper = unpack_bits(&blob.triangle_paper_bits, n_tri);
+
+    let (tm_color, tm_layer, tm_eid, tm_kind) =
+        if !blob.triangle_meta_packed.is_empty() {
+            unpack_triangle_meta(&blob.triangle_meta_packed, n_tri)
+        } else {
+            (
+                blob.triangle_color.clone(),
+                blob.triangle_layer_idx.clone(),
+                blob.triangle_entity_idx.clone(),
+                blob.triangle_kind.clone(),
+            )
+        };
+
     for i in 0..n_tri {
         let c = &tri_q[i * 6..i * 6 + 6];
-        let color = blob.triangle_color.get(i).copied().unwrap_or(0xFF_FF_FF_FFu32);
+        let color = tm_color.get(i).copied().unwrap_or(0xFF_FF_FF_FFu32);
         let is_paper = tri_paper.get(i).copied().unwrap_or(false);
-        let kind = match blob.triangle_kind.get(i).copied().unwrap_or(0) {
+        let kind = match tm_kind.get(i).copied().unwrap_or(0) {
             1 => TriKind::TextFill,
             _ => TriKind::Solid,
         };
@@ -834,10 +1084,10 @@ fn lower_v2(blob: BinaryIfcDraw, path_hint: &str) -> Scene {
         });
         scene
             .triangle_layer_idx
-            .push(blob.triangle_layer_idx.get(i).copied().unwrap_or(0));
+            .push(tm_layer.get(i).copied().unwrap_or(0));
         scene
             .triangle_entity_idx
-            .push(blob.triangle_entity_idx.get(i).copied().unwrap_or(0));
+            .push(tm_eid.get(i).copied().unwrap_or(0));
     }
 
     scene.count_label = format!(
@@ -920,6 +1170,47 @@ fn build_blob_v2(scene: &Scene, source_path: Option<&str>) -> BinaryIfcDraw {
         }
     };
 
+    // RLE-pack the 5 per-segment metadata arrays into a single byte
+    // blob. Use only if it's smaller than the legacy parallel-vectors
+    // representation (~13 B/seg). When the packer wins we clear the
+    // legacy fields to avoid double-storing; the reader prefers the
+    // packed blob and only consults the legacy fields when the blob is
+    // empty.
+    let (
+        segment_color,
+        segment_layer_idx,
+        segment_entity_idx,
+        segment_dash_idx,
+        segment_dash_kind,
+        segment_meta_packed,
+    ) = {
+        let packed = pack_segment_meta(
+            n_seg,
+            &segment_color,
+            &segment_layer_idx,
+            &segment_entity_idx,
+            &segment_dash_idx,
+            &segment_dash_kind,
+        );
+        // Rough estimate of the legacy size on the wire BEFORE msgpack
+        // adds its per-int overhead. msgpack writes u32 as 5 B, u16 as 3 B,
+        // u8 as 2 B (small-int) — so the legacy form is actually larger
+        // on the wire than this estimate suggests. Comparing on raw
+        // sum-of-vector-bytes is a conservative lower bound.
+        let legacy_bytes =
+            segment_color.len()      * 4 +
+            segment_layer_idx.len()  * 2 +
+            segment_entity_idx.len() * 4 +
+            segment_dash_idx.len()   * 2 +
+            segment_dash_kind.len();
+        if !packed.is_empty() && packed.len() < legacy_bytes {
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), Vec::new(), packed)
+        } else {
+            (segment_color, segment_layer_idx, segment_entity_idx,
+             segment_dash_idx, segment_dash_kind, Vec::new())
+        }
+    };
+
     // ----- Triangles -----
     let n_tri = scene.triangles.len();
     let mut triangles_q16 = Vec::with_capacity(n_tri * 12);
@@ -951,6 +1242,34 @@ fn build_blob_v2(scene: &Scene, source_path: Option<&str>) -> BinaryIfcDraw {
             (delta, ENC_DELTA_ZZ)
         } else {
             (triangles_q16, ENC_RAW_LE)
+        }
+    };
+
+    // Same RLE-pack shootout for triangle metadata.
+    let (
+        triangle_color,
+        triangle_layer_idx,
+        triangle_entity_idx,
+        triangle_kind,
+        triangle_meta_packed,
+    ) = {
+        let packed = pack_triangle_meta(
+            n_tri,
+            &triangle_color,
+            &triangle_layer_idx,
+            &triangle_entity_idx,
+            &triangle_kind,
+        );
+        let legacy_bytes =
+            triangle_color.len()      * 4 +
+            triangle_layer_idx.len()  * 2 +
+            triangle_entity_idx.len() * 4 +
+            triangle_kind.len();
+        if !packed.is_empty() && packed.len() < legacy_bytes {
+            (Vec::new(), Vec::new(), Vec::new(), Vec::new(), packed)
+        } else {
+            (triangle_color, triangle_layer_idx, triangle_entity_idx,
+             triangle_kind, Vec::new())
         }
     };
 
@@ -1036,6 +1355,7 @@ fn build_blob_v2(scene: &Scene, source_path: Option<&str>) -> BinaryIfcDraw {
         segment_entity_idx,
         segment_dash_idx,
         segment_dash_kind,
+        segment_meta_packed,
 
         triangles_encoding,
         triangles_q16,
@@ -1044,6 +1364,7 @@ fn build_blob_v2(scene: &Scene, source_path: Option<&str>) -> BinaryIfcDraw {
         triangle_layer_idx,
         triangle_entity_idx,
         triangle_kind,
+        triangle_meta_packed,
 
         dash_arrays: scene.dash_arrays.clone(),
         entity_names: scene.entity_names.clone(),
