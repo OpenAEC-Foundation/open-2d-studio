@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="nl">
+<head>
+<meta charset="utf-8" />
+<title>Open 2D Viewer — Layout Mockup</title>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<script src="https://cdn.tailwindcss.com"></script>
+<script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+<script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+<script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+<style>
+  html, body, #root { height: 100%; margin: 0; padding: 0; background: #2F2929; }
+  body { font-family: 'Segoe UI', system-ui, sans-serif; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script>
+  // Bust babel-standalone cache so live edits show up on refresh.
+  (function () {
+    // wait for babel + react UMD bundles
+    function ready() { return window.Babel && window.React && window.ReactDOM; }
+    function start() {
+      if (!ready()) return setTimeout(start, 16);
+      fetch('Open2DViewerMockup.jsx?ts=' + Date.now())
+        .then(function (r) { return r.text(); })
+        .then(function (src) {
+          // Strip any leftover ES module syntax (current file has none, but be safe)
+          var cleaned = src
+            .replace(/^import.*$/gm, '')
+            .replace(/^export\s+default\s+function\s+(\w+)/m, 'window.__Mockup = function $1');
+          var out = Babel.transform(cleaned, { presets: ['env', 'react'] }).code;
+          // eslint-disable-next-line no-eval
+          eval(out);
+          var root = ReactDOM.createRoot(document.getElementById('root'));
+          root.render(React.createElement(window.__Mockup));
+        })
+        .catch(function (err) {
+          document.body.innerHTML =
+            '<pre style="color:#f87171;padding:20px;white-space:pre-wrap;">'
+            + 'Failed to load mockup:\n' + (err && err.stack || err) + '</pre>';
+        });
+    }
+    start();
+  })();
+</script>
+</body>
+</html>
