@@ -25,6 +25,11 @@ pub struct FileTabDef {
     pub id: usize,
     pub label: String,
     pub modified: bool,
+    /// Optional CAD-version label rendered as a small pill after the
+    /// filename (e.g. `R2010`, `R2013`, `IFCDraw`). `None` hides the
+    /// pill — used for `(empty)` placeholder tabs and for tabs whose
+    /// version detection has not completed yet.
+    pub version: Option<String>,
 }
 
 /// Truncate `label` from the LEFT side so the *tail* of the filename
@@ -100,8 +105,17 @@ impl<'a> FileTabBar<'a> {
             let was_truncated = display_label.chars().count() < tab.label.chars().count();
             // Label width (eyeballed font: 12 px proportional → ~7 px/ch).
             let label_w = (display_label.chars().count() as f32 * 7.5).clamp(60.0, 200.0);
+            // Version-badge width: monospace 10 px ≈ 6.5 px/ch + 6 px
+            // h-padding either side. 0 px when no version.
+            let badge_text = tab.version.as_deref().unwrap_or("");
+            let badge_w = if badge_text.is_empty() {
+                0.0
+            } else {
+                (badge_text.chars().count() as f32 * 6.5 + 12.0).max(28.0)
+            };
+            let badge_gap = if badge_text.is_empty() { 0.0 } else { 6.0 };
             // Mockup px-3 left + close × 16 + right pad ≈ 60 px chrome.
-            let body_w = label_w + 44.0;
+            let body_w = label_w + 44.0 + badge_gap + badge_w;
             // Total tab width = body + slope.
             let tab_w = body_w + slope;
             let body_rect = egui::Rect::from_min_size(
@@ -166,6 +180,28 @@ impl<'a> FileTabBar<'a> {
                 egui::FontId::proportional(12.0),
                 label_color,
             );
+            // Version pill — small accent-soft chip with monospace 10 px
+            // label, painted right after the filename. Hidden when the
+            // tab has no `version` (e.g. (empty) placeholder).
+            if !badge_text.is_empty() {
+                let badge_x = body_rect.left() + 12.0 + label_w + badge_gap;
+                let badge_rect = egui::Rect::from_min_size(
+                    Pos2::new(badge_x, body_rect.center().y - 8.0),
+                    Vec2::new(badge_w, 16.0),
+                );
+                ui.painter().rect_filled(
+                    badge_rect,
+                    egui::Rounding::same(3.0),
+                    palette.accent_soft,
+                );
+                ui.painter().text(
+                    badge_rect.center(),
+                    egui::Align2::CENTER_CENTER,
+                    badge_text,
+                    egui::FontId::monospace(10.0),
+                    palette.fg,
+                );
+            }
             // Close × button — shown only on tab hover (mockup
             // `opacity-0 group-hover:opacity-100`).
             let close_rect = egui::Rect::from_center_size(

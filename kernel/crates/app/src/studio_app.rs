@@ -1296,6 +1296,12 @@ struct FileTab {
     scene: Scene,
     path: Option<String>,
     label: String,
+    /// CAD-version label shown as a small pill in the file-tab strip
+    /// (e.g. `R2010`, `R2013`, `IFCDraw`). Detected via
+    /// `superui::dialogs::file_version::detect_version` at tab create
+    /// time + after the loader completes (in case the placeholder tab
+    /// was created before the file existed). `None` hides the pill.
+    version: Option<String>,
 
     cam: PaneCam,
     show_paper: bool,
@@ -1445,11 +1451,13 @@ enum EditOp {
 impl FileTab {
     fn new(scene: Scene, path: Option<String>) -> Self {
         let label = Self::derive_label(path.as_deref());
+        let version = path.as_deref().and_then(Self::detect_version_for_path);
         let cam = PaneCam::fit(&scene.bbox);
         Self {
             scene,
             path,
             label,
+            version,
             cam,
             show_paper: false,
             hidden_layers: HashSet::new(),
@@ -1590,6 +1598,18 @@ impl FileTab {
                 .unwrap_or_else(|| p.to_string()),
             None => "Start".to_string(),
         }
+    }
+
+    /// Cheap version detect for the tab-strip badge. Reads only the file
+    /// header (DWG magic / DXF `$ACADVER` scan) — same helper that the
+    /// in-app file picker uses. Returns `None` for non-existent or
+    /// unsupported files so the badge stays hidden until the file lands.
+    fn detect_version_for_path(path: &str) -> Option<String> {
+        if !std::path::Path::new(path).exists() {
+            return None;
+        }
+        let v = superui::dialogs::detect_version(path);
+        if v == "Unknown" { None } else { Some(v) }
     }
 
     /// Rebuild the GPU line + triangle pipelines for this tab after a
@@ -2429,6 +2449,12 @@ impl App {
                         tab.scene = *scene;
                         tab.path = Some(job.path.clone());
                         tab.label = FileTab::derive_label(Some(&job.path));
+                        // Version detect once the file definitely exists.
+                        // (Placeholder tabs created in `open_file_at_path`
+                        // can race the loader if the file lives on a slow
+                        // disk — defer here so the badge populates on
+                        // first paint after the load completes.)
+                        tab.version = FileTab::detect_version_for_path(&job.path);
                         tab.loading = None;
                         tab.scene_index = None;
                         tab.snap_segments = None;
@@ -2469,6 +2495,7 @@ impl App {
                                 );
                                 tab.path = None;
                                 tab.label = "(empty)".to_string();
+                                tab.version = None;
                                 tab.scene_index = None;
                                 tab.snap_segments = None;
                             }
@@ -2855,6 +2882,7 @@ impl App {
         tab.scene = scene;
         tab.path = path.clone();
         tab.label = FileTab::derive_label(path.as_deref());
+        tab.version = path.as_deref().and_then(FileTab::detect_version_for_path);
         tab.selection.clear();
         tab.hover = None;
         tab.hidden_layers.clear();
@@ -3018,6 +3046,9 @@ impl App {
         // --- Snapshots for egui closure ---------------------------------
         let ppp = self.window.as_ref().map(|w| w.scale_factor() as f32).unwrap_or(1.0);
         let tab_labels: Vec<String> = self.tabs.iter().map(|t| t.label.clone()).collect();
+        let tab_versions: Vec<Option<String>> =
+            self.tabs.iter().map(|t| t.version.clone()).collect();
+        let tab_versions: Vec<Option<String>> = self.tabs.iter().map(|t| t.version.clone()).collect();
         let active_tab_idx = self.active_tab;
         let n_tabs = self.tabs.len();
         // View-cube needs the active tab's current rotation, snapped into
@@ -3550,6 +3581,7 @@ impl App {
                             id: i,
                             label: tab_labels[i].clone(),
                             modified: false,
+                            version: tab_versions.get(i).cloned().flatten(),
                         })
                         .collect();
                     let actions = FileTabBar::new(&tab_defs)

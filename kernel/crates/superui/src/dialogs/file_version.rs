@@ -48,8 +48,19 @@ fn detect_dwg_version(path: &Path) -> Option<String> {
     let mut head = [0u8; 6];
     file.read_exact(&mut head).ok()?;
     let sig = std::str::from_utf8(&head).ok()?;
+    Some(release_name_from_sig(sig)?)
+}
+
+/// Map an `AC10xx` magic / `$ACADVER` token to the marketing-release name
+/// used in the file-tab badge. Used by both the DWG and the DXF detector
+/// so badges read uniformly ("R2010" — not "DXF AC1024").
+///
+/// Unknown future releases are reported verbatim (e.g. "AC1099") so the
+/// user still sees *something*.
+fn release_name_from_sig(sig: &str) -> Option<String> {
     Some(match sig {
         "AC1009" => "R12".to_string(),
+        "AC1012" => "R13".to_string(),
         "AC1014" => "R14".to_string(),
         "AC1015" => "R2000".to_string(),
         "AC1018" => "R2004".to_string(),
@@ -67,8 +78,9 @@ fn detect_dwg_version(path: &Path) -> Option<String> {
 ///   $ACADVER
 ///   1
 ///   AC1027
-/// We surface the AC10xx code with a "DXF " prefix so the badge is
-/// distinguishable from DWG ("DXF AC1027").
+/// We map the AC10xx token to the marketing-release name via
+/// `release_name_from_sig`, so the tab badge matches the DWG path's
+/// labels ("R2013" — not "DXF AC1027").
 fn detect_dxf_version(path: &Path) -> Option<String> {
     let file = File::open(path).ok()?;
     let mut reader = BufReader::new(file);
@@ -98,7 +110,7 @@ fn detect_dxf_version(path: &Path) -> Option<String> {
             continue;
         }
         if trimmed.starts_with("AC") {
-            return Some(format!("DXF {}", trimmed));
+            return release_name_from_sig(trimmed);
         }
         return None;
     }
