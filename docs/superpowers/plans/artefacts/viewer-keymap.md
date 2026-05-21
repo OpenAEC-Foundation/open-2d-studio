@@ -75,19 +75,48 @@ the Viewer interaction model:
 | Wheel              | Zoom at cursor                                     |
 | Double-click       | (Studio) enter inline text-edit on TEXT entity     |
 
-## Pending / Phase 2 wiring buttons
+## Ribbon + status-bar dispatch (no keyboard shortcut)
 
-Some ribbon + status-bar affordances still cycle / dispatch on click
-without a dedicated keyboard shortcut. They are documented here so a
-later round can add bindings:
+These affordances are click-only — they don't have a dedicated key
+binding. Most are toggles or one-shot tool engagements that read more
+naturally as ribbon clicks than chords.
 
-- View tab → **Zoom Window**: ribbon-only (no shortcut; the `Z R`
-  chord is the keyboard equivalent).
-- View tab → **Zoom Previous**: ribbon-only (no shortcut yet).
-- View tab → **Zoom Center**: ribbon-only (no shortcut yet).
-- View tab → **Grid** toggle: ribbon-only.
-- View tab → **White BG** toggle: ribbon-only.
-- View tab → **Theme**: ribbon-only, cycles through themes.
-- Status bar → **ORTHO** toggle: status-bar only.
-- Status bar → **View mode** (Hidden Line / Wireframe): status-bar
-  only, cycles on click.
+### Home tab
+
+| Button             | Dispatch                                           |
+|--------------------|----------------------------------------------------|
+| Selection / Find   | Same as `Ctrl+F` — opens Find dialog               |
+| Measure / Length   | Engage Measure tool (Length sub-mode)              |
+| Measure / Area     | Engage Measure tool (Area sub-mode)                |
+| Measure / Angle    | Engage MeasureAngle (3-click vertex+rays)          |
+| Measure / Coord.   | Engage MeasureCoord (single-click world readout)   |
+
+### View tab
+
+| Button             | Dispatch                                           |
+|--------------------|----------------------------------------------------|
+| Pan                | Engage Pan tool                                    |
+| Zoom In / Out      | Zoom step at viewport center                       |
+| Fit All            | Fit camera to scene bbox, pushes camera history    |
+| Window             | Same as `Z R` chord — engage ZoomRegion            |
+| Previous           | Pop camera history (up to 50 entries)              |
+| Center             | Engage ZoomCenter (one-shot recenter on click)     |
+| Grid               | Toggle world-space grid overlay (10 mm adaptive)   |
+| White BG           | Toggle canvas clear-color dark ↔ white             |
+| Theme              | Cycle theme (Phase 2 placeholder — Default only)   |
+
+### Status bar
+
+| Pill / Button      | Dispatch                                           |
+|--------------------|----------------------------------------------------|
+| Ortho              | Toggle `App::ortho_enabled` — constrains H/V       |
+| OSNAP End/Mid/etc. | Toggle individual SnapModeSet bits                 |
+| Len / Area         | Switch Measure sub-mode                            |
+| View mode          | Cycle Hidden Line ↔ Wireframe (viewer scope)       |
+
+## Notes on the missing IFC affordance
+
+The Viewer status bar previously rendered an IFC toggle even though
+the viewer doesn't ship the IFC ribbon tab or panel. That pill is
+hidden in Viewer mode as of commit 07b5f97; it stays visible in
+Studio.
