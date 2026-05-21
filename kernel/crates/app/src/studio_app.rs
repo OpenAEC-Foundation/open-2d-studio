@@ -3554,6 +3554,14 @@ impl App {
                                 }
                                 "unsplit"       => { requested_unsplit = true; }
                                 "about"         => { requested_toggle_about = true; }
+                                "zoom_window"   => {
+                                    // Same as the `Z R` chord — engage
+                                    // ToolMode::ZoomRegion so the next
+                                    // LMB-drag fits the camera to the
+                                    // rectangle (release auto-reverts
+                                    // to Select).
+                                    requested_tool_mode = Some(ToolMode::ZoomRegion);
+                                }
                                 _ => {}
                             },
                         }
@@ -8523,7 +8531,7 @@ fn build_ribbon_tabs(
                         ],
                         stacks: vec![
                             vec![
-                                b_lbl("zoom_window",   "Window",   IconKind::ZoomWindow),
+                                enable(b_lbl("zoom_window",   "Window",   IconKind::ZoomWindow)),
                                 b_lbl("zoom_previous", "Previous", IconKind::ZoomPrevious),
                                 b_lbl("zoom_center",   "Center",   IconKind::ZoomCenter),
                             ],
