@@ -2242,11 +2242,14 @@ impl App {
             last_measurement: None,
             // OSNAP defaults â€” Endpoint + Midpoint + Center + Intersection
             // + Nearest (AutoCAD baseline).
+            // Default ON: Endpoint, Midpoint, Center. Per user request
+            // Intersection (Int) and Nearest (Near) default to OFF — they
+            // tend to over-trigger and steal the cursor from the precise
+            // snap points users actually want. Toggle on via the status-
+            // bar OSNAP strip when needed.
             snap_modes: SnapModeSet::ENDPOINT
                 | SnapModeSet::MIDPOINT
-                | SnapModeSet::CENTER
-                | SnapModeSet::INTERSECTION
-                | SnapModeSet::NEAREST,
+                | SnapModeSet::CENTER,
             current_snap: None,
             measure_sub: MeasureSub::Length,
             measure_area_in_progress: Vec::new(),
