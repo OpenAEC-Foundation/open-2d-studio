@@ -754,14 +754,18 @@ fn paint_icon_handdrawn(painter: &Painter, rect: Rect, kind: IconKind, color: Co
         // Phosphor glyphs.
         // -----------------------------------------------------------------
         IconKind::MeasureLength => {
-            // Tape measure — flat rectangle with vertical tick marks.
-            let bx = Rect::from_center_size(center, egui::vec2(r * 1.8, r * 0.7));
-            painter.rect_stroke(bx, 0.0, stroke);
-            // Ticks: alternate short / long for readability.
+            // Tape measure — rounded rectangle with 6 vertical tick marks
+            // (alternate short / long). Mirrors mockup `Cad.measureLength`
+            // (Open2DViewerMockup.jsx lines 171-182).
+            let bx = Rect::from_center_size(center, egui::vec2(r * 1.85, r * 0.7));
+            // Approximate rounded rect: outline + corner stubs.
+            painter.rect_stroke(bx, 2.0, stroke);
+            // 6 tick marks evenly spaced — 5/8/11/14/17/20 px in mockup
+            // viewBox 24, normalized here to bx.width().
             for i in 0..6 {
                 let t = (i as f32 + 0.5) / 6.0;
                 let x = bx.left() + t * bx.width();
-                let h = if i % 2 == 0 { bx.height() * 0.55 } else { bx.height() * 0.85 };
+                let h = if i == 2 || i == 5 { bx.height() * 0.95 } else { bx.height() * 0.55 };
                 painter.line_segment(
                     [Pos2::new(x, bx.top()), Pos2::new(x, bx.top() + h)],
                     Stroke::new(stroke.width * 0.85, color),
@@ -769,7 +773,8 @@ fn paint_icon_handdrawn(painter: &Painter, rect: Rect, kind: IconKind, color: Co
             }
         }
         IconKind::MeasureArea => {
-            // Pentagon outline + corner dots + faint diagonal cross.
+            // Pentagon outline + 5 corner dots + 3 cross-hatched
+            // diagonals (mockup `Cad.measureArea` lines 184-197).
             let pts = [
                 Pos2::new(center.x, center.y - r),
                 Pos2::new(center.x + r * 0.95, center.y - r * 0.3),
@@ -780,8 +785,19 @@ fn paint_icon_handdrawn(painter: &Painter, rect: Rect, kind: IconKind, color: Co
             for i in 0..5 {
                 painter.line_segment([pts[i], pts[(i + 1) % 5]], stroke);
             }
+            // Faint cross-hatch diagonals (mockup strokeOpacity 0.35).
+            let dim_color = Color32::from_rgba_unmultiplied(
+                color.r(), color.g(), color.b(),
+                (color.a() as f32 * 0.35) as u8,
+            );
+            let dim_stroke = Stroke::new(stroke.width * 0.75, dim_color);
+            // Three faint diagonals across the pentagon.
+            painter.line_segment([pts[2], pts[0]], dim_stroke);
+            painter.line_segment([pts[3], pts[1]], dim_stroke);
+            painter.line_segment([pts[4], pts[1]], dim_stroke);
+            // Corner dots — slightly larger to read as anchor handles.
             for p in pts.iter() {
-                painter.circle_filled(*p, stroke.width * 1.1, color);
+                painter.circle_filled(*p, stroke.width * 1.3, color);
             }
         }
         IconKind::MeasureAngle => {
