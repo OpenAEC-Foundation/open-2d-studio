@@ -35,6 +35,11 @@
 //!             AppMenuAction::Save | AppMenuAction::SaveAs => {
 //!                 requested_menu_save_as_dxf = true;
 //!             }
+//!             AppMenuAction::SaveAsDwg => {
+//!                 // Opens the "writer in development" modal — see
+//!                 // self.save_as_dwg_modal_open.
+//!                 self.save_as_dwg_modal_open = true;
+//!             }
 //!             AppMenuAction::Close      => { self.app_menu_open = false; }
 //!             AppMenuAction::Exit       => { requested_window_close = true; }
 //!             AppMenuAction::About      => { requested_toggle_about = true; }
@@ -60,6 +65,11 @@ pub enum AppMenuAction {
     Open,
     Save,
     SaveAs,
+    /// User asked for "Save As DWG..." -- the binary AutoCAD format.
+    /// The DWG writer is not yet implemented; consumers must surface a
+    /// modal that explains the situation and offers a DXF fallback.
+    /// See `docs/superpowers/plans/dwg-writer-plan.md`.
+    SaveAsDwg,
     Print,
     Import,
     Export,
@@ -212,6 +222,15 @@ fn paint_panel(
             Some("Ctrl+S"), 3, AppMenuAction::Save, out);
         item(ui, palette, "Opslaan als\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
             Some("Ctrl+Shift+S"), 4, AppMenuAction::SaveAs, out);
+    } else {
+        // Viewer with minimal-edit surface (Move / Delete / Explode):
+        // expose DXF + DWG saves so users can persist their tweaks.
+        // DXF is direct; DWG opens a "writer in development" modal +
+        // offers the DXF fallback.
+        item(ui, palette, "Opslaan als DXF\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
+            Some("Ctrl+Shift+S"), 4, AppMenuAction::SaveAs, out);
+        item(ui, palette, "Opslaan als DWG\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
+            None, 41, AppMenuAction::SaveAsDwg, out);
     }
     item(ui, palette, "Afdrukken",    egui_phosphor::regular::PRINTER,
         Some("Ctrl+P"), 5, AppMenuAction::Print, out);

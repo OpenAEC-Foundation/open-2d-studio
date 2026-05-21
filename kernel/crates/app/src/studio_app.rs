@@ -1941,6 +1941,14 @@ struct App {
     // App menu popup state.
     app_menu_open: bool,
 
+    /// "Save As DWG" modal -- the binary DWG writer is still in
+    /// development (see `docs/superpowers/plans/dwg-writer-plan.md`).
+    /// When `true` the app paints an explanation window that offers a
+    /// DXF fallback. Set by `AppMenuAction::SaveAsDwg`; cleared by
+    /// either the confirm button (routes to `save_as_dxf` with a
+    /// `.dwg -> .dxf` extension swap) or the cancel button.
+    save_as_dwg_modal_open: bool,
+
     // ---- Structure tree (IFC / DXF/DWG model browser) -----------------
     /// Toggled via F5 or the ribbon "Structure" button. Lives on the
     /// right side, mirrors the layer panel's footprint when open.
@@ -2328,6 +2336,7 @@ impl App {
             rd_w: 420.0,
             rd_h: 297.0,
             app_menu_open: false,
+            save_as_dwg_modal_open: false,
             structure_panel_open: false,
             structure_expanded: HashSet::new(),
             structure_selected: None,
@@ -3058,7 +3067,6 @@ impl App {
         let tab_labels: Vec<String> = self.tabs.iter().map(|t| t.label.clone()).collect();
         let tab_versions: Vec<Option<String>> =
             self.tabs.iter().map(|t| t.version.clone()).collect();
-        let tab_versions: Vec<Option<String>> = self.tabs.iter().map(|t| t.version.clone()).collect();
         let active_tab_idx = self.active_tab;
         let n_tabs = self.tabs.len();
         // View-cube needs the active tab's current rotation, snapped into
@@ -3152,6 +3160,7 @@ impl App {
         // mode label inline from `self.present_mode` when assembling
         // `hud_text` below.
         let about_dialog_open_snapshot = self.about_dialog_open;
+        let save_as_dwg_modal_snapshot = self.save_as_dwg_modal_open;
         let current_split_snapshot: Option<SplitKind> = self.tabs.get(active_tab_idx)
             .and_then(|t| t.split_kind);
         // Active ribbon tab id, snapshotted so the egui closure can build
@@ -3243,6 +3252,11 @@ impl App {
         let mut requested_toggle_present_mode = false;
         let mut requested_toggle_about = false;
         let mut requested_about_close = false;
+        // Save-As-DWG modal lifecycle. `close` flips it off without
+        // saving; `confirm_dxf` triggers `requested_menu_save_as_dxf`
+        // with a `.dwg -> .dxf` extension swap inside `save_as_dxf`.
+        let mut requested_save_as_dwg_close = false;
+        let mut requested_save_as_dwg_confirm_dxf = false;
         let mut requested_layer_toggle: Option<String> = None;
         let mut requested_layer_show_all = false;
         let mut requested_layer_hide_all = false;
@@ -3489,6 +3503,12 @@ impl App {
                                 "new_tab"       => { requested_new_tab = true; }
                                 "save_as_dxf"   => { requested_menu_save_as_dxf = true; }
                                 "save_as_ifcdraw" => { requested_menu_save_as_ifcx = true; }
+                                "save_as_dwg"   => {
+                                    // Surface the "writer in development"
+                                    // modal -- see the save_as_dwg_modal
+                                    // render block above.
+                                    self.save_as_dwg_modal_open = true;
+                                }
                                 "fit_extents"   => { requested_fit = true; }
                                 "select"        => { requested_tool_mode = Some(ToolMode::Select); }
                                 "move"          => { requested_tool_mode = Some(ToolMode::Move); }
@@ -3583,6 +3603,50 @@ impl App {
             }
             if about_dialog_open_snapshot && !about_open {
                 requested_about_close = true;
+            }
+
+            // ---- Save-As-DWG modal ----------------------------------
+            // Interim solution while the DWG writer is in development
+            // (see docs/superpowers/plans/dwg-writer-plan.md): explain
+            // the situation and offer to save as DXF instead. AutoCAD
+            // opens DXF natively, so the user can still hand the file
+            // back to their main toolchain.
+            let mut dwg_modal_open = save_as_dwg_modal_snapshot;
+            if dwg_modal_open {
+                egui::Window::new("Save As DWG")
+                    .collapsible(false)
+                    .resizable(false)
+                    .open(&mut dwg_modal_open)
+                    .default_width(440.0)
+                    .show(ctx, |ui| {
+                        ui.add_space(4.0);
+                        ui.label(egui::RichText::new("DWG writer in development.")
+                            .strong()
+                            .size(13.0));
+                        ui.add_space(8.0);
+                        ui.label("The Open 2D writer for the binary DWG format is still \
+being built. For now, this app will save your changes as DXF -- AutoCAD opens that \
+natively, so you can hand the file back to your main toolchain without losing edits.");
+                        ui.add_space(6.0);
+                        ui.label(egui::RichText::new(
+                            "Tracking issue: docs/superpowers/plans/dwg-writer-plan.md")
+                            .small()
+                            .weak());
+                        ui.add_space(12.0);
+                        ui.horizontal(|ui| {
+                            if ui.button("Save as DXF instead").clicked() {
+                                requested_save_as_dwg_confirm_dxf = true;
+                            }
+                            ui.add_space(6.0);
+                            if ui.button("Cancel").clicked() {
+                                requested_save_as_dwg_close = true;
+                            }
+                        });
+                    });
+            }
+            if save_as_dwg_modal_snapshot && !dwg_modal_open {
+                // egui's window-close (X) flips dwg_modal_open false.
+                requested_save_as_dwg_close = true;
             }
 
             // ---- File-tab strip -------------------------------------
@@ -3917,6 +3981,15 @@ impl App {
                         AppMenuAction::Save
                         | AppMenuAction::SaveAs => {
                             requested_menu_save_as_dxf = true;
+                            self.app_menu_open = false;
+                        }
+                        AppMenuAction::SaveAsDwg => {
+                            // The DWG writer is not yet implemented;
+                            // surface the "writer in development" modal
+                            // so the user can pick a DXF fallback. The
+                            // confirm path inside the modal flips
+                            // `requested_menu_save_as_dxf` again.
+                            self.save_as_dwg_modal_open = true;
                             self.app_menu_open = false;
                         }
                         AppMenuAction::Print => {
@@ -4892,6 +4965,17 @@ impl App {
         }
         if requested_toggle_about { self.about_dialog_open = !self.about_dialog_open; }
         if requested_about_close { self.about_dialog_open = false; }
+        // Save-As-DWG modal dispatch. Confirm just flips the existing
+        // requested_menu_save_as_dxf flag -- save_as_dxf is dispatched
+        // later in this same frame (after the gpu borrow drops), so the
+        // double-borrow that a direct call would cause is avoided.
+        if requested_save_as_dwg_close {
+            self.save_as_dwg_modal_open = false;
+        }
+        if requested_save_as_dwg_confirm_dxf {
+            self.save_as_dwg_modal_open = false;
+            requested_menu_save_as_dxf = true;
+        }
         if let Some(tab) = requested_ribbon_tab { self.active_ribbon_tab = tab; }
 
         // ---- Title-bar action dispatch -------------------------------
@@ -5337,11 +5421,12 @@ impl App {
             }
         }
         if requested_menu_save_as_dxf {
-            if self.mode == AppMode::Viewer {
-                eprintln!("[viewer] Save As DXF is disabled in viewer mode");
-            } else {
-                self.save_as_dxf();
-            }
+            // Viewer can now persist its minimal-edit changes (Move /
+            // Delete / Explode / layer-delete) via the DXF text format
+            // -- AutoCAD opens that natively and Open 2D's DWG writer
+            // is not yet implemented (see docs/superpowers/plans/
+            // dwg-writer-plan.md). No mode guard.
+            self.save_as_dxf();
         }
         if requested_fit {
             if let Some(tab) = self.tabs.get_mut(self.active_tab) {
@@ -8491,6 +8576,12 @@ fn build_ribbon_tabs(
                         ],
                         vec![
                             enable(b_lbl("save_as_ifcdraw", "Save IFCDraw", IconKind::Download)),
+                            // Save DWG -- opens the writer-in-development
+                            // modal (see save_as_dwg_modal_open dispatch).
+                            // Enabled in both Studio + Viewer; the modal
+                            // routes through the DXF fallback either way
+                            // until the binary writer ships.
+                            enable(b_lbl("save_as_dwg", "Save DWG", IconKind::Download)),
                         ],
                     ],
                 }),
