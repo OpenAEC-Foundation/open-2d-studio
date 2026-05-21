@@ -272,6 +272,102 @@ const RIBBON: RibbonStyle = RibbonStyle::dark();
 /// anchored). Red X-arrow, green Y-arrow, small "0" label at the cross.
 ///
 /// Only paints when (0,0) maps to a screen position within ~50 px of the
+/// Paint a world-space grid overlay. Stride adapts to camera zoom so
+/// we keep the visible line count between 8 and 80 — at very zoomed-
+/// out levels the 10 mm primary grid would degenerate into a flat
+/// grey, so we promote to 100 mm / 1 m / 10 m / 100 m as needed.
+/// Rotation-aware: world axes rotate with `cam_rotation`.
+fn paint_world_grid(
+    painter: &egui::Painter,
+    canvas_rect_logical: egui::Rect,
+    cam_origin: [f64; 2],
+    cam_pan: (f64, f64),
+    cam_zoom: f64,
+    cam_rotation: f64,
+    white_bg: bool,
+) {
+    if canvas_rect_logical.width() <= 1.0 || canvas_rect_logical.height() <= 1.0 {
+        return;
+    }
+    let cx = canvas_rect_logical.center().x;
+    let cy = canvas_rect_logical.center().y;
+    let h = canvas_rect_logical.height().max(1.0) as f64;
+    let wpp = (2.0 / cam_zoom) / h;
+    if !wpp.is_finite() || wpp <= 0.0 { return; }
+
+    // Adaptive stride. Start at 10 mm; bump by ×10 until the on-screen
+    // spacing is ≥ 14 px (i.e. lines don't blur together). Cap stride
+    // growth so a hugely zoomed-out scene doesn't produce just one or
+    // two lines.
+    let mut stride_world = 10.0_f64;
+    while (stride_world / wpp) < 14.0 && stride_world < 1.0e7 {
+        stride_world *= 10.0;
+    }
+    let stride_px = stride_world / wpp;
+    if !stride_px.is_finite() || stride_px <= 0.0 { return; }
+
+    // Camera-to-world transform of the canvas corners — we need to
+    // know the world-space bbox of the visible rect so we only paint
+    // lines that could possibly cross it. Account for rotation by
+    // taking the axis-aligned hull of the rotated rect.
+    let half_w_screen = canvas_rect_logical.width() as f64 * 0.5;
+    let half_h_screen = canvas_rect_logical.height() as f64 * 0.5;
+    let half_w = half_w_screen * wpp;
+    let half_h = half_h_screen * wpp;
+    let th = cam_rotation;
+    let (ct, st) = (th.cos(), th.sin());
+    // Inverse rotation to map screen-space deltas back into world.
+    // Plus a slack of ~2 strides so edges don't pop.
+    let world_half_x = (half_w * ct.abs() + half_h * st.abs()) + 2.0 * stride_world;
+    let world_half_y = (half_w * st.abs() + half_h * ct.abs()) + 2.0 * stride_world;
+    let cx_world = cam_pan.0 + cam_origin[0];
+    let cy_world = cam_pan.1 + cam_origin[1];
+
+    // Snap the bbox edges to the nearest stride below / above.
+    let x_min = ((cx_world - world_half_x) / stride_world).floor() * stride_world;
+    let x_max = ((cx_world + world_half_x) / stride_world).ceil()  * stride_world;
+    let y_min = ((cy_world - world_half_y) / stride_world).floor() * stride_world;
+    let y_max = ((cy_world + world_half_y) / stride_world).ceil()  * stride_world;
+
+    // Hard cap line count as a safety net (shouldn't fire with the
+    // adaptive stride above, but a tiny screen at 1× zoom could).
+    let max_lines = 200_i32;
+    let nx = (((x_max - x_min) / stride_world).round() as i32 + 1).clamp(2, max_lines);
+    let ny = (((y_max - y_min) / stride_world).round() as i32 + 1).clamp(2, max_lines);
+
+    // World → screen for a single world point (rotation-aware).
+    let to_screen = |wx: f64, wy: f64| -> egui::Pos2 {
+        let wx_off = wx - cam_pan.0 - cam_origin[0];
+        let wy_off = wy - cam_pan.1 - cam_origin[1];
+        let ex = ct * wx_off - st * wy_off;
+        let ey = st * wx_off + ct * wy_off;
+        egui::pos2(cx + (ex / wpp) as f32, cy - (ey / wpp) as f32)
+    };
+
+    // Two tints so the grid stays visible on both backgrounds.
+    let line = if white_bg {
+        egui::Color32::from_rgba_unmultiplied(0, 0, 0, 32)
+    } else {
+        egui::Color32::from_rgba_unmultiplied(255, 255, 255, 26)
+    };
+    let stroke = egui::Stroke::new(1.0, line);
+
+    // Vertical lines (parallel to world Y).
+    for i in 0..nx {
+        let wx = x_min + (i as f64) * stride_world;
+        let s1 = to_screen(wx, y_min);
+        let s2 = to_screen(wx, y_max);
+        painter.line_segment([s1, s2], stroke);
+    }
+    // Horizontal lines (parallel to world X).
+    for j in 0..ny {
+        let wy = y_min + (j as f64) * stride_world;
+        let s1 = to_screen(x_min, wy);
+        let s2 = to_screen(x_max, wy);
+        painter.line_segment([s1, s2], stroke);
+    }
+}
+
 /// canvas rect â€” otherwise the glyph would be off-screen and useless.
 ///
 /// `canvas_rect_logical` is the LOGICAL-pixel canvas area (from
@@ -2040,6 +2136,20 @@ struct App {
     /// button. Capped at `CAMERA_HISTORY_MAX` to bound memory.
     camera_history: Vec<(usize, PaneCam)>,
 
+    // --- Display toggles (Phase 2) -----------------------------------
+    /// World-space grid overlay (paint stride adapts to zoom). Off by
+    /// default — toggled from the View ribbon's Grid button.
+    show_grid: bool,
+    /// Flip canvas clear-color between dark (#0F1419) and white. Used
+    /// by the View ribbon's White BG toggle to mimic AutoCAD's "model
+    /// background" preference. Off = dark.
+    white_bg: bool,
+
+    // --- View mode cycle (Phase 2) -----------------------------------
+    /// Cycle index for the status-bar view-mode selector. Viewer build
+    /// supports Hidden Line (0) and Wireframe (1). Cycles on click.
+    view_mode_idx: u8,
+
     // --- Perf / present-mode ----------------------------------------
     show_perf_hud: bool,
     frame_times: std::collections::VecDeque<std::time::Duration>,
@@ -2417,6 +2527,9 @@ impl App {
             recent_files: load_recent_files(),
             ortho_enabled: false,
             camera_history: Vec::new(),
+            show_grid: false,
+            white_bg: false,
+            view_mode_idx: 0,
             show_perf_hud: false,
             frame_times: std::collections::VecDeque::with_capacity(60),
             last_timings: FrameTimings::default(),
@@ -3205,6 +3318,9 @@ impl App {
         // via `last_measurement_len_snapshot` below (which the status-bar
         // measure overlay reads).
         let show_perf_hud_snapshot = self.show_perf_hud;
+        let show_grid_snapshot = self.show_grid;
+        let white_bg_snapshot = self.white_bg;
+        let view_mode_idx_snapshot = self.view_mode_idx;
         // `present_mode_snapshot` removed â€” the Perf HUD now formats the
         // mode label inline from `self.present_mode` when assembling
         // `hud_text` below.
@@ -3291,6 +3407,13 @@ impl App {
         let mut requested_ortho_toggle = false;
         // Zoom Previous — pop the camera history stack onto the active tab.
         let mut requested_zoom_previous = false;
+        // Display toggles (Phase 2): grid overlay, white background.
+        let mut requested_toggle_grid = false;
+        let mut requested_toggle_white_bg = false;
+        // Theme — cycle on click (Phase 2 placeholder for the dropdown).
+        let mut requested_cycle_theme = false;
+        // View-mode cycle in the status bar (Hidden Line / Wireframe).
+        let mut requested_view_mode_cycle = false;
         // Measure sub-mode change â€” also arms the Measure tool.
         let mut requested_measure_sub: Option<MeasureSub> = None;
         let mut pending_selection_rebuild: bool = false;
@@ -3537,6 +3660,8 @@ impl App {
                         show_perf_hud_snapshot,
                         current_split_snapshot,
                         app_mode_snapshot,
+                        show_grid_snapshot,
+                        white_bg_snapshot,
                     );
                     let actions = Ribbon::new(tabs, active_ribbon_tab_snapshot.clone()).show(ui);
                     for a in actions {
@@ -3617,6 +3742,9 @@ impl App {
                                     requested_tool_mode = Some(ToolMode::ZoomRegion);
                                 }
                                 "zoom_previous" => { requested_zoom_previous = true; }
+                                "grid"          => { requested_toggle_grid = true; }
+                                "white_bg"      => { requested_toggle_white_bg = true; }
+                                "theme"         => { requested_cycle_theme = true; }
                                 "zoom_center"   => {
                                     // One-shot recenter — engage
                                     // ToolMode::ZoomCenter; the next
@@ -3851,6 +3979,16 @@ natively, so you can hand the file back to your main toolchain without losing ed
                             on: measure_area_on,
                             id: "measure_area".to_string(),
                         },
+                        // View-mode cycle — Hidden Line / Wireframe
+                        // (Viewer build skips Shaded). Cycles on click.
+                        StatusSection::Toggle {
+                            label: match view_mode_idx_snapshot {
+                                0 => "Hidden Line".to_string(),
+                                _ => "Wireframe".to_string(),
+                            },
+                            on: false,
+                            id: "view_mode_cycle".to_string(),
+                        },
                         StatusSection::Spacer,
                     ];
                     // IFC toggle — authoring-only affordance; the
@@ -3882,6 +4020,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
                                     requested_measure_sub = Some(MeasureSub::Area);
                                 }
                                 "ortho"             => { requested_ortho_toggle = true; }
+                                "view_mode_cycle"   => { requested_view_mode_cycle = true; }
                                 _ => {}
                             }
                         }
@@ -4631,6 +4770,23 @@ natively, so you can hand the file back to your main toolchain without losing ed
                         active_cam_rotation,
                     );
 
+                    // World-grid overlay (Phase 2) — paints a 10 mm
+                    // primary grid with thin minor lines. Stride
+                    // adapts to zoom so we never paint > ~80 lines on
+                    // screen (which would just blur into a mid-grey
+                    // wash anyway).
+                    if show_grid_snapshot {
+                        paint_world_grid(
+                            ui.painter(),
+                            rect,
+                            active_cam_origin,
+                            active_cam_pan,
+                            active_cam_zoom,
+                            active_cam_rotation,
+                            white_bg_snapshot,
+                        );
+                    }
+
                     // World-to-screen helper (logical px) shared by the
                     // OSNAP marker and the Measure overlay below.
                     let world_to_screen = |w: [f64; 2]| -> egui::Pos2 {
@@ -5163,6 +5319,20 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 }
             }
         }
+        if requested_toggle_grid { self.show_grid = !self.show_grid; }
+        if requested_toggle_white_bg { self.white_bg = !self.white_bg; }
+        if requested_cycle_theme {
+            // Phase 2 placeholder — superui only ships `Default`
+            // today. Just log + bump a no-op cycle counter so the
+            // affordance is testable; the real theme picker is
+            // tracked as a follow-up TODO.
+            eprintln!("[viewer] theme cycle requested — only Default ships in Phase 2");
+        }
+        if requested_view_mode_cycle {
+            // Cycle Hidden Line (0) → Wireframe (1) → back. Viewer
+            // build never advances to a Shaded mode (no 3D renderer).
+            self.view_mode_idx = (self.view_mode_idx + 1) % 2;
+        }
         // Measure sub-mode change â€” also arms the Measure tool, clears
         // any stale in-progress state, and wipes the last result so the
         // floating label doesn't linger across sub-modes.
@@ -5375,9 +5545,13 @@ natively, so you can hand the file back to your main toolchain without losing ed
         {
             // Clear using primary tab's bg colour (matches the "the
             // active half drives the frame colour" expectation).
-            let clear_color = if self.tabs.get(self.active_tab)
-                .map(|t| t.show_paper).unwrap_or(false)
-            {
+            // Phase 2 — White BG toggle from the View ribbon overrides
+            // the dark background regardless of paper-space state, so
+            // users get the AutoCAD "model background" preference.
+            let force_white = self.white_bg
+                || self.tabs.get(self.active_tab)
+                    .map(|t| t.show_paper).unwrap_or(false);
+            let clear_color = if force_white {
                 wgpu::Color { r: 0.95, g: 0.95, b: 0.95, a: 1.0 }
             } else {
                 wgpu::Color { r: 0.06, g: 0.08, b: 0.10, a: 1.0 }
@@ -8602,6 +8776,8 @@ fn build_ribbon_tabs(
     perf_hud: bool,
     split: Option<SplitKind>,
     mode: AppMode,
+    grid_on: bool,
+    white_bg_on: bool,
 ) -> Vec<RibbonTabDef> {
     let split_h = matches!(split, Some(SplitKind::HorizontalPair(_)));
     let split_v = matches!(split, Some(SplitKind::VerticalPair(_)));
@@ -8775,8 +8951,9 @@ fn build_ribbon_tabs(
                     RibbonGroup::with_layout("Display", RibbonGroupLayout::LargeOnly {
                         large: vec![
                             { let mut x = enable(lg("grid", "Grid", IconKind::Grid));
-                              x.selected = true; x },
-                            lg("white_bg", "White BG", IconKind::Sun),
+                              x.selected = grid_on; x },
+                            { let mut x = enable(lg("white_bg", "White BG", IconKind::Sun));
+                              x.selected = white_bg_on; x },
                         ],
                     }),
                     RibbonGroup::with_layout("Appearance", RibbonGroupLayout::LargeOnly {
@@ -8977,8 +9154,10 @@ fn build_ribbon_tabs(
                 }),
                 RibbonGroup::with_layout("Display", RibbonGroupLayout::LargeOnly {
                     large: vec![
-                        lg("grid", "Grid", IconKind::Grid),
-                        lg("white_bg", "White BG", IconKind::Eye),
+                        { let mut x = enable(lg("grid", "Grid", IconKind::Grid));
+                          x.selected = grid_on; x },
+                        { let mut x = enable(lg("white_bg", "White BG", IconKind::Eye));
+                          x.selected = white_bg_on; x },
                         lg("rot_gizmo", "Rot Gizmo", IconKind::Rotate),
                     ],
                 }),
