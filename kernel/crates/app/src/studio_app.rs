@@ -827,10 +827,9 @@ fn side_panel_header(
     });
 }
 
-/// Per-`Scene::segment_dash_kind` value pattern, expressed in SCREEN
-/// pixels. Stride stays constant regardless of camera zoom â€” that's
-/// the whole point of moving dashing from scene-build time (world
-/// units) to vertex-build time (screen units).
+/// Fallback per-`Scene::segment_dash_kind` value pattern in SCREEN pixels.
+/// Only used for legacy scenes that don't carry the world-space
+/// `dash_arrays` / `segment_dash_idx` table (the primary code path).
 ///
 /// Each pattern is a slice of `(draw, gap)` pairs in pixels:
 ///   - `draw == 0.0` is rendered as a single 1-pixel dot.
@@ -842,15 +841,24 @@ const DASH_PIXEL_PATTERNS: [&[(f32, f32)]; 4] = [
     &[(8.0, 2.0), (0.0, 2.0)],               // 3 = dash-dot
 ];
 
+/// Minimum on-screen length, in pixels, for any drawn or gap element of a
+/// world-space LINETYPE pattern. At extreme zoom-out the pure
+/// `world * pixels_per_world` mapping collapses dashes and gaps below
+/// one pixel and the pattern fades to grey mush; clamping each element
+/// to this floor keeps the rhythm visible.
+const MIN_SCREEN_PX: f32 = 1.5;
+
 /// Build line-segment vertex buffer for a single scene.
 ///
 /// `hidden_layers` filters out segments whose derived layer key is in
 /// the set (matches the behaviour of the old 4-pane build_verts).
 ///
 /// `world_per_pixel` is the camera's current world-units-per-screen-pixel
-/// factor. Used to convert the screen-space dash patterns above into
-/// the world-space stride needed when emitting line vertices. When 0.0
-/// or non-finite (no-zoom-yet bootstrap) all segments render solid.
+/// factor. World-space dash patterns from `scene.dash_arrays` are
+/// converted to screen-space strides on the fly â€” at 1Ã— zoom a
+/// 12.7 mm CENTER dash is 12.7 mm on the canvas; zoom in 4Ã— and the
+/// dash grows 4Ã— with the geometry. When 0.0 or non-finite all
+/// segments render solid.
 fn build_verts(
     scene: &Scene,
     origin: [f64; 2],
@@ -862,12 +870,21 @@ fn build_verts(
     let mut out = Vec::with_capacity(scene.segments.len() * 2);
     let use_real_layers = !scene.layer_names.is_empty()
         && scene.segment_layer_idx.len() == scene.segments.len();
-    let dash_kinds_ok = scene.segment_dash_kind.len() == scene.segments.len();
+    // New world-space pipeline: dash_arrays[0] is "solid", any other
+    // index is a draw/gap pattern in world units (positive = draw,
+    // negative = gap, zero = dot).
+    let use_world_dash = !scene.dash_arrays.is_empty()
+        && scene.segment_dash_idx.len() == scene.segments.len();
+    // Legacy fallback: 4-kind screen-pixel patterns. Only consulted
+    // when the world-space table is unavailable (old scenes).
+    let dash_kinds_ok = !use_world_dash
+        && scene.segment_dash_kind.len() == scene.segments.len();
     let wpp = if world_per_pixel.is_finite() && world_per_pixel > 0.0 {
         world_per_pixel as f32
     } else {
         0.0
     };
+    let pixels_per_world: f32 = if wpp > 0.0 { 1.0 / wpp } else { 0.0 };
     for (idx, s) in scene.segments.iter().enumerate()
         .filter(|(_, s)| s.is_paper == want_paper)
     {
@@ -886,21 +903,31 @@ fn build_verts(
         }
         let color = if s.color != 0 { s.color } else { default_color };
 
-        let kind = if dash_kinds_ok { scene.segment_dash_kind[idx] } else { 0u8 };
-        let pattern: &[(f32, f32)] = if (kind as usize) < DASH_PIXEL_PATTERNS.len() {
-            DASH_PIXEL_PATTERNS[kind as usize]
+        // Resolve world-space dash pattern (preferred) or fall back to
+        // the legacy screen-pixel table for scenes that don't carry
+        // `dash_arrays` yet.
+        let world_pattern: Option<&[f64]> = if use_world_dash {
+            let di = scene.segment_dash_idx[idx] as usize;
+            if di == 0 { None }
+            else { scene.dash_arrays.get(di).map(|v| v.as_slice()).filter(|v| !v.is_empty()) }
+        } else {
+            None
+        };
+        let legacy_pattern: &[(f32, f32)] = if !use_world_dash && dash_kinds_ok {
+            let kind = scene.segment_dash_kind[idx] as usize;
+            if kind < DASH_PIXEL_PATTERNS.len() { DASH_PIXEL_PATTERNS[kind] } else { &[] }
         } else {
             &[]
         };
-        if pattern.is_empty() || wpp <= 0.0 {
+
+        let has_pattern = world_pattern.is_some() || !legacy_pattern.is_empty();
+        if !has_pattern || wpp <= 0.0 {
             // Solid segment â€” emit as one line.
             out.push(Vertex { pos: p1, color, _pad: 0 });
             out.push(Vertex { pos: p2, color, _pad: 0 });
             continue;
         }
 
-        // Dashed segment â€” chop into screen-space-stride strokes.
-        // The pattern is in pixels; multiply by wpp to map to world.
         let dx = p2[0] - p1[0];
         let dy = p2[1] - p1[1];
         let len = (dx * dx + dy * dy).sqrt();
@@ -908,11 +935,51 @@ fn build_verts(
         let ux = dx / len;
         let uy = dy / len;
 
-        // Total stride in world units.
-        let stride_world: f32 = pattern.iter().map(|(d, g)| d.max(1.0) + g).sum::<f32>() * wpp;
-        // If the whole segment is shorter than half a stride render solid
-        // â€” avoids degenerate stippling on tiny ticks.
-        if stride_world <= 1e-6 || len < stride_world * 0.5 {
+        // Build a (draw_world, gap_world) screen-clamped pattern in
+        // world units. For world patterns: walk pairs of (positive,
+        // negative-or-dot) entries; for legacy: pairs are already
+        // (draw_px, gap_px) in screen units.
+        //
+        // `screen_stride[i] = world_stride[i].abs() * pixels_per_world`,
+        // clamped to MIN_SCREEN_PX, then mapped back to world via wpp.
+        // Zero world stride = dot â†’ render as 1 element of MIN_SCREEN_PX.
+        let mut strokes: Vec<(f32, f32)> = Vec::new(); // (draw_world, gap_world)
+        if let Some(wp) = world_pattern {
+            // World pattern: alternate draw (>=0) / gap (<0) entries.
+            // DXF LINETYPE definitions are normalised to start with a
+            // positive (draw) element, so pair them up sequentially.
+            let mut i = 0;
+            while i < wp.len() {
+                let draw_w_raw = wp[i].abs() as f32;
+                let gap_w_raw  = if i + 1 < wp.len() { wp[i + 1].abs() as f32 } else { 0.0 };
+                // Zero world entry = dot â€” promote to MIN_SCREEN_PX.
+                let draw_px = (draw_w_raw * pixels_per_world).max(MIN_SCREEN_PX);
+                let gap_px  = (gap_w_raw  * pixels_per_world).max(MIN_SCREEN_PX);
+                strokes.push((draw_px * wpp, gap_px * wpp));
+                i += 2;
+            }
+        } else {
+            // Legacy screen-pixel pattern: clamp each element to floor
+            // then convert px â†’ world by multiplying by wpp.
+            for (d, g) in legacy_pattern {
+                let draw_px = d.max(MIN_SCREEN_PX);
+                let gap_px  = g.max(MIN_SCREEN_PX);
+                strokes.push((draw_px * wpp, gap_px * wpp));
+            }
+        }
+        if strokes.is_empty() {
+            out.push(Vertex { pos: p1, color, _pad: 0 });
+            out.push(Vertex { pos: p2, color, _pad: 0 });
+            continue;
+        }
+
+        // If the total visible stride (in screen px) is too small the
+        // pattern is invisible at this zoom â€” render solid. 6 px is a
+        // good lower bound: below that even a two-stroke dash-gap can't
+        // be perceived as a pattern.
+        let total_stride_px: f32 = strokes.iter()
+            .map(|(d, g)| (d + g) * pixels_per_world).sum();
+        if total_stride_px < 6.0 {
             out.push(Vertex { pos: p1, color, _pad: 0 });
             out.push(Vertex { pos: p2, color, _pad: 0 });
             continue;
@@ -925,9 +992,7 @@ fn build_verts(
         // anyone wants to render â€” fall back to solid past that.
         let mut stroke_budget = 4096usize;
         while travelled < len && stroke_budget > 0 {
-            let (draw_px, gap_px) = pattern[i % pattern.len()];
-            let draw_world = draw_px.max(1.0) * wpp;          // dot has draw_px==0; clamp to 1px
-            let gap_world  = gap_px * wpp;
+            let (draw_world, gap_world) = strokes[i % strokes.len()];
             let draw_end = (travelled + draw_world).min(len);
             let a = [p1[0] + ux * travelled, p1[1] + uy * travelled];
             let b = [p1[0] + ux * draw_end,  p1[1] + uy * draw_end];
