@@ -596,7 +596,7 @@ function Open2DViewerMockup() {
           File
         </button>
         {/* Tabs */}
-        {['Home', 'View', 'IFC'].map((t) => {
+        {['Home', 'View'].map((t) => {
           const isActive = activeRibbonTab === t;
           return (
             <button
@@ -680,10 +680,6 @@ function Open2DViewerMockup() {
             <RibbonGroup label="Panels" lastChild>
               <RibbonBtn icon={<Icon d={Lucide.layers} size={22} />} label="Layers"
                          active={layersOpen} onClick={() => setLayersOpen(!layersOpen)} />
-              <RibbonBtn icon={<Icon d={Lucide.drawings} size={22} />} label="Drawings"
-                         active={drawingsOpen} onClick={() => setDrawingsOpen(!drawingsOpen)} />
-              <RibbonBtn icon={<Icon d={Lucide.sheets} size={22} />} label="Sheets"
-                         active={sheetsOpen} onClick={() => setSheetsOpen(!sheetsOpen)} />
               <RibbonBtn icon={<Icon d={Lucide.panelR} size={22} />} label="Properties"
                          active={rightOpen} onClick={() => setRightOpen(!rightOpen)} />
             </RibbonGroup>
@@ -750,45 +746,6 @@ function Open2DViewerMockup() {
           </div>
         )}
 
-        {/* ─── IFC TAB ─── */}
-        {activeRibbonTab === 'IFC' && (
-          <div style={{ display: 'flex', gap: 2, alignItems: 'stretch', height: '100%' }}>
-            <RibbonGroup label="Actions">
-              <RibbonBtn icon={<Icon d={Lucide.download} size={22} />} label="Export IFC" />
-              <RibbonBtn icon={<Icon d={Lucide.exportFd} size={22} />} label="Export Map" />
-              <RibbonBtn
-                icon={<span style={{ fontSize: 11, fontFamily: 'monospace', fontWeight: 700 }}>IFC</span>}
-                label="IFC Model"
-                active={ifcOpen} onClick={() => setIfcOpen(!ifcOpen)} />
-              <RibbonBtnStack>
-                <RibbonSmallBtn icon={<Icon d={Lucide.folderTr} size={14} />} label="Project" />
-                <RibbonSmallBtn icon={<Icon d={Lucide.search} size={14} />} label="Inspect" />
-                <RibbonSmallBtn icon={<Icon d={Lucide.download} size={14} />} label="Copy STEP" />
-              </RibbonBtnStack>
-            </RibbonGroup>
-
-            <RibbonGroup label="Statistics">
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, padding: '4px 8px', minWidth: 100 }}>
-                {[
-                  ['Entities:', '12,431'],
-                  ['Size:',     '2.3 MB'],
-                  ['Schema:',   'IFC4'],
-                  ['Project:',  '2705_model'],
-                ].map(([k, v]) => (
-                  <div key={k} className="flex items-center justify-between gap-2">
-                    <span style={{ fontSize: 10, color: Token.textMuted, whiteSpace: 'nowrap' }}>{k}</span>
-                    <span style={{ fontSize: 10, color: Token.textDim, fontFamily: 'Consolas, monospace', whiteSpace: 'nowrap' }}>{v}</span>
-                  </div>
-                ))}
-              </div>
-            </RibbonGroup>
-
-            <RibbonGroup label="Inspect" lastChild>
-              <RibbonBtn icon={<Icon d={Lucide.folderTr} size={22} />} label="Tree" />
-              <RibbonBtn icon={<Icon d={Lucide.search} size={22} />} label="Search" />
-            </RibbonGroup>
-          </div>
-        )}
       </div>
 
       {/* ════════ FILE TAB BAR (h=30) ════════ */}
@@ -823,33 +780,7 @@ function Open2DViewerMockup() {
           borderRight: `1px solid ${Token.borderLight}`,
           display: 'flex', flexDirection: 'column',
         }}>
-          {/* Drawings */}
-          <div className="flex flex-col" style={{ flex: drawingsOpen ? '1 1 0%' : '0 0 auto', minHeight: 0, overflow: 'hidden' }}>
-            <SectionHeader label="Drawings" sublabel="Drawing"
-                           collapsed={!drawingsOpen} onToggle={() => setDrawingsOpen(!drawingsOpen)} />
-            {drawingsOpen && (
-              <div className="flex-1 overflow-auto p-2">
-                <div className="space-y-1">
-                  {drawings.map((d, i) => <DrawingRow key={i} {...d} />)}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Sheets */}
-          <div className="flex flex-col" style={{ flex: sheetsOpen ? '1 1 0%' : '0 0 auto', minHeight: 0, overflow: 'hidden' }}>
-            <SectionHeader label="Sheets" sublabel="Sheet Layout"
-                           collapsed={!sheetsOpen} onToggle={() => setSheetsOpen(!sheetsOpen)} />
-            {sheetsOpen && (
-              <div className="flex-1 overflow-auto p-2">
-                <div className="space-y-1">
-                  {sheets.map((s, i) => <SheetRow key={i} {...s} />)}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Layers */}
+          {/* Layers (Drawings + Sheets sections removed per viewer scope) */}
           <div className="flex flex-col" style={{ flex: layersOpen ? '2 1 0%' : '0 0 auto', minHeight: 0, overflow: 'hidden' }}>
             <SectionHeader label="Layers" sublabel={`${layers.length} layers · ${layers.filter(l => !l.visible).length} hidden`}
                            collapsed={!layersOpen} onToggle={() => setLayersOpen(!layersOpen)} />
