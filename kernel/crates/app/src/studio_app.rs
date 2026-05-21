@@ -2100,6 +2100,17 @@ struct App {
     /// it. Cleared on tool-mode switch away from MeasureCoord.
     last_measure_coord: Option<[f64; 2]>,
 
+    // --- Find dialog (Phase 2) ---------------------------------------
+    /// True while the modal Find dialog is open. Triggered by Ctrl+F
+    /// or the ribbon `find_replace` button. Viewer is read-only so
+    /// the dialog is find-only (no replace input).
+    find_dialog_open: bool,
+    /// Live query string. Substring scan over three small string
+    /// vectors so the cost is acceptable on every keystroke.
+    find_query: String,
+    /// Cached match list — refreshed when `find_query` changes.
+    find_matches: Vec<FindMatch>,
+
     // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
     /// First point of an in-progress Dimension placement (world coords).
     dim_p1: Option<[f64; 2]>,
@@ -2338,6 +2349,24 @@ impl Default for AppMode {
     fn default() -> Self { AppMode::Studio }
 }
 
+/// One match in the Find dialog. The viewer searches three corpora per
+/// scene: TEXT/MTEXT/ATTRIB content, layer names, and entity-name
+/// summaries (which carry the DWG/DXF handle in `h=0xAB` form). On
+/// click the matched entity (when known) gets selected + zoomed-to.
+#[derive(Clone, Debug)]
+struct FindMatch {
+    kind: FindMatchKind,
+    label: String,
+    eid: Option<u32>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum FindMatchKind {
+    Text,
+    Layer,
+    EntityName,
+}
+
 /// Measure-tool sub-mode. The `Measure` ToolMode is a thin shell that
 /// dispatches by this enum: `Length` is a two-click distance measurement;
 /// `Area` collects N polygon vertices and reports perimeter + enclosed area.
@@ -2517,6 +2546,9 @@ impl App {
             measure_angle_pts: Vec::new(),
             last_measure_angle: None,
             last_measure_coord: None,
+            find_dialog_open: false,
+            find_query: String::new(),
+            find_matches: Vec::new(),
             // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
             dim_p1: None,
             area_in_progress: Vec::new(),
@@ -3326,6 +3358,9 @@ impl App {
         // `hud_text` below.
         let about_dialog_open_snapshot = self.about_dialog_open;
         let ortho_enabled_snapshot = self.ortho_enabled;
+        let find_dialog_open_snapshot = self.find_dialog_open;
+        let find_query_snapshot = self.find_query.clone();
+        let find_matches_snapshot = self.find_matches.clone();
         let save_as_dwg_modal_snapshot = self.save_as_dwg_modal_open;
         let current_split_snapshot: Option<SplitKind> = self.tabs.get(active_tab_idx)
             .and_then(|t| t.split_kind);
@@ -3414,6 +3449,11 @@ impl App {
         let mut requested_cycle_theme = false;
         // View-mode cycle in the status bar (Hidden Line / Wireframe).
         let mut requested_view_mode_cycle = false;
+        // Find dialog deferred actions (handled after the gpu borrow drops).
+        let mut requested_toggle_find = false;
+        let mut requested_find_jump: Option<Option<u32>> = None;
+        let mut requested_find_query: Option<String> = None;
+        let mut requested_find_close = false;
         // Measure sub-mode change â€” also arms the Measure tool.
         let mut requested_measure_sub: Option<MeasureSub> = None;
         let mut pending_selection_rebuild: bool = false;
@@ -3743,6 +3783,7 @@ impl App {
                                 }
                                 "zoom_previous" => { requested_zoom_previous = true; }
                                 "grid"          => { requested_toggle_grid = true; }
+                                "find_replace"  => { requested_toggle_find = true; }
                                 "white_bg"      => { requested_toggle_white_bg = true; }
                                 "theme"         => { requested_cycle_theme = true; }
                                 "zoom_center"   => {
@@ -3807,6 +3848,52 @@ impl App {
             }
             if about_dialog_open_snapshot && !about_open {
                 requested_about_close = true;
+            }
+
+            // ---- Find dialog (Phase 2) ------------------------------
+            let mut find_open = find_dialog_open_snapshot;
+            if find_open {
+                let mut local_query = find_query_snapshot.clone();
+                egui::Window::new("Find")
+                    .collapsible(false)
+                    .resizable(true)
+                    .default_width(420.0)
+                    .default_height(360.0)
+                    .open(&mut find_open)
+                    .show(ctx, |ui| {
+                        ui.horizontal(|ui| {
+                            ui.label("Query:");
+                            let resp = ui.add(
+                                egui::TextEdit::singleline(&mut local_query)
+                                    .desired_width(280.0)
+                                    .hint_text("text, layer, or handle (e.g. 0xAB)"),
+                            );
+                            if resp.changed() {
+                                requested_find_query = Some(local_query.clone());
+                            }
+                        });
+                        ui.separator();
+                        let n = find_matches_snapshot.len();
+                        ui.label(format!("{} match{}", n, if n == 1 { "" } else { "es" }));
+                        egui::ScrollArea::vertical()
+                            .auto_shrink([false, false])
+                            .show(ui, |ui| {
+                                for m in &find_matches_snapshot {
+                                    let tag = match m.kind {
+                                        FindMatchKind::Text => "T",
+                                        FindMatchKind::Layer => "L",
+                                        FindMatchKind::EntityName => "E",
+                                    };
+                                    let label = format!("[{}] {}", tag, m.label);
+                                    if ui.selectable_label(false, label).clicked() {
+                                        requested_find_jump = Some(m.eid);
+                                    }
+                                }
+                            });
+                    });
+            }
+            if find_dialog_open_snapshot && !find_open {
+                requested_find_close = true;
             }
 
             // ---- Save-As-DWG modal ----------------------------------
@@ -5333,6 +5420,22 @@ natively, so you can hand the file back to your main toolchain without losing ed
             // build never advances to a Shaded mode (no 3D renderer).
             self.view_mode_idx = (self.view_mode_idx + 1) % 2;
         }
+        // Find dialog — only field flips happen here; the expensive
+        // refresh + jump run later in a post-gpu-borrow block.
+        let mut deferred_find_refresh = false;
+        let mut deferred_find_jump: Option<Option<u32>> = None;
+        if requested_toggle_find {
+            self.find_dialog_open = !self.find_dialog_open;
+            if self.find_dialog_open { deferred_find_refresh = true; }
+        }
+        if requested_find_close { self.find_dialog_open = false; }
+        if let Some(q) = requested_find_query {
+            self.find_query = q;
+            deferred_find_refresh = true;
+        }
+        if let Some(eid) = requested_find_jump {
+            deferred_find_jump = Some(eid);
+        }
         // Measure sub-mode change â€” also arms the Measure tool, clears
         // any stale in-progress state, and wipes the last result so the
         // floating label doesn't linger across sub-modes.
@@ -5661,6 +5764,15 @@ natively, so you can hand the file back to your main toolchain without losing ed
         if let Some(win) = self.window.as_ref() { win.request_redraw(); }
 
         // --- Post-present actions (gpu borrow ends below) ---------------
+        if deferred_find_refresh {
+            self.refresh_find_matches();
+        }
+        if let Some(eid) = deferred_find_jump {
+            self.jump_to_find_match(eid);
+            if let Some(gpu_ref) = self.gpu.as_ref() {
+                rebuild_sel_pipe(self.tabs.get_mut(self.active_tab), gpu_ref);
+            }
+        }
         if let Some(idx) = requested_close_tab {
             self.close_tab(idx);
         }
@@ -7016,6 +7128,99 @@ natively, so you can hand the file back to your main toolchain without losing ed
             tab.cam.pan_y = 0.0;
         }
     }
+
+    /// Re-run the Find query against the active tab. Searches three
+    /// corpora: TEXT/MTEXT/ATTRIB content, layer names, entity-name
+    /// summaries (the latter carry the DWG/DXF entity handle, e.g.
+    /// `LINE h=0xAB`). Match cap = 200 so the dialog stays scrollable.
+    fn refresh_find_matches(&mut self) {
+        const MAX_MATCHES: usize = 200;
+        self.find_matches.clear();
+        let q = self.find_query.trim().to_lowercase();
+        if q.is_empty() { return; }
+        let Some(tab) = self.tabs.get(self.active_tab) else { return; };
+        let scene = &tab.scene;
+        for name in &scene.layer_names {
+            if name.to_lowercase().contains(&q) {
+                self.find_matches.push(FindMatch {
+                    kind: FindMatchKind::Layer,
+                    label: format!("Layer: {}", name),
+                    eid: None,
+                });
+                if self.find_matches.len() >= MAX_MATCHES { return; }
+            }
+        }
+        for (eid, slot) in scene.entity_text.iter().enumerate() {
+            if let Some(et) = slot {
+                if et.raw.to_lowercase().contains(&q) {
+                    let mut preview: String = et.raw.chars().take(80).collect();
+                    if et.raw.chars().count() > 80 { preview.push_str("\u{2026}"); }
+                    self.find_matches.push(FindMatch {
+                        kind: FindMatchKind::Text,
+                        label: format!("Text #{}: {}", eid, preview),
+                        eid: Some(eid as u32),
+                    });
+                    if self.find_matches.len() >= MAX_MATCHES { return; }
+                }
+            }
+        }
+        for (eid, name) in scene.entity_names.iter().enumerate() {
+            if name.to_lowercase().contains(&q) {
+                self.find_matches.push(FindMatch {
+                    kind: FindMatchKind::EntityName,
+                    label: format!("#{}  {}", eid, name),
+                    eid: Some(eid as u32),
+                });
+                if self.find_matches.len() >= MAX_MATCHES { return; }
+            }
+        }
+    }
+
+    /// Select + zoom to the entity referenced by a Find match. Walks
+    /// `segment_entity_idx` for the first segment that belongs to that
+    /// entity_idx, computes an entity bbox, and fits the camera to it.
+    /// No-op when `eid` is None (layer matches).
+    fn jump_to_find_match(&mut self, eid: Option<u32>) {
+        let Some(eid) = eid else { return; };
+        let tab_idx = self.active_tab;
+        let Some(tab) = self.tabs.get_mut(tab_idx) else { return; };
+        let scene = &tab.scene;
+        if scene.segment_entity_idx.len() != scene.segments.len() { return; }
+        let mut bb = [f64::INFINITY, f64::INFINITY, f64::NEG_INFINITY, f64::NEG_INFINITY];
+        let mut canonical_seg: Option<usize> = None;
+        for (i, &e) in scene.segment_entity_idx.iter().enumerate() {
+            if e != eid { continue; }
+            let s = &scene.segments[i];
+            bb[0] = bb[0].min(s.p1[0]).min(s.p2[0]);
+            bb[1] = bb[1].min(s.p1[1]).min(s.p2[1]);
+            bb[2] = bb[2].max(s.p1[0]).max(s.p2[0]);
+            bb[3] = bb[3].max(s.p1[1]).max(s.p2[1]);
+            if canonical_seg.is_none() { canonical_seg = Some(i); }
+        }
+        if scene.triangle_entity_idx.len() == scene.triangles.len() {
+            for (i, &e) in scene.triangle_entity_idx.iter().enumerate() {
+                if e != eid { continue; }
+                let t = &scene.triangles[i];
+                for p in t.v.iter() {
+                    bb[0] = bb[0].min(p[0]);
+                    bb[1] = bb[1].min(p[1]);
+                    bb[2] = bb[2].max(p[0]);
+                    bb[3] = bb[3].max(p[1]);
+                }
+            }
+        }
+        if !bb[0].is_finite() || bb[0] >= bb[2] || bb[1] >= bb[3] {
+            return;
+        }
+        let pad_x = ((bb[2] - bb[0]) * 0.1).max(1.0);
+        let pad_y = ((bb[3] - bb[1]) * 0.1).max(1.0);
+        let padded = [bb[0] - pad_x, bb[1] - pad_y, bb[2] + pad_x, bb[3] + pad_y];
+        tab.cam = PaneCam::fit(&padded);
+        if let Some(seg) = canonical_seg {
+            tab.selection.clear();
+            tab.selection.push(seg);
+        }
+    }
 }
 
 /// Cap the per-tab undo stack at `MAX_UNDO`. Older entries are dropped
@@ -7625,6 +7830,9 @@ impl ApplicationHandler for App {
                     // backed out without disturbing other state).
                     if self.edit_mode.is_some() {
                         self.cancel_text_edit();
+                    } else if self.find_dialog_open {
+                        // Esc closes Find before any tool-mode cancel.
+                        self.find_dialog_open = false;
                     } else if self.tool_mode == ToolMode::ZoomRegion {
                         // ZR â€” cancel the zoom-region: revert tool +
                         // clear in-progress anchor. Camera stays put.
@@ -7785,6 +7993,15 @@ impl ApplicationHandler for App {
                 }
                 KeyCode::F12 => { self.show_perf_hud = !self.show_perf_hud; }
                 KeyCode::KeyO if self.modifiers_ctrl_held() => self.open_file_dialog(),
+                KeyCode::KeyF if self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
+                    // Find dialog (Ctrl+F) — toggle. Opening also
+                    // refreshes the match list so stale entries don't
+                    // leak across sessions.
+                    self.find_dialog_open = !self.find_dialog_open;
+                    if self.find_dialog_open {
+                        self.refresh_find_matches();
+                    }
+                }
                 KeyCode::KeyW if self.modifiers_ctrl_held() => {
                     self.close_tab(self.active_tab);
                 }
@@ -8864,7 +9081,7 @@ fn build_ribbon_tabs(
                             vec![
                                 enable(b_lbl("select_all", "Select All", IconKind::SelectAll)),
                                 enable(b_lbl("deselect", "Deselect", IconKind::Deselect)),
-                                b_lbl("find_replace", "Find", IconKind::Search),
+                                enable(b_lbl("find_replace", "Find", IconKind::Search)),
                             ],
                         ],
                     }),
