@@ -3568,18 +3568,21 @@ impl App {
             // Built from data-driven `StatusSection`s â€” superui::StatusBar
             // owns the painting, padding and layout.
             egui::TopBottomPanel::bottom("statusbar")
+                .exact_height(superui::tokens::metrics::STATUSBAR_HEIGHT)
+                .frame(egui::Frame::none().fill(superui::theme::Theme::Default.palette().status_bg))
                 .show(ctx, |ui| {
                     // 1.0 reference layout (left â†’ right):
                     //   X: â€¦  Y: â€¦  Cursor: 0 0  Zoom: 150%  Grid: 10
                     //   Scale: 1:100  â˜ Layer 0 â–¾  ORTHO  White Background â–¾
                     //   Tool: SELECT  â€¦  IFC  Selected: 0  Objects: N
                     let (x_str, y_str) = match status_cursor_world {
-                        Some(p) => (format!("X: {:>5.0}", p[0]), format!("Y: {:>5.0}", p[1])),
-                        None => ("X:    â€”".to_string(), "Y:    â€”".to_string()),
+                        Some(p) => (format!("X: {} mm", (p[0] as i32)),
+                                    format!("Y: {} mm", (p[1] as i32))),
+                        None => ("X: —".to_string(), "Y: —".to_string()),
                     };
                     let cursor_str = match status_cursor_world {
                         Some(p) => format!("Cursor: {:.0} {:.0}", p[0], p[1]),
-                        None => "Cursor: â€” â€”".to_string(),
+                        None => "Cursor: — —".to_string(),
                     };
                     let zoom_pct = (status_zoom * 100.0).round() as i32;
                     let tool_str = match current_tool_mode {
@@ -3613,18 +3616,34 @@ impl App {
                         && measure_sub_snapshot == MeasureSub::Length;
                     let measure_area_on = current_tool_mode == ToolMode::Measure
                         && measure_sub_snapshot == MeasureSub::Area;
+                    // Mockup layout (lines 927-1029):
+                    //   LEFT cluster: X, Y, Cursor
+                    //   MIDDLE: Zoom, Grid, Scale, [PL] storey, layer
+                    //          selector, ORTHO toggle, OSNAP strip,
+                    //          view-mode select, Tool: <name>
+                    //   RIGHT: Terminal icon, IFC toggle, Selected:N,
+                    //          Objects:N, FPS
                     let sections = vec![
                         StatusSection::Text(x_str),
                         StatusSection::Text(y_str),
                         StatusSection::Text(cursor_str),
                         StatusSection::Text(format!("Zoom: {}%", zoom_pct)),
-                        StatusSection::Text("Grid: 10".to_string()),
+                        StatusSection::Text("Grid: 100 mm".to_string()),
                         StatusSection::Text("Scale: 1:100".to_string()),
                         StatusSection::Text(layer_str),
-                        StatusSection::Text("ORTHO".to_string()),
-                        // OSNAP toggle row â€” inline with the rest of the
-                        // status bar. Click to flip a snap mode.
-                        StatusSection::Text("OSNAP:".to_string()),
+                        // ORTHO pill — first toggle in the row, mockup
+                        // line 970 uses a green tint when on. The
+                        // StatusBar widget treats this just like any
+                        // other pill (accent fill); good enough for
+                        // Phase 1.
+                        StatusSection::Toggle {
+                            label: "Ortho".to_string(),
+                            on: false,
+                            id: "ortho".to_string(),
+                        },
+                        // OSNAP strip — 6 toggles preceded by a static
+                        // "OSNAP" label.
+                        StatusSection::Text("OSNAP: ".to_string()),
                         snap_toggle("snap_endpoint",     "End",  SnapModeSet::ENDPOINT),
                         snap_toggle("snap_midpoint",     "Mid",  SnapModeSet::MIDPOINT),
                         snap_toggle("snap_center",       "Cen",  SnapModeSet::CENTER),
@@ -3632,9 +3651,6 @@ impl App {
                         snap_toggle("snap_perpendicular","Per",  SnapModeSet::PERPENDICULAR),
                         snap_toggle("snap_nearest",      "Near", SnapModeSet::NEAREST),
                         StatusSection::Text(format!("Tool: {}", tool_str)),
-                        // Measure sub-mode toggles â€” only visible/click-
-                        // able when the Measure tool is armed (but they
-                        // pre-arm Measure on click as a convenience).
                         StatusSection::Toggle {
                             label: "Len".to_string(),
                             on: measure_len_on,
@@ -3646,7 +3662,11 @@ impl App {
                             id: "measure_area".to_string(),
                         },
                         StatusSection::Spacer,
-                        StatusSection::Text("IFC".to_string()),
+                        StatusSection::Toggle {
+                            label: "IFC".to_string(),
+                            on: false,
+                            id: "ifc_panel".to_string(),
+                        },
                         StatusSection::Text(format!("Selected: {}", prop_selection_count)),
                         StatusSection::Text(format!("Objects: {}", prop_scene_total)),
                     ];
