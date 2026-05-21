@@ -152,7 +152,13 @@ pub struct BinaryIfcDraw {
     pub layers: Vec<LayerDefV2>,
 
     // ----- Geometry (q16 LE blobs) -----
-    /// Segments — 4 i16 LE per segment (x1,y1,x2,y2).
+    /// Coordinate encoding tag for `segments_q16`: 0 = `ENC_RAW_LE`
+    /// (flat little-endian i16 pairs), 1 = `ENC_DELTA_ZZ`
+    /// (zigzag-LEB128 deltas, see `delta_encode_segments_q16`). Writer
+    /// picks whichever is smaller. Defaults to 0 on older blobs.
+    #[serde(default)]
+    pub segments_encoding: u8,
+    /// Segment coord stream — see `segments_encoding`.
     #[serde(with = "serde_bytes")]
     pub segments_q16: Vec<u8>,
     /// Per-segment colour (parallel to segments).
@@ -169,7 +175,11 @@ pub struct BinaryIfcDraw {
     /// Per-segment legacy dash kind (0=solid 1=dashed 2=dotted 3=dash-dot).
     pub segment_dash_kind: Vec<u8>,
 
-    /// Triangles — 6 i16 LE per triangle (3 verts).
+    /// Encoding tag for `triangles_q16`. Same semantics as
+    /// `segments_encoding`. `#[serde(default)] = 0`.
+    #[serde(default)]
+    pub triangles_encoding: u8,
+    /// Triangle coord stream — see `triangles_encoding`.
     #[serde(with = "serde_bytes")]
     pub triangles_q16: Vec<u8>,
     pub triangle_color: Vec<u32>,
@@ -330,6 +340,169 @@ fn unpack_bits(buf: &[u8], n: usize) -> Vec<bool> {
 fn generator_string() -> String {
     let version = env!("CARGO_PKG_VERSION");
     format!("Open 2D Studio v{version} IFCDraw writer")
+}
+
+// -----------------------------------------------------------------------------
+// Zigzag-LEB128 varint helpers + delta encoders for the q16 coord blobs
+// -----------------------------------------------------------------------------
+// Flat-i16-LE costs 8 B/seg, 12 B/tri irrespective of chaining. CAD scenes are
+// dominated by chained polylines / hatch boundaries / dimension extensions
+// (seg[i].p1 == seg[i-1].p2). Delta-encoding p1 vs. prev_p2 collapses two of
+// the four ints to 0 → 1 byte each under zigzag-LEB128. Short chord deltas
+// stay in [-64, 63] → 1 byte each. zstd then compresses the highly biased
+// byte distribution further. Files that don't chain (TextFill triangles)
+// keep raw via the per-blob "smaller wins" check in `build_blob_v2`.
+
+/// Encoding tag for `BinaryIfcDraw::segments_encoding` /
+/// `triangles_encoding`. Defaults to `ENC_RAW_LE` on older blobs.
+pub const ENC_RAW_LE: u8 = 0;
+pub const ENC_DELTA_ZZ: u8 = 1;
+
+#[inline]
+fn zigzag_encode(n: i32) -> u32 { ((n << 1) ^ (n >> 31)) as u32 }
+#[inline]
+fn zigzag_decode(n: u32) -> i32 { ((n >> 1) as i32) ^ -((n & 1) as i32) }
+
+fn varint_write(buf: &mut Vec<u8>, mut n: u32) {
+    while n >= 0x80 {
+        buf.push(((n & 0x7F) as u8) | 0x80);
+        n >>= 7;
+    }
+    buf.push(n as u8);
+}
+
+fn varint_read(buf: &[u8], pos: &mut usize) -> Option<u32> {
+    let mut result: u32 = 0;
+    let mut shift: u32 = 0;
+    loop {
+        if *pos >= buf.len() { return None; }
+        let byte = buf[*pos];
+        *pos += 1;
+        result |= ((byte & 0x7F) as u32) << shift;
+        if (byte & 0x80) == 0 { return Some(result); }
+        shift += 7;
+        if shift >= 35 { return None; }
+    }
+}
+
+#[inline]
+fn write_zz(buf: &mut Vec<u8>, n: i32) { varint_write(buf, zigzag_encode(n)); }
+#[inline]
+fn read_zz(buf: &[u8], pos: &mut usize) -> Option<i32> {
+    varint_read(buf, pos).map(zigzag_decode)
+}
+
+#[inline]
+fn saturate_i16(v: i32) -> i16 {
+    v.max(i16::MIN as i32).min(i16::MAX as i32) as i16
+}
+
+/// Delta-encode flat i16-LE segments (8 B/seg) into a zigzag-LEB128
+/// stream. Per segment, prev = (0,0) initially:
+///   d_x1 = x1 - prev_x2;  d_y1 = y1 - prev_y2;
+///   d_x2 = x2 - x1;       d_y2 = y2 - y1;
+/// Chained polylines drive the first two deltas to 0 each.
+fn delta_encode_segments_q16(flat_le: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(flat_le.len());
+    let mut prev_x2: i32 = 0;
+    let mut prev_y2: i32 = 0;
+    for chunk in flat_le.chunks_exact(8) {
+        let x1 = i16::from_le_bytes([chunk[0], chunk[1]]) as i32;
+        let y1 = i16::from_le_bytes([chunk[2], chunk[3]]) as i32;
+        let x2 = i16::from_le_bytes([chunk[4], chunk[5]]) as i32;
+        let y2 = i16::from_le_bytes([chunk[6], chunk[7]]) as i32;
+        write_zz(&mut out, x1 - prev_x2);
+        write_zz(&mut out, y1 - prev_y2);
+        write_zz(&mut out, x2 - x1);
+        write_zz(&mut out, y2 - y1);
+        prev_x2 = x2;
+        prev_y2 = y2;
+    }
+    out
+}
+
+/// Inverse of `delta_encode_segments_q16` → flat i16-LE bytes ready for
+/// the existing `read_i16_le` dequant pipeline. Truncated streams stop
+/// at the last well-formed segment.
+fn delta_decode_segments_q16(buf: &[u8]) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity(buf.len() * 2);
+    let mut pos: usize = 0;
+    let mut prev_x2: i32 = 0;
+    let mut prev_y2: i32 = 0;
+    while pos < buf.len() {
+        let d_x1 = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let d_y1 = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let d_x2 = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let d_y2 = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let x1 = prev_x2 + d_x1;
+        let y1 = prev_y2 + d_y1;
+        let x2 = x1 + d_x2;
+        let y2 = y1 + d_y2;
+        out.extend_from_slice(&saturate_i16(x1).to_le_bytes());
+        out.extend_from_slice(&saturate_i16(y1).to_le_bytes());
+        out.extend_from_slice(&saturate_i16(x2).to_le_bytes());
+        out.extend_from_slice(&saturate_i16(y2).to_le_bytes());
+        prev_x2 = x2;
+        prev_y2 = y2;
+    }
+    out
+}
+
+/// Delta-encode flat i16-LE triangles (12 B/tri). Per triangle, with
+/// prev = (0,0) initially:
+///   d_v0 = v0 - prev_v2,  d_v1 = v1 - v0,  d_v2 = v2 - v1
+fn delta_encode_triangles_q16(flat_le: &[u8]) -> Vec<u8> {
+    let mut out = Vec::with_capacity(flat_le.len());
+    let mut prev_x: i32 = 0;
+    let mut prev_y: i32 = 0;
+    for chunk in flat_le.chunks_exact(12) {
+        let v0x = i16::from_le_bytes([chunk[0],  chunk[1]])  as i32;
+        let v0y = i16::from_le_bytes([chunk[2],  chunk[3]])  as i32;
+        let v1x = i16::from_le_bytes([chunk[4],  chunk[5]])  as i32;
+        let v1y = i16::from_le_bytes([chunk[6],  chunk[7]])  as i32;
+        let v2x = i16::from_le_bytes([chunk[8],  chunk[9]])  as i32;
+        let v2y = i16::from_le_bytes([chunk[10], chunk[11]]) as i32;
+        write_zz(&mut out, v0x - prev_x);
+        write_zz(&mut out, v0y - prev_y);
+        write_zz(&mut out, v1x - v0x);
+        write_zz(&mut out, v1y - v0y);
+        write_zz(&mut out, v2x - v1x);
+        write_zz(&mut out, v2y - v1y);
+        prev_x = v2x;
+        prev_y = v2y;
+    }
+    out
+}
+
+/// Inverse of `delta_encode_triangles_q16`.
+fn delta_decode_triangles_q16(buf: &[u8]) -> Vec<u8> {
+    let mut out: Vec<u8> = Vec::with_capacity(buf.len() * 2);
+    let mut pos: usize = 0;
+    let mut prev_x: i32 = 0;
+    let mut prev_y: i32 = 0;
+    while pos < buf.len() {
+        let d0x = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let d0y = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let d1x = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let d1y = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let d2x = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let d2y = match read_zz(buf, &mut pos) { Some(v) => v, None => break };
+        let v0x = prev_x + d0x;
+        let v0y = prev_y + d0y;
+        let v1x = v0x + d1x;
+        let v1y = v0y + d1y;
+        let v2x = v1x + d2x;
+        let v2y = v1y + d2y;
+        out.extend_from_slice(&saturate_i16(v0x).to_le_bytes());
+        out.extend_from_slice(&saturate_i16(v0y).to_le_bytes());
+        out.extend_from_slice(&saturate_i16(v1x).to_le_bytes());
+        out.extend_from_slice(&saturate_i16(v1y).to_le_bytes());
+        out.extend_from_slice(&saturate_i16(v2x).to_le_bytes());
+        out.extend_from_slice(&saturate_i16(v2y).to_le_bytes());
+        prev_x = v2x;
+        prev_y = v2y;
+    }
+    out
 }
 
 // =============================================================================
@@ -600,8 +773,13 @@ fn lower_v2(blob: BinaryIfcDraw, path_hint: &str) -> Scene {
         }
     }
 
-    // Segments
-    let seg_q = read_i16_le(&blob.segments_q16);
+    // Segments — switch on the encoding tag to materialise a flat
+    // i16-LE buffer for the existing reader loop.
+    let segments_le: Vec<u8> = match blob.segments_encoding {
+        ENC_DELTA_ZZ => delta_decode_segments_q16(&blob.segments_q16),
+        _            => blob.segments_q16.clone(),
+    };
+    let seg_q = read_i16_le(&segments_le);
     let n_seg = seg_q.len() / 4;
     let seg_paper = unpack_bits(&blob.segment_paper_bits, n_seg);
     for i in 0..n_seg {
@@ -629,7 +807,11 @@ fn lower_v2(blob: BinaryIfcDraw, path_hint: &str) -> Scene {
     }
 
     // Triangles
-    let tri_q = read_i16_le(&blob.triangles_q16);
+    let triangles_le: Vec<u8> = match blob.triangles_encoding {
+        ENC_DELTA_ZZ => delta_decode_triangles_q16(&blob.triangles_q16),
+        _            => blob.triangles_q16.clone(),
+    };
+    let tri_q = read_i16_le(&triangles_le);
     let n_tri = tri_q.len() / 6;
     let tri_paper = unpack_bits(&blob.triangle_paper_bits, n_tri);
     for i in 0..n_tri {
@@ -728,6 +910,16 @@ fn build_blob_v2(scene: &Scene, source_path: Option<&str>) -> BinaryIfcDraw {
     }
     let segment_paper_bits = pack_bits(paper_bits);
 
+    // Pick smaller of raw-LE vs. delta-zigzag for the segment q16 blob.
+    let (segments_q16, segments_encoding) = {
+        let delta = delta_encode_segments_q16(&segments_q16);
+        if delta.len() < segments_q16.len() {
+            (delta, ENC_DELTA_ZZ)
+        } else {
+            (segments_q16, ENC_RAW_LE)
+        }
+    };
+
     // ----- Triangles -----
     let n_tri = scene.triangles.len();
     let mut triangles_q16 = Vec::with_capacity(n_tri * 12);
@@ -751,6 +943,16 @@ fn build_blob_v2(scene: &Scene, source_path: Option<&str>) -> BinaryIfcDraw {
         });
     }
     let triangle_paper_bits = pack_bits(tri_paper_bits);
+
+    // Same delta-vs-raw shootout for the triangle q16 blob.
+    let (triangles_q16, triangles_encoding) = {
+        let delta = delta_encode_triangles_q16(&triangles_q16);
+        if delta.len() < triangles_q16.len() {
+            (delta, ENC_DELTA_ZZ)
+        } else {
+            (triangles_q16, ENC_RAW_LE)
+        }
+    };
 
     // ----- Layouts -----
     let layouts: Vec<LayoutDef> = scene
@@ -826,6 +1028,7 @@ fn build_blob_v2(scene: &Scene, source_path: Option<&str>) -> BinaryIfcDraw {
         layouts,
         layers,
 
+        segments_encoding,
         segments_q16,
         segment_color,
         segment_paper_bits,
@@ -834,6 +1037,7 @@ fn build_blob_v2(scene: &Scene, source_path: Option<&str>) -> BinaryIfcDraw {
         segment_dash_idx,
         segment_dash_kind,
 
+        triangles_encoding,
         triangles_q16,
         triangle_color,
         triangle_paper_bits,
