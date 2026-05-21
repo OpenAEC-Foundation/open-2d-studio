@@ -774,50 +774,53 @@ fn side_panel_header(
     _extra: impl FnOnce(),
     on_result: &mut dyn FnMut(PanelHeaderResult),
 ) {
-    let header_h = 22.0;
+    // Mockup spec (lines 404-422): bg `surface`, 1 px `border-light`
+    // bottom, caret 14 px + label 12 px (text), sublabel 10 px right-
+    // aligned. Header height 24 px.
+    let palette = superui::theme::Theme::Default.palette();
+    let header_h = 24.0;
     let full_w = ui.available_width();
     let (rect, _resp) = ui.allocate_exact_size(
         egui::vec2(full_w, header_h),
         egui::Sense::hover(),
     );
     let painter = ui.painter_at(rect);
-    // Background strip â€” slightly darker than panel fill, with a 1 px
-    // bottom hairline for separation.
-    painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(30, 33, 37));
+    painter.rect_filled(rect, 0.0, palette.panel_bg);
     painter.line_segment(
         [egui::pos2(rect.left(), rect.bottom() - 0.5),
          egui::pos2(rect.right(), rect.bottom() - 0.5)],
-        egui::Stroke::new(1.0, RIBBON.separator),
+        egui::Stroke::new(1.0, palette.border_light),
     );
-    // Title.
-    let galley = painter.layout_no_wrap(
-        title.to_string(),
-        egui::FontId::proportional(11.0),
-        RIBBON.label_bold,
+    // Caret-down on the left (mockup `Lucide.chevD`).
+    painter.text(
+        egui::pos2(rect.left() + 10.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        egui_phosphor::regular::CARET_DOWN,
+        egui::FontId::new(12.0, egui::FontFamily::Proportional),
+        palette.fg_dim,
     );
-    painter.galley(
-        egui::pos2(rect.left() + 10.0, rect.center().y - galley.size().y * 0.5),
-        galley,
-        RIBBON.label_bold,
+    // Title — mockup uses 12 px proportional, weight 500.
+    painter.text(
+        egui::pos2(rect.left() + 26.0, rect.center().y),
+        egui::Align2::LEFT_CENTER,
+        title,
+        egui::FontId::proportional(12.0),
+        palette.fg,
     );
-    // Chevron button â€” 16x16 at the right edge. "Ã—" glyph for close.
+    // Close × button — 16x16 at the right edge.
     let btn_size = egui::vec2(16.0, 16.0);
     let btn_rect = egui::Rect::from_min_size(
         egui::pos2(rect.right() - btn_size.x - 6.0, rect.center().y - btn_size.y * 0.5),
         btn_size,
     );
     let btn_resp = ui.interact(btn_rect, egui::Id::new(("panel_close", title)), egui::Sense::click());
-    let btn_bg = if btn_resp.hovered() {
-        egui::Color32::from_rgba_premultiplied(60, 70, 84, 180)
-    } else {
-        egui::Color32::TRANSPARENT
-    };
-    if btn_bg != egui::Color32::TRANSPARENT {
-        painter.rect_filled(btn_rect, 2.0, btn_bg);
+    if btn_resp.hovered() {
+        painter.rect_filled(btn_rect, 2.0, palette.hover);
     }
     let c = btn_rect.center();
     let k = 4.0;
-    let stroke = egui::Stroke::new(1.4, RIBBON.label_bold);
+    let stroke_col = if btn_resp.hovered() { palette.fg } else { palette.fg_dim };
+    let stroke = egui::Stroke::new(1.2, stroke_col);
     painter.line_segment(
         [egui::pos2(c.x - k, c.y - k), egui::pos2(c.x + k, c.y + k)], stroke);
     painter.line_segment(
@@ -3957,84 +3960,138 @@ impl App {
             // close button, then the content below. Matches the TrueView
             // docked-panel aesthetic.
             if layer_panel_open {
+                let palette = superui::theme::Theme::Default.palette();
                 egui::SidePanel::left("layers")
-                    .default_width(240.0)
+                    .default_width(superui::tokens::metrics::LEFT_DOCK_WIDTH)
                     .min_width(180.0)
                     .resizable(true)
+                    .frame(egui::Frame::none().fill(palette.bg))
                     .show(ctx, |ui| {
-                        side_panel_header(ui, "LAYERS", || {}, &mut |hdr| {
+                        side_panel_header(ui, "Layers", || {}, &mut |hdr| {
                             if hdr.chevron_clicked {
                                 requested_toggle_layer_panel = true;
                             }
                         });
-                        ui.label(
-                            egui::RichText::new(format!("{} layers Â· {} hidden",
-                                layers_for_active.len(),
-                                hidden_snapshot.len()))
-                                .size(11.0)
-                                .color(egui::Color32::from_rgb(150, 156, 164)),
-                        );
+                        // Mockup secondary header: "Show all  Hide all" left,
+                        // "Read-only" right (Viewer is read-only).
+                        let n = layers_for_active.len();
+                        let h = hidden_snapshot.len();
                         ui.horizontal(|ui| {
-                            if ui.small_button("Show all").clicked() {
+                            ui.add_space(8.0);
+                            let lbl = format!("{} layers · {} hidden", n, h);
+                            ui.label(egui::RichText::new(lbl).size(10.0).color(palette.fg_dim));
+                        });
+                        ui.horizontal(|ui| {
+                            ui.add_space(8.0);
+                            let show_all = ui.add(
+                                egui::Label::new(egui::RichText::new("Show all")
+                                    .size(11.0).color(palette.fg_dim).underline())
+                                    .sense(egui::Sense::click()));
+                            if show_all.clicked() {
                                 requested_layer_show_all = true;
                             }
-                            if ui.small_button("Hide all").clicked() {
+                            ui.add_space(4.0);
+                            let hide_all = ui.add(
+                                egui::Label::new(egui::RichText::new("Hide all")
+                                    .size(11.0).color(palette.fg_dim).underline())
+                                    .sense(egui::Sense::click()));
+                            if hide_all.clicked() {
                                 requested_layer_hide_all = true;
                             }
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                ui.add_space(8.0);
+                                ui.label(egui::RichText::new("Read-only")
+                                    .size(11.0).color(palette.fg_muted));
+                            });
                         });
-                        ui.separator();
+                        ui.add_space(2.0);
+                        // 1 px divider matching mockup `border-light`.
+                        let div_rect = ui.allocate_exact_size(
+                            egui::vec2(ui.available_width(), 1.0), egui::Sense::hover()).0;
+                        ui.painter().line_segment(
+                            [div_rect.left_center(), div_rect.right_center()],
+                            egui::Stroke::new(1.0, palette.border_light));
                         if layers_for_active.is_empty() {
                             ui.add_space(8.0);
-                            ui.label(
-                                egui::RichText::new("No layers loaded.")
-                                    .italics()
-                                    .color(egui::Color32::from_rgb(120, 128, 136)),
-                            );
+                            ui.horizontal(|ui| {
+                                ui.add_space(10.0);
+                                ui.label(
+                                    egui::RichText::new("No layers loaded.")
+                                        .italics()
+                                        .size(11.0)
+                                        .color(palette.fg_muted),
+                                );
+                            });
                         } else {
                             egui::ScrollArea::vertical().show(ui, |ui| {
                                 for (name, rgba) in &layers_for_active {
-                                    let mut visible = !hidden_snapshot.contains(name);
-                                    let before = visible;
-                                    ui.horizontal(|ui| {
-                                        ui.checkbox(&mut visible, "");
-                                        let r = ((rgba >> 0)  & 0xFF) as u8;
-                                        let g = ((rgba >> 8)  & 0xFF) as u8;
-                                        let b = ((rgba >> 16) & 0xFF) as u8;
-                                        let (rect, _resp) = ui.allocate_exact_size(
-                                            egui::vec2(18.0, 12.0),
-                                            egui::Sense::hover());
-                                        ui.painter().rect_filled(rect, 2.0,
-                                            egui::Color32::from_rgb(r, g, b));
-                                        ui.painter().rect_stroke(rect, 2.0,
-                                            egui::Stroke::new(1.0, egui::Color32::from_gray(60)));
-                                        ui.label(name);
-                                        // Trash button â€” right-aligned. Shift+click
-                                        // is required to actually delete (we treat
-                                        // a plain click as a fat-finger guard);
-                                        // this matches Windows Explorer's
-                                        // Shift+Del "skip recycle bin" muscle memory.
-                                        ui.with_layout(
-                                            egui::Layout::right_to_left(
-                                                egui::Align::Center),
-                                            |ui| {
-                                                let resp = ui.add(
-                                                    egui::Button::new("ðŸ—‘")
-                                                        .small()
-                                                        .frame(false))
-                                                    .on_hover_text(
-                                                        "Shift+click to delete \
-                                                         this layer (excluded \
-                                                         from saved output)");
-                                                if resp.clicked()
-                                                    && ui.input(|i| i.modifiers.shift)
-                                                {
-                                                    requested_layer_delete = Some(
-                                                        name.clone());
-                                                }
-                                            });
-                                    });
-                                    if visible != before {
+                                    let visible_before = !hidden_snapshot.contains(name);
+                                    // Mockup row: h-6 (24 px), color swatch
+                                    // 16×16, name 11 px, eye + lock toggles
+                                    // on the right.
+                                    let row_h = 24.0_f32;
+                                    let full_w = ui.available_width();
+                                    let (row_rect, row_resp) = ui.allocate_exact_size(
+                                        egui::vec2(full_w, row_h), egui::Sense::click());
+                                    if row_resp.hovered() {
+                                        ui.painter().rect_filled(row_rect, 0.0, palette.hover);
+                                    }
+                                    // Color swatch.
+                                    let r = ((rgba >> 0)  & 0xFF) as u8;
+                                    let g = ((rgba >> 8)  & 0xFF) as u8;
+                                    let b = ((rgba >> 16) & 0xFF) as u8;
+                                    let swatch = egui::Rect::from_center_size(
+                                        egui::pos2(row_rect.left() + 16.0, row_rect.center().y),
+                                        egui::vec2(14.0, 14.0));
+                                    ui.painter().rect_filled(swatch, 2.0, egui::Color32::from_rgb(r, g, b));
+                                    ui.painter().rect_stroke(swatch, 2.0,
+                                        egui::Stroke::new(1.0, palette.border_light));
+                                    // Name.
+                                    let name_color = if visible_before { palette.fg } else { palette.fg_dim };
+                                    ui.painter().text(
+                                        egui::pos2(swatch.right() + 6.0, row_rect.center().y),
+                                        egui::Align2::LEFT_CENTER,
+                                        name,
+                                        egui::FontId::proportional(11.0),
+                                        name_color,
+                                    );
+                                    // Eye toggle (right side).
+                                    let eye_rect = egui::Rect::from_center_size(
+                                        egui::pos2(row_rect.right() - 36.0, row_rect.center().y),
+                                        egui::vec2(18.0, 18.0));
+                                    let eye_resp = ui.interact(eye_rect,
+                                        ui.id().with(("layer_eye", name.as_str())),
+                                        egui::Sense::click());
+                                    let eye_col = if eye_resp.hovered() { palette.fg } else { palette.fg_dim };
+                                    ui.painter().text(
+                                        eye_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        if visible_before { egui_phosphor::regular::EYE } else { egui_phosphor::regular::EYE_SLASH },
+                                        egui::FontId::new(13.0, egui::FontFamily::Proportional),
+                                        eye_col,
+                                    );
+                                    if eye_resp.clicked() {
                                         requested_layer_toggle = Some(name.clone());
+                                    }
+                                    // Lock toggle (read-only viewer: only paints, doesn't act).
+                                    let lock_rect = egui::Rect::from_center_size(
+                                        egui::pos2(row_rect.right() - 14.0, row_rect.center().y),
+                                        egui::vec2(18.0, 18.0));
+                                    let lock_resp = ui.interact(lock_rect,
+                                        ui.id().with(("layer_lock", name.as_str())),
+                                        egui::Sense::click());
+                                    let lock_col = if lock_resp.hovered() { palette.fg } else { palette.fg_dim };
+                                    ui.painter().text(
+                                        lock_rect.center(),
+                                        egui::Align2::CENTER_CENTER,
+                                        egui_phosphor::regular::LOCK_OPEN,
+                                        egui::FontId::new(13.0, egui::FontFamily::Proportional),
+                                        lock_col,
+                                    );
+                                    // Shift+row-click acts as the legacy
+                                    // "delete this layer" affordance.
+                                    if row_resp.clicked() && ui.input(|i| i.modifiers.shift) {
+                                        requested_layer_delete = Some(name.clone());
                                     }
                                 }
                             });
