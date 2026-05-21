@@ -2065,6 +2065,15 @@ struct App {
     /// Paste undo variant since semantics are identical.
     requested_duplicate: bool,
 
+    /// Set by the keyboard handler (X) or by the Viewer ribbon Edit
+    /// group's Explode button. Frame-deferred so the scene mutation
+    /// happens where GPU access is held. The dispatcher walks the
+    /// current selection, finds entities whose `entity_names[i]` starts
+    /// with `INSERT`, and reassigns each of their segments + triangles
+    /// to fresh entity_idx values so the block's children become
+    /// independently selectable.
+    requested_explode: bool,
+
     // --- Text editor (F2 / double-click) -----------------------------
     /// Active in-flight text-edit session, if any. See `EditTextState`.
     /// Set by `enter_text_edit`, cleared by `commit_text_edit` /
@@ -2370,6 +2379,7 @@ impl App {
             scale_ref: None,
             mirror_a: None,
             requested_duplicate: false,
+            requested_explode: false,
             // Text editor (Task 9): no edit in flight, no prior click.
             edit_mode: None,
             last_lmb_click_time: None,
@@ -3255,6 +3265,10 @@ impl App {
         // folded into self.requested_duplicate at the end of the frame so
         // the deferred editor block picks it up alongside Ctrl+D presses.
         let mut requested_duplicate = false;
+        // Explode -- ribbon button only flips a local bool; the keyboard
+        // handler sets self.requested_explode directly. Folded together
+        // at the end of the closure for the deferred editor block.
+        let mut requested_explode = false;
         // Ribbon tab switch â€” when the user clicks a different tab strip
         // entry, the action carries the new tab id which we apply to
         // self.active_ribbon_tab after the closure ends.
@@ -3482,6 +3496,7 @@ impl App {
                                 "scale"         => { requested_tool_mode = Some(ToolMode::Scale); }
                                 "mirror"        => { requested_tool_mode = Some(ToolMode::Mirror); }
                                 "duplicate"     => { requested_duplicate = true; }
+                                "explode"       => { requested_explode = true; }
                                 "dim"           => { requested_tool_mode = Some(ToolMode::Dimension); }
                                 "clear"         => {
                                     requested_clear_measurement = true;
@@ -4947,6 +4962,11 @@ impl App {
         if requested_duplicate {
             self.requested_duplicate = true;
         }
+        // Same fold-pattern for Explode -- the ribbon button + keyboard
+        // X both feed into the deferred editor block.
+        if requested_explode {
+            self.requested_explode = true;
+        }
         if requested_clear_measurement {
             self.last_measurement = None;
             self.measure_p1 = None;
@@ -5356,6 +5376,7 @@ impl App {
         let do_undo = std::mem::take(&mut self.requested_undo);
         // Blok 3 â€” duplicate-selection (Ctrl+D / Copy ribbon button).
         let do_duplicate = std::mem::take(&mut self.requested_duplicate);
+        let do_explode = std::mem::take(&mut self.requested_explode);
         let mut need_sel_rebuild = false;
         let active = self.active_tab;
         if do_select_all {
@@ -5396,6 +5417,20 @@ impl App {
                 self.reupload_tab_buffers(active);
                 eprintln!("[duplicate] {} entities cloned", eids_preview.len());
                 need_sel_rebuild = true;
+            }
+        }
+        if do_explode {
+            let eids = self.selected_entity_ids_in(active);
+            if !eids.is_empty() {
+                let exploded = self.explode_inserts_in(active, &eids);
+                if exploded > 0 {
+                    self.reupload_tab_buffers(active);
+                    eprintln!("[explode] split {} INSERT entit{} into per-segment entities",
+                        exploded, if exploded == 1 { "y" } else { "ies" });
+                    need_sel_rebuild = true;
+                } else {
+                    eprintln!("[explode] selection has no INSERT entities -- nothing to do");
+                }
             }
         }
         if need_sel_rebuild {
@@ -6275,6 +6310,102 @@ impl App {
             out.push(DeletedEntity { entity_idx: eid, name, segments: segs, triangles: tris });
         }
         out
+    }
+
+    /// "Explode" every INSERT entity in `eids`: for each entity whose
+    /// `entity_names[i]` starts with `INSERT`, walk its segments and
+    /// triangles and reassign each one to a freshly-minted entity_idx
+    /// with a derived name (`EXPLODED <orig> #N`). After this, the
+    /// previously-grouped block geometry can be selected piece by piece.
+    ///
+    /// Returns the number of source INSERTs that were exploded. Non-
+    /// INSERT entries in `eids` are ignored so the caller can pass a
+    /// raw selection without pre-filtering.
+    ///
+    /// Geometry is **not** transformed -- the scene-loader already
+    /// applied the INSERT's translation + rotation + scale when it
+    /// tessellated the block, so the world-space positions are already
+    /// correct. We only relabel the parallel `*_entity_idx` arrays.
+    fn explode_inserts_in(&mut self, tab_idx: usize, eids: &[u32]) -> usize {
+        if eids.is_empty() { return 0; }
+        let Some(tab) = self.tabs.get_mut(tab_idx) else { return 0; };
+        let scene = &mut tab.scene;
+        let have_seg_ids = scene.segment_entity_idx.len() == scene.segments.len();
+        let have_tri_ids = scene.triangle_entity_idx.len() == scene.triangles.len();
+        if !have_seg_ids && !have_tri_ids { return 0; }
+
+        let mut exploded = 0usize;
+        for &eid in eids {
+            // Only operate on entries whose entity_names start with
+            // "INSERT" (case-sensitive -- both loaders emit upper-case).
+            let is_insert = scene
+                .entity_names
+                .get(eid as usize)
+                .map(|n| n.starts_with("INSERT"))
+                .unwrap_or(false);
+            if !is_insert { continue; }
+            let orig_name = scene
+                .entity_names
+                .get(eid as usize)
+                .cloned()
+                .unwrap_or_else(|| "INSERT".to_string());
+
+            // Snapshot the segment + triangle indices that belong to
+            // this INSERT before we mutate anything (so the index loop
+            // doesn't see freshly-allocated entity_idx entries).
+            let seg_hits: Vec<usize> = if have_seg_ids {
+                (0..scene.segments.len())
+                    .filter(|&i| scene.segment_entity_idx[i] == eid)
+                    .collect()
+            } else { Vec::new() };
+            let tri_hits: Vec<usize> = if have_tri_ids {
+                (0..scene.triangles.len())
+                    .filter(|&i| scene.triangle_entity_idx[i] == eid)
+                    .collect()
+            } else { Vec::new() };
+            if seg_hits.is_empty() && tri_hits.is_empty() { continue; }
+
+            // Mint a fresh entity_idx + name per segment. Triangles
+            // share their entity_idx with the segment at the same index
+            // when one is available (so a HATCH-fill triangle stays
+            // grouped with its boundary segment), otherwise they get
+            // their own ids.
+            for (n, seg_i) in seg_hits.iter().enumerate() {
+                let new_eid = scene.entity_names.len() as u32;
+                scene.entity_names.push(format!("EXPLODED {} #{}", orig_name, n + 1));
+                if scene.entity_text.len() < scene.entity_names.len() {
+                    scene.entity_text.resize(scene.entity_names.len(), None);
+                }
+                scene.segment_entity_idx[*seg_i] = new_eid;
+            }
+            // Surviving triangles (e.g. solid fill / text glyphs) get
+            // one new entity_idx each so the user can pick them apart
+            // too.
+            for (n, tri_i) in tri_hits.iter().enumerate() {
+                let new_eid = scene.entity_names.len() as u32;
+                scene.entity_names.push(format!("EXPLODED {} tri#{}", orig_name, n + 1));
+                if scene.entity_text.len() < scene.entity_names.len() {
+                    scene.entity_text.resize(scene.entity_names.len(), None);
+                }
+                scene.triangle_entity_idx[*tri_i] = new_eid;
+            }
+            exploded += 1;
+        }
+
+        if exploded > 0 {
+            // Invalidate cached structure tree + scene index so the
+            // next pick / panel paint reflects the new entity layout.
+            tab.cached_structure_tree = None;
+            tab.cached_layer_list = None;
+            tab.scene_index = None;
+            tab.snap_segments = None;
+            // Drop the original selection -- the entity ids it points
+            // at are now harmless leftovers but no longer reference
+            // active geometry.
+            tab.selection.clear();
+            tab.hover = None;
+        }
+        exploded
     }
 
     /// Delete every fragment whose entity_idx is in `eids` from the tab's
@@ -7245,6 +7376,15 @@ impl ApplicationHandler for App {
                         self.requested_copy = true;
                         self.requested_delete = true;
                     }
+                }
+                // Plain `X` -- Explode. Walks the selection for entities
+                // whose name starts with `INSERT` and re-assigns each of
+                // their segments + triangles to a fresh entity_idx, so
+                // the block's children become independently selectable.
+                // Allowed in both Studio + Viewer per the minimal-edit
+                // surface for the Viewer port.
+                KeyCode::KeyX if !self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
+                    self.requested_explode = true;
                 }
                 KeyCode::KeyV if self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
                     if self.mode != AppMode::Viewer { self.requested_paste = true; }
