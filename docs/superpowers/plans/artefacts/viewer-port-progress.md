@@ -17,31 +17,46 @@ Tracks each round's commit SHA + remaining visible diffs. Mockup source:
 - [a615d9c] Round 9 — Status bar: 24 px surface strip, left/right clustering via Spacer, dim:value text pairs, 18 px rounded toggle pills, OSNAP strip with 6 toggles — remaining: measure icons (covered in R4 already).
 - [591d1b3] Round 10 — Polished measure icons: pentagon cross-hatch + corner dots, tape ticks at #3 and #6 full height — Phase 1 of viewer port COMPLETE.
 
-## Phase 2 (button wiring) — outstanding work
+## Phase 2 (button wiring) — COMPLETE
 
-Buttons that render as placeholders in Phase 1 and need handlers wired
-in Phase 2:
+Phase 2 wiring round, 2026-05-21. Buttons that rendered as placeholders
+in Phase 1 are now dispatched. Commits landed in this order:
+
+- [a971911] docs(viewer): keyboard shortcut matrix for Phase 2 wiring
+- [34e7a90] feat(viewer): wire ribbon Zoom Window button to ZoomRegion chord
+- [07b5f97] feat(viewer): hide IFC toggle button in Viewer status bar
+- [84d1044] feat(viewer): ORTHO toggle constrains Measure/Dim second click to H/V
+- [ea61117] feat(viewer): MeasureAngle + MeasureCoord + Zoom Previous + Zoom Center
+- [d60d1a0] feat(viewer): Grid + White BG + Theme cycle + View Mode cycle wired
+- [724c4c9] feat(viewer): wire Find dialog (Ctrl+F) -- text, layer, handle search
+- [b4b0e44] docs(viewer): keymap -- enumerate wired ribbon + status-bar dispatches
+
+### Wired this round
 
 Home tab:
-- Selection / Find — disabled in mockup but needs hotkey (Ctrl+F)
-- Annotate group (Linear, Angular, Radius, Diameter, Leader, Label,
-  Table) — viewer is read-only; remain visible-disabled
-- Measure / Angle, Coord — handler + tool mode dispatch (Length, Area
-  already wired)
-- Clipboard / Copy ID, Cut, Delete — disabled in mockup, Copy already
-  wired
-- Panels / Layers, Properties — toggles already wired via
-  `requested_toggle_layer_panel` and `requested_toggle_props_panel`
+- Selection / Find — Ctrl+F + ribbon button (724c4c9)
+- Measure / Angle — three-click vertex+rays angle readout (ea61117)
+- Measure / Coord. — single-click world-coord readout (ea61117)
+- Annotate group — removed entirely from Viewer (b5f1ec2)
 
 View tab:
-- Zoom / Zoom Window, Zoom Previous, Zoom Center — handler + tool mode
-- Display / Grid — toggle handler (currently selected=true cosmetic)
-- Display / White BG — already wired in legacy ribbon
-- Appearance / Theme — handler + dropdown popup
-- Panels / IFC Model — disabled in mockup, keep visible
+- Zoom / Window — engages ZoomRegion, same as Z R chord (34e7a90)
+- Zoom / Previous — pops camera_history stack (ea61117)
+- Zoom / Center — engages ZoomCenter one-shot recenter (ea61117)
+- Display / Grid — toggle + paint adaptive world-grid (d60d1a0)
+- Display / White BG — toggle clear-color dark↔white (d60d1a0)
+- Appearance / Theme — cycles (placeholder; only Default ships) (d60d1a0)
 
 Status bar:
-- ORTHO toggle — dispatch arm
-- IFC toggle — dispatch arm
-- View-mode select dropdown (Hidden Line / White BG / Transparent) —
-  not yet rendered (mockup line 1001-1008)
+- ORTHO toggle — wired + constrains Measure/Dim second click (84d1044)
+- IFC toggle — hidden in Viewer mode (07b5f97)
+- View-mode pill — cycle Hidden Line / Wireframe (d60d1a0)
+
+### Still deferred to future rounds
+
+- Theme picker dropdown popup (Phase 2 ships click-to-cycle placeholder
+  because superui currently only exports `Theme::Default`).
+- ZoomCenter / MeasureAngle / MeasureCoord on-canvas overlay text (the
+  renderer doesn't pick up `last_measure_angle` / `last_measure_coord`
+  yet — they're stored in App state but not painted).
+- Right-click / context menu on Find dialog rows.
