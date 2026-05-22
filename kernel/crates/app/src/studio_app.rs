@@ -2090,6 +2090,22 @@ struct App {
     /// Currently selected tree node id, or None.
     structure_selected: Option<String>,
 
+    // ---- IFC content view (full-area browser, Viewer + IFC ribbon tab)
+    /// Selected IFC-X entry id (mirrors `structure_selected` but kept
+    /// separate so toggling tabs doesn't clobber the right-side tree
+    /// selection). Resolved through `IfcxView::entry_json`.
+    ifcx_selected: Option<String>,
+    /// Free-text filter over tree-row labels (case-insensitive substring
+    /// match). Empty -> show everything.
+    ifcx_search_query: String,
+    /// Width of the centre (detail) column in the IFC content view, in
+    /// logical px. Defaults to 380. User-resizable via the grip.
+    ifcx_centre_w: f32,
+    /// Width of the right (raw-JSON) column, in logical px. Defaults to
+    /// 580. The left tree column gets whatever remains after these two
+    /// and the surrounding panels.
+    ifcx_right_w: f32,
+
     // --- Selection / click tracking ---------------------------------
     lmb_pressed: bool,
     lmb_press_pos: (f32, f32),
@@ -8967,6 +8983,13 @@ impl ApplicationHandler for App {
                                         {
                                             self.last_measure_coord = Some(world);
                                         }
+                                    }
+                                    ToolMode::Pan => {
+                                        // Hand-pan: clicks are no-ops; the
+                                        // pan motion is handled by the LMB
+                                        // drag path (see CursorMoved). This
+                                        // arm exists only to satisfy the
+                                        // ToolMode match-exhaustiveness check.
                                     }
                                 }
                             }
