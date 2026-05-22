@@ -7623,6 +7623,35 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 }
                 self.reupload_tab_buffers(tab_idx);
             }
+            EditOp::Explode { ref reassignments, new_eids: _ } => {
+                // Inverse: walk each (kind, slot, old_eid) and put the
+                // old eid back into the live parallel array. The minted
+                // entity_names entries stay -- they're orphaned but
+                // dropping them would renumber every later eid.
+                if let Some(tab) = self.tabs.get_mut(tab_idx) {
+                    let scene = &mut tab.scene;
+                    for &(kind, idx, old_eid) in reassignments {
+                        match kind {
+                            SegOrTri::Seg => {
+                                if let Some(slot) = scene.segment_entity_idx.get_mut(idx) {
+                                    *slot = old_eid;
+                                }
+                            }
+                            SegOrTri::Tri => {
+                                if let Some(slot) = scene.triangle_entity_idx.get_mut(idx) {
+                                    *slot = old_eid;
+                                }
+                            }
+                        }
+                    }
+                    // Same cache invalidation as explode itself.
+                    tab.cached_structure_tree = None;
+                    tab.cached_layer_list = None;
+                    tab.scene_index = None;
+                    tab.snap_segments = None;
+                }
+                self.reupload_tab_buffers(tab_idx);
+            }
         }
         // Selection may now point at relocated segments â€” safest to clear.
         if let Some(tab) = self.tabs.get_mut(tab_idx) {
@@ -7744,6 +7773,11 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 if scene.entity_text.len() < scene.entity_names.len() {
                     scene.entity_text.resize(scene.entity_names.len(), None);
                 }
+                // Snapshot the (Seg, slot, pre_eid) BEFORE we
+                // overwrite the parallel array, then track the
+                // minted eid for the redo replay.
+                reassignments.push((SegOrTri::Seg, *seg_i, scene.segment_entity_idx[*seg_i]));
+                new_eids.push(new_eid);
                 scene.segment_entity_idx[*seg_i] = new_eid;
             }
             // Surviving triangles (e.g. solid fill / text glyphs) get
@@ -7755,6 +7789,8 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 if scene.entity_text.len() < scene.entity_names.len() {
                     scene.entity_text.resize(scene.entity_names.len(), None);
                 }
+                reassignments.push((SegOrTri::Tri, *tri_i, scene.triangle_entity_idx[*tri_i]));
+                new_eids.push(new_eid);
                 scene.triangle_entity_idx[*tri_i] = new_eid;
             }
             exploded += 1;
@@ -7772,6 +7808,11 @@ natively, so you can hand the file back to your main toolchain without losing ed
             // active geometry.
             tab.selection.clear();
             tab.hover = None;
+            // Make the reassignment undoable. We push only when
+            // something actually changed -- empty selection or all
+            // non-INSERT hits result in `reassignments.is_empty()` AND
+            // exploded == 0, so the gate matches.
+            push_undo(&mut tab.undo_stack, EditOp::Explode { reassignments, new_eids });
         }
         exploded
     }
@@ -9296,8 +9337,14 @@ impl ApplicationHandler for App {
                 KeyCode::Tab if self.modifiers_ctrl_held() => {
                     self.cycle_tab(!self.modifiers_shift_held());
                 }
-                KeyCode::KeyZ if self.modifiers_ctrl_held() => {
-                    if self.mode != AppMode::Viewer { self.requested_undo = true; }
+                KeyCode::KeyZ if self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
+                    // Ctrl+Z fires in BOTH Studio and Viewer -- the
+                    // viewer port's minimal-edit surface (Move /
+                    // Delete / Explode / layer-delete) all push undo
+                    // ops, so the Ctrl+Z path must reach them too.
+                    // Without this, the user can edit but cannot
+                    // revert -- the original bug report.
+                    self.requested_undo = true;
                 }
                 // ZR â€” plain Z buffers a chord prefix. `Z R` within 1 s
                 // triggers Zoom-Region mode (handled in the KeyR arm).
