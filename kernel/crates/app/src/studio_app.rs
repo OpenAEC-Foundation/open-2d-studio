@@ -8580,7 +8580,11 @@ fn rebuild_annotation_pipe(
     let text_color: u32 = 0xFFFFFFFF;  // white
 
     let text_h_world = (1.0 / tab.cam.zoom.max(1e-9)) * 0.02;
-    let tick_world = text_h_world * 0.6;
+    // Ticks were too small to see at common zooms. Bump to ~1.5× the
+    // text height (≈ 6 mm at 1:100, matches AutoCAD's default DIMTSZ
+    // when DIMBLK = oblique) so the perpendicular slash at each dim-
+    // line endpoint reads clearly.
+    let tick_world = text_h_world * 1.5;
 
     let mut verts: Vec<Vertex> = Vec::new();
 
