@@ -5984,7 +5984,12 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 depth_stencil_attachment: None,
                 timestamp_writes: None, occlusion_query_set: None,
             });
-            for pane in &panes {
+            // IFC ribbon tab (Viewer) suppresses canvas drawing -- the
+            // CentralPanel painted a full-area IFC-X content browser
+            // this frame, so we only run the clear pass above and skip
+            // the per-pane render loop.
+            let panes_to_draw: &[RenderPane] = if ifcx_view_active { &[] } else { &panes[..] };
+            for pane in panes_to_draw {
                 let (cx, cy, cw, ch) = pane.rect_px;
                 // Skip degenerate viewports â€” wgpu panics on 0-size.
                 if cw < 1.0 || ch < 1.0 { continue; }
@@ -8728,7 +8733,13 @@ impl ApplicationHandler for App {
                             let shift_held = self.modifiers_shift_held();
                             let ctrl_held = self.modifiers_ctrl_held();
                             let additive = shift_held || ctrl_held;
-                            if self.tool_mode == ToolMode::Move {
+                            if self.tool_mode == ToolMode::Pan {
+                                // Hand-pan release: drop the drag flag and
+                                // stay in Pan mode so the user can press +
+                                // drag again. CursorMoved already applied
+                                // the pan live -- no commit needed.
+                                self.dragging = false;
+                            } else if self.tool_mode == ToolMode::Move {
                                 // Prefer multi-entity move when one is in flight;
                                 // fall back to legacy single-entity drag.
                                 let multi_take = self.tabs.get_mut(focus_tab)
