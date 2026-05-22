@@ -3632,6 +3632,31 @@ impl App {
         let prop_selection_count: usize = self.selected_entity_count_in(active_tab_idx);
         let prop_scene_total = self.tabs.get(active_tab_idx).map(|t| t.scene.segments.len()).unwrap_or(0);
         let prop_tab_label = self.tabs.get(active_tab_idx).map(|t| t.label.clone()).unwrap_or_default();
+        // Transient undo/redo flash. ~2 s lifetime: anything older we
+        // suppress (and clear the field so the structure doesn't keep
+        // it forever). Snapshot here so the closure below borrows the
+        // string without re-entering &mut self.
+        const HISTORY_FLASH_DURATION_MS: u128 = 2_000;
+        let history_flash_snapshot: Option<String> = {
+            if let Some((msg, t0)) = self.last_history_action_label.as_ref() {
+                if t0.elapsed().as_millis() < HISTORY_FLASH_DURATION_MS {
+                    Some(msg.clone())
+                } else {
+                    // Expired -- drop on the next frame so the status
+                    // bar reverts to its normal layout.
+                    None
+                }
+            } else { None }
+        };
+        if history_flash_snapshot.is_none() && self.last_history_action_label.is_some() {
+            // Clear the expired marker so we don't keep re-checking
+            // the same Instant every frame for the rest of the session.
+            if let Some((_, t0)) = self.last_history_action_label.as_ref() {
+                if t0.elapsed().as_millis() >= HISTORY_FLASH_DURATION_MS {
+                    self.last_history_action_label = None;
+                }
+            }
+        }
 
         // `recent_files_snapshot` removed â€” snapshot was never read by the
         // egui closure but allocated a fresh Vec<String> per frame. The
@@ -4526,6 +4551,20 @@ natively, so you can hand the file back to your main toolchain without losing ed
                         },
                         StatusSection::Spacer,
                     ];
+                    // Transient undo/redo flash -- appears right after
+                    // the Spacer (so it lands on the right side of the
+                    // bar, immediately next to the IFC/Selected/Objects
+                    // cluster). Auto-expires after ~2 s; see the
+                    // snapshot block where we read the elapsed time and
+                    // clear the field. Rendered as plain Text -- the
+                    // StatusBar widget already paints Text in fg_dim,
+                    // which reads as "transient hint" against the bar's
+                    // dark fill. No accent fill needed; the brief
+                    // appearance + disappearance carries the visual
+                    // weight on its own.
+                    if let Some(msg) = history_flash_snapshot.as_ref() {
+                        sections.push(StatusSection::Text(msg.clone()));
+                    }
                     // IFC toggle — authoring-only affordance; the
                     // viewer has no IFC tab + IFC panel so the toggle
                     // would be misleading. Hide entirely in Viewer mode.
