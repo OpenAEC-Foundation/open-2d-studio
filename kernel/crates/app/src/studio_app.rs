@@ -6772,10 +6772,22 @@ natively, so you can hand the file back to your main toolchain without losing ed
         if do_delete {
             let eids = self.selected_entity_ids_in(active);
             if !eids.is_empty() {
+                let n = eids.len();
                 self.delete_entities_in(active, &eids);
                 self.reupload_tab_buffers(active);
-                eprintln!("[delete] removed {} entities", eids.len());
+                eprintln!("[delete] removed {} entities", n);
+                self.last_history_action_label = Some((
+                    format!("Deleted {} entit{}", n, if n == 1 { "y" } else { "ies" }),
+                    std::time::Instant::now(),
+                ));
                 need_sel_rebuild = true;
+            } else {
+                // Silent no-op was confusing — surface it.
+                eprintln!("[delete] no selection — pick entities first (Select then click)");
+                self.last_history_action_label = Some((
+                    "Delete: no selection — pick entities first".to_string(),
+                    std::time::Instant::now(),
+                ));
             }
         }
         if do_paste && !self.clipboard.is_empty() {
