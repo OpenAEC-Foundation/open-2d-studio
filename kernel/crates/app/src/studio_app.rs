@@ -2210,12 +2210,26 @@ struct App {
     last_measure_area: Option<(f64, f64)>,
 
     // --- Measure Angle (Phase 2) -------------------------------------
-    /// In-progress click buffer for the three-click angle gesture
-    /// (vertex, ray1 end, ray2 end). Cleared on third click or Esc.
+    /// LEGACY click-buffer for the previous 3-click vertex+rays flow.
+    /// The current flow picks two segments instead (see
+    /// `angle_pick_first`); this vector stays as a permanent empty
+    /// placeholder so the existing snap-clear plumbing keeps compiling.
     measure_angle_pts: Vec<[f64; 2]>,
-    /// Last completed angle: (vertex, ray1_pt, ray2_pt, radians).
-    /// Rendered as a floating label until the next gesture starts.
-    last_measure_angle: Option<([f64; 2], [f64; 2], [f64; 2], f64)>,
+    /// First picked segment index (into the focused tab's
+    /// `scene.segments`) for the two-pick angle gesture. Click-1 sets
+    /// it; click-2 reads it, computes the angle between the two
+    /// segments, and clears.
+    angle_pick_first: Option<usize>,
+    /// Tab that owned the first angle pick. Click-2 must hit a segment
+    /// in the same tab (otherwise we'd be comparing geometry across
+    /// scenes -- which is nonsensical).
+    angle_pick_tab: usize,
+    /// Last completed angle. Renders as a floating "X.YÂ° (W.UU rad)"
+    /// label anchored at the midpoint of the two pick midpoints.
+    /// Fields: (segment-1 midpoint, segment-2 midpoint, angle in
+    /// radians). Cleared when the next angle gesture starts a new
+    /// pick or on tool-mode switch.
+    last_measure_angle: Option<([f64; 2], [f64; 2], f64)>,
     /// Last completed coordinate readout (single click, world space).
     /// Rendered as a floating label until the next click overwrites
     /// it. Cleared on tool-mode switch away from MeasureCoord.
@@ -2686,6 +2700,8 @@ impl App {
             measure_area_in_progress: Vec::new(),
             last_measure_area: None,
             measure_angle_pts: Vec::new(),
+            angle_pick_first: None,
+            angle_pick_tab: 0,
             last_measure_angle: None,
             last_measure_coord: None,
             find_dialog_open: false,
@@ -3397,14 +3413,17 @@ impl App {
                     .unwrap_or(false);
                 if needs_redash {
                     if let (Some(tab), Some(gpu)) = (self.tabs.get_mut(active), self.gpu.as_ref()) {
-                        // PERF_INSTRUMENT: dash-driven full buffer rebuild.
-                        // Set OPEN2D_PERF=1 to log dash-rebuild events with
-                        // segment count + wall-clock duration. Used to
-                        // identify the root cause of the user-reported
-                        // "zoom is slow" regression on big drawings.
+                        // PERF_INSTRUMENT: dash-only line refresh. The
+                        // earlier full rebuild_buffers_with_canvas
+                        // wiped scene_index + snap_segments on every
+                        // wheel notch, forcing the next CursorMoved to
+                        // rebuild them (30-60 ms on big DWG) before a
+                        // hover-pick could run. The split into
+                        // rebake_dash_lines_with_canvas keeps the topology
+                        // caches warm. Set OPEN2D_PERF=1 to log durations.
                         let _perf_t0 = std::time::Instant::now();
                         let _perf_segs = tab.scene.segments.len();
-                        tab.rebuild_buffers_with_canvas(gpu, canvas_h);
+                        tab.rebake_dash_lines_with_canvas(gpu, canvas_h);
                         if std::env::var("OPEN2D_PERF").ok().as_deref() == Some("1") {
                             eprintln!("[perf] dash_rebuild segs={} dur={:.2}ms",
                                       _perf_segs, _perf_t0.elapsed().as_secs_f64() * 1000.0);
@@ -3498,6 +3517,16 @@ impl App {
         // Move-tool reference point (click-1 in the two-click flow).
         // Snapshotted for the egui rubber-band overlay.
         let move_p1_snapshot: Option<[f64; 2]> = self.move_p1;
+        // MeasureAngle snapshots -- first-pick segment endpoints
+        // (resolved through the latched tab) + completed angle label.
+        let angle_first_pick_seg: Option<([f64; 2], [f64; 2])> =
+            self.angle_pick_first.and_then(|i| {
+                self.tabs.get(self.angle_pick_tab)
+                    .and_then(|t| t.scene.segments.get(i))
+                    .map(|s| (s.p1, s.p2))
+            });
+        let last_measure_angle_snapshot: Option<([f64; 2], [f64; 2], f64)> =
+            self.last_measure_angle;
         // Drag-box snapshot â€” overlay is shown when LMB is down in Select
         // mode and drift exceeds the same HiDPI-scaled threshold the
         // release path uses. Crossing direction = left-running drag.
@@ -5476,6 +5505,49 @@ natively, so you can hand the file back to your main toolchain without losing ed
                         }
                     }
 
+                    // MeasureAngle overlay -- highlight the first picked
+                    // segment (orange thick stroke) while waiting for
+                    // click-2, then paint the angle label between the
+                    // two pick midpoints after click-2 commits.
+                    if current_tool_mode == ToolMode::MeasureAngle {
+                        let painter = ui.painter();
+                        if let Some((p1, p2)) = angle_first_pick_seg {
+                            let s1 = world_to_screen(p1);
+                            let s2 = world_to_screen(p2);
+                            let halo = egui::Stroke::new(
+                                4.5, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 140),
+                            );
+                            let stroke = egui::Stroke::new(
+                                2.5, egui::Color32::from_rgb(255, 165, 60),
+                            );
+                            painter.line_segment([s1, s2], halo);
+                            painter.line_segment([s1, s2], stroke);
+                        }
+                        if let Some((m1, m2, theta)) = last_measure_angle_snapshot {
+                            let sm1 = world_to_screen(m1);
+                            let sm2 = world_to_screen(m2);
+                            let mid = egui::pos2((sm1.x + sm2.x) * 0.5, (sm1.y + sm2.y) * 0.5);
+                            let font = egui::FontId::proportional(12.0);
+                            let txt_color = egui::Color32::from_rgb(255, 200, 100);
+                            let outline_color = egui::Color32::from_black_alpha(200);
+                            let txt = format!(
+                                "{:.2}Â°  ({:.4} rad)",
+                                theta.to_degrees(), theta,
+                            );
+                            for (ox, oy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+                                painter.text(
+                                    egui::pos2(mid.x + ox, mid.y + oy),
+                                    egui::Align2::CENTER_CENTER,
+                                    &txt, font.clone(), outline_color,
+                                );
+                            }
+                            painter.text(
+                                mid, egui::Align2::CENTER_CENTER,
+                                &txt, font, txt_color,
+                            );
+                        }
+                    }
+
                     // Loading overlay â€” drawn whenever the active tab is
                     // a placeholder waiting for a background-thread load
                     // to finish. Replaces the previous "frozen window"
@@ -5808,7 +5880,11 @@ natively, so you can hand the file back to your main toolchain without losing ed
             }
             self.tool_mode = m;
             if m != ToolMode::Measure { self.measure_p1 = None; }
-            if m != ToolMode::MeasureAngle { self.measure_angle_pts.clear(); }
+            if m != ToolMode::MeasureAngle {
+                self.measure_angle_pts.clear();
+                self.angle_pick_first = None;
+                self.last_measure_angle = None;
+            }
             if m != ToolMode::MeasureCoord { self.last_measure_coord = None; }
             // Clear any lingering snap marker on every tool switch —
             // belt-and-braces alongside the update_snap() gate so the
@@ -8733,10 +8809,12 @@ impl ApplicationHandler for App {
                             rebuild_sel_pipe(self.tabs.get_mut(self.move_tab), gpu);
                         }
                     } else if self.tool_mode == ToolMode::MeasureAngle
-                        && !self.measure_angle_pts.is_empty()
+                        && (self.angle_pick_first.is_some() || self.last_measure_angle.is_some())
                     {
-                        // Drop in-progress angle clicks first.
-                        self.measure_angle_pts.clear();
+                        // Drop the in-progress pick + any stale label.
+                        // Stay in MeasureAngle so the user can retry.
+                        self.angle_pick_first = None;
+                        self.last_measure_angle = None;
                     } else if self.tool_mode == ToolMode::MeasureCoord {
                         self.tool_mode = ToolMode::Select;
                         self.last_measure_coord = None;
@@ -9655,26 +9733,73 @@ impl ApplicationHandler for App {
                                         self.tool_mode = ToolMode::Select;
                                     }
                                     ToolMode::MeasureAngle => {
-                                        // Three-click angle: vertex,
-                                        // ray1, ray2. Build up
-                                        // `measure_angle_pts` then
-                                        // compute on the third click.
-                                        if let Some(world) = self.screen_to_world_in(
+                                        // Two-pick angle: click segment 1
+                                        // (highlights), click segment 2,
+                                        // angle between the direction
+                                        // vectors is computed and shown
+                                        // as a label between the two pick
+                                        // midpoints. Replaces the previous
+                                        // 3-click vertex+rays flow per
+                                        // user request "moet gewoon zijn
+                                        // dat je twee lijnen selecteert".
+                                        let sf = self.window.as_ref()
+                                            .map(|w| w.scale_factor() as f32).unwrap_or(1.0);
+                                        let pick_r_px = (6.0_f32 * sf).max(6.0);
+                                        let picked = self.pick_segment_at_in(
                                             focus_tab, focus_rect,
-                                            self.mouse_pos.0, self.mouse_pos.1)
-                                        {
-                                            self.measure_angle_pts.push(world);
-                                            if self.measure_angle_pts.len() == 3 {
-                                                let v = self.measure_angle_pts[0];
-                                                let a = self.measure_angle_pts[1];
-                                                let b = self.measure_angle_pts[2];
-                                                let ax = a[0] - v[0]; let ay = a[1] - v[1];
-                                                let bx = b[0] - v[0]; let by = b[1] - v[1];
-                                                let dot = ax * bx + ay * by;
-                                                let cross = ax * by - ay * bx;
-                                                let theta_rad = cross.atan2(dot).abs();
-                                                self.last_measure_angle = Some((v, a, b, theta_rad));
-                                                self.measure_angle_pts.clear();
+                                            self.mouse_pos.0, self.mouse_pos.1, pick_r_px);
+                                        match (self.angle_pick_first, picked) {
+                                            (None, Some(s1)) => {
+                                                self.angle_pick_first = Some(s1);
+                                                self.angle_pick_tab = focus_tab;
+                                                // Clear any leftover label
+                                                // -- the next gesture is
+                                                // starting fresh.
+                                                self.last_measure_angle = None;
+                                            }
+                                            (Some(_), Some(_)) if focus_tab != self.angle_pick_tab => {
+                                                // Click landed in a
+                                                // different pane after
+                                                // click-1 was latched in
+                                                // another tab. Reset to
+                                                // make this the new click-1.
+                                                self.angle_pick_first = Some(picked.unwrap());
+                                                self.angle_pick_tab = focus_tab;
+                                                self.last_measure_angle = None;
+                                            }
+                                            (Some(s1_idx), Some(s2_idx)) => {
+                                                // Need both segments out of
+                                                // the same scene.
+                                                let (s1_opt, s2_opt) = self.tabs.get(self.angle_pick_tab)
+                                                    .map(|t| (
+                                                        t.scene.segments.get(s1_idx).copied(),
+                                                        t.scene.segments.get(s2_idx).copied(),
+                                                    ))
+                                                    .unwrap_or((None, None));
+                                                if let (Some(s1), Some(s2)) = (s1_opt, s2_opt) {
+                                                    let d1x = s1.p2[0] - s1.p1[0];
+                                                    let d1y = s1.p2[1] - s1.p1[1];
+                                                    let d2x = s2.p2[0] - s2.p1[0];
+                                                    let d2y = s2.p2[1] - s2.p1[1];
+                                                    let dot = d1x * d2x + d1y * d2y;
+                                                    let cross = d1x * d2y - d1y * d2x;
+                                                    let theta_rad = cross.atan2(dot).abs();
+                                                    // Label anchor: midpoint of the two segments' midpoints.
+                                                    let m1 = [(s1.p1[0] + s1.p2[0]) * 0.5, (s1.p1[1] + s1.p2[1]) * 0.5];
+                                                    let m2 = [(s2.p1[0] + s2.p2[0]) * 0.5, (s2.p1[1] + s2.p2[1]) * 0.5];
+                                                    self.last_measure_angle = Some((m1, m2, theta_rad));
+                                                    eprintln!("[MeasureAngle] commit between segs {} + {} -> {:.2}Â° ({:.4} rad)",
+                                                        s1_idx, s2_idx, theta_rad.to_degrees(), theta_rad);
+                                                }
+                                                self.angle_pick_first = None;
+                                            }
+                                            (_, None) => {
+                                                // Click missed every
+                                                // segment -- ignore, keep
+                                                // the in-progress pick (if
+                                                // any) so the user can try
+                                                // again without restarting.
+                                                eprintln!("[MeasureAngle] click missed -- no segment under cursor");
                                             }
                                         }
                                     }
