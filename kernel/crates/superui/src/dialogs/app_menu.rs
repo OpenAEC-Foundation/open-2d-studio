@@ -70,6 +70,11 @@ pub enum AppMenuAction {
     /// modal that explains the situation and offers a DXF fallback.
     /// See `docs/superpowers/plans/dwg-writer-plan.md`.
     SaveAsDwg,
+    /// User asked for "Save As IFCDraw..." -- the in-house binary IFC2D
+    /// format. Implemented end-to-end: msgpack + zstd + delta-coded
+    /// quantised coords (~0.45x DWG size). See
+    /// `docs/superpowers/specs/2026-05-21-ifcdraw-binary-format.md`.
+    SaveAsIfcDraw,
     Print,
     Import,
     Export,
@@ -222,13 +227,20 @@ fn paint_panel(
             Some("Ctrl+S"), 3, AppMenuAction::Save, out);
         item(ui, palette, "Opslaan als\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
             Some("Ctrl+Shift+S"), 4, AppMenuAction::SaveAs, out);
+        // IFCDraw — in-house binary IFC2D format. Always available in
+        // Studio too so authors can stash their work in the compact
+        // ~0.45x-of-DWG IFCDraw envelope.
+        item(ui, palette, "Opslaan als IFCDraw\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
+            None, 42, AppMenuAction::SaveAsIfcDraw, out);
     } else {
         // Viewer with minimal-edit surface (Move / Delete / Explode):
-        // expose DXF + DWG saves so users can persist their tweaks.
-        // DXF is direct; DWG opens a "writer in development" modal +
-        // offers the DXF fallback.
+        // expose DXF + IFCDraw + DWG saves so users can persist their
+        // tweaks. DXF is direct, IFCDraw is direct, DWG opens a
+        // "writer in development" modal + offers the DXF fallback.
         item(ui, palette, "Opslaan als DXF\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
             Some("Ctrl+Shift+S"), 4, AppMenuAction::SaveAs, out);
+        item(ui, palette, "Opslaan als IFCDraw\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
+            None, 42, AppMenuAction::SaveAsIfcDraw, out);
         item(ui, palette, "Opslaan als DWG\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
             None, 41, AppMenuAction::SaveAsDwg, out);
     }

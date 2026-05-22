@@ -4325,6 +4325,12 @@ natively, so you can hand the file back to your main toolchain without losing ed
                             self.save_as_dwg_modal_open = true;
                             self.app_menu_open = false;
                         }
+                        AppMenuAction::SaveAsIfcDraw => {
+                            // Route through the same dispatch flag that
+                            // the ribbon "Save IFCDraw" button uses.
+                            requested_menu_save_as_ifcx = true;
+                            self.app_menu_open = false;
+                        }
                         AppMenuAction::Print => {
                             // TODO: wire to a future Print/PDF export pipeline.
                             self.app_menu_open = false;
