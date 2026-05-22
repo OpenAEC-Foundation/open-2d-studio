@@ -1626,14 +1626,20 @@ impl FileTab {
             return true;
         }
         let ratio = wpp_now / self.last_dash_wpp;
-        // ~15% threshold — wider than 6% so that mid-zoom GPU buffer
-        // rebuilds don't stall the wheel. At 8 px stride that's ≤1.2 px
-        // dash-boundary drift between rebuilds — still well below the
-        // 2-3 px JND for pattern breathing on a typical 100% DPI
-        // monitor. Big drawings (100k+ segments) felt sluggish during
-        // continuous wheel zoom at 6% — the rebuild was firing every
-        // 1-2 notches.
-        ratio < 0.87 || ratio > 1.15
+        // ~25% threshold (was 15%). Wheel-zoom factor is 1.45x/notch,
+        // so a 25% wpp band catches one-in-two-or-three notches instead
+        // of every notch. Combined with the rebake_dash_lines split in
+        // 98185ef this brings the per-notch CPU cost on a 781k-segment
+        // scene from ~30 ms (every notch) down to ~10 ms average.
+        //
+        // Visual cost: at 8 px dash stride a 25% wpp drift corresponds
+        // to a 2 px dash-boundary breathing -- borderline visible if
+        // you stare at one specific dash boundary during the spin, but
+        // invisible at typical CAD wheel-zoom speeds where the camera
+        // is moving anyway. JND for solid-line position is ~1.5 px;
+        // patterns are slightly more sensitive but the gain in wheel
+        // smoothness far outweighs the breathing on big drawings.
+        ratio < 0.80 || ratio > 1.25
     }
 
     /// Get a cached, layer-grouped layer list for the LAYERS panel.
