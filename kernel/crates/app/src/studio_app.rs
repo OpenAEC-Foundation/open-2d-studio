@@ -3449,6 +3449,37 @@ impl App {
             .map(|w| w.is_maximized())
             .unwrap_or(false);
 
+        // Viewer + IFC ribbon tab triggers the full-area IFC-X content
+        // browser. See `ifcx_view.rs` for the schema. Snapshotted here
+        // so the egui closure (which can't reborrow self mutably) and
+        // the post-egui scene pass both read the same value.
+        let ifcx_view_active: bool =
+            self.mode == AppMode::Viewer && self.active_ribbon_tab == "ifc";
+        let mut ifcx_entries: Vec<crate::ifcx_view::IfcxEntry> = Vec::new();
+        let mut ifcx_selected_json: Option<String> = None;
+        let mut ifcx_selected_attrs_text: Option<String> = None;
+        let mut ifcx_header_json: Option<String> = None;
+        if ifcx_view_active {
+            if let Some(tab) = self.tabs.get(active_tab_idx) {
+                let label = tab.label.clone();
+                let source_path = tab.path.clone();
+                let view = IfcxView::new(&tab.scene, label, source_path);
+                let sel_id = self.ifcx_selected.clone()
+                    .unwrap_or_else(|| "project".to_string());
+                let entry_json = view.entry_json(&sel_id);
+                let attrs = view.attributes_for(&sel_id);
+                let header = view.document_header();
+                ifcx_selected_json = serde_json::to_string_pretty(&entry_json).ok();
+                ifcx_selected_attrs_text = serde_json::to_string_pretty(&attrs).ok();
+                ifcx_header_json = serde_json::to_string_pretty(&header).ok();
+                ifcx_entries = view.entries().to_vec();
+            }
+        }
+        let ifcx_search_query_snapshot = self.ifcx_search_query.clone();
+        let ifcx_selected_snapshot = self.ifcx_selected.clone();
+        let ifcx_centre_w_snapshot = self.ifcx_centre_w;
+        let ifcx_right_w_snapshot = self.ifcx_right_w;
+
         // Status bar snapshots â€” cursor coords, camera zoom, layer counts,
         // active tab label. Cheap to compute; always needed at bottom of frame.
         let status_cursor_world = self.cursor_world;
