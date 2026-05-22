@@ -4527,23 +4527,33 @@ natively, so you can hand the file back to your main toolchain without losing ed
                                     if eye_resp.clicked() {
                                         requested_layer_toggle = Some(name.clone());
                                     }
-                                    // Lock toggle (read-only viewer: only paints, doesn't act).
-                                    let lock_rect = egui::Rect::from_center_size(
+                                    // Trash button — explicit per-row Delete
+                                    // affordance (user asked for a visible
+                                    // delete on each layer). Single click
+                                    // marks the layer deleted (soft-delete
+                                    // via `tab.deleted_layers`; persists to
+                                    // saved DXF via `write_dxf_filtered`).
+                                    let trash_rect = egui::Rect::from_center_size(
                                         egui::pos2(row_rect.right() - 14.0, row_rect.center().y),
                                         egui::vec2(18.0, 18.0));
-                                    let lock_resp = ui.interact(lock_rect,
-                                        ui.id().with(("layer_lock", name.as_str())),
-                                        egui::Sense::click());
-                                    let lock_col = if lock_resp.hovered() { palette.fg } else { palette.fg_dim };
+                                    let trash_resp = ui.interact(trash_rect,
+                                        ui.id().with(("layer_trash", name.as_str())),
+                                        egui::Sense::click())
+                                        .on_hover_text("Delete layer (segments + triangles dropped on Save)");
+                                    let trash_col = if trash_resp.hovered() {
+                                        egui::Color32::from_rgb(220, 90, 80)
+                                    } else { palette.fg_dim };
                                     ui.painter().text(
-                                        lock_rect.center(),
+                                        trash_rect.center(),
                                         egui::Align2::CENTER_CENTER,
-                                        egui_phosphor::regular::LOCK_OPEN,
+                                        egui_phosphor::regular::TRASH,
                                         egui::FontId::new(13.0, egui::FontFamily::Proportional),
-                                        lock_col,
+                                        trash_col,
                                     );
-                                    // Shift+row-click acts as the legacy
-                                    // "delete this layer" affordance.
+                                    if trash_resp.clicked() {
+                                        requested_layer_delete = Some(name.clone());
+                                    }
+                                    // Back-compat: Shift+row-click also deletes.
                                     if row_resp.clicked() && ui.input(|i| i.modifiers.shift) {
                                         requested_layer_delete = Some(name.clone());
                                     }
