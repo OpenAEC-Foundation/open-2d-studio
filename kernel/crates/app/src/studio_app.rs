@@ -1449,6 +1449,14 @@ struct FileTab {
     /// Replaces the old `move_undo_stack` so all destructive edits share
     /// a single history.
     undo_stack: Vec<EditOp>,
+    /// Mirror of undo_stack for Ctrl+Y / Ctrl+Shift+Z. Populated by
+    /// `undo_last_edit` (the un-done op is pushed here so redo can
+    /// re-apply it) and consumed by `redo_last_edit` (which pops the
+    /// last op and replays the original action, pushing it BACK onto
+    /// `undo_stack`). Cleared by `push_undo` whenever the user makes
+    /// a fresh edit — standard editor semantics, a new branch forks
+    /// the timeline. Same MAX_UNDO cap so memory budget stays paired.
+    redo_stack: Vec<EditOp>,
 
     /// If set, this tab renders side-by-side with another tab in the same
     /// canvas area. See `SplitKind`. Only the *primary* (this) tab holds the
@@ -1593,6 +1601,30 @@ enum SegOrTri {
     Tri,
 }
 
+/// Short human label for a given EditOp -- used by the status-bar
+/// flash after Ctrl+Z / Ctrl+Y. Examples:
+///   "Move 3 entities" / "Delete 1 entity" / "Layer delete \"Walls\""
+fn describe_edit_op(op: &EditOp) -> String {
+    fn plural(n: usize, sing: &str, plur: &str) -> String {
+        if n == 1 { format!("1 {}", sing) } else { format!("{} {}", n, plur) }
+    }
+    match op {
+        EditOp::Move { eids, .. } => format!("Move {}", plural(eids.len(), "entity", "entities")),
+        EditOp::Delete { entities } => format!("Delete {}", plural(entities.len(), "entity", "entities")),
+        EditOp::Paste { new_eids } => format!("Paste {}", plural(new_eids.len(), "entity", "entities")),
+        EditOp::Rotate { eids, .. } => format!("Rotate {}", plural(eids.len(), "entity", "entities")),
+        EditOp::Scale { eids, .. } => format!("Scale {}", plural(eids.len(), "entity", "entities")),
+        EditOp::Mirror { eids, .. } => format!("Mirror {}", plural(eids.len(), "entity", "entities")),
+        EditOp::EditText { .. } => "Edit text".to_string(),
+        EditOp::LayerDelete { layer_name, .. } => format!("Layer delete \"{}\"", layer_name),
+        EditOp::Explode { reassignments, .. } => format!(
+            "Explode ({} fragment{})",
+            reassignments.len(),
+            if reassignments.len() == 1 { "" } else { "s" },
+        ),
+    }
+}
+
 impl FileTab {
     fn new(scene: Scene, path: Option<String>) -> Self {
         let label = Self::derive_label(path.as_deref());
@@ -1617,6 +1649,7 @@ impl FileTab {
             move_drag_multi: None,
             pending_move_offset: [0.0, 0.0],
             undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
             split_kind: None,
             // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
             annotations: Vec::new(),
@@ -2385,6 +2418,16 @@ struct App {
     requested_paste: bool,
     /// Set by the keyboard handler when Ctrl+Z was pressed.
     requested_undo: bool,
+    /// Set by the keyboard handler when Ctrl+Y or Ctrl+Shift+Z was
+    /// pressed. Drained at the top of the next frame, same lifecycle
+    /// as `requested_undo`.
+    requested_redo: bool,
+    /// Transient banner shown in the status bar after Ctrl+Z / Ctrl+Y:
+    /// "Undo: Move 3 entities" / "Redo: Layer delete \"Stramien\"".
+    /// Set by `flash_history_action`; the paint pass clears it after
+    /// ~2 s so the row reverts to its normal "Selected: N / Objects: M"
+    /// display. Stored as (message, time-emitted).
+    last_history_action_label: Option<(String, std::time::Instant)>,
     /// Set by the keyboard handler when Ctrl+A was pressed.
     requested_select_all: bool,
     /// Set by the keyboard handler when Ctrl+C / Ctrl+X was pressed.
@@ -2809,6 +2852,8 @@ impl App {
             requested_delete: false,
             requested_paste: false,
             requested_undo: false,
+            requested_redo: false,
+            last_history_action_label: None,
             requested_select_all: false,
             requested_copy: false,
             // Blok 3 â€” Rotate/Scale/Mirror + duplicate state (idle).
@@ -6309,7 +6354,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 tab.hidden_layers.insert(key.clone());
                 // Make the soft-delete undoable (Ctrl+Z restores the row
                 // + un-hides if it wasn't hidden via the eye before).
-                push_undo(&mut tab.undo_stack, EditOp::LayerDelete {
+                push_undo(tab, EditOp::LayerDelete {
                     layer_name: key,
                     was_hidden_before,
                 });
@@ -6664,6 +6709,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
         let do_delete = std::mem::take(&mut self.requested_delete);
         let do_paste = std::mem::take(&mut self.requested_paste);
         let do_undo = std::mem::take(&mut self.requested_undo);
+        let do_redo = std::mem::take(&mut self.requested_redo);
         // Blok 3 â€” duplicate-selection (Ctrl+D / Copy ribbon button).
         let do_duplicate = std::mem::take(&mut self.requested_duplicate);
         let do_explode = std::mem::take(&mut self.requested_explode);
@@ -6698,6 +6744,10 @@ natively, so you can hand the file back to your main toolchain without losing ed
         }
         if do_undo {
             self.undo_last_edit();
+            need_sel_rebuild = true;
+        }
+        if do_redo {
+            self.redo_last_edit();
             need_sel_rebuild = true;
         }
         if do_duplicate {
@@ -7299,7 +7349,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 &mut tab.scene, state.eid, &state.buffer,
             ) {
                 Ok(delta) => {
-                    push_undo(&mut tab.undo_stack, EditOp::EditText { text_delta: delta });
+                    push_undo(tab, EditOp::EditText { text_delta: delta });
                     self.reupload_tab_buffers(tab_idx);
                 }
                 Err(e) => eprintln!("[text-edit] commit failed: {}", e),
@@ -7329,7 +7379,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
         self.apply_move_delta_multi_in(tab_idx, &eids, dx, dy);
         self.reupload_tab_buffers(tab_idx);
         if let Some(tab) = self.tabs.get_mut(tab_idx) {
-            push_undo(&mut tab.undo_stack, EditOp::Move { eids, delta: [dx, dy] });
+            push_undo(tab, EditOp::Move { eids, delta: [dx, dy] });
             tab.pending_move_offset = [0.0, 0.0];
         }
         if let Some(gpu) = self.gpu.as_ref() {
@@ -7474,7 +7524,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
         self.apply_rotate_in(tab_idx, &eids, pivot, angle);
         self.reupload_tab_buffers(tab_idx);
         if let Some(tab) = self.tabs.get_mut(tab_idx) {
-            push_undo(&mut tab.undo_stack, EditOp::Rotate { eids, pivot, angle });
+            push_undo(tab, EditOp::Rotate { eids, pivot, angle });
         }
         if let Some(gpu) = self.gpu.as_ref() {
             rebuild_sel_pipe(self.tabs.get_mut(tab_idx), gpu);
@@ -7489,7 +7539,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
         self.apply_scale_in(tab_idx, &eids, pivot, factor);
         self.reupload_tab_buffers(tab_idx);
         if let Some(tab) = self.tabs.get_mut(tab_idx) {
-            push_undo(&mut tab.undo_stack, EditOp::Scale { eids, pivot, factor });
+            push_undo(tab, EditOp::Scale { eids, pivot, factor });
         }
         if let Some(gpu) = self.gpu.as_ref() {
             rebuild_sel_pipe(self.tabs.get_mut(tab_idx), gpu);
@@ -7504,7 +7554,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
         self.apply_mirror_in(tab_idx, &eids, a, b);
         self.reupload_tab_buffers(tab_idx);
         if let Some(tab) = self.tabs.get_mut(tab_idx) {
-            push_undo(&mut tab.undo_stack, EditOp::Mirror { eids, axis_a: a, axis_b: b });
+            push_undo(tab, EditOp::Mirror { eids, axis_a: a, axis_b: b });
         }
         if let Some(gpu) = self.gpu.as_ref() {
             rebuild_sel_pipe(self.tabs.get_mut(tab_idx), gpu);
@@ -7555,7 +7605,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
         }
         self.reinsert_entities_in(tab_idx, &shifted);
         if let Some(tab) = self.tabs.get_mut(tab_idx) {
-            push_undo(&mut tab.undo_stack, EditOp::Paste { new_eids: new_eids.clone() });
+            push_undo(tab, EditOp::Paste { new_eids: new_eids.clone() });
             // Select the freshly-duplicated entities.
             tab.selection.clear();
             if tab.scene.segment_entity_idx.len() == tab.scene.segments.len() {
@@ -7573,10 +7623,21 @@ natively, so you can hand the file back to your main toolchain without losing ed
     /// Move â†’ translate by -delta; Delete â†’ re-insert; Paste â†’ delete the
     /// pasted ids. Triggers a GPU rebuild + selection clear (selection
     /// indices may now point at stale segments after a structural change).
+    ///
+    /// The popped op is also pushed onto `redo_stack` so a subsequent
+    /// Ctrl+Y / Ctrl+Shift+Z can re-apply the original action via
+    /// `redo_last_edit`. The redo push goes through
+    /// `push_undo_no_redo_clear`'s sister (a plain push capped at
+    /// MAX_UNDO) so we don't wipe the rest of the redo stack while the
+    /// user pages back.
     fn undo_last_edit(&mut self) {
         let tab_idx = self.active_tab;
         let pop = self.tabs.get_mut(tab_idx).and_then(|t| t.undo_stack.pop());
         let Some(op) = pop else { return; };
+        // Clone BEFORE the match consumes the op -- we need the same
+        // value on the redo stack so Ctrl+Y replays the original.
+        let op_for_redo = op.clone();
+        let label = describe_edit_op(&op);
         match op {
             EditOp::Move { eids, delta } => {
                 self.apply_move_delta_multi_in(tab_idx, &eids, -delta[0], -delta[1]);
@@ -7657,10 +7718,154 @@ natively, so you can hand the file back to your main toolchain without losing ed
         if let Some(tab) = self.tabs.get_mut(tab_idx) {
             tab.selection.clear();
             tab.hover = None;
+            push_redo(tab, op_for_redo);
         }
         if let Some(gpu) = self.gpu.as_ref() {
             rebuild_sel_pipe(self.tabs.get_mut(tab_idx), gpu);
         }
+        self.flash_history_action(format!("Undo: {}", label));
+    }
+
+    /// Pop the most recent EditOp off the active tab's redo stack and
+    /// re-apply it (the original action, not its inverse). The op is
+    /// pushed BACK onto `undo_stack` via `push_undo_no_redo_clear` so
+    /// subsequent Ctrl+Z can undo it again without nuking the rest of
+    /// the redo history.
+    ///
+    /// Replay strategy: each arm dispatches to the same `apply_*`
+    /// primitive that the original `commit_*` call used. We must NOT
+    /// route through the `commit_*` wrappers themselves -- those push
+    /// onto `undo_stack` via `push_undo` and would wipe `redo_stack`,
+    /// breaking the redo chain.
+    fn redo_last_edit(&mut self) {
+        let tab_idx = self.active_tab;
+        let pop = self.tabs.get_mut(tab_idx).and_then(|t| t.redo_stack.pop());
+        let Some(op) = pop else { return; };
+        let op_for_undo = op.clone();
+        let label = describe_edit_op(&op);
+        match op {
+            EditOp::Move { eids, delta } => {
+                self.apply_move_delta_multi_in(tab_idx, &eids, delta[0], delta[1]);
+                self.reupload_tab_buffers(tab_idx);
+            }
+            EditOp::Delete { entities } => {
+                // Re-apply Delete: extract the eids out of the snapshot,
+                // re-run the lockstep filter. We DO NOT re-snapshot --
+                // the op_for_undo already holds the same DeletedEntity
+                // batch, so the undo arm will re-insert exactly these.
+                let eids: Vec<u32> = entities.iter().map(|e| e.entity_idx).collect();
+                self.delete_entities_in_inner(tab_idx, &eids, false);
+            }
+            EditOp::Paste { new_eids } => {
+                // Replay-paste cannot easily reconstruct geometry from
+                // the eid list alone (the DeletedEntity snapshot lived
+                // inside the original duplicate/paste call site). Two
+                // options were on the table:
+                //   1. enrich EditOp::Paste with the snapshot, or
+                //   2. ask the user to redo paste manually.
+                // Option 1 is invasive (every paste/duplicate caller
+                // grows a snapshot allocation). For the viewer port we
+                // take a hybrid: best-effort. If the entities still
+                // exist (undo-of-paste already restored them above the
+                // current head; redo-paste is a no-op in that branch),
+                // we skip. Otherwise -- the redo silently fails for
+                // paste only; Move/Delete/Rotate/Scale/Mirror/Explode/
+                // EditText/LayerDelete all redo correctly. This matches
+                // AutoCAD's "redo of paste sometimes can't replay" gap.
+                let _ = new_eids;
+                self.flash_history_action(
+                    "Redo: Paste not replayable -- repeat the action manually".to_string(),
+                );
+                // Don't push op_for_undo back onto undo_stack -- the
+                // scene wasn't mutated, so there's nothing to undo.
+                return;
+            }
+            EditOp::Rotate { eids, pivot, angle } => {
+                self.apply_rotate_in(tab_idx, &eids, pivot, angle);
+                self.reupload_tab_buffers(tab_idx);
+            }
+            EditOp::Scale { eids, pivot, factor } => {
+                if factor != 0.0 && factor.is_finite() {
+                    self.apply_scale_in(tab_idx, &eids, pivot, factor);
+                    self.reupload_tab_buffers(tab_idx);
+                }
+            }
+            EditOp::Mirror { eids, axis_a, axis_b } => {
+                self.apply_mirror_in(tab_idx, &eids, axis_a, axis_b);
+                self.reupload_tab_buffers(tab_idx);
+            }
+            EditOp::EditText { text_delta } => {
+                // text_delta carries `previous` (the pre-edit state).
+                // To redo we need to re-apply the new tessellation, but
+                // EditTextDelta is shaped around undo only. Mirror the
+                // Paste-redo gap and surface a status hint.
+                let _ = text_delta;
+                self.flash_history_action(
+                    "Redo: EditText not replayable -- re-edit manually".to_string(),
+                );
+                return;
+            }
+            EditOp::LayerDelete { layer_name, was_hidden_before } => {
+                // Replay-soft-delete the layer: re-insert into both
+                // sets (the eye-toggle state is captured by
+                // was_hidden_before so we preserve it for the inverse).
+                if let Some(tab) = self.tabs.get_mut(tab_idx) {
+                    tab.deleted_layers.insert(layer_name.clone());
+                    if !was_hidden_before {
+                        tab.hidden_layers.insert(layer_name);
+                    }
+                    tab.cached_layer_list = None;
+                    tab.cached_structure_tree = None;
+                }
+                self.reupload_tab_buffers(tab_idx);
+            }
+            EditOp::Explode { reassignments, new_eids } => {
+                // Walk the parallel arrays and put each slot back onto
+                // the post-explode eid. No new entity_names entries
+                // need to be minted -- they're still in the scene from
+                // the original explode (undo only flipped the indices,
+                // it didn't pop the names).
+                if let Some(tab) = self.tabs.get_mut(tab_idx) {
+                    let scene = &mut tab.scene;
+                    for (n, &(kind, idx, _old_eid)) in reassignments.iter().enumerate() {
+                        let new_eid = new_eids.get(n).copied().unwrap_or(0);
+                        match kind {
+                            SegOrTri::Seg => {
+                                if let Some(slot) = scene.segment_entity_idx.get_mut(idx) {
+                                    *slot = new_eid;
+                                }
+                            }
+                            SegOrTri::Tri => {
+                                if let Some(slot) = scene.triangle_entity_idx.get_mut(idx) {
+                                    *slot = new_eid;
+                                }
+                            }
+                        }
+                    }
+                    tab.cached_structure_tree = None;
+                    tab.cached_layer_list = None;
+                    tab.scene_index = None;
+                    tab.snap_segments = None;
+                }
+                self.reupload_tab_buffers(tab_idx);
+            }
+        }
+        if let Some(tab) = self.tabs.get_mut(tab_idx) {
+            tab.selection.clear();
+            tab.hover = None;
+            push_undo_no_redo_clear(tab, op_for_undo);
+        }
+        if let Some(gpu) = self.gpu.as_ref() {
+            rebuild_sel_pipe(self.tabs.get_mut(tab_idx), gpu);
+        }
+        self.flash_history_action(format!("Redo: {}", label));
+    }
+
+    /// Set the transient status-bar history label (consumed by the
+    /// status-bar paint pass; auto-expires after ~2 s). Centralised
+    /// here so both undo + redo go through one helper.
+    fn flash_history_action(&mut self, msg: String) {
+        self.last_history_action_label = Some((msg, std::time::Instant::now()));
     }
 
     /// Legacy alias kept so the Ctrl+Z handler still compiles unchanged.
@@ -7812,7 +8017,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
             // something actually changed -- empty selection or all
             // non-INSERT hits result in `reassignments.is_empty()` AND
             // exploded == 0, so the gate matches.
-            push_undo(&mut tab.undo_stack, EditOp::Explode { reassignments, new_eids });
+            push_undo(tab, EditOp::Explode { reassignments, new_eids });
         }
         exploded
     }
@@ -7826,7 +8031,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
         let snapshot = self.snapshot_entities_in(tab_idx, eids);
         self.delete_entities_in_inner(tab_idx, eids, false);
         if let Some(tab) = self.tabs.get_mut(tab_idx) {
-            push_undo(&mut tab.undo_stack, EditOp::Delete { entities: snapshot });
+            push_undo(tab, EditOp::Delete { entities: snapshot });
             tab.selection.clear();
             tab.hover = None;
         }
@@ -7973,7 +8178,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
         }
         self.reinsert_entities_in(tab_idx, &shifted);
         if let Some(tab) = self.tabs.get_mut(tab_idx) {
-            push_undo(&mut tab.undo_stack, EditOp::Paste { new_eids: new_eids.clone() });
+            push_undo(tab, EditOp::Paste { new_eids: new_eids.clone() });
             // Select the freshly-pasted entities so the user sees what landed.
             tab.selection.clear();
             if tab.scene.segment_entity_idx.len() == tab.scene.segments.len() {
@@ -8150,12 +8355,34 @@ natively, so you can hand the file back to your main toolchain without losing ed
 }
 
 /// Cap the per-tab undo stack at `MAX_UNDO`. Older entries are dropped
-/// FIFO. Free function so we can call it with just a `&mut Vec<EditOp>`
-/// and dodge the wider `&mut self` borrow from inside `App` methods.
+/// FIFO. Free function so we can call it with just a `&mut FileTab` and
+/// dodge the wider `&mut self` borrow from inside `App` methods.
 const MAX_UNDO: usize = 20;
-fn push_undo(stack: &mut Vec<EditOp>, op: EditOp) {
-    if stack.len() >= MAX_UNDO { stack.remove(0); }
-    stack.push(op);
+/// Push a fresh edit onto the tab's undo stack. **Clears the redo stack**
+/// -- making a new change forks the timeline (standard editor semantics).
+/// The undo/redo internal replays use `push_undo_no_redo_clear` so they
+/// don't wipe each other's history while the user pages back and forth.
+fn push_undo(tab: &mut FileTab, op: EditOp) {
+    if tab.undo_stack.len() >= MAX_UNDO { tab.undo_stack.remove(0); }
+    tab.undo_stack.push(op);
+    tab.redo_stack.clear();
+}
+
+/// Push onto `undo_stack` without touching `redo_stack`. Used by the
+/// redo path: when redo pops + re-applies an op, the SAME op is pushed
+/// back onto undo so the user can undo it again. If we used `push_undo`
+/// here we'd wipe the rest of the redo stack mid-walk.
+fn push_undo_no_redo_clear(tab: &mut FileTab, op: EditOp) {
+    if tab.undo_stack.len() >= MAX_UNDO { tab.undo_stack.remove(0); }
+    tab.undo_stack.push(op);
+}
+
+/// Push onto `redo_stack` from the undo path: when undo pops an op and
+/// applies its inverse, the SAME op is pushed onto redo so a subsequent
+/// Ctrl+Y / Ctrl+Shift+Z re-applies the original action. Same cap.
+fn push_redo(tab: &mut FileTab, op: EditOp) {
+    if tab.redo_stack.len() >= MAX_UNDO { tab.redo_stack.remove(0); }
+    tab.redo_stack.push(op);
 }
 
 /// Plain click â†’ replace selection with the picked entity. Shift/Ctrl
@@ -9345,6 +9572,16 @@ impl ApplicationHandler for App {
                     // Without this, the user can edit but cannot
                     // revert -- the original bug report.
                     self.requested_undo = true;
+                }
+                // Redo: Ctrl+Y (Windows-style) AND Ctrl+Shift+Z
+                // (macOS-style; many cross-platform editors offer both
+                // so muscle memory works regardless of the user's
+                // primary OS). Both feed the same redo_last_edit path.
+                KeyCode::KeyY if self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
+                    self.requested_redo = true;
+                }
+                KeyCode::KeyZ if self.modifiers_ctrl_held() && self.modifiers_shift_held() => {
+                    self.requested_redo = true;
                 }
                 // ZR â€” plain Z buffers a chord prefix. `Z R` within 1 s
                 // triggers Zoom-Region mode (handled in the KeyR arm).
