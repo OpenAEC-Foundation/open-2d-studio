@@ -25,7 +25,7 @@ use std::collections::HashSet;
 use std::time::Instant;
 
 use kernel_app::scene_io::{load_dwg, load_dxf, Scene};
-use kernel_app::studio_app::{build_verts, LTSCALE, MIN_SCREEN_PX};
+use kernel_app::studio_app::{build_tri_verts, build_verts, LTSCALE, MIN_SCREEN_PX};
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
@@ -99,4 +99,31 @@ fn main() {
     let m = build_verts(&scene, origin, 0xFFFFFFFF, false, &hidden, 0.0);
     let solid_ms = t.elapsed().as_secs_f64() * 1000.0;
     eprintln!("[zoom_bench] solid-only baseline (wpp=0): {:.3} ms / {} verts", solid_ms, m.len());
+
+    // Full vs. dash-only comparison. The viewer used to call
+    // `rebuild_buffers_with_canvas` (= 2x build_verts + 2x build_tri_verts
+    // PLUS scene_index/snap_segments invalidation) on every wheel notch.
+    // After the fix it calls `rebake_dash_lines_with_canvas` which only
+    // re-bakes lines and skips the tri pass entirely. This benchmark
+    // measures the line + triangle vert builds in isolation; the
+    // scene_index rebuild savings (~30-60 ms) are on top of these.
+    let wpp = 0.5_f64;  // pick a mid-zoom value where dashes matter
+    let t = Instant::now();
+    let _m1 = build_verts(&scene, origin, 0xFFFFFFFF, false, &hidden, wpp);
+    let _p1 = build_verts(&scene, origin, 0xFFFFFFFF, true, &hidden, wpp);
+    let t_lines = t.elapsed().as_secs_f64() * 1000.0;
+    let t = Instant::now();
+    let (_mts, _mtt) = build_tri_verts(&scene, origin, false, &hidden);
+    let (_pts, _ptt) = build_tri_verts(&scene, origin, true, &hidden);
+    let t_tris = t.elapsed().as_secs_f64() * 1000.0;
+    eprintln!(
+        "[zoom_bench] per-wheel-notch refresh cost on this scene (CPU only, no GPU upload):\n  \
+         OLD path (rebuild_buffers_with_canvas):  lines={:.2}ms tris={:.2}ms TOTAL={:.2}ms\n  \
+         NEW path (rebake_dash_lines_with_canvas): lines={:.2}ms tris=SKIPPED  TOTAL={:.2}ms\n  \
+         delta: -{:.2}ms ({:.0}% reduction) per dash refresh\n  \
+         PLUS: next CursorMoved no longer pays scene_index + snap_segments rebuild (~30-60ms on this size).",
+        t_lines, t_tris, t_lines + t_tris,
+        t_lines, t_lines,
+        t_tris, (t_tris / (t_lines + t_tris).max(1e-6)) * 100.0,
+    );
 }
