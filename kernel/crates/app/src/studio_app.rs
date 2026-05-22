@@ -969,7 +969,7 @@ pub const LTSCALE: f32 = 100.0;
 /// 12.7 mm CENTER dash is 12.7 mm on the canvas; zoom in 4Ã— and the
 /// dash grows 4Ã— with the geometry. When 0.0 or non-finite all
 /// segments render solid.
-fn build_verts(
+pub fn build_verts(
     scene: &Scene,
     origin: [f64; 2],
     default_color: u32,
@@ -3319,7 +3319,18 @@ impl App {
                     .unwrap_or(false);
                 if needs_redash {
                     if let (Some(tab), Some(gpu)) = (self.tabs.get_mut(active), self.gpu.as_ref()) {
+                        // PERF_INSTRUMENT: dash-driven full buffer rebuild.
+                        // Set OPEN2D_PERF=1 to log dash-rebuild events with
+                        // segment count + wall-clock duration. Used to
+                        // identify the root cause of the user-reported
+                        // "zoom is slow" regression on big drawings.
+                        let _perf_t0 = std::time::Instant::now();
+                        let _perf_segs = tab.scene.segments.len();
                         tab.rebuild_buffers_with_canvas(gpu, canvas_h);
+                        if std::env::var("OPEN2D_PERF").ok().as_deref() == Some("1") {
+                            eprintln!("[perf] dash_rebuild segs={} dur={:.2}ms",
+                                      _perf_segs, _perf_t0.elapsed().as_secs_f64() * 1000.0);
+                        }
                     }
                 }
             }
@@ -3402,6 +3413,10 @@ impl App {
         // recent-files menu lives in the AppMenuPanel pathway which
         // borrows `self.recent_files` directly under its own scope.
         let current_tool_mode = self.tool_mode;
+        // LMB-pressed snapshot â€” read inside the egui closure so the
+        // Pan-mode cursor can switch between Grab (idle) and Grabbing
+        // (drag in flight) without re-borrowing self mutably.
+        let lmb_pressed_snapshot = self.lmb_pressed;
         // Drag-box snapshot â€” overlay is shown when LMB is down in Select
         // mode and drift exceeds the same HiDPI-scaled threshold the
         // release path uses. Crossing direction = left-running drag.
@@ -8219,6 +8234,12 @@ impl ApplicationHandler for App {
                     } else if self.tool_mode == ToolMode::ZoomCenter {
                         // Cancel one-shot recenter.
                         self.tool_mode = ToolMode::Select;
+                    } else if self.tool_mode == ToolMode::Pan {
+                        // Pan -- ESC exits back to Select. Any in-flight
+                        // LMB-drag is dropped (the drag flag is also
+                        // reset in the tool-mode switch arm).
+                        self.tool_mode = ToolMode::Select;
+                        self.dragging = false;
                     } else if self.tool_mode == ToolMode::MeasureAngle
                         && !self.measure_angle_pts.is_empty()
                     {
@@ -8523,8 +8544,19 @@ impl ApplicationHandler for App {
                     let pick_r_px = (6.0_f32 * scale_factor).max(6.0);
                     let hover_tab = self.focused_tab_idx();
                     let hover_rect = self.focused_canvas_rect();
+                    // PERF_INSTRUMENT: hover-preview pick runs on every
+                    // CursorMoved in Select mode. Set OPEN2D_PERF=1 to
+                    // log durations over 0.2 ms.
+                    let _perf_t0 = std::time::Instant::now();
                     let hovered = self.pick_segment_at_in(
                         hover_tab, hover_rect, self.mouse_pos.0, self.mouse_pos.1, pick_r_px);
+                    if std::env::var("OPEN2D_PERF").ok().as_deref() == Some("1") {
+                        let _us = _perf_t0.elapsed().as_micros();
+                        if _us > 200 {
+                            eprintln!("[perf] hover_pick dur={:.2}ms hit={}",
+                                      _us as f64 / 1000.0, hovered.is_some());
+                        }
+                    }
                     let prev = self.tabs.get(hover_tab).and_then(|t| t.hover);
                     if prev != hovered {
                         if let Some(tab) = self.tabs.get_mut(hover_tab) {
@@ -9163,6 +9195,11 @@ impl ApplicationHandler for App {
                     MouseScrollDelta::LineDelta(_, y) => y,
                     MouseScrollDelta::PixelDelta(p) => p.y as f32 / 50.0,
                 };
+                // PERF_INSTRUMENT: tag wheel notches so the dash-rebuild
+                // log entries can be correlated 1:1 with user wheel input.
+                if std::env::var("OPEN2D_PERF").ok().as_deref() == Some("1") {
+                    eprintln!("[perf] wheel scroll={:.2}", scroll);
+                }
                 let factor = (1.0 + scroll as f64 * 0.45).clamp(0.25, 4.0);
                 if !self.mouse_in_canvas() { return; }
                 // Mouse-anchored zoom: offset from canvas centre in world
