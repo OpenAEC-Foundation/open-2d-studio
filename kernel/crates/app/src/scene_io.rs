@@ -5662,31 +5662,31 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
         // (h=0x69CFC=966K, h=0x7B70C=715K, h=0x68EE1=200K) that
         // individually slipped under the old cap but collectively
         // swamped the bbox with sky-spanning diagonals.
-        const PER_ENTITY_SEG_CAP: usize = 250_000;
-        if seg_delta > PER_ENTITY_SEG_CAP {
-            // Pathological emission. The truncation-only path keeps the
-            // first 1M segments which are just as bogus as the rest
-            // (HATCH offset bug emits a million parallel diagonals all
-            // sharing the same bad scale). DROP all segments for this
-            // entity instead — losing one corrupt hatch is far better
-            // than swamping the bbox + viewer with sky-spanning lines
-            // (see DWG 04-12-2025.dwg). Per-entity tris dropped too.
+        // Per-entity segment-count cap. Only DROP the entity entirely
+        // when it ALSO has pathological coordinates (checked below).
+        // The pure-count drop was too aggressive — legitimate dense
+        // entities (a SOLID-filled INSERT with many child segments, a
+        // text block with many glyph outlines, a paalsymbool composite
+        // INSERT) were being thrown out even though their geometry was
+        // sane. User report 2026-05-22: "solids zie ik niet meer, ook
+        // teksten hadden eerst een solid, paalsymbolen hebben geen
+        // solid meer". Switched to soft-truncate at 2M segs / 1M tris
+        // so a runaway hatch can't OOM the GPU buffer but normal-coord
+        // density passes through.
+        const PER_ENTITY_SEG_HARD_CAP: usize = 2_000_000;
+        if seg_delta > PER_ENTITY_SEG_HARD_CAP {
             eprintln!(
-                "[load_dwg] WARN entity h=0x{:X} type={} produced {} segs — DROPPING all (likely pathological hatch / INSERT recursion; cap={})",
-                obj.handle, obj.type_name, seg_delta, PER_ENTITY_SEG_CAP,
+                "[load_dwg] WARN entity h=0x{:X} type={} produced {} segs — truncating to {} (likely pathological hatch / INSERT recursion)",
+                obj.handle, obj.type_name, seg_delta, PER_ENTITY_SEG_HARD_CAP,
             );
-            segments.truncate(seg_before);
-            if segment_dash_kind.len() > seg_before {
-                segment_dash_kind.truncate(seg_before);
+            segments.truncate(seg_before + PER_ENTITY_SEG_HARD_CAP);
+            if segment_dash_kind.len() > seg_before + PER_ENTITY_SEG_HARD_CAP {
+                segment_dash_kind.truncate(seg_before + PER_ENTITY_SEG_HARD_CAP);
             }
-            dash_truncate(seg_before);
-            seg_delta = 0;
-            // Drop tris emitted by this entity in lockstep so the
-            // parallel arrays stay aligned.
-            triangles.truncate(tri_before);
-            tri_delta = 0;
+            dash_truncate(seg_before + PER_ENTITY_SEG_HARD_CAP);
+            seg_delta = PER_ENTITY_SEG_HARD_CAP;
         }
-        const PER_ENTITY_TRI_CAP: usize = 200_000;
+        const PER_ENTITY_TRI_CAP: usize = 1_000_000;
         if tri_delta > PER_ENTITY_TRI_CAP {
             triangles.truncate(tri_before + PER_ENTITY_TRI_CAP);
             tri_delta = PER_ENTITY_TRI_CAP;
