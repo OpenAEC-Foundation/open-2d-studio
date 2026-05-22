@@ -10,6 +10,9 @@ egui = { workspace = true }
 egui_extras = { version = "0.29", features = ["image"] }
 egui-phosphor = "0.7"
 serde = { workspace = true }
+# PNG → RGBA8 decode for the embedded titlebar logo asset (load once,
+# cache as egui texture via the consumer-supplied bytes).
+image = { version = "0.25", default-features = false, features = ["png"] }
 
 [features]
 default = ["layout", "panels", "dialogs"]

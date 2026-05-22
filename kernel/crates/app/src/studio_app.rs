@@ -3673,8 +3673,18 @@ impl App {
                         AppMode::Studio => "Open 2D Studio",
                         AppMode::Viewer => "Open 2D Viewer",
                     };
+                    // Embed the same 128-px logo asset that ships as the
+                    // OS taskbar icon. superui caches it as a GPU texture
+                    // on first frame and paints it in the titlebar's
+                    // top-left tile (replaces the procedural "2D"
+                    // placeholder so the actual brand mark is visible).
+                    let logo_png: &'static [u8] = match app_mode_snapshot {
+                        AppMode::Viewer => include_bytes!("../assets/icon-viewer-128.png"),
+                        AppMode::Studio => include_bytes!("../assets/icon-studio-128.png"),
+                    };
                     let actions = TitleBar::new(app_title)
                         .maximized(window_maximized_snapshot)
+                        .logo_png(logo_png)
                         .show(ui);
                     for a in actions {
                         match a {

@@ -31,13 +31,25 @@ pub enum TitleBarAction {
 pub struct TitleBar<'a> {
     title: &'a str,
     is_maximized: bool,
+    /// PNG bytes for the in-titlebar logo (top-left). Decoded once on
+    /// first paint and cached as an egui texture via `Context::data_mut`.
+    /// Consumer passes the same PNG that's embedded for the OS taskbar
+    /// (e.g. `include_bytes!("../assets/icon-viewer-128.png")`).
+    logo_png: Option<&'static [u8]>,
 }
 
 impl<'a> TitleBar<'a> {
     pub fn new(title: &'a str) -> Self {
-        Self { title, is_maximized: false }
+        Self { title, is_maximized: false, logo_png: None }
     }
     pub fn maximized(mut self, b: bool) -> Self { self.is_maximized = b; self }
+    /// Use a PNG asset for the in-titlebar logo (overrides the simple
+    /// orange "2D" placeholder). Decoded + uploaded to the GPU on first
+    /// frame, cached for the lifetime of the egui Context.
+    pub fn logo_png(mut self, bytes: &'static [u8]) -> Self {
+        self.logo_png = Some(bytes);
+        self
+    }
 
     pub fn show(self, ui: &mut Ui) -> Vec<TitleBarAction> {
         let mut actions = Vec::new();
@@ -66,24 +78,72 @@ impl<'a> TitleBar<'a> {
             Stroke::new(1.0, palette.border_light),
         );
 
-        // 1) App icon — small orange "2D" tile. Click opens app menu.
-        // Mockup: w-5 h-5 (20×20) rounded with orange fill and white
-        // bold "2D" text at 10 px.
-        let icon_size = 20.0_f32;
+        // 1) App icon — the proper PNG logo when provided, otherwise
+        // the procedural orange "2D" tile fallback. Click opens the
+        // app menu either way. Sized 24×24 so the embedded logo
+        // (orange tile + white "2D" + eye-badge in viewer) is
+        // clearly recognisable in the 32-px titlebar.
+        let icon_size = 24.0_f32;
         let icon_rect = egui::Rect::from_min_size(
-            Pos2::new(rect.left() + 8.0, rect.center().y - icon_size * 0.5),
+            Pos2::new(rect.left() + 6.0, rect.center().y - icon_size * 0.5),
             Vec2::new(icon_size, icon_size),
         );
         let icon_resp = ui.interact(icon_rect, ui.id().with("tb_app_icon"), Sense::click());
-        let icon_bg = if icon_resp.hovered() { palette.accent_hover } else { palette.accent };
-        ui.painter().rect_filled(icon_rect, 2.0, icon_bg);
-        ui.painter().text(
-            icon_rect.center(),
-            egui::Align2::CENTER_CENTER,
-            "2D",
-            egui::FontId::proportional(10.0),
-            Color32::WHITE,
-        );
+        let mut painted_logo = false;
+        if let Some(bytes) = self.logo_png {
+            // Pointer identity is stable for a `&'static [u8]` so we
+            // key the cached texture by pointer-cast — fast hash key
+            // without allocating a String per frame.
+            let key = bytes.as_ptr() as usize;
+            let cache_id = egui::Id::new(("titlebar_logo_tex", key));
+            let tex_opt: Option<egui::TextureHandle> = ui.ctx()
+                .data(|d| d.get_temp::<egui::TextureHandle>(cache_id));
+            let tex = match tex_opt {
+                Some(t) => Some(t),
+                None => match image::load_from_memory(bytes) {
+                    Ok(img) => {
+                        let rgba = img.to_rgba8();
+                        let (w, h) = rgba.dimensions();
+                        let color_image = egui::ColorImage::from_rgba_unmultiplied(
+                            [w as usize, h as usize],
+                            &rgba,
+                        );
+                        let handle = ui.ctx().load_texture(
+                            format!("titlebar_logo_{key:x}"),
+                            color_image,
+                            egui::TextureOptions::LINEAR,
+                        );
+                        ui.ctx().data_mut(|d| d.insert_temp(cache_id, handle.clone()));
+                        Some(handle)
+                    }
+                    Err(_) => None,
+                },
+            };
+            if let Some(t) = tex {
+                let tint = if icon_resp.hovered() {
+                    Color32::from_rgba_unmultiplied(255, 255, 255, 230)
+                } else { Color32::WHITE };
+                ui.painter().image(
+                    t.id(),
+                    icon_rect,
+                    egui::Rect::from_min_max(egui::pos2(0.0, 0.0), egui::pos2(1.0, 1.0)),
+                    tint,
+                );
+                painted_logo = true;
+            }
+        }
+        if !painted_logo {
+            // Fallback — procedural orange tile + bold "2D" caption.
+            let icon_bg = if icon_resp.hovered() { palette.accent_hover } else { palette.accent };
+            ui.painter().rect_filled(icon_rect, 3.0, icon_bg);
+            ui.painter().text(
+                icon_rect.center(),
+                egui::Align2::CENTER_CENTER,
+                "2D",
+                egui::FontId::new(11.0, egui::FontFamily::Proportional),
+                Color32::WHITE,
+            );
+        }
         if icon_resp.clicked() { actions.push(TitleBarAction::OpenAppMenu); }
 
         // 2) QAT row — small icon-only buttons matching mockup layout.
