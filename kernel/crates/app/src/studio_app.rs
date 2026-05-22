@@ -2486,6 +2486,43 @@ enum Annotation {
     Area { verts: Vec<[f64; 2]>, value: f64 },
 }
 
+// =============================================================================
+// IFC content view -- stub placeholder. The full 3-column tree / detail /
+// raw-JSON browser is being built by another agent (see `feat(viewer): IFC
+// content view * (lock) - WIP` commit chain). Until that lands, this stub
+// paints a single "in progress" frame so HEAD compiles cleanly. Both the
+// caller signature and the slot in the central panel are reserved for the
+// real impl.
+// =============================================================================
+#[allow(clippy::too_many_arguments, dead_code)]
+fn paint_ifcx_content_view(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    _entries: &[crate::ifcx_view::IfcxEntry],
+    _selected_id: Option<&str>,
+    _selected_json: Option<&str>,
+    _selected_attrs_text: Option<&str>,
+    _header_json: Option<&str>,
+    _search_query: &str,
+    _centre_w: f32,
+    _right_w: f32,
+    _requested_select: &mut Option<String>,
+    _requested_search: &mut Option<String>,
+    _requested_centre: &mut Option<f32>,
+    _requested_right:  &mut Option<f32>,
+    _requested_copy:   &mut Option<String>,
+) {
+    let painter = ui.painter();
+    painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(28, 32, 36));
+    painter.text(
+        rect.center(),
+        egui::Align2::CENTER_CENTER,
+        "IFC content view -- in progress",
+        egui::FontId::proportional(14.0),
+        egui::Color32::from_rgb(180, 180, 180),
+    );
+}
+
 #[derive(Clone)]
 struct SampleEntry {
     label: String,
@@ -5109,7 +5146,22 @@ natively, so you can hand the file back to your main toolchain without losing ed
                     // stable across frames. The actual 2D content is
                     // drawn via wgpu behind egui; we just leave the
                     // CentralPanel transparent.
-                    let _ = ui.allocate_rect(rect, egui::Sense::hover());
+                    let canvas_resp = ui.allocate_rect(rect, egui::Sense::hover());
+
+                    // Pan tool -- switch the cursor to a hand glyph while
+                    // hovering over the canvas. The Grab vs Grabbing
+                    // distinction makes the drag-state visible (matches
+                    // the OS norm for hand-pan tools in image / map UIs).
+                    if current_tool_mode == ToolMode::Pan
+                        && canvas_resp.hovered()
+                    {
+                        let icon = if lmb_pressed_snapshot {
+                            egui::CursorIcon::Grabbing
+                        } else {
+                            egui::CursorIcon::Grab
+                        };
+                        ctx.set_cursor_icon(icon);
+                    }
 
                     // Subtle 1 px inset border â€” makes the canvas look
                     // "contained" inside the shell, matching the docked
@@ -5571,7 +5623,11 @@ natively, so you can hand the file back to your main toolchain without losing ed
         if let Some(w)  = requested_ifcx_centre_w { self.ifcx_centre_w = w.clamp(220.0, 800.0); }
         if let Some(w)  = requested_ifcx_right_w  { self.ifcx_right_w = w.clamp(220.0, 1200.0); }
         if let Some(text) = requested_ifcx_copy_json {
-            if let Some(gpu) = self.gpu.as_ref() { gpu.egui_ctx.copy_text(text); }
+            // `self.gpu` is already mutably borrowed above (line ~3661),
+            // so reach into the same `gpu` binding that the surrounding
+            // scope holds. The earlier let-Some-else returned if missing,
+            // so `gpu` is guaranteed live here.
+            gpu.egui_ctx.copy_text(text);
         }
         if requested_toggle_samples_panel { self.samples_panel_open = !self.samples_panel_open; }
         if requested_toggle_perf_hud { self.show_perf_hud = !self.show_perf_hud; }
@@ -7953,6 +8009,331 @@ fn polygon_area(verts: &[[f64; 2]]) -> f64 {
     (sum * 0.5).abs()
 }
 
+// =============================================================================
+// IFC content view -- full-area browser painted into the CentralPanel when
+// the Viewer's IFC ribbon tab is active. Three columns: tree (left),
+// pretty-formatted attributes (centre), raw JSON (right). See
+// `ifcx_view.rs` for the JSON shape that drives this.
+// =============================================================================
+#[allow(clippy::too_many_arguments)]
+fn paint_ifcx_content_view(
+    ui: &mut egui::Ui,
+    rect: egui::Rect,
+    entries: &[crate::ifcx_view::IfcxEntry],
+    selected_id: Option<&str>,
+    selected_json: Option<&str>,
+    selected_attrs_text: Option<&str>,
+    header_json: Option<&str>,
+    search_query: &str,
+    centre_w: f32,
+    right_w: f32,
+    requested_select:  &mut Option<String>,
+    requested_search:  &mut Option<String>,
+    requested_centre:  &mut Option<f32>,
+    requested_right:   &mut Option<f32>,
+    requested_copy:    &mut Option<String>,
+) {
+    let _ = ui.allocate_rect(rect, egui::Sense::hover());
+    let painter = ui.painter().clone();
+    painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(20, 24, 30));
+
+    let pad = 6.0_f32;
+    let splitter_w = 4.0_f32;
+    let total_w = rect.width().max(400.0);
+    let mut centre = centre_w.clamp(220.0, total_w * 0.5);
+    let mut right  = right_w.clamp(220.0, total_w * 0.6);
+    let min_left   = 200.0;
+    if total_w - centre - right - 2.0 * splitter_w < min_left {
+        let want = (total_w - min_left - centre - 2.0 * splitter_w).max(220.0);
+        right = right.min(want);
+        let want2 = (total_w - min_left - right - 2.0 * splitter_w).max(220.0);
+        centre = centre.min(want2);
+    }
+    let left_w = total_w - centre - right - 2.0 * splitter_w;
+
+    let left_rect = egui::Rect::from_min_size(rect.min, egui::vec2(left_w, rect.height()));
+    let split1_rect = egui::Rect::from_min_size(
+        egui::pos2(left_rect.max.x, rect.min.y), egui::vec2(splitter_w, rect.height()));
+    let centre_rect = egui::Rect::from_min_size(
+        egui::pos2(split1_rect.max.x, rect.min.y), egui::vec2(centre, rect.height()));
+    let split2_rect = egui::Rect::from_min_size(
+        egui::pos2(centre_rect.max.x, rect.min.y), egui::vec2(splitter_w, rect.height()));
+    let right_rect = egui::Rect::from_min_size(
+        egui::pos2(split2_rect.max.x, rect.min.y), egui::vec2(right, rect.height()));
+
+    let resp1 = ui.allocate_rect(split1_rect, egui::Sense::click_and_drag());
+    painter.rect_filled(split1_rect, 0.0,
+        if resp1.hovered() || resp1.dragged() { egui::Color32::from_rgb(80, 120, 170) }
+        else { egui::Color32::from_rgb(40, 46, 54) });
+    if resp1.hovered() || resp1.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    if resp1.dragged() {
+        *requested_centre = Some((centre - resp1.drag_delta().x).clamp(220.0, 800.0));
+    }
+    let resp2 = ui.allocate_rect(split2_rect, egui::Sense::click_and_drag());
+    painter.rect_filled(split2_rect, 0.0,
+        if resp2.hovered() || resp2.dragged() { egui::Color32::from_rgb(80, 120, 170) }
+        else { egui::Color32::from_rgb(40, 46, 54) });
+    if resp2.hovered() || resp2.dragged() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::ResizeHorizontal);
+    }
+    if resp2.dragged() {
+        *requested_right = Some((right - resp2.drag_delta().x).clamp(220.0, 1200.0));
+    }
+
+    // LEFT column: search + virtualised tree.
+    {
+        let mut col_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(left_rect.shrink(pad))
+                .layout(egui::Layout::top_down(egui::Align::Min)));
+        col_ui.heading(egui::RichText::new("IFC-X Content")
+            .color(egui::Color32::from_rgb(220, 224, 228)).size(13.0));
+        col_ui.add_space(2.0);
+        col_ui.label(egui::RichText::new("Tree of every layer + entity in this file.")
+            .size(10.5).color(egui::Color32::from_rgb(140, 146, 154)));
+        col_ui.add_space(6.0);
+
+        let mut q = search_query.to_string();
+        let q_resp = col_ui.add(egui::TextEdit::singleline(&mut q)
+            .hint_text("Filter (substring, case-insensitive)")
+            .desired_width(f32::INFINITY));
+        if q_resp.changed() { *requested_search = Some(q.clone()); }
+        col_ui.add_space(4.0);
+
+        let q_lower = q.to_lowercase();
+        let filter_active = !q_lower.is_empty();
+        let visible_indices: Vec<usize> = if !filter_active {
+            (0..entries.len()).collect()
+        } else {
+            let mut keep = vec![false; entries.len()];
+            for (i, e) in entries.iter().enumerate() {
+                if e.label.to_lowercase().contains(&q_lower) {
+                    keep[i] = true;
+                    let mut needed_depth = e.depth;
+                    let mut j = i;
+                    while needed_depth > 0 && j > 0 {
+                        j -= 1;
+                        if entries[j].depth < needed_depth {
+                            keep[j] = true;
+                            needed_depth = entries[j].depth;
+                        }
+                    }
+                }
+            }
+            keep.iter().enumerate().filter(|(_,v)| **v).map(|(i,_)| i).collect()
+        };
+
+        let row_h = 22.0_f32;
+        let n_rows = visible_indices.len();
+        col_ui.label(egui::RichText::new(format!("{} rows visible", n_rows))
+            .size(10.0).color(egui::Color32::from_rgb(120, 126, 134)));
+        col_ui.separator();
+        egui::ScrollArea::vertical()
+            .auto_shrink([false, false])
+            .show_rows(&mut col_ui, row_h, n_rows, |row_ui, range| {
+                for vi in range {
+                    let i = visible_indices[vi];
+                    let entry = &entries[i];
+                    let is_sel = selected_id == Some(entry.id.as_str());
+                    let avail = row_ui.available_width();
+                    let (r_rect, r_resp) = row_ui.allocate_exact_size(
+                        egui::vec2(avail, row_h), egui::Sense::click());
+                    if is_sel {
+                        row_ui.painter().rect_filled(r_rect, 0.0,
+                            egui::Color32::from_rgba_unmultiplied(120, 170, 220, 60));
+                        row_ui.painter().line_segment(
+                            [egui::pos2(r_rect.left() + 0.5, r_rect.top()),
+                             egui::pos2(r_rect.left() + 0.5, r_rect.bottom())],
+                            egui::Stroke::new(2.0, egui::Color32::from_rgb(120, 170, 220)));
+                    } else if r_resp.hovered() {
+                        row_ui.painter().rect_filled(r_rect, 0.0,
+                            egui::Color32::from_rgba_unmultiplied(255,255,255, 14));
+                    }
+                    let indent = 8.0 + (entry.depth as f32) * 12.0;
+                    let glyph = ifcx_kind_glyph(entry.kind);
+                    let glyph_color = ifcx_kind_color(entry.kind);
+                    row_ui.painter().text(
+                        egui::pos2(r_rect.left() + indent, r_rect.center().y),
+                        egui::Align2::LEFT_CENTER, glyph,
+                        egui::FontId::new(12.0, egui::FontFamily::Proportional), glyph_color);
+                    let label_x = r_rect.left() + indent + 18.0;
+                    row_ui.painter().text(
+                        egui::pos2(label_x, r_rect.center().y),
+                        egui::Align2::LEFT_CENTER, &entry.label,
+                        egui::FontId::new(12.0, egui::FontFamily::Proportional),
+                        egui::Color32::from_rgb(220, 224, 228));
+                    if let Some(n) = entry.count {
+                        row_ui.painter().text(
+                            egui::pos2(r_rect.right() - 6.0, r_rect.center().y),
+                            egui::Align2::RIGHT_CENTER, format!("({})", n),
+                            egui::FontId::new(11.0, egui::FontFamily::Proportional),
+                            egui::Color32::from_rgb(140, 146, 154));
+                    }
+                    if r_resp.clicked() { *requested_select = Some(entry.id.clone()); }
+                }
+            });
+    }
+
+    // CENTRE column: pretty-formatted attributes.
+    {
+        let mut col_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(centre_rect.shrink(pad))
+                .layout(egui::Layout::top_down(egui::Align::Min)));
+        col_ui.heading(egui::RichText::new("Detail")
+            .color(egui::Color32::from_rgb(220, 224, 228)).size(13.0));
+        col_ui.add_space(2.0);
+        if let Some(id) = selected_id {
+            col_ui.label(egui::RichText::new(format!("Selected: {}", id))
+                .size(10.5).color(egui::Color32::from_rgb(140, 200, 220)).monospace());
+        } else {
+            col_ui.label(egui::RichText::new("Click a tree row to inspect.")
+                .size(10.5).color(egui::Color32::from_rgb(140, 146, 154)));
+        }
+        col_ui.add_space(6.0);
+        col_ui.separator();
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(&mut col_ui, |ui| {
+            let attrs_str = selected_attrs_text.unwrap_or("{}");
+            let parsed: serde_json::Value =
+                serde_json::from_str(attrs_str).unwrap_or(serde_json::json!({}));
+            paint_attribute_kv(ui, &parsed, 0);
+            ui.add_space(8.0);
+            ui.separator();
+            ui.label(egui::RichText::new("Document header")
+                .size(11.0).color(egui::Color32::from_rgb(140, 146, 154)));
+            let header_str = header_json.unwrap_or("{}");
+            let header_parsed: serde_json::Value =
+                serde_json::from_str(header_str).unwrap_or(serde_json::json!({}));
+            paint_attribute_kv(ui, &header_parsed, 0);
+        });
+    }
+
+    // RIGHT column: raw JSON + copy button.
+    {
+        let mut col_ui = ui.new_child(
+            egui::UiBuilder::new()
+                .max_rect(right_rect.shrink(pad))
+                .layout(egui::Layout::top_down(egui::Align::Min)));
+        col_ui.horizontal(|ui| {
+            ui.heading(egui::RichText::new("Raw IFC-X JSON")
+                .color(egui::Color32::from_rgb(220, 224, 228)).size(13.0));
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                if ui.small_button("Copy").clicked() {
+                    if let Some(text) = selected_json { *requested_copy = Some(text.to_string()); }
+                }
+            });
+        });
+        col_ui.add_space(4.0);
+        col_ui.separator();
+        let json = selected_json.unwrap_or("{}");
+        egui::ScrollArea::both().auto_shrink([false, false]).show(&mut col_ui, |ui| {
+            ui.add(egui::Label::new(egui::RichText::new(json).monospace().size(11.5)
+                .color(egui::Color32::from_rgb(220, 224, 228)))
+                .wrap_mode(egui::TextWrapMode::Extend));
+        });
+    }
+}
+
+fn paint_attribute_kv(ui: &mut egui::Ui, value: &serde_json::Value, depth: usize) {
+    use serde_json::Value;
+    let indent = (depth as f32) * 10.0;
+    match value {
+        Value::Object(map) => {
+            for (k, v) in map.iter() {
+                ui.horizontal(|ui| {
+                    ui.add_space(indent);
+                    ui.label(egui::RichText::new(k).size(11.0).monospace()
+                        .color(egui::Color32::from_rgb(240, 220, 120)));
+                    if !matches!(v, Value::Object(_) | Value::Array(_)) {
+                        ui.label(egui::RichText::new(":  ").size(11.0)
+                            .color(egui::Color32::from_rgb(140, 146, 154)));
+                        ui.label(scalar_to_rich(v));
+                    }
+                });
+                if matches!(v, Value::Object(_) | Value::Array(_)) {
+                    paint_attribute_kv(ui, v, depth + 1);
+                }
+            }
+        }
+        Value::Array(list) => {
+            for (i, v) in list.iter().enumerate() {
+                if matches!(v, Value::Object(_) | Value::Array(_)) {
+                    ui.horizontal(|ui| {
+                        ui.add_space(indent);
+                        ui.label(egui::RichText::new(format!("[{}]", i)).size(11.0).monospace()
+                            .color(egui::Color32::from_rgb(140, 200, 220)));
+                    });
+                    paint_attribute_kv(ui, v, depth + 1);
+                } else {
+                    ui.horizontal(|ui| {
+                        ui.add_space(indent);
+                        ui.label(egui::RichText::new(format!("[{}]", i)).size(11.0).monospace()
+                            .color(egui::Color32::from_rgb(140, 200, 220)));
+                        ui.label(scalar_to_rich(v));
+                    });
+                }
+            }
+        }
+        other => {
+            ui.horizontal(|ui| {
+                ui.add_space(indent);
+                ui.label(scalar_to_rich(other));
+            });
+        }
+    }
+}
+
+fn scalar_to_rich(v: &serde_json::Value) -> egui::RichText {
+    use serde_json::Value;
+    let txt = match v {
+        Value::Null      => "null".to_string(),
+        Value::Bool(b)   => b.to_string(),
+        Value::Number(n) => n.to_string(),
+        Value::String(s) => format!("\"{}\"", s),
+        _ => serde_json::to_string(v).unwrap_or_default(),
+    };
+    let colour = match v {
+        Value::Null      => egui::Color32::from_rgb(140, 146, 154),
+        Value::Bool(_)   => egui::Color32::from_rgb(200, 160, 220),
+        Value::Number(_) => egui::Color32::from_rgb(160, 200, 255),
+        Value::String(_) => egui::Color32::from_rgb(160, 220, 160),
+        _                => egui::Color32::from_rgb(220, 224, 228),
+    };
+    egui::RichText::new(txt).monospace().size(11.0).color(colour)
+}
+
+fn ifcx_kind_glyph(kind: crate::ifcx_view::IfcxKind) -> &'static str {
+    match kind {
+        IfcxKind::Project      => egui_phosphor::regular::FOLDERS,
+        IfcxKind::Drawing      => egui_phosphor::regular::FILE_TEXT,
+        IfcxKind::LayerGroup   => egui_phosphor::regular::STACK,
+        IfcxKind::Layer        => egui_phosphor::regular::STACK_SIMPLE,
+        IfcxKind::EntityBucket => egui_phosphor::regular::SHAPES,
+        IfcxKind::Entity       => egui_phosphor::regular::CUBE,
+        IfcxKind::BlockList    => egui_phosphor::regular::PACKAGE,
+        IfcxKind::Block        => egui_phosphor::regular::CUBE,
+        IfcxKind::StyleList    => egui_phosphor::regular::PAINT_BRUSH,
+        IfcxKind::Style        => egui_phosphor::regular::PAINT_BRUSH,
+    }
+}
+
+fn ifcx_kind_color(kind: crate::ifcx_view::IfcxKind) -> egui::Color32 {
+    match kind {
+        IfcxKind::Project      => egui::Color32::from_rgb(255, 200, 120),
+        IfcxKind::Drawing      => egui::Color32::from_rgb(180, 200, 255),
+        IfcxKind::LayerGroup   => egui::Color32::from_rgb(200, 220, 240),
+        IfcxKind::Layer        => egui::Color32::from_rgb(160, 220, 160),
+        IfcxKind::EntityBucket => egui::Color32::from_rgb(240, 220, 160),
+        IfcxKind::Entity       => egui::Color32::from_rgb(220, 224, 228),
+        IfcxKind::BlockList    => egui::Color32::from_rgb(180, 220, 220),
+        IfcxKind::Block        => egui::Color32::from_rgb(180, 220, 220),
+        IfcxKind::StyleList    => egui::Color32::from_rgb(220, 180, 220),
+        IfcxKind::Style        => egui::Color32::from_rgb(220, 180, 220),
+    }
+}
+
 fn rebuild_sel_pipe(tab_opt: Option<&mut FileTab>, gpu: &GpuCtx) {
     let Some(tab) = tab_opt else { return; };
     // Build the spatial / entity index lazily â€” same as the pick path.
@@ -9647,9 +10028,12 @@ fn build_ribbon_tabs(
                         ],
                     }),
                     // Pan stays as its own large to match mockup "Selection"
-                    // group ordering (Select | Pan | stack).
+                    // group ordering (Select | Pan | stack). Highlighted
+                    // when the Pan tool is active so the user can see
+                    // which mode they're in.
                     RibbonGroup::with_layout(" ", RibbonGroupLayout::LargeOnly {
-                        large: vec![enable(lg("pan", "Pan", IconKind::Pan))],
+                        large: vec![enable(select(lg("pan", "Pan", IconKind::Pan),
+                            matches!(tool, ToolMode::Pan)))],
                     }),
                     // Edit -- minimal-edit surface in the Viewer port:
                     // Move (M), Delete (Del) and Explode (X). Three
@@ -9707,7 +10091,8 @@ fn build_ribbon_tabs(
                 label: "View".into(),
                 groups: vec![
                     RibbonGroup::with_layout("Navigate", RibbonGroupLayout::LargeOnly {
-                        large: vec![enable(lg("pan", "Pan", IconKind::Pan))],
+                        large: vec![enable(select(lg("pan", "Pan", IconKind::Pan),
+                            matches!(tool, ToolMode::Pan)))],
                     }),
                     // Mockup: 3 Large buttons (Fit All, Zoom In, Zoom Out)
                     // followed by a stack3 of small buttons (Window,
@@ -9817,7 +10202,8 @@ fn build_ribbon_tabs(
                     ],
                 }),
                 RibbonGroup::with_layout(" ", RibbonGroupLayout::LargeOnly {
-                    large: vec![enable(lg("pan", "Pan", IconKind::Hand))],
+                    large: vec![enable(select(lg("pan", "Pan", IconKind::Hand),
+                        matches!(tool, ToolMode::Pan)))],
                 }),
                 RibbonGroup::with_layout("Draw", RibbonGroupLayout::Stack {
                     rows: 2,
@@ -9940,7 +10326,8 @@ fn build_ribbon_tabs(
             label: "View".into(),
             groups: vec![
                 RibbonGroup::with_layout("Navigate", RibbonGroupLayout::LargeOnly {
-                    large: vec![lg("pan", "Pan", IconKind::Hand)],
+                    large: vec![enable(select(lg("pan", "Pan", IconKind::Hand),
+                        matches!(tool, ToolMode::Pan)))],
                 }),
                 RibbonGroup::with_layout("Zoom", RibbonGroupLayout::LargeOnly {
                     large: vec![
