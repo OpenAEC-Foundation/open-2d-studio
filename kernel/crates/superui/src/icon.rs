@@ -195,9 +195,14 @@ impl IconKind {
             // Mockup-specific glyphs — all hand-painted to match the JSX
             // SVG paths in `Open2DViewerMockup.jsx` (`Cad.*` block lines
             // 126-218).
+            // Pan was hand-painted (rect palm + 4 vertical lines) and did
+            // not match the mockup's Lucide-style hand silhouette. Route
+            // through the same phosphor HAND glyph the `Hand` variant
+            // uses so both look identical and match the JSX reference.
+            IconKind::Pan       => ph::HAND,
             IconKind::MeasureLength | IconKind::MeasureArea |
             IconKind::MeasureAngle | IconKind::MeasureCoord |
-            IconKind::Pan | IconKind::Sun | IconKind::Palette |
+            IconKind::Sun | IconKind::Palette |
             IconKind::PanelR | IconKind::LinearDim | IconKind::AngularDim |
             IconKind::RadiusDim | IconKind::DiameterDim |
             IconKind::Leader | IconKind::Label | IconKind::Table |

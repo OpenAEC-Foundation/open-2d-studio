@@ -3289,9 +3289,18 @@ impl App {
         // Layers for the active tab (if panel open).
         let layer_panel_open = self.layer_panel_open;
         let layers_for_active: Vec<(String, u32)> = if layer_panel_open {
+            // Filter out deleted layers — once the user trash-clicks a
+            // layer the row disappears from the LAYERS panel (visually
+            // gone). The underlying segments stay hidden in Scene and
+            // are dropped at Save-As time via write_dxf_filtered.
+            let deleted: HashSet<String> = self.tabs.get(active_tab_idx)
+                .map(|t| t.deleted_layers.clone()).unwrap_or_default();
             self.tabs.get_mut(active_tab_idx)
                 .map(|t| t.layer_list_cached(DEFAULT_LINE_COLOR))
                 .unwrap_or_default()
+                .into_iter()
+                .filter(|(name, _)| !deleted.contains(name))
+                .collect()
         } else { Vec::new() };
         let hidden_snapshot: HashSet<String> = if layer_panel_open {
             self.tabs.get(active_tab_idx).map(|t| t.hidden_layers.clone()).unwrap_or_default()
@@ -7788,6 +7797,10 @@ impl ApplicationHandler for App {
         let mut attrs = Window::default_attributes()
             .with_title(title)
             .with_decorations(false)
+            // Open maximised by default — fills the work-area without
+            // hiding the OS taskbar (true Fullscreen would). User can
+            // hit the maximize/restore button in our custom titlebar.
+            .with_maximized(true)
             .with_inner_size(winit::dpi::LogicalSize::new(1800, 1000));
         // Use the proper PNG asset (Studio vs Viewer variant). Falls
         // back to the procedural pixel-art icon if PNG decode fails.
@@ -7914,6 +7927,11 @@ impl ApplicationHandler for App {
                     // mnemonic: M-V = Move). The chord window is 1 s.
                     self.tool_mode = ToolMode::Measure;
                     self.measure_p1 = None;
+                    // Reset sub-mode to Length so the rubber-band preview
+                    // fires after the first click — Area requires a
+                    // different (polygon) gesture that the user may not
+                    // expect when just hitting M.
+                    self.measure_sub = MeasureSub::Length;
                     self.key_chord_pending = Some(KeyCode::KeyM);
                     self.key_chord_at = Some(std::time::Instant::now());
                 }
