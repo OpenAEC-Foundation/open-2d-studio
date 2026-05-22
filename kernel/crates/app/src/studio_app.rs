@@ -3467,6 +3467,7 @@ impl App {
         let mut requested_close_tab: Option<usize> = None;
         let mut requested_new_tab = false;            // "+" button
         let mut requested_menu_open_dialog = false;
+        let mut requested_open_recent_path: Option<String> = None;
         let mut requested_menu_reload = false;
         let mut requested_menu_close_active = false;
         let mut requested_menu_recent_load: Option<String> = None;
@@ -4394,13 +4395,23 @@ natively, so you can hand the file back to your main toolchain without losing ed
             // Preferences) are TODO no-ops for now.
             if self.app_menu_open {
                 let is_viewer = self.mode == AppMode::Viewer;
+                let recent = self.recent_files.clone();
                 let actions = AppMenuPanel::new()
                     .is_viewer(is_viewer)
+                    .recent_files(&recent)
                     .show(ctx);
                 for action in actions {
                     match action {
                         AppMenuAction::New     => { requested_new_tab = true; self.app_menu_open = false; }
                         AppMenuAction::Open    => { requested_menu_open_dialog = true; self.app_menu_open = false; }
+                        AppMenuAction::OpenRecent(path) => {
+                            // Defer the load via a flag — calling
+                            // self.start_load_into_new_tab inside the
+                            // egui closure would violate the &mut self
+                            // borrow already held by `gpu.egui_ctx.run`.
+                            requested_open_recent_path = Some(path);
+                            self.app_menu_open = false;
+                        }
                         AppMenuAction::Save
                         | AppMenuAction::SaveAs => {
                             requested_menu_save_as_dxf = true;
@@ -5958,6 +5969,10 @@ natively, so you can hand the file back to your main toolchain without losing ed
         }
         if requested_new_tab || requested_menu_open_dialog {
             self.open_file_dialog();
+        }
+        if let Some(path) = requested_open_recent_path {
+            self.push_recent_file(&path);
+            self.start_load_into_new_tab(path);
         }
         if let Some(path) = requested_load_as_new_tab {
             eprintln!("[samples] loading as new tab: {}", path);

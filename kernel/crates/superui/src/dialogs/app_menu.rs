@@ -59,8 +59,11 @@ use egui::{Color32, Context, Pos2, Rect, Sense, Stroke, Ui, Vec2};
 /// Actions surfaced by the `AppMenuPanel`. The consumer routes each
 /// variant to its existing dispatch flag (or stubs the new ones with a
 /// TODO until they're implemented).
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum AppMenuAction {
+    /// User clicked a recent-files entry. Carries the full path so the
+    /// consumer can call its existing load-by-path flow.
+    OpenRecent(String),
     New,
     Open,
     Save,
@@ -91,15 +94,18 @@ pub enum AppMenuAction {
 /// Full-height left-side File menu panel. Renders via
 /// `egui::SidePanel::left("app_menu_panel")` so it sits over the
 /// existing left dock + canvas without disturbing their layout.
-pub struct AppMenuPanel {
+pub struct AppMenuPanel<'a> {
     is_viewer: bool,
+    /// Optional list of recently-opened file paths, newest first.
+    /// Rendered under "Openen…" as click-through rows.
+    recent_files: &'a [String],
 }
 
-impl Default for AppMenuPanel {
-    fn default() -> Self { Self { is_viewer: false } }
+impl<'a> Default for AppMenuPanel<'a> {
+    fn default() -> Self { Self { is_viewer: false, recent_files: &[] } }
 }
 
-impl AppMenuPanel {
+impl<'a> AppMenuPanel<'a> {
     /// Create a new panel — defaults to Studio mode (all items visible).
     pub fn new() -> Self { Self::default() }
 
@@ -107,6 +113,12 @@ impl AppMenuPanel {
     /// Export are hidden). Already gated at the handler level — this is
     /// purely for UI clarity so users don't see disabled rows.
     pub fn is_viewer(mut self, b: bool) -> Self { self.is_viewer = b; self }
+
+    /// Wire the consumer's `recent_files` list so a "Recente bestanden"
+    /// block appears under "Openen…". Pass an empty slice to omit.
+    pub fn recent_files(mut self, list: &'a [String]) -> Self {
+        self.recent_files = list; self
+    }
 
     /// Paint the panel and collect actions. Returns the list of clicks
     /// that occurred this frame (usually 0 or 1 — but `Vec` keeps the
@@ -167,7 +179,7 @@ impl AppMenuPanel {
                         .layout(egui::Layout::top_down(egui::Align::Min)),
                 );
                 child.set_clip_rect(panel_rect);
-                paint_panel(&mut child, &palette, self.is_viewer, &mut actions);
+                paint_panel(&mut child, &palette, self.is_viewer, self.recent_files, &mut actions);
             });
 
         actions
@@ -187,6 +199,7 @@ fn paint_panel(
     ui: &mut Ui,
     palette: &crate::theme::Palette,
     is_viewer: bool,
+    recent_files: &[String],
     out: &mut Vec<AppMenuAction>,
 ) {
     // ---- Header bar (orange) -----------------------------------------
@@ -222,6 +235,35 @@ fn paint_panel(
         Some("Ctrl+N"), 1, AppMenuAction::New, out);
     item(ui, palette, "Openen",       egui_phosphor::regular::FOLDER_OPEN,
         Some("Ctrl+O"), 2, AppMenuAction::Open, out);
+
+    // ---- Recente bestanden ------------------------------------------
+    // Show up to 8 most-recent paths under "Openen". Each row is a
+    // clickable entry that re-opens the file via the consumer's
+    // existing spawn_load_job flow (mapped through OpenRecent(path)).
+    if !recent_files.is_empty() {
+        let header_rect = ui.allocate_space(egui::vec2(ui.available_width(), 22.0)).1;
+        ui.painter().text(
+            egui::pos2(header_rect.left() + 14.0, header_rect.center().y),
+            egui::Align2::LEFT_CENTER,
+            "Recente bestanden",
+            egui::FontId::proportional(10.0),
+            palette.fg_muted,
+        );
+        for (i, path) in recent_files.iter().take(8).enumerate() {
+            let label = std::path::Path::new(path)
+                .file_name()
+                .map(|n| n.to_string_lossy().into_owned())
+                .unwrap_or_else(|| path.clone());
+            let shown = if label.len() > 30 {
+                format!("…{}", &label[label.len() - 28..])
+            } else { label };
+            item(ui, palette, &shown, egui_phosphor::regular::FILE,
+                None, 100 + i as u32,
+                AppMenuAction::OpenRecent(path.clone()), out);
+        }
+        separator(ui, palette);
+    }
+
     if !is_viewer {
         item(ui, palette, "Opslaan",      egui_phosphor::regular::FLOPPY_DISK,
             Some("Ctrl+S"), 3, AppMenuAction::Save, out);
@@ -389,8 +431,8 @@ impl AppMenu {
         // return Close to preserve the popup-style "one click = one
         // action" contract.
         let chosen = actions.iter().find(|a| !matches!(a, AppMenuAction::Close))
-            .copied()
-            .or_else(|| actions.iter().find(|a| matches!(a, AppMenuAction::Close)).copied());
+            .cloned()
+            .or_else(|| actions.iter().find(|a| matches!(a, AppMenuAction::Close)).cloned());
         if chosen.is_some() {
             *open = false;
         }
