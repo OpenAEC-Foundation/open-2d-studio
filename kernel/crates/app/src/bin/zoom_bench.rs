@@ -22,7 +22,6 @@
 //! simulated zoom step (stride / wpp / dur_ms / model_verts / paper_verts).
 
 use std::collections::HashSet;
-use std::path::Path;
 use std::time::Instant;
 
 use kernel_app::scene_io::{load_dwg, load_dxf, Scene};
@@ -38,12 +37,12 @@ fn main() {
     let lower = path.to_lowercase();
     let load_t = Instant::now();
     let scene: Scene = if lower.ends_with(".dwg") {
-        match load_dwg(Path::new(path)) {
+        match load_dwg(path) {
             Ok(s) => s,
             Err(e) => { eprintln!("load_dwg failed: {e}"); std::process::exit(1); }
         }
     } else if lower.ends_with(".dxf") {
-        match load_dxf(Path::new(path)) {
+        match load_dxf(path) {
             Ok(s) => s,
             Err(e) => { eprintln!("load_dxf failed: {e}"); std::process::exit(1); }
         }

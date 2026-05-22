@@ -2486,42 +2486,10 @@ enum Annotation {
     Area { verts: Vec<[f64; 2]>, value: f64 },
 }
 
-// =============================================================================
-// IFC content view -- stub placeholder. The full 3-column tree / detail /
-// raw-JSON browser is being built by another agent (see `feat(viewer): IFC
-// content view * (lock) - WIP` commit chain). Until that lands, this stub
-// paints a single "in progress" frame so HEAD compiles cleanly. Both the
-// caller signature and the slot in the central panel are reserved for the
-// real impl.
-// =============================================================================
-#[allow(clippy::too_many_arguments, dead_code)]
-fn paint_ifcx_content_view(
-    ui: &mut egui::Ui,
-    rect: egui::Rect,
-    _entries: &[crate::ifcx_view::IfcxEntry],
-    _selected_id: Option<&str>,
-    _selected_json: Option<&str>,
-    _selected_attrs_text: Option<&str>,
-    _header_json: Option<&str>,
-    _search_query: &str,
-    _centre_w: f32,
-    _right_w: f32,
-    _requested_select: &mut Option<String>,
-    _requested_search: &mut Option<String>,
-    _requested_centre: &mut Option<f32>,
-    _requested_right:  &mut Option<f32>,
-    _requested_copy:   &mut Option<String>,
-) {
-    let painter = ui.painter();
-    painter.rect_filled(rect, 0.0, egui::Color32::from_rgb(28, 32, 36));
-    painter.text(
-        rect.center(),
-        egui::Align2::CENTER_CENTER,
-        "IFC content view -- in progress",
-        egui::FontId::proportional(14.0),
-        egui::Color32::from_rgb(180, 180, 180),
-    );
-}
+// Note: real `paint_ifcx_content_view` lives further down (around
+// line 8019). The earlier stub here was removed -- it was a transient
+// from the rapid lock-WIP commit series and conflicted with the real
+// impl, breaking the build with E0428 "defined multiple times".
 
 #[derive(Clone)]
 struct SampleEntry {
@@ -3454,6 +3422,9 @@ impl App {
         // Pan-mode cursor can switch between Grab (idle) and Grabbing
         // (drag in flight) without re-borrowing self mutably.
         let lmb_pressed_snapshot = self.lmb_pressed;
+        // Move-tool reference point (click-1 in the two-click flow).
+        // Snapshotted for the egui rubber-band overlay.
+        let move_p1_snapshot: Option<[f64; 2]> = self.move_p1;
         // Drag-box snapshot â€” overlay is shown when LMB is down in Select
         // mode and drift exceeds the same HiDPI-scaled threshold the
         // release path uses. Crossing direction = left-running drag.
@@ -8621,6 +8592,19 @@ impl ApplicationHandler for App {
                         // reset in the tool-mode switch arm).
                         self.tool_mode = ToolMode::Select;
                         self.dragging = false;
+                    } else if self.tool_mode == ToolMode::Move && self.move_p1.is_some() {
+                        // Two-click Move with click-1 already in flight
+                        // -- ESC just drops the reference point + clears
+                        // the live preview offset (stay in Move so the
+                        // user can retry without re-engaging the tool).
+                        self.move_p1 = None;
+                        self.move_eids.clear();
+                        if let Some(tab) = self.tabs.get_mut(self.move_tab) {
+                            tab.pending_move_offset = [0.0, 0.0];
+                        }
+                        if let Some(gpu) = self.gpu.as_ref() {
+                            rebuild_sel_pipe(self.tabs.get_mut(self.move_tab), gpu);
+                        }
                     } else if self.tool_mode == ToolMode::MeasureAngle
                         && !self.measure_angle_pts.is_empty()
                     {
@@ -8949,26 +8933,32 @@ impl ApplicationHandler for App {
                     }
                 }
 
-                if self.tool_mode == ToolMode::Move && self.lmb_pressed {
-                    // Route the drag through the tab/rect latched at press-time
-                    // so split-view moves stay anchored to the pane you started
-                    // in, even if the cursor crosses the divider mid-drag.
-                    let drag_tab = self.lmb_press_tab;
-                    let drag_rect = self.lmb_press_rect;
-                    let press_world = self.tabs.get(drag_tab)
-                        .and_then(|t| t.move_drag_multi.as_ref().map(|(_, p)| *p))
-                        .or_else(|| self.tabs.get(drag_tab)
-                            .and_then(|t| t.move_drag.map(|(_, p)| p)));
-                    if let Some(press_world) = press_world {
+                // Two-click Move preview: after click-1 latched
+                // `move_p1`, every CursorMoved updates the live preview
+                // offset on the latched tab so the user sees the
+                // selection "ghost" tracking the cursor before they
+                // commit with click-2.
+                if self.tool_mode == ToolMode::Move {
+                    if let Some(p1) = self.move_p1 {
+                        let preview_tab = self.move_tab;
+                        let preview_rect = if preview_tab == self.lmb_press_tab {
+                            self.lmb_press_rect
+                        } else {
+                            self.focused_canvas_rect()
+                        };
                         if let Some(w) = self.screen_to_world_in(
-                            drag_tab, drag_rect, self.mouse_pos.0, self.mouse_pos.1)
+                            preview_tab, preview_rect,
+                            self.mouse_pos.0, self.mouse_pos.1)
                         {
-                            let offset = [w[0] - press_world[0], w[1] - press_world[1]];
-                            if let Some(tab) = self.tabs.get_mut(drag_tab) {
+                            let w_eff = if self.ortho_enabled {
+                                ortho_constrain(p1, w)
+                            } else { w };
+                            let offset = [w_eff[0] - p1[0], w_eff[1] - p1[1]];
+                            if let Some(tab) = self.tabs.get_mut(preview_tab) {
                                 tab.pending_move_offset = offset;
                             }
                             if let Some(gpu) = self.gpu.as_ref() {
-                                rebuild_sel_pipe(self.tabs.get_mut(drag_tab), gpu);
+                                rebuild_sel_pipe(self.tabs.get_mut(preview_tab), gpu);
                             }
                         }
                     }
@@ -9115,24 +9105,16 @@ impl ApplicationHandler for App {
                                     self.drag_start_pan = (tab.cam.pan_x, tab.cam.pan_y);
                                 }
                             }
-                            if self.tool_mode == ToolMode::Move {
-                                let t_idx = self.lmb_press_tab;
-                                let rect = self.lmb_press_rect;
-                                let eids = self.selected_entity_ids_in(t_idx);
-                                if !eids.is_empty() {
-                                    if let Some(w) = self.screen_to_world_in(
-                                        t_idx, rect, self.mouse_pos.0, self.mouse_pos.1)
-                                    {
-                                        if let Some(tab) = self.tabs.get_mut(t_idx) {
-                                            // Mirror first eid in `move_drag` for the
-                                            // legacy pending-offset preview pathway.
-                                            tab.move_drag = Some((eids[0], w));
-                                            tab.move_drag_multi = Some((eids, w));
-                                            tab.pending_move_offset = [0.0, 0.0];
-                                        }
-                                    }
-                                }
-                            }
+                            // Two-click Move: nothing to do at LMB-press.
+                            // Click-1 + click-2 are both committed in the
+                            // LMB-release `drift < drift_threshold` arm
+                            // below (`ToolMode::Move`). The legacy
+                            // drag-based setup that used to live here
+                            // (set `move_drag_multi`, awaited release)
+                            // was removed -- tiny drifts left the
+                            // gesture stuck in flight (user report
+                            // "Move ... gaat die verplaatsingsactie niet
+                            // lopen").
                         }
                     }
                     ElementState::Released => {
@@ -9160,17 +9142,14 @@ impl ApplicationHandler for App {
                                 // drag again. CursorMoved already applied
                                 // the pan live -- no commit needed.
                                 self.dragging = false;
-                            } else if self.tool_mode == ToolMode::Move {
-                                // Prefer multi-entity move when one is in flight;
-                                // fall back to legacy single-entity drag.
-                                let multi_take = self.tabs.get_mut(focus_tab)
-                                    .and_then(|t| t.move_drag_multi.take());
-                                self.tabs.get_mut(focus_tab).map(|t| { t.move_drag = None; });
-                                if let Some((eids, _press)) = multi_take {
-                                    let off = self.tabs.get(focus_tab)
-                                        .map(|t| t.pending_move_offset).unwrap_or([0.0, 0.0]);
-                                    self.commit_move_multi_in(focus_tab, eids, off[0], off[1]);
-                                }
+                            // Move release: handled in the inner
+                            // `drift < drift_threshold` branch below.
+                            // The two-click flow needs to handle BOTH
+                            // click-1 (drift ~ 0, store p1) and click-2
+                            // (drift ~ 0, commit p2 - p1) -- always
+                            // through the per-tool match arm. The
+                            // legacy `else if Move` branch here used
+                            // to commit a drag, but that path is gone.
                             } else if self.tool_mode == ToolMode::ZoomRegion {
                                 // ZR â€” commit the zoom-region rectangle.
                                 // Need a valid press anchor + non-degenerate
@@ -9290,7 +9269,72 @@ impl ApplicationHandler for App {
                                             }
                                         }
                                     }
-                                    ToolMode::Move => {}
+                                    ToolMode::Move => {
+                                        // Two-click Move: click-1 = reference
+                                        // point (latched into `move_p1` +
+                                        // selection snapshot into `move_eids`),
+                                        // click-2 = destination (commit the
+                                        // translation by `dest - ref` and
+                                        // revert to Select). ESC between the
+                                        // two clicks clears the in-flight
+                                        // state.
+                                        //
+                                        // First click reads the current
+                                        // selection from the focused tab.
+                                        // Empty selection -> nudge the user
+                                        // via stderr (the visible feedback is
+                                        // the cursor *not* armed -- there's
+                                        // no rubber-band preview).
+                                        if let Some(world) = self.screen_to_world_in(
+                                            focus_tab, focus_rect,
+                                            self.mouse_pos.0, self.mouse_pos.1)
+                                        {
+                                            match self.move_p1 {
+                                                None => {
+                                                    let eids = self.selected_entity_ids_in(focus_tab);
+                                                    if eids.is_empty() {
+                                                        eprintln!("[Move] no selection -- pick entities first, then re-enter Move");
+                                                    } else {
+                                                        self.move_p1 = Some(world);
+                                                        self.move_eids = eids;
+                                                        self.move_tab = focus_tab;
+                                                        // Preview is fed via
+                                                        // `pending_move_offset`
+                                                        // updated each CursorMoved.
+                                                        if let Some(tab) = self.tabs.get_mut(focus_tab) {
+                                                            tab.pending_move_offset = [0.0, 0.0];
+                                                        }
+                                                    }
+                                                }
+                                                Some(p1) => {
+                                                    let p2 = if self.ortho_enabled {
+                                                        ortho_constrain(p1, world)
+                                                    } else { world };
+                                                    let dx = p2[0] - p1[0];
+                                                    let dy = p2[1] - p1[1];
+                                                    let eids = std::mem::take(&mut self.move_eids);
+                                                    let target_tab = self.move_tab;
+                                                    self.move_p1 = None;
+                                                    // Clear the live preview
+                                                    // offset BEFORE committing
+                                                    // -- otherwise the renderer
+                                                    // double-translates for one
+                                                    // frame between commit + the
+                                                    // next CursorMoved.
+                                                    if let Some(tab) = self.tabs.get_mut(target_tab) {
+                                                        tab.pending_move_offset = [0.0, 0.0];
+                                                    }
+                                                    self.commit_move_multi_in(target_tab, eids, dx, dy);
+                                                    // Per spec: revert to Select
+                                                    // after a successful Move
+                                                    // commit so the user doesn't
+                                                    // accidentally start a second
+                                                    // move on the next click.
+                                                    self.tool_mode = ToolMode::Select;
+                                                }
+                                            }
+                                        }
+                                    }
                                     // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
                                     ToolMode::Dimension => {
                                         if let Some(world) = self.screen_to_world_in(
