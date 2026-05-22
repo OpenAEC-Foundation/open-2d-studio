@@ -2434,6 +2434,12 @@ impl Default for MeasureSub {
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum ToolMode {
     Select,
+    /// Hand-pan: LMB-drag inside the active pane translates that tab's
+    /// camera. Stays armed across releases so the user can press +
+    /// drag, release, press + drag again. ESC reverts to Select.
+    /// Cursor switches to Grab while in the mode and Grabbing while
+    /// LMB is held. Engaged by the Home / View ribbon `Pan` buttons.
+    Pan,
     Measure,
     Move,
     // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
@@ -3942,10 +3948,14 @@ impl App {
                                 // Clipboard / Zoom buttons all had ids in
                                 // build_ribbon_tabs but no dispatch arm.
                                 "pan" => {
-                                    // No dedicated Pan tool -- middle-drag
-                                    // is canonical. Surface as Select +
-                                    // nudge the user via the status bar.
-                                    requested_tool_mode = Some(ToolMode::Select);
+                                    // Hand-pan tool: LMB-drag inside the
+                                    // canvas pans the active tab's camera.
+                                    // Middle-drag still pans regardless of
+                                    // mode (the legacy quick-pan path),
+                                    // but Pan mode gives a discoverable
+                                    // cursor + LMB binding for tablet /
+                                    // single-button users.
+                                    requested_tool_mode = Some(ToolMode::Pan);
                                 }
                                 "select_all" => {
                                     self.requested_select_all = true;
@@ -4163,6 +4173,7 @@ natively, so you can hand the file back to your main toolchain without losing ed
                     let zoom_pct = (status_zoom * 100.0).round() as i32;
                     let tool_str = match current_tool_mode {
                         ToolMode::Select       => "SELECT",
+                        ToolMode::Pan          => "PAN",
                         ToolMode::Measure      => "MEASURE",
                         ToolMode::Move         => "MOVE",
                         ToolMode::Dimension    => "DIM",
@@ -4952,7 +4963,8 @@ natively, so you can hand the file back to your main toolchain without losing ed
 
             // ---- Right: Structure tree (IFC / DXF model browser) ----
             // Toggle with F5 or the ribbon "Structure" button.
-            if structure_panel_open {
+            // Skipped when the IFC content view is active.
+            if structure_panel_open && !ifcx_view_active {
                 if let Some(root) = structure_root.as_ref() {
                     let mut expanded = std::mem::take(&mut self.structure_expanded);
                     let mut selected = self.structure_selected.clone();
@@ -5580,9 +5592,10 @@ natively, so you can hand the file back to your main toolchain without losing ed
             // Dimension / Area) still snap to Select.
             if self.mode == AppMode::Viewer {
                 let allowed = matches!(m,
-                    ToolMode::Select | ToolMode::Measure | ToolMode::ZoomRegion
-                        | ToolMode::Move | ToolMode::ZoomCenter
-                        | ToolMode::MeasureAngle | ToolMode::MeasureCoord
+                    ToolMode::Select | ToolMode::Pan | ToolMode::Measure
+                        | ToolMode::ZoomRegion | ToolMode::Move
+                        | ToolMode::ZoomCenter | ToolMode::MeasureAngle
+                        | ToolMode::MeasureCoord
                 );
                 if !allowed {
                     eprintln!("[viewer] ignoring authoring tool request: {:?}", m);
@@ -5601,9 +5614,17 @@ natively, so you can hand the file back to your main toolchain without losing ed
             if m != ToolMode::Move {
                 if let Some(tab) = self.tabs.get_mut(self.active_tab) {
                     tab.move_drag = None;
+                    tab.move_drag_multi = None;
                     tab.pending_move_offset = [0.0, 0.0];
                 }
                 pending_selection_rebuild = true;
+            }
+            // Pan tool uses the same `dragging` / `drag_start_pan`
+            // fields as the middle-button quick-pan. Reset them on a
+            // switch-away so a half-finished LMB-drag from Pan mode
+            // doesn't leak into the next tool's CursorMoved handler.
+            if m != ToolMode::Pan {
+                self.dragging = false;
             }
             // Annotate tools â€” per user request: linear maatlijn + area measurement, per-tab persistence
             if m != ToolMode::Dimension { self.dim_p1 = None; }
