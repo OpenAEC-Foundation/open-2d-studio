@@ -1542,6 +1542,13 @@ enum EditOp {
     /// Re-tessellation of a text entity (F2 edit). Inverse: restore the
     /// previous segments/triangles snapshot via `restore_text_entity`.
     EditText { text_delta: crate::scene_io::TextEntityDelta },
+    /// Layer soft-deleted via the LAYERS panel trash button. The
+    /// inverse pulls the layer name out of both `deleted_layers` and
+    /// `hidden_layers` so the rows reappear and segments render
+    /// again. `was_hidden_before` remembers whether the layer was
+    /// already hidden via the eye toggle before the trash click — so
+    /// undo restores that toggle exactly.
+    LayerDelete { layer_name: String, was_hidden_before: bool },
 }
 
 impl FileTab {
@@ -1679,10 +1686,25 @@ impl FileTab {
     /// `scene_index`. Cheap once built.
     fn ensure_snap_segments(&mut self) {
         if self.snap_segments.is_some() { return; }
-        let segs: Vec<([f64; 2], [f64; 2])> = self.scene.segments
-            .iter()
-            .map(|s| (s.p1, s.p2))
-            .collect();
+        // Skip text-glyph tessellation segments — snapping to a letter
+        // baseline / serif is never useful and these segments are
+        // disproportionally numerous (one short stroke per glyph
+        // contour). User: "Ik wil dat de snaps niet werkt op de
+        // teksten." Cheap filter via segment_entity_idx -> entity_text
+        // lookup: entity_text[eid] = Some(_) means this segment was
+        // produced by a TEXT / MTEXT tessellation pass.
+        let mut segs: Vec<([f64; 2], [f64; 2])> =
+            Vec::with_capacity(self.scene.segments.len());
+        let n_text_slots = self.scene.entity_text.len();
+        for (i, s) in self.scene.segments.iter().enumerate() {
+            if let Some(&eid) = self.scene.segment_entity_idx.get(i) {
+                let idx = eid as usize;
+                if idx < n_text_slots && self.scene.entity_text[idx].is_some() {
+                    continue;
+                }
+            }
+            segs.push((s.p1, s.p2));
+        }
         self.snap_segments = Some(segs);
     }
 
@@ -5551,8 +5573,15 @@ natively, so you can hand the file back to your main toolchain without losing ed
         }
         if let Some(key) = requested_layer_delete {
             if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                let was_hidden_before = tab.hidden_layers.contains(&key);
                 tab.deleted_layers.insert(key.clone());
-                tab.hidden_layers.insert(key);
+                tab.hidden_layers.insert(key.clone());
+                // Make the soft-delete undoable (Ctrl+Z restores the row
+                // + un-hides if it wasn't hidden via the eye before).
+                push_undo(&mut tab.undo_stack, EditOp::LayerDelete {
+                    layer_name: key,
+                    was_hidden_before,
+                });
             }
             need_rebuild_active = true;
         }
@@ -6182,10 +6211,21 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 Vec::new()
             }
         };
+        let n_text_slots = tab.scene.entity_text.len();
         for ci in candidates {
             let i = ci as usize;
             let Some(s) = tab.scene.segments.get(i) else { continue; };
             if s.is_paper != want_paper { continue; }
+            // Skip text-glyph tessellation segments — text is render-
+            // only in Viewer/Studio. Selecting a single glyph stroke
+            // out of a paragraph adds no value and pushing them
+            // through the picker bloats the candidate list.
+            if let Some(&eid) = tab.scene.segment_entity_idx.get(i) {
+                let idx = eid as usize;
+                if idx < n_text_slots && tab.scene.entity_text[idx].is_some() {
+                    continue;
+                }
+            }
             let layer_key = layer_key_for_color(s.color);
             if hidden.contains(&layer_key) { continue; }
             let d2 = Self::point_segment_dist2(p, s.p1, s.p2);
@@ -6781,6 +6821,17 @@ natively, so you can hand the file back to your main toolchain without losing ed
             EditOp::EditText { text_delta } => {
                 if let Some(tab) = self.tabs.get_mut(tab_idx) {
                     let _ = crate::scene_io::restore_text_entity(&mut tab.scene, &text_delta);
+                }
+                self.reupload_tab_buffers(tab_idx);
+            }
+            EditOp::LayerDelete { layer_name, was_hidden_before } => {
+                if let Some(tab) = self.tabs.get_mut(tab_idx) {
+                    tab.deleted_layers.remove(&layer_name);
+                    if !was_hidden_before {
+                        tab.hidden_layers.remove(&layer_name);
+                    }
+                    tab.cached_layer_list = None;
+                    tab.cached_structure_tree = None;
                 }
                 self.reupload_tab_buffers(tab_idx);
             }
