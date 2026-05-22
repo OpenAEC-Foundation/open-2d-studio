@@ -3476,6 +3476,10 @@ impl App {
         let mut requested_ortho_toggle = false;
         // Zoom Previous — pop the camera history stack onto the active tab.
         let mut requested_zoom_previous = false;
+        // Zoom In/Out ribbon buttons -- positive value zooms in, negative
+        // zooms out. Applied as cam.zoom *= 1.25 / 0.8 to match a single
+        // mouse-wheel notch. None = no zoom step this frame.
+        let mut requested_zoom_step: Option<i32> = None;
         // Display toggles (Phase 2): grid overlay, white background.
         let mut requested_toggle_grid = false;
         let mut requested_toggle_white_bg = false;
@@ -3854,6 +3858,42 @@ impl App {
                                 "measure_coord" => {
                                     requested_tool_mode = Some(ToolMode::MeasureCoord);
                                 }
+                                // --- Audit-2026-05-22: previously-dead ribbon
+                                // arms now wired. Selection / Pan / Edit /
+                                // Clipboard / Zoom buttons all had ids in
+                                // build_ribbon_tabs but no dispatch arm.
+                                "pan" => {
+                                    // No dedicated Pan tool -- middle-drag
+                                    // is canonical. Surface as Select +
+                                    // nudge the user via the status bar.
+                                    requested_tool_mode = Some(ToolMode::Select);
+                                }
+                                "select_all" => {
+                                    self.requested_select_all = true;
+                                }
+                                "deselect" => {
+                                    requested_selection_clear = true;
+                                }
+                                "copy_to_clipboard" | "copy" => {
+                                    if self.mode != AppMode::Viewer {
+                                        self.requested_copy = true;
+                                    } else {
+                                        // Viewer is read-only -- the clipboard
+                                        // copy of geometry would require a
+                                        // paste path we don't ship. Make the
+                                        // click visible in the log.
+                                        eprintln!("[viewer] Copy: clipboard ignored in read-only mode");
+                                    }
+                                }
+                                "delete" => {
+                                    // Same dispatch as the Delete keyboard
+                                    // binding -- allowed in Viewer per the
+                                    // minimal-edit surface (Move / Delete /
+                                    // Explode / layer-delete).
+                                    self.requested_delete = true;
+                                }
+                                "zoom_in" => { requested_zoom_step = Some(1); }
+                                "zoom_out" => { requested_zoom_step = Some(-1); }
                                 _ => {}
                             },
                         }
@@ -5475,6 +5515,23 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 if let Some(tab) = self.tabs.get_mut(tab_idx) {
                     tab.cam = cam;
                 }
+            }
+        }
+        // Zoom In/Out ribbon buttons -- one notch = 1.25x in, 0.8x out.
+        // Anchored at the canvas centre so the visible content stays
+        // roughly fixed. Pushes onto camera_history so Zoom Previous
+        // walks back through ribbon-driven steps too.
+        if let Some(dir) = requested_zoom_step {
+            let active = self.active_tab;
+            if let Some(cam_now) = self.tabs.get(active).map(|t| t.cam) {
+                if self.camera_history.len() >= CAMERA_HISTORY_MAX {
+                    self.camera_history.remove(0);
+                }
+                self.camera_history.push((active, cam_now));
+            }
+            let factor: f64 = if dir > 0 { 1.25 } else { 0.8 };
+            if let Some(tab) = self.tabs.get_mut(active) {
+                tab.cam.zoom = (tab.cam.zoom * factor).clamp(1e-6, 1e9);
             }
         }
         if requested_toggle_grid { self.show_grid = !self.show_grid; }
