@@ -9508,10 +9508,13 @@ fn build_ribbon_tabs(
                     RibbonGroup::with_layout("Appearance", RibbonGroupLayout::LargeOnly {
                         large: vec![enable(lg("theme", "Theme", IconKind::Palette))],
                     }),
-                    // IFC Model toggle — visible disabled per mockup spec.
-                    RibbonGroup::with_layout("Panels", RibbonGroupLayout::LargeOnly {
-                        large: vec![lg("ifc_panel", "IFC Model", IconKind::IfcText)],
-                    }),
+                    // IFC Model toggle removed in the Viewer build per
+                    // user request 2026-05-22 ("Bij het tabblad View
+                    // kan je de IFC model weglaten"). IFC functionality
+                    // is gated out of Viewer everywhere else (no IFC
+                    // ribbon tab, no IFC panel, status-bar IFC pill
+                    // hidden since 07b5f97) so the toggle was a
+                    // dead-end affordance.
                 ],
             },
         ];
