@@ -5473,13 +5473,12 @@ natively, so you can hand the file back to your main toolchain without losing ed
             requested_menu_save_as_dxf = true;
         }
         if let Some(tab) = requested_ribbon_tab {
-            // Switching to the IFC ribbon tab in Viewer mode also pops
-            // the structure panel open so the user immediately sees
-            // the model tree for the active file (DWG/DXF layer+entity
-            // bucket tree, or IFCDraw entity hierarchy).
-            if tab == "ifc" && self.mode == AppMode::Viewer {
-                self.structure_panel_open = true;
-            }
+            // (Used to auto-open the structure side-panel here, but the
+            // user found that unwanted — "Er is nu in één keer een
+            // structure-tabblad bijgekomen. Die hoef ik niet te
+            // hebben." The IFC tab itself stays; the upcoming central
+            // IFC-X content browser will render in the canvas area
+            // instead. Side panel is reachable via F5 if wanted.)
             self.active_ribbon_tab = tab;
         }
 
@@ -5534,6 +5533,11 @@ natively, so you can hand the file back to your main toolchain without losing ed
             if m != ToolMode::Measure { self.measure_p1 = None; }
             if m != ToolMode::MeasureAngle { self.measure_angle_pts.clear(); }
             if m != ToolMode::MeasureCoord { self.last_measure_coord = None; }
+            // Clear any lingering snap marker on every tool switch —
+            // belt-and-braces alongside the update_snap() gate so the
+            // marker doesn't persist for one frame after switching from
+            // Measure back to Select.
+            self.current_snap = None;
             if m != ToolMode::Move {
                 if let Some(tab) = self.tabs.get_mut(self.active_tab) {
                     tab.move_drag = None;

@@ -759,206 +759,167 @@ fn paint_icon_handdrawn(painter: &Painter, rect: Rect, kind: IconKind, color: Co
         // Phosphor glyphs.
         // -----------------------------------------------------------------
         IconKind::MeasureLength => {
-            // CAD linear-dimension icon: two extension lines + horizontal
-            // dim line + two arrowheads pointing outward + a small "1.0"
-            // suggestion via two parallel ticks in the middle. Reads
-            // unambiguously as "measured distance between two points".
+            // Finer linear-dimension icon — thinner strokes, smaller
+            // arrowheads. CAD reading: two short extension lines + dim
+            // line + two open-V arrows at the ends.
             let y_mid = center.y;
-            let y_ext = center.y - r * 0.55;
-            let x_a = center.x - r * 0.85;
-            let x_b = center.x + r * 0.85;
-            let bold = Stroke::new(stroke.width * 1.1, color);
-            // Extension lines (vertical witness lines)
+            let x_a = center.x - r * 0.80;
+            let x_b = center.x + r * 0.80;
+            let thin = Stroke::new(stroke.width * 0.75, color);
+            // Extension lines — only above the dim line, shorter
             painter.line_segment(
-                [Pos2::new(x_a, y_ext - r * 0.25), Pos2::new(x_a, y_mid + r * 0.30)],
-                bold,
+                [Pos2::new(x_a, y_mid - r * 0.55), Pos2::new(x_a, y_mid + r * 0.18)],
+                thin,
             );
             painter.line_segment(
-                [Pos2::new(x_b, y_ext - r * 0.25), Pos2::new(x_b, y_mid + r * 0.30)],
-                bold,
+                [Pos2::new(x_b, y_mid - r * 0.55), Pos2::new(x_b, y_mid + r * 0.18)],
+                thin,
             );
             // Dimension line
             painter.line_segment(
                 [Pos2::new(x_a, y_mid), Pos2::new(x_b, y_mid)],
-                bold,
+                thin,
             );
-            // Filled arrowheads (triangle fans)
-            let arrow_w = r * 0.35;
-            let arrow_h = stroke.width * 1.8;
-            painter.add(egui::Shape::convex_polygon(
-                vec![
-                    Pos2::new(x_a, y_mid),
-                    Pos2::new(x_a + arrow_w, y_mid - arrow_h),
-                    Pos2::new(x_a + arrow_w, y_mid + arrow_h),
-                ],
-                color, Stroke::NONE,
-            ));
-            painter.add(egui::Shape::convex_polygon(
-                vec![
-                    Pos2::new(x_b, y_mid),
-                    Pos2::new(x_b - arrow_w, y_mid - arrow_h),
-                    Pos2::new(x_b - arrow_w, y_mid + arrow_h),
-                ],
-                color, Stroke::NONE,
-            ));
+            // Open-V arrowheads (just two short strokes each — no fill)
+            let arrow_dx = r * 0.22;
+            let arrow_dy = r * 0.16;
+            painter.line_segment(
+                [Pos2::new(x_a, y_mid),
+                 Pos2::new(x_a + arrow_dx, y_mid - arrow_dy)],
+                thin,
+            );
+            painter.line_segment(
+                [Pos2::new(x_a, y_mid),
+                 Pos2::new(x_a + arrow_dx, y_mid + arrow_dy)],
+                thin,
+            );
+            painter.line_segment(
+                [Pos2::new(x_b, y_mid),
+                 Pos2::new(x_b - arrow_dx, y_mid - arrow_dy)],
+                thin,
+            );
+            painter.line_segment(
+                [Pos2::new(x_b, y_mid),
+                 Pos2::new(x_b - arrow_dx, y_mid + arrow_dy)],
+                thin,
+            );
         }
         IconKind::MeasureArea => {
-            // Quadrilateral patch with 45° hatching + corner anchor dots —
-            // reads as "measure enclosed area". Filled background tint at
-            // 25 % so the hatch lines pop against it.
+            // Finer area icon — clean quadrilateral outline + sparse
+            // hatching, no filled background, no corner dots. Reads
+            // "enclosed region" without visual noise.
             let pts = [
-                Pos2::new(center.x - r * 0.85, center.y - r * 0.60),
-                Pos2::new(center.x + r * 0.95, center.y - r * 0.85),
-                Pos2::new(center.x + r * 0.80, center.y + r * 0.85),
-                Pos2::new(center.x - r * 0.95, center.y + r * 0.55),
+                Pos2::new(center.x - r * 0.80, center.y - r * 0.55),
+                Pos2::new(center.x + r * 0.85, center.y - r * 0.80),
+                Pos2::new(center.x + r * 0.75, center.y + r * 0.80),
+                Pos2::new(center.x - r * 0.85, center.y + r * 0.50),
             ];
-            // Soft fill
-            let fill = Color32::from_rgba_unmultiplied(
-                color.r(), color.g(), color.b(),
-                (color.a() as f32 * 0.18) as u8,
-            );
-            painter.add(egui::Shape::convex_polygon(
-                pts.to_vec(), fill, Stroke::NONE,
-            ));
-            // Outline
+            let thin = Stroke::new(stroke.width * 0.75, color);
+            // Outline only
             for i in 0..4 {
-                painter.line_segment([pts[i], pts[(i + 1) % 4]], stroke);
+                painter.line_segment([pts[i], pts[(i + 1) % 4]], thin);
             }
-            // 45° hatching — short parallel diagonals clipped to the bbox
+            // Sparse 45° hatching — just 3 lines, dimmer
             let hatch_color = Color32::from_rgba_unmultiplied(
                 color.r(), color.g(), color.b(),
-                (color.a() as f32 * 0.55) as u8,
+                (color.a() as f32 * 0.45) as u8,
             );
-            let hatch_stroke = Stroke::new(stroke.width * 0.7, hatch_color);
-            for k in -3..=3 {
-                let off = k as f32 * r * 0.32;
-                let p1 = Pos2::new(center.x - r * 0.7 + off, center.y + r * 0.7);
-                let p2 = Pos2::new(center.x + r * 0.7 + off, center.y - r * 0.7);
+            let hatch_stroke = Stroke::new(stroke.width * 0.55, hatch_color);
+            for k in -1..=1 {
+                let off = k as f32 * r * 0.45;
+                let p1 = Pos2::new(center.x - r * 0.55 + off, center.y + r * 0.55);
+                let p2 = Pos2::new(center.x + r * 0.55 + off, center.y - r * 0.55);
                 painter.line_segment([p1, p2], hatch_stroke);
-            }
-            // Corner anchors — tiny filled squares so it reads as "area
-            // with grippable corners".
-            for p in pts.iter() {
-                let h = stroke.width * 1.2;
-                painter.rect_filled(
-                    Rect::from_center_size(*p, egui::vec2(h * 2.0, h * 2.0)),
-                    0.0, color,
-                );
             }
         }
         IconKind::MeasureAngle => {
-            // Two rays from a vertex with an arc + small angle-degree
-            // tick. Reads as "measure angle between two lines".
-            let origin = Pos2::new(center.x - r * 0.80, center.y + r * 0.80);
-            let bold = Stroke::new(stroke.width * 1.1, color);
+            // Finer angle icon — two clean rays from a vertex + thin arc.
+            // No filled arrowheads, no big vertex dot — reads as
+            // "angle between two lines" without heavy ink.
+            let origin = Pos2::new(center.x - r * 0.75, center.y + r * 0.75);
+            let thin = Stroke::new(stroke.width * 0.75, color);
             // Horizontal ray
             painter.line_segment(
-                [origin, Pos2::new(center.x + r * 0.95, origin.y)],
-                bold,
+                [origin, Pos2::new(center.x + r * 0.90, origin.y)],
+                thin,
             );
             // Upper-right ray (~50° above horizontal)
             let theta = std::f32::consts::FRAC_PI_4 * 1.15;
-            let end_x = origin.x + r * 1.85 * theta.cos();
-            let end_y = origin.y - r * 1.85 * theta.sin();
+            let end_x = origin.x + r * 1.75 * theta.cos();
+            let end_y = origin.y - r * 1.75 * theta.sin();
             painter.line_segment(
                 [origin, Pos2::new(end_x, end_y)],
-                bold,
+                thin,
             );
-            // Filled arrowhead on horizontal ray
-            let arr = r * 0.22;
-            let arr_h = stroke.width * 1.6;
-            let hx = center.x + r * 0.95;
-            painter.add(egui::Shape::convex_polygon(
-                vec![
-                    Pos2::new(hx, origin.y),
-                    Pos2::new(hx - arr, origin.y - arr_h),
-                    Pos2::new(hx - arr, origin.y + arr_h),
-                ],
-                color, Stroke::NONE,
-            ));
-            // Filled arrowhead on diagonal ray
-            let bx = end_x - arr * theta.cos();
-            let by = end_y + arr * theta.sin();
-            let nx = -theta.sin() * arr_h;
-            let ny = -theta.cos() * arr_h;
-            painter.add(egui::Shape::convex_polygon(
-                vec![
-                    Pos2::new(end_x, end_y),
-                    Pos2::new(bx + nx, by + ny),
-                    Pos2::new(bx - nx, by - ny),
-                ],
-                color, Stroke::NONE,
-            ));
-            // Angle arc — thicker, more visible
-            let arc_r = r * 0.65;
-            let arc_stroke = Stroke::new(stroke.width * 1.2, color);
+            // Open-V arrowhead on horizontal ray
+            let hx = center.x + r * 0.90;
+            let av = r * 0.16;
+            painter.line_segment(
+                [Pos2::new(hx, origin.y), Pos2::new(hx - av * 1.2, origin.y - av)],
+                thin,
+            );
+            painter.line_segment(
+                [Pos2::new(hx, origin.y), Pos2::new(hx - av * 1.2, origin.y + av)],
+                thin,
+            );
+            // Thin angle arc
+            let arc_r = r * 0.55;
+            let arc_stroke = Stroke::new(stroke.width * 0.75, color);
             let mut prev: Option<Pos2> = None;
-            let steps = 16;
+            let steps = 20;
             for i in 0..=steps {
                 let t = (i as f32 / steps as f32) * theta;
                 let p = Pos2::new(origin.x + arc_r * t.cos(), origin.y - arc_r * t.sin());
                 if let Some(prev) = prev { painter.line_segment([prev, p], arc_stroke); }
                 prev = Some(p);
             }
-            // Vertex dot
-            painter.circle_filled(origin, stroke.width * 1.6, color);
+            // Tiny vertex marker
+            painter.circle_filled(origin, stroke.width * 0.9, color);
         }
         IconKind::MeasureCoord => {
-            // Crosshair with axis labels + center bullseye. Reads as
-            // "read XY coord at a point".
-            let bold = Stroke::new(stroke.width * 1.15, color);
-            // Vertical axis with arrow on top
+            // Finer crosshair-coord icon — thin axes, open-V arrows,
+            // small targeting ring. Reads as "report (x, y) at a point".
+            let thin = Stroke::new(stroke.width * 0.75, color);
+            // Vertical axis
             painter.line_segment(
-                [Pos2::new(center.x, center.y - r * 0.95),
-                 Pos2::new(center.x, center.y + r * 0.95)],
-                bold,
+                [Pos2::new(center.x, center.y - r * 0.90),
+                 Pos2::new(center.x, center.y + r * 0.90)],
+                thin,
             );
-            // Horizontal axis with arrow on right
+            // Horizontal axis
             painter.line_segment(
-                [Pos2::new(center.x - r * 0.95, center.y),
-                 Pos2::new(center.x + r * 0.95, center.y)],
-                bold,
+                [Pos2::new(center.x - r * 0.90, center.y),
+                 Pos2::new(center.x + r * 0.90, center.y)],
+                thin,
             );
-            // Top arrowhead (Y)
-            let arr = r * 0.20;
-            let arr_h = stroke.width * 1.5;
-            painter.add(egui::Shape::convex_polygon(
-                vec![
-                    Pos2::new(center.x, center.y - r * 0.95),
-                    Pos2::new(center.x - arr_h, center.y - r * 0.95 + arr),
-                    Pos2::new(center.x + arr_h, center.y - r * 0.95 + arr),
-                ],
-                color, Stroke::NONE,
-            ));
-            // Right arrowhead (X)
-            painter.add(egui::Shape::convex_polygon(
-                vec![
-                    Pos2::new(center.x + r * 0.95, center.y),
-                    Pos2::new(center.x + r * 0.95 - arr, center.y - arr_h),
-                    Pos2::new(center.x + r * 0.95 - arr, center.y + arr_h),
-                ],
-                color, Stroke::NONE,
-            ));
-            // Tick marks on each axis (positive direction)
-            let tick = stroke.width * 1.2;
-            for k in 1..=3 {
-                let t = k as f32 * r * 0.22;
-                // X axis ticks (above the line)
-                painter.line_segment(
-                    [Pos2::new(center.x + t, center.y - tick),
-                     Pos2::new(center.x + t, center.y + tick)],
-                    Stroke::new(stroke.width * 0.7, color),
-                );
-                // Y axis ticks (left of the line)
-                painter.line_segment(
-                    [Pos2::new(center.x - tick, center.y - t),
-                     Pos2::new(center.x + tick, center.y - t)],
-                    Stroke::new(stroke.width * 0.7, color),
-                );
-            }
-            // Center bullseye (ring + filled dot)
-            painter.circle_stroke(center, r * 0.18, Stroke::new(stroke.width * 1.2, color));
-            painter.circle_filled(center, stroke.width * 1.0, color);
+            // Open-V arrowheads at +X and +Y tips
+            let av = r * 0.14;
+            // +Y (top)
+            painter.line_segment(
+                [Pos2::new(center.x, center.y - r * 0.90),
+                 Pos2::new(center.x - av, center.y - r * 0.90 + av * 1.2)],
+                thin,
+            );
+            painter.line_segment(
+                [Pos2::new(center.x, center.y - r * 0.90),
+                 Pos2::new(center.x + av, center.y - r * 0.90 + av * 1.2)],
+                thin,
+            );
+            // +X (right)
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.90, center.y),
+                 Pos2::new(center.x + r * 0.90 - av * 1.2, center.y - av)],
+                thin,
+            );
+            painter.line_segment(
+                [Pos2::new(center.x + r * 0.90, center.y),
+                 Pos2::new(center.x + r * 0.90 - av * 1.2, center.y + av)],
+                thin,
+            );
+            // Small targeting ring + tiny centre dot
+            painter.circle_stroke(center, r * 0.22,
+                Stroke::new(stroke.width * 0.75, color));
+            painter.circle_filled(center, stroke.width * 0.9, color);
         }
         IconKind::Pan => {
             // Hand silhouette with extended thumb — matches Lucide `hand`.
