@@ -4677,8 +4677,8 @@ natively, so you can hand the file back to your main toolchain without losing ed
             if properties_panel_open {
                 let palette = superui::theme::Theme::Default.palette();
                 egui::SidePanel::right("properties")
-                    .default_width(190.0)   // smaller default per user — was RIGHT_DOCK_WIDTH (256)
-                    .min_width(160.0)
+                    .default_width(160.0)   // smaller default per user — was 190, was 256
+                    .min_width(140.0)
                     .resizable(true)
                     .frame(egui::Frame::none().fill(palette.bg))
                     .show(ctx, |ui| {
@@ -4690,14 +4690,42 @@ natively, so you can hand the file back to your main toolchain without losing ed
                         // Mockup spec (lines 867-875): subtitle two lines —
                         // tab breadcrumb (fg-muted 11 px) + filename · segs
                         // (fg-dim).
+                        //
+                        // Tail-truncate the tab label to ~16 chars (with
+                        // leading ellipsis) so a long DWG basename like
+                        // "2705_model Funderingsherstel - Constructie - ...
+                        // .dwg" doesn't stretch the panel beyond its
+                        // narrow default. Segment count gets its own line
+                        // so neither overflows.
+                        let truncated_tab: String = {
+                            let max_chars = 16usize;
+                            let chars: Vec<char> = prop_tab_label.chars().collect();
+                            if chars.len() <= max_chars {
+                                prop_tab_label.clone()
+                            } else {
+                                let tail: String = chars[chars.len() - max_chars..].iter().collect();
+                                format!("\u{2026}{}", tail)
+                            }
+                        };
                         ui.add_space(6.0);
                         ui.horizontal(|ui| {
                             ui.add_space(10.0);
-                            ui.label(
-                                egui::RichText::new(format!("Tab: {}  ·  {} segs",
-                                    prop_tab_label, prop_scene_total))
-                                    .size(11.0)
-                                    .color(palette.fg_dim),
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("Tab: {}", truncated_tab))
+                                        .size(11.0)
+                                        .color(palette.fg_dim),
+                                ).truncate(),
+                            );
+                        });
+                        ui.horizontal(|ui| {
+                            ui.add_space(10.0);
+                            ui.add(
+                                egui::Label::new(
+                                    egui::RichText::new(format!("{} segs", prop_scene_total))
+                                        .size(11.0)
+                                        .color(palette.fg_dim),
+                                ).truncate(),
                             );
                         });
                         ui.add_space(4.0);
