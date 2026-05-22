@@ -1799,16 +1799,31 @@ impl FileTab {
             &self.scene, self.cam.origin, DEFAULT_LINE_COLOR, false, hidden, wpp);
         let paper_verts = build_verts(
             &self.scene, self.cam.origin, DEFAULT_LINE_COLOR, true, hidden, wpp);
+        // Use the LARGER of model / paper for capacity sizing -- the
+        // active pane can switch between the two without a pipeline
+        // recreate, matching what `rebuild_buffers_with_canvas` does.
+        let init_line: &[Vertex] = if paper_verts.len() > model_verts.len()
+            { &paper_verts } else { &model_verts };
         let active = if want_paper { &paper_verts } else { &model_verts };
 
-        // Reuse the existing pipeline -- a dash refresh never adds new
-        // segments so the line buffer capacity is always sufficient
-        // (it was sized by the last full rebuild). If the pipeline
-        // doesn't exist yet, fall back to the full rebuild
-        // (file-load / first-paint path).
-        match self.pipe.as_mut() {
-            Some(p) => p.upload(&gpu.queue, active),
-            None => self.rebuild_buffers_with_canvas(gpu, canvas_height_px),
+        // Capacity check: when zooming in deeper, build_verts emits more
+        // dash strokes per segment so the vertex count can grow past
+        // the existing buffer's allocation. A blind p.upload() in that
+        // case overruns the GPU buffer (Validation Error in wgpu's
+        // Queue::write_buffer -- crashed the viewer on the 3BM big-DWG
+        // test when this method skipped the check). Mirror the resize
+        // logic that `rebuild_buffers_with_canvas` uses.
+        let needs_new_line = match &self.pipe {
+            None => true,
+            Some(p) => (p.vb.size() / std::mem::size_of::<Vertex>() as u64)
+                < init_line.len().max(2) as u64,
+        };
+        if needs_new_line {
+            let mut p = LinePipeline::new(&gpu.device, gpu.format, init_line);
+            p.upload(&gpu.queue, active);
+            self.pipe = Some(p);
+        } else if let Some(p) = self.pipe.as_mut() {
+            p.upload(&gpu.queue, active);
         }
     }
 
