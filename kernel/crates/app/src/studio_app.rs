@@ -3535,6 +3535,14 @@ impl App {
         let mut requested_toggle_props_panel = false;
         let mut requested_toggle_structure_panel = false;
         let mut requested_structure_select: Option<String> = None;
+        // IFC content view (Viewer + IFC ribbon tab) â€” deferred mutations
+        // recorded by the central-panel painter so the egui closure stays
+        // borrow-clean. Applied below alongside `requested_structure_select`.
+        let mut requested_ifcx_select: Option<String> = None;
+        let mut requested_ifcx_search: Option<String> = None;
+        let mut requested_ifcx_centre_w: Option<f32> = None;
+        let mut requested_ifcx_right_w: Option<f32> = None;
+        let mut requested_ifcx_copy_json: Option<String> = None;
         let mut requested_toggle_samples_panel = false;
         let mut requested_close_samples = false;
         let mut requested_tool_mode: Option<ToolMode> = None;
