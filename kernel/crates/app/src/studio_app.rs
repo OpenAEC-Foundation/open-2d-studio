@@ -2898,10 +2898,15 @@ impl App {
         let mut dialog = rfd::FileDialog::new()
             .set_title("Open file");
         if self.mode == AppMode::Viewer {
+            // Viewer accepts the three file types it can persist back
+            // to disk: DWG / DXF / IFCDraw. The IFCDraw load roundtrips
+            // any minimal viewer edits (Move / Delete / Explode /
+            // layer-delete) from a previous session.
             dialog = dialog
-                .add_filter("CAD files (*.dwg, *.dxf)", &["dwg", "dxf"])
+                .add_filter("CAD files (*.dwg, *.dxf, *.ifcdraw)", &["dwg", "dxf", "ifcdraw"])
                 .add_filter("AutoCAD DWG", &["dwg"])
-                .add_filter("AutoCAD DXF", &["dxf"]);
+                .add_filter("AutoCAD DXF", &["dxf"])
+                .add_filter("IFCDraw", &["ifcdraw"]);
         } else {
             dialog = dialog
                 .add_filter("CAD files", &["dwg", "dxf", "ifcdraw"])
