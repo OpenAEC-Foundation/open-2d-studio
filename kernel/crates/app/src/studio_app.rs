@@ -5062,6 +5062,33 @@ natively, so you can hand the file back to your main toolchain without losing ed
                 .frame(egui::Frame::none())
                 .show(ctx, |ui| {
                     let rect = ui.available_rect_before_wrap();
+                    // IFC content browser: paint a full-area 3-column
+                    // tree / detail / raw-JSON view of the active scene's
+                    // IFC-X mapping. The canvas wgpu pass is skipped this
+                    // frame -- we leave `canvas_rect_logical` as None so
+                    // the scene-pass pane loop short-circuits via a
+                    // parallel `ifcx_view_active` guard further down.
+                    if ifcx_view_active {
+                        paint_ifcx_content_view(
+                            ui,
+                            rect,
+                            &ifcx_entries,
+                            ifcx_selected_snapshot.as_deref(),
+                            ifcx_selected_json.as_deref(),
+                            ifcx_selected_attrs_text.as_deref(),
+                            ifcx_header_json.as_deref(),
+                            &ifcx_search_query_snapshot,
+                            ifcx_centre_w_snapshot,
+                            ifcx_right_w_snapshot,
+                            &mut requested_ifcx_select,
+                            &mut requested_ifcx_search,
+                            &mut requested_ifcx_centre_w,
+                            &mut requested_ifcx_right_w,
+                            &mut requested_ifcx_copy_json,
+                        );
+                        return;
+                    }
+
                     canvas_rect_logical = Some(rect);
                     // Let egui reserve this space so the viewport rect is
                     // stable across frames. The actual 2D content is
@@ -8647,6 +8674,19 @@ impl ApplicationHandler for App {
                                     self.mouse_pos.1,
                                 ) {
                                     self.zoom_region_p1 = Some(w);
+                                }
+                            }
+                            if self.tool_mode == ToolMode::Pan {
+                                // Hand-pan: piggy-back on the same
+                                // `dragging` + `drag_start_pan` fields
+                                // that the middle-button quick-pan uses
+                                // (CursorMoved arm at the same site).
+                                // With Pan mode active the LMB owns the
+                                // drag flag.
+                                if let Some(tab) = self.tabs.get(self.lmb_press_tab) {
+                                    self.dragging = true;
+                                    self.drag_start = self.mouse_pos;
+                                    self.drag_start_pan = (tab.cam.pan_x, tab.cam.pan_y);
                                 }
                             }
                             if self.tool_mode == ToolMode::Move {
