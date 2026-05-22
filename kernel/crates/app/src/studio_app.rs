@@ -4101,6 +4101,30 @@ impl App {
                             TitleBarAction::StartDrag => {
                                 requested_window_drag = true;
                             }
+                            // QAT clicks route to the same flags the keyboard
+                            // shortcuts use, so behaviour is identical to
+                            // Ctrl+Z / Ctrl+Y / Ctrl+N / etc.
+                            TitleBarAction::Undo => { self.requested_undo = true; }
+                            TitleBarAction::Redo => { self.requested_redo = true; }
+                            TitleBarAction::NewFile => { requested_new_tab = true; }
+                            TitleBarAction::OpenFile => { requested_menu_open_dialog = true; }
+                            TitleBarAction::Save | TitleBarAction::SaveAs => {
+                                requested_menu_save_as_dxf = true;
+                            }
+                            TitleBarAction::Print => {
+                                // Placeholder — Print pipeline not yet built.
+                                self.last_history_action_label = Some((
+                                    "Print: not yet implemented".to_string(),
+                                    std::time::Instant::now(),
+                                ));
+                            }
+                            TitleBarAction::Settings => {
+                                // Placeholder — Settings dialog not yet built.
+                                self.last_history_action_label = Some((
+                                    "Settings: not yet implemented".to_string(),
+                                    std::time::Instant::now(),
+                                ));
+                            }
                         }
                     }
                 });

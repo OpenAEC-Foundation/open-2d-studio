@@ -26,6 +26,22 @@ pub enum TitleBarAction {
     /// User pressed the empty area of the bar — caller should start a
     /// native window drag (`winit::window::Window::drag_window`).
     StartDrag,
+    /// QAT undo button — same dispatch as Ctrl+Z.
+    Undo,
+    /// QAT redo button — same dispatch as Ctrl+Y / Ctrl+Shift+Z.
+    Redo,
+    /// QAT new button — same as Ctrl+N (request a fresh tab).
+    NewFile,
+    /// QAT open-folder button — same as Ctrl+O (open dialog).
+    OpenFile,
+    /// QAT save button — same as Ctrl+S.
+    Save,
+    /// QAT save-as button — same as Ctrl+Shift+S.
+    SaveAs,
+    /// QAT print button.
+    Print,
+    /// QAT settings button.
+    Settings,
 }
 
 pub struct TitleBar<'a> {
@@ -180,19 +196,19 @@ impl<'a> TitleBar<'a> {
             *qx += 8.0;
         };
         // Mockup QAT order — see Open2DViewerMockup.jsx lines 548-558.
-        // Group 1 (history, disabled in viewer): undo, redo
-        if qbtn(ui, &mut qx, phosphor("undo"),     1, true).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
-        if qbtn(ui, &mut qx, phosphor("redo"),     2, true).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
+        // Group 1 (history) — wired to undo/redo dispatch in consumer.
+        if qbtn(ui, &mut qx, phosphor("undo"),     1, false).clicked() { actions.push(TitleBarAction::Undo); }
+        if qbtn(ui, &mut qx, phosphor("redo"),     2, false).clicked() { actions.push(TitleBarAction::Redo); }
         qsep(ui, &mut qx);
-        // Group 2 (file): new open save saveAs (save/saveAs disabled in viewer)
-        if qbtn(ui, &mut qx, phosphor("new"),      3, false).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
-        if qbtn(ui, &mut qx, phosphor("open"),     4, false).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
-        if qbtn(ui, &mut qx, phosphor("save"),     5, true).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
-        if qbtn(ui, &mut qx, egui_phosphor::regular::FLOPPY_DISK_BACK, 9, true).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
+        // Group 2 (file) — wired to New/Open/Save/SaveAs dispatch in consumer.
+        if qbtn(ui, &mut qx, phosphor("new"),      3, false).clicked() { actions.push(TitleBarAction::NewFile); }
+        if qbtn(ui, &mut qx, phosphor("open"),     4, false).clicked() { actions.push(TitleBarAction::OpenFile); }
+        if qbtn(ui, &mut qx, phosphor("save"),     5, false).clicked() { actions.push(TitleBarAction::Save); }
+        if qbtn(ui, &mut qx, egui_phosphor::regular::FLOPPY_DISK_BACK, 9, false).clicked() { actions.push(TitleBarAction::SaveAs); }
         qsep(ui, &mut qx);
         // Group 3 (chrome): print gear caret
-        if qbtn(ui, &mut qx, egui_phosphor::regular::PRINTER, 6, false).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
-        if qbtn(ui, &mut qx, phosphor("settings"), 7, false).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
+        if qbtn(ui, &mut qx, egui_phosphor::regular::PRINTER, 6, false).clicked() { actions.push(TitleBarAction::Print); }
+        if qbtn(ui, &mut qx, phosphor("settings"), 7, false).clicked() { actions.push(TitleBarAction::Settings); }
         if qbtn(ui, &mut qx, egui_phosphor::regular::CARET_DOWN, 8, false).clicked() { actions.push(TitleBarAction::OpenAppMenu); }
 
         // 3) Centred title — paint text at rect.center(). Mockup spec:
