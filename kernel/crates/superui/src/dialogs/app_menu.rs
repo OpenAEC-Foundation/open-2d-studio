@@ -272,7 +272,7 @@ fn paint_panel(
         // IFCDraw — in-house binary IFC2D format. Always available in
         // Studio too so authors can stash their work in the compact
         // ~0.45x-of-DWG IFCDraw envelope.
-        item(ui, palette, "Opslaan als IFCDraw\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
+        item(ui, palette, "Opslaan als IFCDraw \u{03B1}\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
             None, 42, AppMenuAction::SaveAsIfcDraw, out);
     } else {
         // Viewer with minimal-edit surface (Move / Delete / Explode):
@@ -281,7 +281,7 @@ fn paint_panel(
         // "writer in development" modal + offers the DXF fallback.
         item(ui, palette, "Opslaan als DXF\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
             Some("Ctrl+Shift+S"), 4, AppMenuAction::SaveAs, out);
-        item(ui, palette, "Opslaan als IFCDraw\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
+        item(ui, palette, "Opslaan als IFCDraw \u{03B1}\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
             None, 42, AppMenuAction::SaveAsIfcDraw, out);
         item(ui, palette, "Opslaan als DWG\u{2026}", egui_phosphor::regular::FLOPPY_DISK,
             None, 41, AppMenuAction::SaveAsDwg, out);

@@ -1562,6 +1562,35 @@ enum EditOp {
     /// already hidden via the eye toggle before the trash click — so
     /// undo restores that toggle exactly.
     LayerDelete { layer_name: String, was_hidden_before: bool },
+    /// `X` / Explode reassigned every segment + triangle of one or
+    /// more INSERT entities to freshly-minted entity_idx slots. The
+    /// original `entity_names[eid]` entries stayed put (they're just
+    /// orphaned), so the inverse only has to flip each `(kind, index)`
+    /// back to its pre-explode eid. The new entity_names entries are
+    /// left in place — dropping them would shift every later index.
+    /// Redo replays by walking the same reassignment list and
+    /// pushing each slot to the eid it had immediately after the
+    /// original explode (captured in `new_eids`, parallel to
+    /// `reassignments`).
+    Explode {
+        /// Per-slot record: which array (segment vs triangle), which
+        /// index within that array, and the eid that slot held BEFORE
+        /// the explode.
+        reassignments: Vec<(SegOrTri, usize, u32)>,
+        /// Eid that the same slot held AFTER the explode -- needed by
+        /// redo to re-apply the mint without re-walking entity_names.
+        /// Parallel to `reassignments`.
+        new_eids: Vec<u32>,
+    },
+}
+
+/// Tag used by `EditOp::Explode::reassignments` to disambiguate
+/// segment- vs triangle-slot indices. Kept tiny + `Copy` so the
+/// snapshot vec stays cheap (one byte per row + the usize + u32).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SegOrTri {
+    Seg,
+    Tri,
 }
 
 impl FileTab {
@@ -3072,16 +3101,20 @@ impl App {
             // any minimal viewer edits (Move / Delete / Explode /
             // layer-delete) from a previous session.
             dialog = dialog
-                .add_filter("CAD files (*.dwg, *.dxf, *.ifcdraw)", &["dwg", "dxf", "ifcdraw"])
+                .add_filter("CAD files (*.dwg, *.dxf, *.ifcdrawalpha)", &["dwg", "dxf", "ifcdrawalpha", "ifcdraw"])
                 .add_filter("AutoCAD DWG", &["dwg"])
                 .add_filter("AutoCAD DXF", &["dxf"])
-                .add_filter("IFCDraw", &["ifcdraw"]);
+                // .ifcdrawalpha = current v2 msgpack+zstd format (alpha
+                // tag — not yet the proper IFCX v3 envelope per
+                // docs/superpowers/specs/2026-05-22-ifcdraw-v3-strict-ifcx.md).
+                // .ifcdraw legacy extension still accepted on Open.
+                .add_filter("IFCDraw alpha", &["ifcdrawalpha", "ifcdraw"]);
         } else {
             dialog = dialog
-                .add_filter("CAD files", &["dwg", "dxf", "ifcdraw"])
+                .add_filter("CAD files", &["dwg", "dxf", "ifcdrawalpha", "ifcdraw"])
                 .add_filter("AutoCAD DWG", &["dwg"])
                 .add_filter("AutoCAD DXF", &["dxf"])
-                .add_filter("IFCDraw", &["ifcdraw"])
+                .add_filter("IFCDraw alpha", &["ifcdrawalpha", "ifcdraw"])
                 .add_filter("All files", &["*"]);
         }
         if starting_dir.is_dir() {
@@ -3148,8 +3181,10 @@ impl App {
             .unwrap_or_else(|| "untitled".to_string());
         let mut dialog = rfd::FileDialog::new()
             .set_title("Save As IFCDraw (binary IFCX)")
-            .set_file_name(format!("{default_name}.ifcdraw"))
-            .add_filter("IFCDraw (*.ifcdraw)", &["ifcdraw"]);
+            .set_file_name(format!("{default_name}.ifcdrawalpha"))
+            // .ifcdrawalpha = alpha tag; not yet the proper IFCX v3
+            // envelope. Will become .ifcdraw once v3 ships.
+            .add_filter("IFCDraw alpha (*.ifcdrawalpha)", &["ifcdrawalpha", "ifcdraw"]);
         if let Some(dir) = starting_dir {
             dialog = dialog.set_directory(dir);
         }
@@ -7659,6 +7694,14 @@ natively, so you can hand the file back to your main toolchain without losing ed
         let have_tri_ids = scene.triangle_entity_idx.len() == scene.triangles.len();
         if !have_seg_ids && !have_tri_ids { return 0; }
 
+        // Snapshot every (kind, slot_idx, pre_explode_eid) tuple so
+        // Ctrl+Z can flip each slot back to its original INSERT.
+        // `new_eids` holds the freshly-minted eid for the same slot
+        // (filled below) so redo can re-apply without re-walking
+        // entity_names. Both vecs stay parallel + in push-order.
+        let mut reassignments: Vec<(SegOrTri, usize, u32)> = Vec::new();
+        let mut new_eids: Vec<u32> = Vec::new();
+
         let mut exploded = 0usize;
         for &eid in eids {
             // Only operate on entries whose entity_names start with
@@ -8485,6 +8528,7 @@ fn paint_ifcx_content_view(
             egui::UiBuilder::new()
                 .max_rect(left_rect.shrink(pad))
                 .layout(egui::Layout::top_down(egui::Align::Min)));
+        col_ui.set_clip_rect(left_rect);
         col_ui.heading(egui::RichText::new("IFC-X Content")
             .color(egui::Color32::from_rgb(220, 224, 228)).size(13.0));
         col_ui.add_space(2.0);
@@ -8579,6 +8623,10 @@ fn paint_ifcx_content_view(
             egui::UiBuilder::new()
                 .max_rect(centre_rect.shrink(pad))
                 .layout(egui::Layout::top_down(egui::Align::Min)));
+        // Hard-clip + force wrap on scalars below so long file paths
+        // don't visually overflow into the Raw JSON column on the right.
+        col_ui.set_clip_rect(centre_rect);
+        col_ui.style_mut().wrap_mode = Some(egui::TextWrapMode::Wrap);
         col_ui.heading(egui::RichText::new("Detail")
             .color(egui::Color32::from_rgb(220, 224, 228)).size(13.0));
         col_ui.add_space(2.0);
@@ -8613,6 +8661,9 @@ fn paint_ifcx_content_view(
             egui::UiBuilder::new()
                 .max_rect(right_rect.shrink(pad))
                 .layout(egui::Layout::top_down(egui::Align::Min)));
+        // Hard-clip so long single-line JSON values (e.g. file paths)
+        // can't bleed into the neighbouring centre column.
+        col_ui.set_clip_rect(right_rect);
         col_ui.horizontal(|ui| {
             ui.heading(egui::RichText::new("Raw IFC-X JSON")
                 .color(egui::Color32::from_rgb(220, 224, 228)).size(13.0));
@@ -8625,10 +8676,14 @@ fn paint_ifcx_content_view(
         col_ui.add_space(4.0);
         col_ui.separator();
         let json = selected_json.unwrap_or("{}");
-        egui::ScrollArea::both().auto_shrink([false, false]).show(&mut col_ui, |ui| {
+        egui::ScrollArea::vertical().auto_shrink([false, false]).show(&mut col_ui, |ui| {
+            // Wrap long lines inside the column instead of extending past
+            // its right edge (previously TextWrapMode::Extend with
+            // ScrollArea::both() let the centre+right columns visually
+            // overlap when a long file path was selected).
             ui.add(egui::Label::new(egui::RichText::new(json).monospace().size(11.5)
                 .color(egui::Color32::from_rgb(220, 224, 228)))
-                .wrap_mode(egui::TextWrapMode::Extend));
+                .wrap_mode(egui::TextWrapMode::Wrap));
         });
     }
 }
@@ -10413,7 +10468,7 @@ fn load_any_result(path: &str) -> anyhow::Result<Scene> {
         load_dwg(path)
     } else if lower.ends_with(".dxf") {
         load_dxf(path)
-    } else if lower.ends_with(".ifcdraw") || lower.ends_with(".ifcx") {
+    } else if lower.ends_with(".ifcdrawalpha") || lower.ends_with(".ifcdraw") || lower.ends_with(".ifcx") {
         crate::ifcx_export::load_ifcdraw_scene(path)
             .map_err(|e| anyhow::anyhow!("ifcdraw load: {e}"))
     } else {
@@ -10715,7 +10770,7 @@ fn build_ribbon_tabs(
                             enable(b_lbl("save_as_dxf", "Save DXF", IconKind::Download)),
                         ],
                         vec![
-                            enable(b_lbl("save_as_ifcdraw", "Save IFCDraw", IconKind::Download)),
+                            enable(b_lbl("save_as_ifcdraw", "Save IFCDraw α", IconKind::Download)),
                             // Save DWG -- opens the writer-in-development
                             // modal (see save_as_dwg_modal_open dispatch).
                             // Enabled in both Studio + Viewer; the modal
