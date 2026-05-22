@@ -947,6 +947,16 @@ const DASH_PIXEL_PATTERNS: [&[(f32, f32)]; 4] = [
 /// to this floor keeps the rhythm visible.
 const MIN_SCREEN_PX: f32 = 1.5;
 
+/// Global multiplier applied to every world-space LINETYPE dash/gap
+/// entry. Equivalent to AutoCAD's `LTSCALE` system variable, defaulted
+/// to 100 because architectural drawings in this kernel are stored at
+/// millimetre scale (1 world unit = 1 mm) and the raw DXF LINETYPE
+/// definitions (e.g. CENTER = 12.7-2.54-2.54-2.54) are tuned for
+/// imperial inch-scale drawings (1 unit = 1 inch). Without scaling the
+/// dashes appear ~25x too small at architectural 1:100 zoom levels.
+/// Configurable later; ship as a constant for now.
+const LTSCALE: f32 = 100.0;
+
 /// Build line-segment vertex buffer for a single scene.
 ///
 /// `hidden_layers` filters out segments whose derived layer key is in
@@ -1047,10 +1057,12 @@ fn build_verts(
             // World pattern: alternate draw (>=0) / gap (<0) entries.
             // DXF LINETYPE definitions are normalised to start with a
             // positive (draw) element, so pair them up sequentially.
+            // LTSCALE multiplier is applied here (see const above) --
+            // stramienlijnen / centerlines were unusably dense at 1:100.
             let mut i = 0;
             while i < wp.len() {
-                let draw_w_raw = wp[i].abs() as f32;
-                let gap_w_raw  = if i + 1 < wp.len() { wp[i + 1].abs() as f32 } else { 0.0 };
+                let draw_w_raw = wp[i].abs() as f32 * LTSCALE;
+                let gap_w_raw  = if i + 1 < wp.len() { wp[i + 1].abs() as f32 * LTSCALE } else { 0.0 };
                 // Zero world entry = dot â€” promote to MIN_SCREEN_PX.
                 let draw_px = (draw_w_raw * pixels_per_world).max(MIN_SCREEN_PX);
                 let gap_px  = (gap_w_raw  * pixels_per_world).max(MIN_SCREEN_PX);
