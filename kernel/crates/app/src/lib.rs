@@ -7,6 +7,10 @@ pub mod app;
 pub mod dxf_export;
 pub mod gpu;
 pub mod ifcx_export;
+/// Interim Scene → IFC-X v3 JSON preview serialiser. Used by the
+/// Viewer's IFC ribbon tab to render a full-area file-content browser
+/// while the real v3 IFC-X writer is still in development.
+pub mod ifcx_view;
 pub mod scene_io;
 pub mod stroke_font;
 /// Real application — tabbed DWG/DXF viewer used by both the
