@@ -7899,8 +7899,13 @@ impl ApplicationHandler for App {
                     self.dim_p1 = None;
                 }
                 KeyCode::KeyM if !self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
+                    // Plain M = Measure tool — but ALSO arm a `MV` chord so
+                    // a fast V right after upgrades us to Move (AutoCAD-style
+                    // mnemonic: M-V = Move). The chord window is 1 s.
                     self.tool_mode = ToolMode::Measure;
                     self.measure_p1 = None;
+                    self.key_chord_pending = Some(KeyCode::KeyM);
+                    self.key_chord_at = Some(std::time::Instant::now());
                 }
                 // Blok 3 â€” Shift+M = Mirror (M alone is Measure).
                 KeyCode::KeyM if self.modifiers_shift_held() && !self.modifiers_ctrl_held() => {
@@ -7934,8 +7939,27 @@ impl ApplicationHandler for App {
                     self.scale_ref = None;
                 }
                 KeyCode::KeyV if !self.modifiers_ctrl_held() && !self.modifiers_shift_held() => {
-                    // Plain V â€” Select mode. (Ctrl+Shift+V is already Split V above.)
-                    self.tool_mode = ToolMode::Select;
+                    // MV chord: if `M` was pressed within the last second,
+                    // upgrade Measure → Move (AutoCAD MV mnemonic). Flow:
+                    // select entities first → MV → click start → click end.
+                    let is_mv_chord = matches!(
+                        (self.key_chord_pending, self.key_chord_at),
+                        (Some(KeyCode::KeyM), Some(t))
+                            if t.elapsed() < std::time::Duration::from_millis(1000)
+                    );
+                    if is_mv_chord {
+                        self.tool_mode = ToolMode::Move;
+                        // Reset Move's two-click state.
+                        if let Some(tab) = self.tabs.get_mut(self.active_tab) {
+                            tab.move_drag = None;
+                            tab.pending_move_offset = [0.0, 0.0];
+                        }
+                    } else {
+                        // Plain V — Select mode. (Ctrl+Shift+V is Split V above.)
+                        self.tool_mode = ToolMode::Select;
+                    }
+                    self.key_chord_pending = None;
+                    self.key_chord_at = None;
                 }
                 KeyCode::Enter | KeyCode::NumpadEnter => {
                     // Task 9 â€” Enter during text-edit commits the buffer.
