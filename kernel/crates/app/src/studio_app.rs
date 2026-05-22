@@ -1161,7 +1161,7 @@ fn derive_layer_list(scene: &Scene, default_color: u32) -> Vec<(String, u32)> {
 
 /// Triangle-list version for scene.triangles (SOLID HATCH + TTF fills).
 /// Returns `(solid_verts, text_verts)`.
-fn build_tri_verts(
+pub fn build_tri_verts(
     scene: &Scene,
     origin: [f64; 2],
     want_paper: bool,
@@ -2208,6 +2208,13 @@ struct App {
     measure_area_in_progress: Vec<[f64; 2]>,
     /// Last completed area measurement: (perimeter, area).
     last_measure_area: Option<(f64, f64)>,
+    /// Persisted overlays for committed Measure-Area polygons. Each
+    /// stays painted with translucent fill + 45Â° hatch + centroid
+    /// label until: ESC clears them all, or the user dismisses one
+    /// via the inline X button. Capped at 8 entries (FIFO) -- the
+    /// user request specifies that limit. New entries push to the
+    /// back; cap-exceed pops from the front.
+    committed_area_measurements: std::collections::VecDeque<AreaOverlay>,
 
     // --- Measure Angle (Phase 2) -------------------------------------
     /// LEGACY click-buffer for the previous 3-click vertex+rays flow.
@@ -2570,6 +2577,25 @@ enum Annotation {
     Area { verts: Vec<[f64; 2]>, value: f64 },
 }
 
+/// Persistent overlay for a committed Measure-Area polygon. Each
+/// instance lives in `App.committed_area_measurements` and is painted
+/// every frame as: translucent orange fill + 45Â° hatch lines +
+/// "Area: N mÂ²" label at the centroid + a small "X" dismiss button.
+/// The user requested these stay visible across subsequent Measure
+/// gestures so the measurement context isn't lost on the second
+/// click. List capped at 8.
+#[derive(Clone, Debug)]
+struct AreaOverlay {
+    /// Closed polygon in world space (no implicit close-segment).
+    verts: Vec<[f64; 2]>,
+    /// Pre-computed shoelace area (world unitsÂ²).
+    area: f64,
+    /// Pre-computed perimeter (world units), including the close segment.
+    perim: f64,
+    /// Pre-computed centroid (mean of verts) -- label anchor + X-button anchor.
+    centroid: [f64; 2],
+}
+
 // Note: real `paint_ifcx_content_view` lives further down (around
 // line 8019). The earlier stub here was removed -- it was a transient
 // from the rapid lock-WIP commit series and conflicted with the real
@@ -2699,6 +2725,7 @@ impl App {
             measure_sub: MeasureSub::Length,
             measure_area_in_progress: Vec::new(),
             last_measure_area: None,
+            committed_area_measurements: std::collections::VecDeque::new(),
             measure_angle_pts: Vec::new(),
             angle_pick_first: None,
             angle_pick_tab: 0,
@@ -3517,6 +3544,12 @@ impl App {
         // Move-tool reference point (click-1 in the two-click flow).
         // Snapshotted for the egui rubber-band overlay.
         let move_p1_snapshot: Option<[f64; 2]> = self.move_p1;
+        // Persisted Area-measurement overlays (Bug 4 -- per user
+        // request the committed polygon stays painted with a 45Â°
+        // hatch overlay + centroid label until ESC or dismiss).
+        // Snapshotted (clone of the cap-8 VecDeque) for the egui closure.
+        let committed_area_overlays_snapshot: Vec<AreaOverlay> =
+            self.committed_area_measurements.iter().cloned().collect();
         // MeasureAngle snapshots -- first-pick segment endpoints
         // (resolved through the latched tab) + completed angle label.
         let angle_first_pick_seg: Option<([f64; 2], [f64; 2])> =
@@ -3674,6 +3707,10 @@ impl App {
         let mut requested_ifcx_centre_w: Option<f32> = None;
         let mut requested_ifcx_right_w: Option<f32> = None;
         let mut requested_ifcx_copy_json: Option<String> = None;
+        // Bug 4 -- click on the small "x" anchor in a committed Area
+        // overlay records the index here; applied after the egui
+        // closure so we mutate `committed_area_measurements` cleanly.
+        let mut requested_dismiss_area_idx: Option<usize> = None;
         let mut requested_toggle_samples_panel = false;
         let mut requested_close_samples = false;
         let mut requested_tool_mode: Option<ToolMode> = None;
@@ -5548,6 +5585,137 @@ natively, so you can hand the file back to your main toolchain without losing ed
                         }
                     }
 
+                    // Committed Area-measurement overlays (Bug 4) --
+                    // translucent fill + 45Â° hatch stripes + centroid
+                    // label + small "x" dismiss button. Stays painted
+                    // until ESC clears the list (handled in the ESC
+                    // arm) or the user clicks an individual x.
+                    if !committed_area_overlays_snapshot.is_empty() {
+                        let painter = ui.painter();
+                        let fill_color = egui::Color32::from_rgba_unmultiplied(
+                            255, 165, 60, 36);
+                        let outline_color = egui::Color32::from_rgb(255, 165, 60);
+                        let outline_stroke = egui::Stroke::new(1.5, outline_color);
+                        let hatch_color = egui::Color32::from_rgba_unmultiplied(
+                            255, 165, 60, 90);
+                        let hatch_stroke = egui::Stroke::new(0.8, hatch_color);
+                        let text_outline = egui::Color32::from_black_alpha(200);
+                        let text_color = egui::Color32::from_rgb(255, 230, 180);
+                        let label_font = egui::FontId::proportional(12.0);
+                        for (i, ov) in committed_area_overlays_snapshot.iter().enumerate() {
+                            if ov.verts.len() < 3 { continue; }
+                            // Screen-space polygon for hatch + outline.
+                            let screen_verts: Vec<egui::Pos2> =
+                                ov.verts.iter().map(|&p| world_to_screen(p)).collect();
+                            // Translucent fill -- tessellate as a triangle
+                            // fan from vert[0]. Concave polygons may overshoot,
+                            // but the user's Measure-Area polygons tend to be
+                            // simple. Hatch stripes mask any small artefacts.
+                            for tri in 1..screen_verts.len().saturating_sub(1) {
+                                painter.add(egui::Shape::convex_polygon(
+                                    vec![screen_verts[0], screen_verts[tri], screen_verts[tri + 1]],
+                                    fill_color, egui::Stroke::NONE,
+                                ));
+                            }
+                            // Polygon outline (closed).
+                            for k in 0..screen_verts.len() {
+                                let a = screen_verts[k];
+                                let b = screen_verts[(k + 1) % screen_verts.len()];
+                                painter.line_segment([a, b], outline_stroke);
+                            }
+                            // 45Â° hatch stripes. Compute bounding box in
+                            // SCREEN space, walk diagonal lines (y = x + c)
+                            // across it, intersect each with the polygon
+                            // edges -> sorted intersection list -> draw
+                            // every alternating pair as a stripe segment.
+                            let mut min_x = f32::INFINITY; let mut max_x = -f32::INFINITY;
+                            let mut min_y = f32::INFINITY; let mut max_y = -f32::INFINITY;
+                            for v in &screen_verts {
+                                if v.x < min_x { min_x = v.x; } if v.x > max_x { max_x = v.x; }
+                                if v.y < min_y { min_y = v.y; } if v.y > max_y { max_y = v.y; }
+                            }
+                            if max_x > min_x && max_y > min_y {
+                                let step: f32 = 9.0;
+                                // c-range: y - x for the 4 bbox corners.
+                                let c_min = (min_y - max_x).floor();
+                                let c_max = (max_y - min_x).ceil();
+                                let n_lines = ((c_max - c_min) / step).ceil() as i32;
+                                for k in 0..n_lines {
+                                    let c = c_min + (k as f32) * step;
+                                    // Diagonal y = x + c -- collect intersections with polygon edges.
+                                    let mut xs: Vec<f32> = Vec::with_capacity(4);
+                                    for e in 0..screen_verts.len() {
+                                        let a = screen_verts[e];
+                                        let b = screen_verts[(e + 1) % screen_verts.len()];
+                                        // Solve a.y + t * (b.y - a.y) = (a.x + t * (b.x - a.x)) + c
+                                        // => t * ((b.y - a.y) - (b.x - a.x)) = c + a.x - a.y
+                                        let denom = (b.y - a.y) - (b.x - a.x);
+                                        if denom.abs() < 1e-6 { continue; }
+                                        let t = (c + a.x - a.y) / denom;
+                                        if t < 0.0 || t > 1.0 { continue; }
+                                        let x = a.x + t * (b.x - a.x);
+                                        xs.push(x);
+                                    }
+                                    xs.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                                    for pair in xs.chunks(2) {
+                                        if pair.len() == 2 {
+                                            let x0 = pair[0]; let x1 = pair[1];
+                                            let y0 = x0 + c;  let y1 = x1 + c;
+                                            painter.line_segment(
+                                                [egui::pos2(x0, y0), egui::pos2(x1, y1)],
+                                                hatch_stroke,
+                                            );
+                                        }
+                                    }
+                                }
+                            }
+                            // Centroid label + "x" dismiss button.
+                            let cs = world_to_screen(ov.centroid);
+                            // mmÂ² scene -> mÂ² display (same convention as
+                            // the live-measure overlay above: 1e-6).
+                            let label_txt = format!(
+                                "Area: {:.3} mÂ² ({:.2} mm perim)",
+                                ov.area * 1e-6, ov.perim,
+                            );
+                            for (ox, oy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+                                painter.text(
+                                    egui::pos2(cs.x + ox, cs.y + oy),
+                                    egui::Align2::CENTER_CENTER,
+                                    &label_txt, label_font.clone(), text_outline,
+                                );
+                            }
+                            painter.text(
+                                cs, egui::Align2::CENTER_CENTER,
+                                &label_txt, label_font.clone(), text_color,
+                            );
+                            // "x" button -- 14 px square just above the label.
+                            let x_centre = egui::pos2(cs.x, cs.y - 18.0);
+                            let x_rect = egui::Rect::from_center_size(x_centre, egui::vec2(14.0, 14.0));
+                            // Background pill so the X is hit-testable
+                            // against busy geometry.
+                            painter.rect_filled(
+                                x_rect, 7.0,
+                                egui::Color32::from_rgba_unmultiplied(40, 22, 8, 220),
+                            );
+                            painter.rect_stroke(x_rect, 7.0, outline_stroke);
+                            painter.text(
+                                x_centre, egui::Align2::CENTER_CENTER,
+                                "x", egui::FontId::proportional(12.0),
+                                text_color,
+                            );
+                            // Hit-test for the dismiss click. The check
+                            // is cheap (rect-contains) so doing it in the
+                            // paint loop is fine.
+                            let resp = ui.interact(
+                                x_rect, egui::Id::new(("area_dismiss", i)),
+                                egui::Sense::click(),
+                            );
+                            if resp.clicked() {
+                                requested_dismiss_area_idx = Some(i);
+                            }
+                        }
+                    }
+
                     // Loading overlay â€” drawn whenever the active tab is
                     // a placeholder waiting for a background-thread load
                     // to finish. Replaces the previous "frozen window"
@@ -5798,6 +5966,14 @@ natively, so you can hand the file back to your main toolchain without losing ed
             // scope holds. The earlier let-Some-else returned if missing,
             // so `gpu` is guaranteed live here.
             gpu.egui_ctx.copy_text(text);
+        }
+        // Bug 4 -- per-overlay dismiss (X button in the persistent Area
+        // overlay paint pass). Deferred so we don't mutate the snapshot
+        // we iterated over.
+        if let Some(idx) = requested_dismiss_area_idx {
+            if idx < self.committed_area_measurements.len() {
+                self.committed_area_measurements.remove(idx);
+            }
         }
         if requested_toggle_samples_panel { self.samples_panel_open = !self.samples_panel_open; }
         if requested_toggle_perf_hud { self.show_perf_hud = !self.show_perf_hud; }
@@ -7108,6 +7284,32 @@ natively, so you can hand the file back to your main toolchain without losing ed
     #[allow(dead_code)]
     fn commit_move(&mut self, eid: u32, dx: f64, dy: f64) {
         self.commit_move_in(self.active_tab, eid, dx, dy);
+    }
+
+    /// Append a completed Measure-Area polygon to the persistent
+    /// overlay list. Computes perimeter / area / centroid up-front so
+    /// the per-frame paint pass doesn't recompute them. Caps the list
+    /// at 8 (FIFO -- oldest evicted) per user spec.
+    fn push_area_overlay(&mut self, verts: Vec<[f64; 2]>) {
+        if verts.len() < 3 { return; }
+        let area = polygon_area(&verts);
+        let mut perim = 0.0_f64;
+        for i in 0..verts.len() {
+            let a = verts[i];
+            let b = verts[(i + 1) % verts.len()];
+            let dx = b[0] - a[0]; let dy = b[1] - a[1];
+            perim += (dx * dx + dy * dy).sqrt();
+        }
+        let (cx, cy) = verts.iter().fold((0.0_f64, 0.0_f64),
+            |(ax, ay), v| (ax + v[0], ay + v[1]));
+        let n = verts.len() as f64;
+        let centroid = [cx / n, cy / n];
+        let overlay = AreaOverlay { verts, area, perim, centroid };
+        const CAP: usize = 8;
+        while self.committed_area_measurements.len() >= CAP {
+            self.committed_area_measurements.pop_front();
+        }
+        self.committed_area_measurements.push_back(overlay);
     }
 
     // ---------------------------------------------------------------
@@ -8835,6 +9037,13 @@ impl ApplicationHandler for App {
                         self.scale_pivot = None;
                         self.scale_ref = None;
                         self.mirror_a = None;
+                    } else if !self.committed_area_measurements.is_empty() {
+                        // Persistent Area overlays -- ESC after no other
+                        // in-progress state clears them all. Per user
+                        // spec "persists until: user starts a new Area
+                        // measurement OR presses ESC".
+                        self.committed_area_measurements.clear();
+                        self.last_measure_area = None;
                     } else if self.samples_panel_open { self.samples_panel_open = false; }
                     else if !self.tabs.get(self.active_tab)
                         .map(|t| t.selection.is_empty()).unwrap_or(true)
@@ -9242,7 +9451,12 @@ impl ApplicationHandler for App {
                         }
                         let area = polygon_area(v);
                         self.last_measure_area = Some((perim, area));
-                        self.measure_area_in_progress.clear();
+                        // Per user request: keep the committed polygon
+                        // visible with a translucent hatched overlay so
+                        // the measurement is still readable after the
+                        // RMB-finish.
+                        let verts = std::mem::take(&mut self.measure_area_in_progress);
+                        self.push_area_overlay(verts);
                     } else {
                         // Fewer than 3 verts -- right-click cancels.
                         self.measure_area_in_progress.clear();
@@ -9466,7 +9680,14 @@ impl ApplicationHandler for App {
                                                         }
                                                         let area = polygon_area(v);
                                                         self.last_measure_area = Some((perim, area));
-                                                        self.measure_area_in_progress.clear();
+                                                        // Per user request "Na het afsluiten van de
+                                                        // area-functie wil je dat de area even
+                                                        // zichtbaar blijft met een soort hatching"
+                                                        // -- push a persistent overlay so the
+                                                        // committed polygon stays painted across
+                                                        // subsequent gestures.
+                                                        let verts = std::mem::take(&mut self.measure_area_in_progress);
+                                                        self.push_area_overlay(verts);
                                                     } else {
                                                         self.measure_area_in_progress.push(world);
                                                     }
