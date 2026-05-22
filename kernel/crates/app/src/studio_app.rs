@@ -124,7 +124,7 @@ impl SceneIndex {
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
-struct Vertex { pos: [f32; 2], color: u32, _pad: u32 }
+pub struct Vertex { pub pos: [f32; 2], pub color: u32, pub _pad: u32 }
 
 #[repr(C)]
 #[derive(Copy, Clone, Pod, Zeroable)]
@@ -946,7 +946,7 @@ const DASH_PIXEL_PATTERNS: [&[(f32, f32)]; 4] = [
 /// `world * pixels_per_world` mapping collapses dashes and gaps below
 /// one pixel and the pattern fades to grey mush; clamping each element
 /// to this floor keeps the rhythm visible.
-const MIN_SCREEN_PX: f32 = 1.5;
+pub const MIN_SCREEN_PX: f32 = 1.5;
 
 /// Global multiplier applied to every world-space LINETYPE dash/gap
 /// entry. Equivalent to AutoCAD's `LTSCALE` system variable, defaulted
@@ -956,7 +956,7 @@ const MIN_SCREEN_PX: f32 = 1.5;
 /// imperial inch-scale drawings (1 unit = 1 inch). Without scaling the
 /// dashes appear ~25x too small at architectural 1:100 zoom levels.
 /// Configurable later; ship as a constant for now.
-const LTSCALE: f32 = 100.0;
+pub const LTSCALE: f32 = 100.0;
 
 /// Build line-segment vertex buffer for a single scene.
 ///
@@ -5549,6 +5549,14 @@ natively, so you can hand the file back to your main toolchain without losing ed
             // Selection only â€” no-op beyond storing it. We have no
             // entity-id-to-bbox lookup wired up yet.
             self.structure_selected = Some(id);
+        }
+        // IFC content-view mutations recorded by the central-panel painter.
+        if let Some(id) = requested_ifcx_select   { self.ifcx_selected = Some(id); }
+        if let Some(q)  = requested_ifcx_search   { self.ifcx_search_query = q; }
+        if let Some(w)  = requested_ifcx_centre_w { self.ifcx_centre_w = w.clamp(220.0, 800.0); }
+        if let Some(w)  = requested_ifcx_right_w  { self.ifcx_right_w = w.clamp(220.0, 1200.0); }
+        if let Some(text) = requested_ifcx_copy_json {
+            if let Some(gpu) = self.gpu.as_ref() { gpu.egui_ctx.copy_text(text); }
         }
         if requested_toggle_samples_panel { self.samples_panel_open = !self.samples_panel_open; }
         if requested_toggle_perf_hud { self.show_perf_hud = !self.show_perf_hud; }
