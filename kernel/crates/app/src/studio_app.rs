@@ -2493,7 +2493,10 @@ impl App {
             samples_panel_open: false,
             samples: discover_samples(),
             layer_panel_open: true,
-            properties_panel_open: true,
+            // Default OFF — user can flip on via the ribbon Properties
+            // button or F4. Keeps the canvas wider on first launch and
+            // matches the read-mostly use case in Viewer mode.
+            properties_panel_open: false,
             about_dialog_open: false,
             // The new superui LeftDock/RightDock are scaffolds that
             // duplicate the legacy LAYERS / PROPERTIES panels with no
@@ -4554,8 +4557,8 @@ natively, so you can hand the file back to your main toolchain without losing ed
             if properties_panel_open {
                 let palette = superui::theme::Theme::Default.palette();
                 egui::SidePanel::right("properties")
-                    .default_width(superui::tokens::metrics::RIGHT_DOCK_WIDTH)
-                    .min_width(200.0)
+                    .default_width(190.0)   // smaller default per user — was RIGHT_DOCK_WIDTH (256)
+                    .min_width(160.0)
                     .resizable(true)
                     .frame(egui::Frame::none().fill(palette.bg))
                     .show(ctx, |ui| {
