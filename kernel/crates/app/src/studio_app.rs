@@ -3768,6 +3768,7 @@ impl App {
                         app_mode_snapshot,
                         show_grid_snapshot,
                         white_bg_snapshot,
+                        structure_panel_open,
                     );
                     let actions = Ribbon::new(tabs, active_ribbon_tab_snapshot.clone()).show(ui);
                     for a in actions {
@@ -3819,7 +3820,7 @@ impl App {
                                 "properties"    => {
                                     requested_toggle_props_panel = true;
                                 }
-                                "structure"     => {
+                                "structure" | "structure_panel" => {
                                     requested_toggle_structure_panel = true;
                                 }
                                 "samples"       => { requested_toggle_samples_panel = true; }
@@ -5471,7 +5472,16 @@ natively, so you can hand the file back to your main toolchain without losing ed
             self.save_as_dwg_modal_open = false;
             requested_menu_save_as_dxf = true;
         }
-        if let Some(tab) = requested_ribbon_tab { self.active_ribbon_tab = tab; }
+        if let Some(tab) = requested_ribbon_tab {
+            // Switching to the IFC ribbon tab in Viewer mode also pops
+            // the structure panel open so the user immediately sees
+            // the model tree for the active file (DWG/DXF layer+entity
+            // bucket tree, or IFCDraw entity hierarchy).
+            if tab == "ifc" && self.mode == AppMode::Viewer {
+                self.structure_panel_open = true;
+            }
+            self.active_ribbon_tab = tab;
+        }
 
         // ---- Title-bar action dispatch -------------------------------
         // App-menu popup wired (Round 9) â€” superui::dialogs::AppMenu.
@@ -8509,20 +8519,30 @@ impl ApplicationHandler for App {
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
                 let egui_wants_input = self.gpu.as_ref()
                     .map(|g| g.egui_ctx.wants_pointer_input()).unwrap_or(false);
+                // egui_using_pointer is set ONLY while egui is actively
+                // dragging a widget (a SidePanel resize handle, an egui
+                // window header, a slider thumb). Use this — NOT
+                // `wants_pointer_input` which over-triggers — to suppress
+                // canvas LMB events that would otherwise fire in parallel
+                // with a sidebar-resize drag.
+                let egui_using_pointer = self.gpu.as_ref()
+                    .map(|g| g.egui_ctx.is_using_pointer()).unwrap_or(false);
                 let in_cube = self.mouse_in_view_cube();
-                let _ = egui_wants_input; // diagnostic â€” kept for future gating
+                let _ = egui_wants_input; // diagnostic — kept for future gating
                 match state {
                     ElementState::Pressed => {
-                        // BUG FIX: don't gate on egui_wants_input â€” it returns
+                        // BUG FIX 1: don't gate on egui_wants_input — it returns
                         // true for canvas presses even when no egui widget is
-                        // under the cursor (suspected: Sense::hover() on the
-                        // CentralPanel allocate_rect, or the Tooltip-order
-                        // view-cube Area causing wants_pointer_input to spike
-                        // on every click). mouse_in_canvas() already excludes
-                        // panels (they're outside canvas_rect); we add an
-                        // explicit carve-out for the view-cube rect so clicks
-                        // on it don't double-fire a canvas pick.
-                        if self.mouse_in_canvas() && !in_cube {
+                        // under the cursor.
+                        // BUG FIX 2: DO gate on egui_using_pointer — when the
+                        // user drags the LAYERS SidePanel resize-handle wider,
+                        // the cursor briefly crosses into the canvas region
+                        // while egui still owns the drag; without this check
+                        // a marquee selection would start on the canvas under
+                        // the moving panel. User report: "als ik de layer
+                        // sidebar breder maak, dan start er ook een
+                        // selectiebox".
+                        if self.mouse_in_canvas() && !in_cube && !egui_using_pointer {
                             // Latch which pane/rect owns this click so release
                             // dispatches against the correct tab even if the
                             // cursor drifts across a split divider.
@@ -9347,6 +9367,7 @@ fn build_ribbon_tabs(
     mode: AppMode,
     grid_on: bool,
     white_bg_on: bool,
+    structure_open: bool,
 ) -> Vec<RibbonTabDef> {
     let split_h = matches!(split, Some(SplitKind::HorizontalPair(_)));
     let split_v = matches!(split, Some(SplitKind::VerticalPair(_)));
@@ -9535,6 +9556,22 @@ fn build_ribbon_tabs(
                     // ribbon tab, no IFC panel, status-bar IFC pill
                     // hidden since 07b5f97) so the toggle was a
                     // dead-end affordance.
+                ],
+            },
+            // Viewer "IFC" tab (re-added 2026-05-22 per user request) —
+            // surfaces the model-tree paneling for whatever file is
+            // currently active (DWG → layer/entity-type tree, DXF →
+            // same, IFCDraw → IFC entity hierarchy stub).
+            RibbonTabDef {
+                id: "ifc".into(),
+                label: "IFC".into(),
+                groups: vec![
+                    RibbonGroup::with_layout("Inspect", RibbonGroupLayout::LargeOnly {
+                        large: vec![
+                            { let mut x = enable(lg("structure_panel", "Structure", IconKind::Layers));
+                              x.selected = structure_open; x },
+                        ],
+                    }),
                 ],
             },
         ];
