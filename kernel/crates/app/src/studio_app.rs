@@ -1745,11 +1745,65 @@ impl FileTab {
 
     /// Rebuild the GPU line + triangle pipelines for this tab after a
     /// load / layer toggle / layout switch. Reuses existing buffers when
-    /// capacity permits. Also called when the camera zoom changes
-    /// significantly so dashed-line patterns can be re-emitted at the
-    /// new screen-space stride (see `dash_pixel_stride_changed`).
+    /// capacity permits.
+    ///
+    /// **Do NOT** call this from the render-loop zoom-tracker -- use
+    /// `rebake_dash_lines_with_canvas` instead. The full rebuild
+    /// invalidates the spatial / snap / structure-tree / layer-list
+    /// caches, so the next CursorMoved has to pay another 30-60 ms
+    /// to rebuild scene_index before a hover-pick can run. On a
+    /// 700k-segment scene that combined ~90 ms hit per wheel notch
+    /// is what made the user report "het zoomen is best wel langzaam
+    /// geworden".
     fn rebuild_buffers(&mut self, gpu: &GpuCtx) {
         self.rebuild_buffers_with_canvas(gpu, None);
+    }
+
+    /// Dash-only refresh of the LINE vertex buffer (model + paper).
+    /// Used by the render-loop zoom-tracker when only the dashed-line
+    /// screen-pixel stride has drifted; the scene topology is unchanged
+    /// so we MUST NOT invalidate the spatial / snap / structure caches.
+    ///
+    /// Cost on big-DWG (781k segs, 249 dashed):
+    ///   - 2 x build_verts (model + paper):   ~30 ms
+    ///   - 2 x GPU line buffer upload:        ~3-6 ms
+    ///   - Total:                             ~35 ms per dash refresh
+    ///   - vs. full rebuild_buffers_with_canvas: ~60 ms PLUS the
+    ///     next CursorMoved pays another 30-60 ms to rebuild
+    ///     scene_index (cache was wiped) BEFORE the hover-pick can
+    ///     run -- effectively ~90 ms per wheel notch.
+    ///
+    /// Triangles don't carry dash state, so we skip both build_tri_verts
+    /// calls and both triangle GPU uploads. Caches stay warm.
+    fn rebake_dash_lines_with_canvas(
+        &mut self,
+        gpu: &GpuCtx,
+        canvas_height_px: Option<f32>,
+    ) {
+        let h_phys = canvas_height_px
+            .map(|h| h as f64)
+            .unwrap_or_else(|| gpu.config.height as f64)
+            .max(1.0);
+        let wpp = (2.0 / self.cam.zoom.max(1e-12)) / h_phys;
+        self.last_dash_wpp = wpp;
+
+        let hidden = &self.hidden_layers;
+        let want_paper = self.show_paper;
+        let model_verts = build_verts(
+            &self.scene, self.cam.origin, DEFAULT_LINE_COLOR, false, hidden, wpp);
+        let paper_verts = build_verts(
+            &self.scene, self.cam.origin, DEFAULT_LINE_COLOR, true, hidden, wpp);
+        let active = if want_paper { &paper_verts } else { &model_verts };
+
+        // Reuse the existing pipeline -- a dash refresh never adds new
+        // segments so the line buffer capacity is always sufficient
+        // (it was sized by the last full rebuild). If the pipeline
+        // doesn't exist yet, fall back to the full rebuild
+        // (file-load / first-paint path).
+        match self.pipe.as_mut() {
+            Some(p) => p.upload(&gpu.queue, active),
+            None => self.rebuild_buffers_with_canvas(gpu, canvas_height_px),
+        }
     }
 
     /// Rebuild buffers using a specific canvas-height in physical pixels
@@ -2123,6 +2177,22 @@ struct App {
     measure_p1: Option<[f64; 2]>,
     /// Last completed measurement: (p1_world, p2_world, distance).
     last_measurement: Option<([f64; 2], [f64; 2], f64)>,
+    /// First reference point of an in-progress Move (two-click flow). On
+    /// LMB-click-1 we store the world-space cursor here and snapshot the
+    /// current selection into `move_eids` so the second click commits
+    /// the translation by `(click2 - click1)`. ESC clears. The legacy
+    /// drag-based Move (which broke on simple clicks per user report
+    /// "Move ... gaat die verplaatsingsactie niet lopen") is removed.
+    move_p1: Option<[f64; 2]>,
+    /// Selection latched at Move-click-1 -- used by the live-preview
+    /// `pending_move_offset` and the commit at click-2. Snapshotting
+    /// avoids "click on empty space -> clear selection -> second click
+    /// has nothing to move".
+    move_eids: Vec<u32>,
+    /// Tab index that owned the first Move click. Needed in split-view
+    /// so click-2 commits against the same scene even if the cursor
+    /// crossed a divider mid-gesture.
+    move_tab: usize,
 
     // --- Snap (OSNAP) -----------------------------------------------
     /// Active object-snap modes (bitmask). Default: Endpoint + Midpoint +
@@ -2598,6 +2668,9 @@ impl App {
             tool_mode: ToolMode::Select,
             measure_p1: None,
             last_measurement: None,
+            move_p1: None,
+            move_eids: Vec::new(),
+            move_tab: 0,
             // OSNAP defaults â€” Endpoint + Midpoint + Center + Intersection
             // + Nearest (AutoCAD baseline).
             // Default ON: Endpoint, Midpoint, Center. Per user request
@@ -5346,6 +5419,60 @@ natively, so you can hand the file back to your main toolchain without losing ed
                                 );
                                 outlined_text(painter, egui::Align2::LEFT_CENTER, pos, &txt);
                             }
+                        }
+                    }
+
+                    // Move-tool overlay â€” after click-1 latches the
+                    // reference point, draw a rubber-band line from p1
+                    // to the live cursor + a "dx dy" label. ORTHO
+                    // (status-bar pill) snaps p2 to the dominant axis
+                    // -- mirror the constraint applied at the commit
+                    // path so the label preview matches the result.
+                    if current_tool_mode == ToolMode::Move {
+                        if let (Some(p1), Some(eff)) = (
+                            move_p1_snapshot,
+                            snap_result_snapshot.as_ref()
+                                .map(|s| s.point)
+                                .or(cursor_world_snapshot),
+                        ) {
+                            let p2 = if ortho_enabled_snapshot {
+                                ortho_constrain(p1, eff)
+                            } else { eff };
+                            let s1 = world_to_screen(p1);
+                            let s2 = world_to_screen(p2);
+                            let stroke = egui::Stroke::new(
+                                1.4, egui::Color32::from_rgb(120, 200, 255),
+                            );
+                            let halo = egui::Stroke::new(
+                                3.0, egui::Color32::from_rgba_unmultiplied(0, 0, 0, 140),
+                            );
+                            ui.painter().line_segment([s1, s2], halo);
+                            ui.painter().line_segment([s1, s2], stroke);
+                            let dx = p2[0] - p1[0];
+                            let dy = p2[1] - p1[1];
+                            let dist = (dx * dx + dy * dy).sqrt();
+                            let mid = egui::pos2(
+                                (s1.x + s2.x) * 0.5,
+                                (s1.y + s2.y) * 0.5 - 12.0,
+                            );
+                            let font = egui::FontId::proportional(11.0);
+                            let txt_color = egui::Color32::from_rgb(160, 220, 255);
+                            let outline_color = egui::Color32::from_black_alpha(180);
+                            let txt = format!(
+                                "dx {:.2}  dy {:.2}  ({:.2} mm)",
+                                dx, dy, dist,
+                            );
+                            for (ox, oy) in [(-1.0, 0.0), (1.0, 0.0), (0.0, -1.0), (0.0, 1.0)] {
+                                ui.painter().text(
+                                    egui::pos2(mid.x + ox, mid.y + oy),
+                                    egui::Align2::CENTER_CENTER,
+                                    &txt, font.clone(), outline_color,
+                                );
+                            }
+                            ui.painter().text(
+                                mid, egui::Align2::CENTER_CENTER,
+                                &txt, font, txt_color,
+                            );
                         }
                     }
 
