@@ -4158,6 +4158,10 @@ impl App {
                                 "duplicate"     => { requested_duplicate = true; }
                                 "explode"       => { requested_explode = true; }
                                 "dim"           => { requested_tool_mode = Some(ToolMode::Dimension); }
+                                // "Linear" maatlijn = same 2-click flow
+                                // as Aligned for now (axis-projection
+                                // refinement is a future tool variant).
+                                "dim_linear"    => { requested_tool_mode = Some(ToolMode::Dimension); }
                                 "clear"         => {
                                     requested_clear_measurement = true;
                                     requested_clear_annotations = true;
