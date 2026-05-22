@@ -3837,6 +3837,17 @@ impl App {
                                     // there and reverts to Select.
                                     requested_tool_mode = Some(ToolMode::ZoomCenter);
                                 }
+                                // Measure ribbon buttons -- same arms as
+                                // the status-bar Len/Area toggles plus the
+                                // 3-click Angle / 1-click Coord tools.
+                                // ToolMode::Measure is set by the
+                                // requested_measure_sub consumer block.
+                                "measure_length" => {
+                                    requested_measure_sub = Some(MeasureSub::Length);
+                                }
+                                "measure_area" => {
+                                    requested_measure_sub = Some(MeasureSub::Area);
+                                }
                                 "measure_angle" => {
                                     requested_tool_mode = Some(ToolMode::MeasureAngle);
                                 }
@@ -7964,6 +7975,11 @@ impl ApplicationHandler for App {
                     } else if self.tool_mode == ToolMode::MeasureCoord {
                         self.tool_mode = ToolMode::Select;
                         self.last_measure_coord = None;
+                    } else if self.tool_mode == ToolMode::Measure
+                        && self.measure_sub == MeasureSub::Area
+                        && !self.measure_area_in_progress.is_empty()
+                    {
+                        self.measure_area_in_progress.clear();
                     } else if !self.area_in_progress.is_empty() {
                         self.area_in_progress.clear();
                     } else if self.dim_p1.is_some() {
@@ -8344,6 +8360,33 @@ impl ApplicationHandler for App {
                     self.dim_p1 = None;
                 } else if self.tool_mode == ToolMode::Area {
                     self.area_in_progress.clear();
+                } else if self.tool_mode == ToolMode::Measure
+                    && self.measure_sub == MeasureSub::Area
+                {
+                    // Same finish-on-right-click semantics for the
+                    // Viewer's polygon-area measurement.
+                    let v = &self.measure_area_in_progress;
+                    if v.len() >= 3 {
+                        let mut perim = 0.0_f64;
+                        for i in 0..v.len().saturating_sub(1) {
+                            let dx = v[i + 1][0] - v[i][0];
+                            let dy = v[i + 1][1] - v[i][1];
+                            perim += (dx*dx + dy*dy).sqrt();
+                        }
+                        if let (Some(first), Some(last)) =
+                            (v.first().copied(), v.last().copied())
+                        {
+                            let dx = first[0] - last[0];
+                            let dy = first[1] - last[1];
+                            perim += (dx*dx + dy*dy).sqrt();
+                        }
+                        let area = polygon_area(v);
+                        self.last_measure_area = Some((perim, area));
+                        self.measure_area_in_progress.clear();
+                    } else {
+                        // Fewer than 3 verts -- right-click cancels.
+                        self.measure_area_in_progress.clear();
+                    }
                 }
             }
             WindowEvent::MouseInput { state, button: MouseButton::Left, .. } => {
@@ -8488,19 +8531,67 @@ impl ApplicationHandler for App {
                                             focus_tab, focus_rect,
                                             self.mouse_pos.0, self.mouse_pos.1)
                                         {
-                                            match self.measure_p1 {
-                                                None => { self.measure_p1 = Some(world); }
-                                                Some(p1) => {
-                                                    // ORTHO — snap second click to H or V
-                                                    // axis from p1 (closer of |dx|, |dy| wins).
-                                                    let world = if self.ortho_enabled {
-                                                        ortho_constrain(p1, world)
-                                                    } else { world };
-                                                    let ddx = world[0] - p1[0];
-                                                    let ddy = world[1] - p1[1];
-                                                    let dist = (ddx*ddx + ddy*ddy).sqrt();
-                                                    self.last_measurement = Some((p1, world, dist));
-                                                    self.measure_p1 = None;
+                                            match self.measure_sub {
+                                                MeasureSub::Length => match self.measure_p1 {
+                                                    None => { self.measure_p1 = Some(world); }
+                                                    Some(p1) => {
+                                                        // ORTHO — snap second click to H or V
+                                                        // axis from p1 (closer of |dx|, |dy| wins).
+                                                        let world = if self.ortho_enabled {
+                                                            ortho_constrain(p1, world)
+                                                        } else { world };
+                                                        let ddx = world[0] - p1[0];
+                                                        let ddy = world[1] - p1[1];
+                                                        let dist = (ddx*ddx + ddy*ddy).sqrt();
+                                                        self.last_measurement = Some((p1, world, dist));
+                                                        self.measure_p1 = None;
+                                                    }
+                                                },
+                                                MeasureSub::Area => {
+                                                    // Polygon-area pick-flow:
+                                                    // each LMB click pushes a
+                                                    // vertex into
+                                                    // `measure_area_in_progress`;
+                                                    // clicking near the FIRST
+                                                    // vertex with >= 3 verts
+                                                    // closes the polygon and
+                                                    // commits `last_measure_area`.
+                                                    // Right-click also closes
+                                                    // (handled in the RMB arm).
+                                                    let close_this_click = self.measure_area_in_progress.len() >= 3
+                                                        && self.measure_area_in_progress.first()
+                                                            .map(|first| {
+                                                                let dx = world[0] - first[0];
+                                                                let dy = world[1] - first[1];
+                                                                let wpp = self.tabs.get(focus_tab)
+                                                                    .map(|t| self.world_per_pixel_in(&t.cam, focus_rect))
+                                                                    .unwrap_or(1.0);
+                                                                let r = 8.0 * wpp;
+                                                                (dx*dx + dy*dy).sqrt() < r
+                                                            })
+                                                            .unwrap_or(false);
+                                                    if close_this_click {
+                                                        let v = &self.measure_area_in_progress;
+                                                        let mut perim = 0.0_f64;
+                                                        for i in 0..v.len().saturating_sub(1) {
+                                                            let dx = v[i + 1][0] - v[i][0];
+                                                            let dy = v[i + 1][1] - v[i][1];
+                                                            perim += (dx*dx + dy*dy).sqrt();
+                                                        }
+                                                        // Close-segment perim contribution.
+                                                        if let (Some(first), Some(last)) =
+                                                            (v.first().copied(), v.last().copied())
+                                                        {
+                                                            let dx = first[0] - last[0];
+                                                            let dy = first[1] - last[1];
+                                                            perim += (dx*dx + dy*dy).sqrt();
+                                                        }
+                                                        let area = polygon_area(v);
+                                                        self.last_measure_area = Some((perim, area));
+                                                        self.measure_area_in_progress.clear();
+                                                    } else {
+                                                        self.measure_area_in_progress.push(world);
+                                                    }
                                                 }
                                             }
                                         }
