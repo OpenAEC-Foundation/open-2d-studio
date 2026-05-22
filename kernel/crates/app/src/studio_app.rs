@@ -5869,11 +5869,11 @@ natively, so you can hand the file back to your main toolchain without losing ed
             self.close_tab(self.active_tab);
         }
         if requested_menu_save_as_ifcx {
-            if self.mode == AppMode::Viewer {
-                eprintln!("[viewer] Save As IFCDraw is disabled in viewer mode");
-            } else {
-                self.save_as_ifcx_binary();
-            }
+            // IFCDraw is the persistence format for whatever the user
+            // currently sees plus their minimal viewer-mode edits
+            // (Move / Delete / Explode / layer-delete). Available in
+            // both Studio and Viewer per user direction.
+            self.save_as_ifcx_binary();
         }
         if requested_menu_save_as_dxf {
             // Viewer can now persist its minimal-edit changes (Move /
@@ -6016,6 +6016,28 @@ natively, so you can hand the file back to your main toolchain without losing ed
     /// `SnapEngine::query` with the active mode-mask.
     fn update_snap(&mut self) {
         if self.snap_modes.is_empty() {
+            self.current_snap = None;
+            return;
+        }
+        // Only show snap markers while a tool that actually consumes a
+        // precise world-point is active. In Select / Pan / Zoom modes
+        // the cursor is conceptually "looking", not "picking" — flashing
+        // End/Mid/Cen markers on every hover is noisy and was reported
+        // as overwhelming. User: "Alleen maar als je bijvoorbeeld een
+        // measure functie gebruikt. Maar als ik gewoon hover over de
+        // canvas, moet er helemaal geen snap ontstaan."
+        let tool_needs_snap = matches!(
+            self.tool_mode,
+            ToolMode::Measure
+                | ToolMode::Dimension
+                | ToolMode::Area
+                | ToolMode::Move
+                | ToolMode::Rotate
+                | ToolMode::Scale
+                | ToolMode::Mirror
+                | ToolMode::ZoomRegion
+        );
+        if !tool_needs_snap {
             self.current_snap = None;
             return;
         }
