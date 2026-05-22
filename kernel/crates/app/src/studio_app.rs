@@ -54,6 +54,7 @@ use superui::{
 // affine transform composition, etc.).
 use crate::scene_io::{load_dwg, load_dxf, Scene, TriKind};
 use crate::ifcx_export::write_ifcx_binary;
+use crate::ifcx_view::{IfcxKind, IfcxView};
 use crate::dxf_export::write_dxf_filtered;
 use kernel_spatial::{SegmentEntry, SegmentIndex};
 use kernel_snap::{SnapContext, SnapEngine, SnapMode, SnapModeSet, SnapResult};
