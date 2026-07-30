@@ -1,0 +1,504 @@
+===== C:\Users\rickd\Documents\GitHub\verification-files\DWG-DXF\pair.dwg =====
+  version:      R2010
+  version_code: AC1024
+  objects:      16736
+  object_map:   16736 entries
+  classes:      7
+  parse time:   0.27s
+  types:
+    7642  LINE
+    5130  ARC
+     531  INSERT
+     529  BLOCK_HEADER
+     529  BLOCK
+     529  ENDBLK
+     524  HATCH
+     427  MTEXT
+     372  LWPOLYLINE
+     178  CIRCLE
+      85  DIMENSION_LINEAR
+      50  XRECORD
+      46  DICTIONARY
+      38  LAYER
+      28  STYLE
+      24  VISUALSTYLE
+      17  SCALE
+      10  LTYPE
+       8  VIEWPORT
+       5  UNKNOWN_509
+       4  APPID
+       4  DIMSTYLE
+       3  LAYOUT
+       3  MATERIAL
+       1  VIEW_CONTROL
+       1  UCS_CONTROL
+       1  UNKNOWN_510
+       1  UNKNOWN_507
+       1  UNKNOWN_508
+       1  DIMSTYLE_CONTROL
+       1  LTYPE_CONTROL
+       1  STYLE_CONTROL
+       1  PLACEHOLDER
+       1  UNKNOWN_506
+       1  ACDBDICTIONARYWDFLT
+       1  VPORT
+       1  BLOCK_CONTROL
+       1  LAYER_CONTROL
+       1  VPORT_CONTROL
+       1  MLEADERSTYLE
+       1  UNKNOWN_511
+       1  MLINESTYLE
+       1  TABLESTYLE
+       1  APPID_CONTROL
+  WILD h=0x4E2D type=LINE worst_coord=112194.6 n_pts=2
+  WILD h=0x4E2E type=LINE worst_coord=112294.6 n_pts=2
+  WILD h=0x4E3E type=LINE worst_coord=104754.6 n_pts=2
+  WILD h=0x4E3F type=LINE worst_coord=104854.6 n_pts=2
+  WILD h=0x4E41 type=LINE worst_coord=101754.6 n_pts=2
+  WILD h=0x4E42 type=LINE worst_coord=101854.6 n_pts=2
+  WILD h=0x4E44 type=LINE worst_coord=106754.6 n_pts=2
+  WILD h=0x4E45 type=LINE worst_coord=106854.6 n_pts=2
+  WILD h=0x4E51 type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x4E52 type=LINE worst_coord=115449.6 n_pts=2
+  WILD h=0x4E53 type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x4E54 type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x4F44 type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x4F45 type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x4F46 type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x4F47 type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x4F4B type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x4F4C type=LINE worst_coord=113164.6 n_pts=2
+  WILD h=0x4F4D type=LINE worst_coord=111964.6 n_pts=2
+  WILD h=0x4F4E type=LINE worst_coord=110764.6 n_pts=2
+  WILD h=0x4F4F type=LINE worst_coord=109564.6 n_pts=2
+  WILD h=0x4F50 type=LINE worst_coord=108364.6 n_pts=2
+  WILD h=0x4F51 type=LINE worst_coord=107164.6 n_pts=2
+  WILD h=0x4F52 type=LINE worst_coord=105964.6 n_pts=2
+  WILD h=0x4F53 type=LINE worst_coord=104764.6 n_pts=2
+  WILD h=0x4F54 type=LINE worst_coord=103564.6 n_pts=2
+  WILD h=0x4F55 type=LINE worst_coord=102364.6 n_pts=2
+  WILD h=0x4F56 type=LINE worst_coord=101164.6 n_pts=2
+  WILD h=0x4F59 type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x4F5B type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x4F6B type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x4F6C type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x4F6D type=LINE worst_coord=115755.6 n_pts=2
+  WILD h=0x4F6E type=LINE worst_coord=115755.6 n_pts=2
+  WILD h=0x4F6F type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x4FBE type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x4FC0 type=LINE worst_coord=115702.6 n_pts=2
+  WILD h=0x4FC2 type=LINE worst_coord=115702.6 n_pts=2
+  WILD h=0x4FC3 type=LINE worst_coord=115702.6 n_pts=2
+  WILD h=0x4FC4 type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x4FC5 type=LINE worst_coord=115702.6 n_pts=2
+  WILD h=0x4FC6 type=LINE worst_coord=115702.6 n_pts=2
+  WILD h=0x4FC9 type=LINE worst_coord=115702.6 n_pts=2
+  WILD h=0x4FCA type=LINE worst_coord=115634.6 n_pts=2
+  WILD h=0x4FCB type=LINE worst_coord=115634.6 n_pts=2
+  WILD h=0x4FCC type=LINE worst_coord=115656.6 n_pts=2
+  WILD h=0x4FCD type=LINE worst_coord=115656.6 n_pts=2
+  WILD h=0x4FCE type=LINE worst_coord=115684.6 n_pts=2
+  WILD h=0x4FCF type=LINE worst_coord=115684.6 n_pts=2
+  WILD h=0x5999 type=LINE worst_coord=115755.6 n_pts=2
+  WILD h=0x599A type=LINE worst_coord=115755.6 n_pts=2
+  WILD h=0x599C type=LINE worst_coord=115755.6 n_pts=2
+  WILD h=0x599D type=LINE worst_coord=115755.6 n_pts=2
+  WILD h=0x599E type=LINE worst_coord=115755.6 n_pts=2
+  WILD h=0x599F type=LINE worst_coord=115755.6 n_pts=2
+  WILD h=0x5A01 type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x5A02 type=LINE worst_coord=115354.6 n_pts=2
+  WILD h=0x5A0B type=LINE worst_coord=115394.6 n_pts=2
+  WILD h=0x5A0E type=LINE worst_coord=101179.6 n_pts=2
+  WILD h=0x5A0F type=LINE worst_coord=102379.6 n_pts=2
+  WILD h=0x5A10 type=LINE worst_coord=103579.6 n_pts=2
+  WILD h=0x5A11 type=LINE worst_coord=104779.6 n_pts=2
+  WILD h=0x5A12 type=LINE worst_coord=105979.6 n_pts=2
+  WILD h=0x5A13 type=LINE worst_coord=107179.6 n_pts=2
+  WILD h=0x5A14 type=LINE worst_coord=108379.6 n_pts=2
+  WILD h=0x5A15 type=LINE worst_coord=109579.6 n_pts=2
+  WILD h=0x5A16 type=LINE worst_coord=110779.6 n_pts=2
+  WILD h=0x5A17 type=LINE worst_coord=111979.6 n_pts=2
+  WILD h=0x5A18 type=LINE worst_coord=113179.6 n_pts=2
+  WILD h=0x5A19 type=LINE worst_coord=115394.6 n_pts=2
+  WILD h=0x5A2C type=LINE worst_coord=115644.6 n_pts=2
+  WILD h=0x5A2D type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x5A2E type=LINE worst_coord=115454.6 n_pts=2
+  WILD h=0x5A2F type=LINE worst_coord=115644.6 n_pts=2
+  WILD h=0x5A30 type=LINE worst_coord=115644.6 n_pts=2
+  WILD h=0x6A02 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A0F type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A1C type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A29 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A36 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A43 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A50 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A5D type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A6A type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A77 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A84 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A91 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6A9E type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6AAB type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6AB8 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6AC5 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6AD2 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6ADF type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6AEC type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6AF9 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B06 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B13 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B20 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B2D type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B3A type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B47 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B54 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B61 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B6E type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B7B type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B88 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6B95 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6BA2 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6BAF type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6BBC type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6BC9 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6BD6 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6BE3 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6BF0 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6BFD type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C0A type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C17 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C24 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C31 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C3E type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C4B type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C58 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C65 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C72 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C7F type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C8C type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6C99 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6CA6 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6CB3 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6CC0 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6CCD type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6CDA type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6CE7 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6CF4 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D01 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D0E type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D1B type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D28 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D35 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D42 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D4F type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D5C type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D69 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D76 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D83 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D90 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6D9D type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6DAA type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6DB7 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6DC4 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6DD1 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6DDE type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6DEB type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6DF8 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E05 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E12 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E1F type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E2C type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E39 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E46 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E53 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E60 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E6D type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E7A type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E87 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6E94 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6EA1 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6EAE type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6EBB type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6EC8 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6ED5 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6EE2 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6EEF type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6EFC type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F09 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F16 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F23 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F30 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F3D type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F4A type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F57 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F64 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F71 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F7E type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F8B type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6F98 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6FA5 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6FB2 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6FBF type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6FCC type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6FD9 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6FE6 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x6FF3 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7000 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x700D type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x701A type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x701B type=LINE worst_coord=122325.6 n_pts=2
+  WILD h=0x701C type=LINE worst_coord=122513.1 n_pts=2
+  WILD h=0x701D type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x701E type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x701F type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7020 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7022 type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x7024 type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x7025 type=LINE worst_coord=122325.6 n_pts=2
+  WILD h=0x7026 type=LINE worst_coord=122513.1 n_pts=2
+  WILD h=0x7027 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7028 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7029 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x702A type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x702B type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x702C type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x702D type=LINE worst_coord=122325.6 n_pts=2
+  WILD h=0x702E type=LINE worst_coord=122513.1 n_pts=2
+  WILD h=0x702F type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7030 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7031 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7032 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7033 type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x7034 type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x7035 type=LINE worst_coord=122325.6 n_pts=2
+  WILD h=0x7036 type=LINE worst_coord=122513.1 n_pts=2
+  WILD h=0x7037 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7038 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7039 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x703A type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x703B type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x703C type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x703D type=LINE worst_coord=122325.6 n_pts=2
+  WILD h=0x703E type=LINE worst_coord=122513.1 n_pts=2
+  WILD h=0x703F type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7040 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7041 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7042 type=LINE worst_coord=122288.1 n_pts=2
+  WILD h=0x7043 type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x7044 type=MTEXT worst_coord=122350.8 n_pts=1
+  WILD h=0x7045 type=LINE worst_coord=122285.1 n_pts=2
+  WILD h=0x7046 type=LINE worst_coord=122335.1 n_pts=2
+  WILD h=0x7047 type=LINE worst_coord=122285.1 n_pts=2
+  WILD h=0x7048 type=LINE worst_coord=122285.1 n_pts=2
+  WILD h=0x7049 type=LINE worst_coord=122363.8 n_pts=2
+  WILD h=0x704A type=MTEXT worst_coord=120890.4 n_pts=1
+  WILD h=0x704C type=MTEXT worst_coord=120789.4 n_pts=1
+  WILD h=0x704D type=LINE worst_coord=120981.3 n_pts=2
+  WILD h=0x704E type=LINE worst_coord=120943.8 n_pts=2
+  WILD h=0x704F type=LINE worst_coord=120943.8 n_pts=2
+  WILD h=0x7050 type=LINE worst_coord=121018.8 n_pts=2
+  WILD h=0x7051 type=LINE worst_coord=120943.8 n_pts=2
+  WILD h=0x7052 type=LINE worst_coord=121018.8 n_pts=2
+  WILD h=0x705F type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x706C type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7079 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7086 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7093 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x70A0 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x70AD type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x70BA type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x70C7 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x70D4 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x70E1 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x70EE type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x70FB type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7108 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7115 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7122 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x712F type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x713C type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7149 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7156 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7163 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7170 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x717D type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x718A type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x7197 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x71A4 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x71B1 type=INSERT worst_coord=122880.4 n_pts=1
+  WILD h=0x71B2 type=LINE worst_coord=123091.4 n_pts=2
+  WILD h=0x71B3 type=LINE worst_coord=118991.4 n_pts=2
+  WILD h=0x71B4 type=LINE worst_coord=123091.4 n_pts=2
+  WILD h=0x71B5 type=LINE worst_coord=123091.4 n_pts=2
+  WILD h=0x7B85 type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7B86 type=LINE worst_coord=117581.4 n_pts=2
+  WILD h=0x7B91 type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7B92 type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7B93 type=LINE worst_coord=117581.4 n_pts=2
+  WILD h=0x7B9E type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7B9F type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7BA0 type=LINE worst_coord=116946.4 n_pts=2
+  WILD h=0x7BA1 type=LINE worst_coord=117581.4 n_pts=2
+  WILD h=0x7BA2 type=LINE worst_coord=117263.9 n_pts=2
+  WILD h=0x7BAB type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7BAC type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7BAD type=LINE worst_coord=116946.4 n_pts=2
+  WILD h=0x7BAE type=LINE worst_coord=117581.4 n_pts=2
+  WILD h=0x7BAF type=LINE worst_coord=117263.9 n_pts=2
+  WILD h=0x7BB1 type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7BB2 type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7BB3 type=LINE worst_coord=117581.4 n_pts=2
+  WILD h=0x7BB5 type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7BB6 type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7BB7 type=LINE worst_coord=116946.4 n_pts=2
+  WILD h=0x7BB8 type=LINE worst_coord=117581.4 n_pts=2
+  WILD h=0x7BB9 type=LINE worst_coord=117263.9 n_pts=2
+  WILD h=0x7BBB type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7BBC type=MTEXT worst_coord=117698.2 n_pts=1
+  WILD h=0x7BBD type=LINE worst_coord=117581.4 n_pts=2
+  WILD h=0x7BC1 type=INSERT worst_coord=100304.6 n_pts=1
+  WILD h=0x7BC2 type=MTEXT worst_coord=100250.5 n_pts=1
+  WILD h=0x7BC3 type=LINE worst_coord=100304.6 n_pts=2
+  WILD h=0x7BC4 type=INSERT worst_coord=101804.6 n_pts=1
+  WILD h=0x7BC5 type=MTEXT worst_coord=101743.7 n_pts=1
+  WILD h=0x7BC6 type=LINE worst_coord=101804.6 n_pts=2
+  WILD h=0x7BC7 type=INSERT worst_coord=104804.6 n_pts=1
+  WILD h=0x7BC8 type=MTEXT worst_coord=104747.0 n_pts=1
+  WILD h=0x7BC9 type=LINE worst_coord=104804.6 n_pts=2
+  WILD h=0x7BCA type=INSERT worst_coord=107804.6 n_pts=1
+  WILD h=0x7BCB type=MTEXT worst_coord=107747.0 n_pts=1
+  WILD h=0x7BCC type=LINE worst_coord=107804.6 n_pts=2
+  WILD h=0x7BCD type=INSERT worst_coord=110804.6 n_pts=1
+  WILD h=0x7BCE type=MTEXT worst_coord=110752.0 n_pts=1
+  WILD h=0x7BCF type=LINE worst_coord=110804.6 n_pts=2
+  WILD h=0x7BD0 type=INSERT worst_coord=115404.6 n_pts=1
+  WILD h=0x7BD1 type=MTEXT worst_coord=115345.5 n_pts=1
+  WILD h=0x7BD2 type=LINE worst_coord=115404.6 n_pts=2
+  WILD h=0x7BDB type=MTEXT worst_coord=105203.9 n_pts=1
+  WILD h=0x7BDC type=LINE worst_coord=106478.1 n_pts=2
+  WILD h=0x7BDE type=MTEXT worst_coord=105298.2 n_pts=1
+  WILD h=0x7BF8 type=MTEXT worst_coord=113726.9 n_pts=1
+  WILD h=0x7BF9 type=MTEXT worst_coord=113726.9 n_pts=1
+  WILD h=0x7BFA type=MTEXT worst_coord=105635.7 n_pts=1
+  WILD h=0x7BFB type=MTEXT worst_coord=105635.7 n_pts=1
+  WILD h=0x7BFC type=MTEXT worst_coord=103180.0 n_pts=1
+  WILD h=0x7BFD type=MTEXT worst_coord=103180.0 n_pts=1
+  WILD h=0x7C19 type=LINE worst_coord=115494.6 n_pts=2
+  WILD h=0x7C1A type=CIRCLE worst_coord=115404.6 n_pts=1
+  WILD h=0x7C1B type=LINE worst_coord=115404.6 n_pts=2
+  WILD h=0x7C1C type=LINE worst_coord=115404.6 n_pts=2
+  WILD h=0x7C20 type=MTEXT worst_coord=105811.5 n_pts=1
+  WILD h=0x7C23 type=DIMENSION_LINEAR worst_coord=115404.6 n_pts=1
+  WILD h=0x7C49 type=LINE worst_coord=100304.6 n_pts=2
+  WILD h=0x7C4A type=CIRCLE worst_coord=100304.6 n_pts=1
+  WILD h=0x7C4B type=LINE worst_coord=100304.6 n_pts=2
+  WILD h=0x7C4C type=LINE worst_coord=100304.6 n_pts=2
+  WILD h=0x7C53 type=DIMENSION_LINEAR worst_coord=100304.6 n_pts=1
+  WILD h=0x7C61 type=LINE worst_coord=101804.6 n_pts=2
+  WILD h=0x7C62 type=CIRCLE worst_coord=101804.6 n_pts=1
+  WILD h=0x7C63 type=LINE worst_coord=101804.6 n_pts=2
+  WILD h=0x7C64 type=LINE worst_coord=101804.6 n_pts=2
+  WILD h=0x7C65 type=CIRCLE worst_coord=100304.6 n_pts=1
+  WILD h=0x7C66 type=LINE worst_coord=100304.6 n_pts=2
+  WILD h=0x7C67 type=LINE worst_coord=100304.6 n_pts=2
+  WILD h=0x7C68 type=MTEXT worst_coord=100903.1 n_pts=1
+  WILD h=0x7C6B type=DIMENSION_LINEAR worst_coord=101804.6 n_pts=1
+  WILD h=0x7C79 type=LINE worst_coord=104804.6 n_pts=2
+  WILD h=0x7C7A type=CIRCLE worst_coord=104804.6 n_pts=1
+  WILD h=0x7C7B type=LINE worst_coord=104804.6 n_pts=2
+  WILD h=0x7C7C type=LINE worst_coord=104804.6 n_pts=2
+  WILD h=0x7C7D type=CIRCLE worst_coord=101804.6 n_pts=1
+  WILD h=0x7C7E type=LINE worst_coord=101804.6 n_pts=2
+  WILD h=0x7C7F type=LINE worst_coord=101804.6 n_pts=2
+  WILD h=0x7C80 type=MTEXT worst_coord=103140.3 n_pts=1
+  WILD h=0x7C83 type=DIMENSION_LINEAR worst_coord=104804.6 n_pts=1
+  WILD h=0x7C91 type=LINE worst_coord=107804.6 n_pts=2
+  WILD h=0x7C92 type=CIRCLE worst_coord=107804.6 n_pts=1
+  WILD h=0x7C93 type=LINE worst_coord=107804.6 n_pts=2
+  WILD h=0x7C94 type=LINE worst_coord=107804.6 n_pts=2
+  WILD h=0x7C95 type=CIRCLE worst_coord=104804.6 n_pts=1
+  WILD h=0x7C96 type=LINE worst_coord=104804.6 n_pts=2
+  WILD h=0x7C97 type=LINE worst_coord=104804.6 n_pts=2
+  WILD h=0x7C98 type=MTEXT worst_coord=106140.3 n_pts=1
+  WILD h=0x7C9B type=DIMENSION_LINEAR worst_coord=107804.6 n_pts=1
+  WILD h=0x7CA9 type=LINE worst_coord=110804.6 n_pts=2
+  WILD h=0x7CAA type=CIRCLE worst_coord=110804.6 n_pts=1
+  WILD h=0x7CAB type=LINE worst_coord=110804.6 n_pts=2
+  WILD h=0x7CAC type=LINE worst_coord=110804.6 n_pts=2
+  WILD h=0x7CAD type=CIRCLE worst_coord=107804.6 n_pts=1
+  WILD h=0x7CAE type=LINE worst_coord=107804.6 n_pts=2
+  WILD h=0x7CAF type=LINE worst_coord=107804.6 n_pts=2
+  WILD h=0x7CB0 type=MTEXT worst_coord=109140.3 n_pts=1
+  WILD h=0x7CB3 type=DIMENSION_LINEAR worst_coord=110804.6 n_pts=1
+  WILD h=0x7CC1 type=LINE worst_coord=115494.6 n_pts=2
+  WILD h=0x7CC2 type=CIRCLE worst_coord=115404.6 n_pts=1
+  WILD h=0x7CC3 type=LINE worst_coord=115404.6 n_pts=2
+  WILD h=0x7CC4 type=LINE worst_coord=115404.6 n_pts=2
+  WILD h=0x7CC5 type=CIRCLE worst_coord=110804.6 n_pts=1
+  WILD h=0x7CC6 type=LINE worst_coord=110804.6 n_pts=2
+  WILD h=0x7CC7 type=LINE worst_coord=110804.6 n_pts=2
+  WILD h=0x7CC8 type=MTEXT worst_coord=112941.0 n_pts=1
+  WILD h=0x7CCB type=DIMENSION_LINEAR worst_coord=115404.6 n_pts=1
+  WILD h=0x7D21 type=LINE worst_coord=115939.6 n_pts=2
+  WILD h=0x7D22 type=CIRCLE worst_coord=115404.6 n_pts=1
+  WILD h=0x7D23 type=LINE worst_coord=115404.6 n_pts=2
+  WILD h=0x7D24 type=LINE worst_coord=115404.6 n_pts=2
+  WILD h=0x7D25 type=CIRCLE worst_coord=115849.6 n_pts=1
+  WILD h=0x7D26 type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x7D27 type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x7D28 type=MTEXT worst_coord=115506.7 n_pts=1
+  WILD h=0x7D2B type=DIMENSION_LINEAR worst_coord=115404.6 n_pts=1
+  WILD h=0x7D38 type=MTEXT worst_coord=107886.7 n_pts=1
+  WILD h=0x7D39 type=MTEXT worst_coord=107886.7 n_pts=1
+  WILD h=0x7D3A type=MTEXT worst_coord=107886.7 n_pts=1
+  WILD h=0x7D3B type=MTEXT worst_coord=107886.7 n_pts=1
+  WILD h=0x7D3C type=MTEXT worst_coord=107886.7 n_pts=1
+  WILD h=0x7D42 type=MTEXT worst_coord=107774.2 n_pts=1
+  WILD h=0x7D43 type=MTEXT worst_coord=107774.2 n_pts=1
+  WILD h=0x7D44 type=MTEXT worst_coord=107774.2 n_pts=1
+  WILD h=0x7D45 type=MTEXT worst_coord=107774.2 n_pts=1
+  WILD h=0x7D46 type=MTEXT worst_coord=107774.2 n_pts=1
+  WILD h=0x7D47 type=MTEXT worst_coord=115900.5 n_pts=1
+  WILD h=0x7D48 type=MTEXT worst_coord=115900.5 n_pts=1
+  WILD h=0x7D49 type=MTEXT worst_coord=115900.5 n_pts=1
+  WILD h=0x7D4A type=MTEXT worst_coord=115900.5 n_pts=1
+  WILD h=0x7D4B type=MTEXT worst_coord=115900.5 n_pts=1
+  WILD h=0x7D4C type=MTEXT worst_coord=115900.5 n_pts=1
+  WILD h=0x7D96 type=LINE worst_coord=115449.6 n_pts=2
+  WILD h=0x7D97 type=CIRCLE worst_coord=115449.6 n_pts=1
+  WILD h=0x7D98 type=LINE worst_coord=115449.6 n_pts=2
+  WILD h=0x7D99 type=LINE worst_coord=115449.6 n_pts=2
+  WILD h=0x7D9D type=MTEXT worst_coord=106943.8 n_pts=1
+  WILD h=0x7DA0 type=DIMENSION_LINEAR worst_coord=115449.6 n_pts=1
+  WILD h=0x7DAE type=LINE worst_coord=115939.6 n_pts=2
+  WILD h=0x7DAF type=CIRCLE worst_coord=115849.6 n_pts=1
+  WILD h=0x7DB0 type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x7DB1 type=LINE worst_coord=115849.6 n_pts=2
+  WILD h=0x7DB2 type=CIRCLE worst_coord=115449.6 n_pts=1
+  WILD h=0x7DB3 type=LINE worst_coord=115449.6 n_pts=2
+  WILD h=0x7DB4 type=LINE worst_coord=115449.6 n_pts=2
+  WILD h=0x7DB5 type=MTEXT worst_coord=115523.9 n_pts=1
+  WILD h=0x7DB8 type=DIMENSION_LINEAR worst_coord=115849.6 n_pts=1
+  WILD h=0x7DC6 type=MTEXT worst_coord=119860.5 n_pts=1
+  WILD h=0x7DC7 type=MTEXT worst_coord=119400.4 n_pts=1
+  WILD h=0x7DC8 type=MTEXT worst_coord=119400.4 n_pts=1
+  entities with sane coords: 14373
+  entities with wild coords: 432
+  decoded bbox: [-96604.62, -10193.53] to [123091.37, 8791.52]
+  handle 0x4E4: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4E5: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4E6: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4E7: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4E8: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4E9: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4EA: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4EB: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4EC: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4ED: obj_map=true parsed_type=ARC owner=Some(1121)
+  handle 0x4EE: obj_map=true parsed_type=ARC owner=Some(1121)
+  LAYER #0 handle=0x54 name="0" owner=None layer_ref=None
+  LAYER #1 handle=0xB7 name="I-WALL" owner=None layer_ref=None
+  LAYER #2 handle=0xB8 name="S-BEAM" owner=None layer_ref=None
+  LAYER #3 handle=0xB9 name="A-FLOR" owner=None layer_ref=None
+  LAYER #4 handle=0xBA name="A-WALL" owner=None layer_ref=None
+

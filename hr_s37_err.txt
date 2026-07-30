@@ -1,0 +1,5 @@
+[txt-dbg] first render_dxf_text: style='Arial_I' primary_font_file='arial.ttf' weighted='ariali.ttf' tried=["ariali.ttf", "arial.ttf"]
+[ttf_font] WARN font "arialb.ttf" not found in any fonts dir — using embedded DejaVuSans fallback
+[dxf-dbg] hatches=948 solid_hatches=888 solid_rings=17171 tri_emitted=77
+[headless_render] count_label: DXF   LINE=1190518 CIRC=4978 ARC=1469353 LWPL=155800 INS=70339 other=7018  paper_ents=75 paper_block=0 sheets=2 hatch=157 tri=262686  total_segs=1490795
+[headless_render] stress37.dxf -> stress37_out.png (1024x1024, 1490795 segments, space=model, bbox=[-8714.36,-19830.92 .. 89698.98,16298.83])

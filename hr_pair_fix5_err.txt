@@ -1,0 +1,40 @@
+[load_dwg] phase read_file: 0.001s (1117067 bytes)
+[load_dwg] phase parse: 0.325s (16736 objects)
+[load_dwg] LAYER #0 handle=0x54 name="0"
+[load_dwg] LAYER #1 handle=0xB7 name="I-WALL"
+[load_dwg] LAYER #2 handle=0xB8 name="S-BEAM"
+[load_dwg] LAYER #3 handle=0xB9 name="A-FLOR"
+[load_dwg] LAYER #4 handle=0xBA name="A-WALL"
+[load_dwg] 38 total LAYERs in C:\Users\rickd\Documents\GitHub\verification-files\DWG-DXF\pair.dwg
+[load_dwg] STYLE table: 28 by-name, 28 by-handle
+[load_dwg] DIMSTYLE table: 4 total, 4 with dimtxt+dimscale fields
+[load_dwg] $LTSCALE = 1
+[load_dwg] block index: 526 blocks, 13946 block-internal entities, 528 named-block lookups (chain-walk added 0)
+[load_dwg] phase pre_entity_setup: 0.092s
+[PAPER_TAG] handle=0x19D type=INSERT owner=0x0 entmode=2 is_paper=false
+[LTYPE_RESOLVE] name=MV_hartlijn_staal global_ltscale=1 ent_scale=1 factor=1 dashes=[5.0, -0.8, 0.0, -0.8]
+[LTYPE_RESOLVE] name=MV_hartlijn_staal global_ltscale=1 ent_scale=1 factor=1 dashes=[5.0, -0.8, 0.0, -0.8]
+[PAPER_TAG] handle=0x1C8 type=INSERT owner=0x0 entmode=2 is_paper=false
+[LTYPE_RESOLVE] name=MV_hartlijn_staal global_ltscale=1 ent_scale=1 factor=1 dashes=[5.0, -0.8, 0.0, -0.8]
+[LTYPE_RESOLVE] name=MV_hartlijn_staal global_ltscale=1 ent_scale=1 factor=1 dashes=[5.0, -0.8, 0.0, -0.8]
+[PAPER_TAG] handle=0x1E3 type=INSERT owner=0x0 entmode=2 is_paper=false
+[PAPER_TAG] handle=0x1FE type=INSERT owner=0x0 entmode=2 is_paper=false
+[PAPER_TAG] handle=0x21A type=INSERT owner=0x0 entmode=2 is_paper=false
+[PAPER_TAG] handle=0x236 type=INSERT owner=0x0 entmode=2 is_paper=false
+[PAPER_TAG] handle=0x288 type=INSERT owner=0x0 entmode=2 is_paper=false
+[PAPER_TAG] handle=0x2A1 type=INSERT owner=0x0 entmode=2 is_paper=false
+[LTYPE_RESOLVE] name=dash fine global_ltscale=1 ent_scale=1 factor=1 dashes=[0.0, 0.0, 1.0, 1.0, 0.0, 5.918986824790941e-307, 6.62038679129254e-297, 1.0, 1.989378452e-314, 1.084202172497341e-19, -3.078030527525208e-154, 1.0, 1.7914542533016473e-231, 1.1066857331911205e-306, 3.4489935000766376e-307, 0.0, -2.7616263453256193e-244, 1.0, -1.5623741152405754e-269, 0.0, -3.407881785572714e-269, 0.0, 0.0, 1.0, 0.18, 1.0, 0.0, 0.0, 0.0, 0.0, 0.0]
+[dwg-txt] first render: style=Some("Arial") primary_font=Some("arial.ttf") tried=["arial.ttf"] text_len=6
+[ttf_font] WARN font "arialb.ttf" not found in any fonts dir — using embedded DejaVuSans fallback
+[DIM_BLK] handle=Some(29211) txt=2.5 scale=1 dimasz=2.5 dimblk1="" dimblk2="" resolved=2.5 fallback_used=false
+[DIM_BLK] handle=Some(29211) txt=2.5 scale=1 dimasz=2.5 dimblk1="" dimblk2="" resolved=2.5 fallback_used=false
+[DIM_BLK] handle=Some(29211) txt=2.5 scale=1 dimasz=2.5 dimblk1="" dimblk2="" resolved=2.5 fallback_used=false
+[DIM_BLK] handle=Some(29211) txt=2.5 scale=1 dimasz=2.5 dimblk1="" dimblk2="" resolved=2.5 fallback_used=false
+[DIM_BLK] handle=Some(29211) txt=2.5 scale=1 dimasz=2.5 dimblk1="" dimblk2="" resolved=2.5 fallback_used=false
+[load_dwg] paper-space color inversion: 73128 near-white segments → mid-grey
+[load_dwg] paper-space frame emitted for bbox [-1189.0,-0.0]..[0.0,841.0]
+[load_dwg] p90-filter clean — 0 of 857307 segments outside cap (1553633.3); all retained
+[load_dwg] phase entity_loop+post: 1.520s (857307 segs, 613616 tris)
+[load_dwg] TOTAL: 1.958s
+[headless_render] count_label: DWG [R2010]  objs=16736 ents=15955 segs=857307 tri=613616  LN=8051 CI=30 AR=6200 LW=507 IN=534 EL=0 SP=0 PT=0 SO=0 LD=0 RY=0 XL=0 DI=85 HA=536 ot=350
+[headless_render] pair.dwg -> pair_fix5.png (1024x1024, 857307 segments, space=model, bbox=[-106478.07,-10193.53 .. 123091.37,8803.80])
