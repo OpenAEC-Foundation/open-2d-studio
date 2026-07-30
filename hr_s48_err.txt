@@ -1,0 +1,3 @@
+[dxf-dbg] hatches=0 solid_hatches=0 solid_rings=0 tri_emitted=0
+[headless_render] count_label: DXF   LINE=0 CIRC=0 ARC=0 LWPL=0 INS=0 other=431059  paper_ents=0 paper_block=0 sheets=2 hatch=0 tri=0  total_segs=862126
+[headless_render] stress48.dxf -> stress48_out.png (1024x1024, 862126 segments, space=model, bbox=[-75.00,-75.00 .. 75.00,75.00])

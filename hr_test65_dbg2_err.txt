@@ -1,0 +1,1130 @@
+[load_dwg] phase read_file: 0.021s (68244002 bytes)
+[dwg-dbg] R2018: trying sentinel-based pipeline
+[dwg-dbg] r2007 read_page_map: picked 0x54+0x100 map_addr=0x410EA60
+[dwg-dbg] r2007 page-hdr bytes: 3b 0e 63 41 f8 84 00 00 2e 67 00 00 02 00 00 00 28 65 e9 18 00 07 c0 fd ff ff e0 0e 00 00 d5 ff 
+[dwg-dbg] r2007 page-map hdr: sec_type=0x41630E3B data_size=0x84F8 comp_size=0x672E compressed=true
+[dwg-dbg] r2007 page-map: using 'raw+decompress' candidate (34040 bytes)
+[dwg-dbg] r2007 page-map: map_data len=34040 (expected data_size=34040)
+[dwg-dbg] r2007 map_data[..64]: c0 fd ff ff e0 0e 00 00 d5 ff ff ff 6d fd ff ff 37 fd ff ff 00 00 00 00 04 00 00 00 a0 05 00 00 05 00 00 00 a0 74 00 00 06 00 00 00 80 26 00 00 07 00 00 00 40 30 00 00 08 00 00 00 e0 42 00 00 
+[dwg-dbg] page[0]: page_num=-576 psize=0xEE0 (offset=0x100)
+[dwg-dbg] page[1]: page_num=-43 psize=0xFFFFFD6D (offset=0xFE0)
+[dwg-dbg] page[2]: page_num=-713 psize=0x0 (offset=0xFE0)
+[dwg-dbg] page[3]: page_num=4 psize=0x5A0 (offset=0xFE0)
+[dwg-dbg] page[4]: page_num=5 psize=0x74A0 (offset=0x1580)
+[dwg-dbg] page[5]: page_num=6 psize=0x2680 (offset=0x8A20)
+[dwg-dbg] page[6]: page_num=7 psize=0x3040 (offset=0xB0A0)
+[dwg-dbg] page[7]: page_num=8 psize=0x42E0 (offset=0xE0E0)
+[dwg-dbg] page[8]: page_num=9 psize=0x3580 (offset=0x123C0)
+[dwg-dbg] page[9]: page_num=10 psize=0x32E0 (offset=0x15940)
+[dwg-dbg] page[10]: page_num=11 psize=0x3080 (offset=0x18C20)
+[dwg-dbg] page[11]: page_num=12 psize=0x3020 (offset=0x1BCA0)
+[dwg-dbg] page[12]: page_num=13 psize=0x3040 (offset=0x1ECC0)
+[dwg-dbg] page[13]: page_num=14 psize=0x30E0 (offset=0x21D00)
+[dwg-dbg] page[14]: page_num=15 psize=0x40E0 (offset=0x24DE0)
+[dwg-dbg] page[15]: page_num=16 psize=0x2580 (offset=0x28EC0)
+[dwg-dbg] page[16]: page_num=17 psize=0x2FE0 (offset=0x2B440)
+[dwg-dbg] page[17]: page_num=18 psize=0x43E0 (offset=0x2E420)
+[dwg-dbg] page[18]: page_num=19 psize=0x4300 (offset=0x32800)
+[dwg-dbg] page[19]: page_num=20 psize=0x4680 (offset=0x36B00)
+[dwg-dbg] r2007 read_page_map: parsed 4255 entries (4171 in map, pages 4..4494), final offset=0x4116F80
+[dwg-dbg] R2018 sentinel: page_map has 4171 entries
+[dwg-dbg] sentinel 0x4163003B found @0x4104CA0: ds=68052 cs=40313 comp=true body=68052B
+[dwg-dbg] R2018 sentinel: section_map body=68052B
+[dwg-dbg] r2018 section_map: found 13 AcDb: names
+[dwg-dbg] r2018 section_map: parsed 13 entries (hdr=32, pe=16)
+[dwg-dbg]   name="AcDb:Preview" type=0x00000000 pages=1 max_decomp=0x7400 comp=false
+[dwg-dbg]     pages[..3]: ["pg4290@off0(cs=1472)"]
+[dwg-dbg]   name="AcDb:AcDsPrototype_1b" type=0x00000000 pages=7 max_decomp=0x7400 comp=true
+[dwg-dbg]     pages[..3]: ["pg3570@off0(cs=412)", "pg3572@off89088(cs=14099)", "pg3567@off118784(cs=29817)"]
+[dwg-dbg]   name="AcDb:AppInfoHistory" type=0x00000000 pages=1 max_decomp=0x7400 comp=false
+[dwg-dbg]     pages[..3]: ["pg4@off0(cs=1408)"]
+[dwg-dbg]   name="AcDb:AppInfo" type=0x00000000 pages=1 max_decomp=0x7400 comp=false
+[dwg-dbg]     pages[..3]: ["pg4291@off0(cs=768)"]
+[dwg-dbg]   name="AcDb:SummaryInfo" type=0x00000000 pages=1 max_decomp=0x7400 comp=false
+[dwg-dbg]     pages[..3]: ["pg4289@off0(cs=128)"]
+[dwg-dbg]   name="AcDb:RevHistory" type=0x00000000 pages=1 max_decomp=0x7400 comp=true
+[dwg-dbg]     pages[..3]: ["pg3573@off0(cs=156)"]
+[dwg-dbg]   name="AcDb:AcDbObjects" type=0x41630040 pages=4064 max_decomp=0x7400 comp=true
+[dwg-dbg]     pages[..3]: ["pg5@off0(cs=29817)", "pg6@off29696(cs=9811)", "pg7@off59392(cs=12316)"]
+[dwg-dbg]   name="AcDb:ObjFreeSpace" type=0x4163003D pages=1 max_decomp=0x7400 comp=true
+[dwg-dbg]     pages[..3]: ["pg4400@off0(cs=169)"]
+[dwg-dbg]   name="AcDb:Template" type=0x4163003E pages=1 max_decomp=0x7400 comp=true
+[dwg-dbg]     pages[..3]: ["pg3715@off0(cs=145)"]
+[dwg-dbg]   name="AcDb:Handles" type=0x4163003F pages=85 max_decomp=0x7400 comp=true
+[dwg-dbg]     pages[..3]: ["pg4401@off0(cs=18215)", "pg4402@off29696(cs=16897)", "pg4403@off59392(cs=21288)"]
+[dwg-dbg]   name="AcDb:Classes" type=0x4163003C pages=3 max_decomp=0x7400 comp=true
+[dwg-dbg]     pages[..3]: ["pg4486@off0(cs=13605)", "pg4487@off29696(cs=10732)", "pg4488@off59392(cs=10371)"]
+[dwg-dbg]   name="AcDb:AuxHeader" type=0x00000000 pages=1 max_decomp=0x7400 comp=true
+[dwg-dbg]     pages[..3]: ["pg4489@off0(cs=198)"]
+[dwg-dbg]   name="AcDb:Header" type=0x4163003B pages=1 max_decomp=0x7400 comp=true
+[dwg-dbg]     pages[..3]: ["pg4490@off0(cs=1679)"]
+[dwg-dbg] R2018 sentinel: 13 sections found
+[dwg-dbg] R2018: section "AcDb:AcDbObjects" (type=0x41630040) â†’ sec_num=7 (from page 5 @0x1580)
+[dwg-dbg] R2018: section "AcDb:ObjFreeSpace" (type=0x4163003D) â†’ sec_num=6 (from page 4400 @0x3C3F980)
+[dwg-dbg] R2018: section "AcDb:Template" (type=0x4163003E) â†’ sec_num=5 (from page 3715 @0x383A540)
+[dwg-dbg] R2018: section "AcDb:Handles" (type=0x4163003F) â†’ sec_num=4 (from page 4401 @0x38F8DC0)
+[dwg-dbg] R2018: section "AcDb:Classes" (type=0x4163003C) â†’ sec_num=3 (from page 4486 @0x40FC460)
+[dwg-dbg] R2018: section "AcDb:Header" (type=0x4163003B) â†’ sec_num=1 (from page 4490 @0x383CE60)
+[dwg-dbg] R2018: resolved 6 section mappings: {1097007166: 5, 1097007163: 1, 1097007167: 4, 1097007165: 6, 1097007168: 7, 1097007164: 3}
+[dwg-dbg]   hdr-dec sec_num=1 type=0x4163043B comp=1679 decomp=1728 dw4=0x0 dw5=0x0 dw6=0xDB96DD7 dw7=0xB4F068C6
+[dwg-dbg] assemble sec=1: 1 pages, page_size=0x7400
+[dwg-dbg]   page[0]: start_off=0x0 dsize=0x6C0 csize=0x68F comp=true type=0x4163043B
+[dwg-dbg] R2018: header section 1728B, 68 vars
+[dwg-dbg]   hdr-dec sec_num=3 type=0x4163043B comp=10732 decomp=10784 dw4=0x7400 dw5=0x0 dw6=0xA0C1B0EC dw7=0xD67BAC1B
+[dwg-dbg]   hdr-dec sec_num=3 type=0x4163043B comp=10371 decomp=10432 dw4=0xE800 dw5=0x0 dw6=0xDDC16379 dw7=0xD8A15DA1
+[dwg-dbg]   hdr-dec sec_num=3 type=0x4163043B comp=13605 decomp=13664 dw4=0x0 dw5=0x0 dw6=0x597F16EA dw7=0xCCB112C3
+[dwg-dbg] assemble sec=3: 3 pages, page_size=0x7400
+[dwg-dbg]   page[0]: start_off=0x0 dsize=0x3560 csize=0x3525 comp=true type=0x4163043B
+[dwg-dbg]   page[1]: start_off=0x7400 dsize=0x2A20 csize=0x29EC comp=true type=0x4163043B
+[dwg-dbg]   page[2]: start_off=0xE800 dsize=0x28C0 csize=0x2883 comp=true type=0x4163043B
+[dwg-dbg] parse_classes_r2004_section: len=89088 first48: 8d a1 c4 b8 c4 a9 f8 c5 c0 dc f4 5f e7 cf b6 8a 80 4f 01 00 00 00 00 00 ff 7b 0a 00 08 01 00 00 27 a0 0c 3c c0 64 59 2a a3 d4 06 1e 60 32 2c 95
+[dwg-dbg]   end sentinel found at offset 85914
+[dwg-dbg] R2010+ cls header: RL1(size)=85888 RL2=0 RL3(bits?)=687103
+[dwg-dbg] parse_classes_from_bits: sentinel@0 cls_data_size=85888 end_byte=85908 data.len=89088 is_unicode=true
+[dwg-dbg]   data[16..96]: 80 4f 01 00 00 00 00 00 ff 7b 0a 00 08 01 00 00 27 a0 0c 3c c0 64 59 2a a3 d4 06 1e 60 32 2c 95 51 ec 03 0f 30 19 16 4a a8 f7 01 87 98 0a 04 8a 54 7c 00 9f e1 e3 cc 05 01 46 6a 3e 40 48 10 41 e6 03 22 e8 75 1f 40 27 f8 78 f3 01 91 aa 8f b0
+[dwg-dbg]   bytes around bit-endbit (byte 10756): 30 07 40 04 40 04 20 05
+[dwg-dbg]   data tail[85892..85908]: 04 01 48 01 24 01 04 01 08 01 30 01 14 01 4c 00
+[dwg-dbg]   trailing bytes [85908-89088]: 4c 00 5b a6 6b a1 72 5e 3b 47 3b 56 07 3a 3f 23 0b a0 18 30 49 75 00 00 00 00 00 00 00 00 00 00
+[dwg-dbg]   cls data[20..220]: 00 00 00 00 ff 7b 0a 00 08 01 00 00 27 a0 0c 3c c0 64 59 2a a3 d4 06 1e 60 32 2c 95 51 ec 03 0f 30 19 16 4a a8 f7 01 87 98 0a 04 8a 54 7c 00 9f e1 e3 cc 05 01 46 6a 3e 40 48 10 41 e6 03 22 e8 75 1f 40 27 f8 78 f3 01 91 aa 8f b0 12 04 10 79 80 c8 da 03 47 e0 09 fe 1e 3c c0 50 24 6d 19 a3 f4 04 80 04 1e 60 32 36 80 d1 fc 02 00 82 4f 30 1a a8 ff 01 20 41 27 98 0c 8d 54 00 01 43 cc 06 45 2a 00 40 a1 e6 03 22 95 00 40 50 f3 01 91 4a 80 30 28 79 80 c8 a5 40 20 13 03 3c c0 64 5d 03 a0 14 08 81 04 1e 60 32 32 9b d0 0c 04 40 82 0f 30 19 19 4d e8 07 02 20 41 07 98 0c 8c a6 f4 04 01 10 20 83 cc 06 46 51
+[dwg-dbg]   found 'LAYOUT' at byte 16254 (UTF16)
+[dwg-dbg]   found 'LAYOUT' at byte 16751 (UTF16)
+[dwg-dbg]   found 'SCALE' at byte 5421 (UTF16)
+[dwg-dbg]   BL maxclass=1056 (bits 224-258), B unk=1 (bit 259)
+[dwg-dbg]   (no-prefix) BS@byte20 = 0
+[dwg-dbg]   (no-prefix) BS@byte24 = 256
+[dwg-dbg]   (no-prefix) BS@byte28 = 1056, then BL = 7995904
+[dwg-dbg]   no string stream found (from_rl=86016 bits=86112 bytes=687328 datalen=687520 endbyte=687264)
+[dwg-dbg]   brute-force candidate: endbit=687429 sds=1155 ss_start=686257 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687412 sds=93 ss_start=687302 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687413 sds=442 ss_start=686954 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687368 sds=939 ss_start=686412 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687282 sds=152 ss_start=687113 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687284 sds=608 ss_start=686659 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687285 sds=1472 ss_start=685796 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687266 sds=152 ss_start=687097 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687269 sds=1216 ss_start=686036 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687250 sds=552 ss_start=686681 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687248 sds=138 ss_start=687093 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687232 sds=152 ss_start=687063 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687219 sds=1056 ss_start=686146 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687216 sds=132 ss_start=687067 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687200 sds=130 ss_start=687053 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687184 sds=146 ss_start=687021 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687171 sds=1056 ss_start=686098 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687168 sds=164 ss_start=686987 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687154 sds=520 ss_start=686617 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687152 sds=130 ss_start=687005 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687136 sds=172 ss_start=686947 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687122 sds=656 ss_start=686449 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687120 sds=164 ss_start=686939 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687106 sds=552 ss_start=686537 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687104 sds=138 ss_start=686949 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687088 sds=168 ss_start=686903 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687074 sds=664 ss_start=686393 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687072 sds=166 ss_start=686889 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687058 sds=520 ss_start=686521 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687056 sds=130 ss_start=686909 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687040 sds=164 ss_start=686859 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687014 sds=230 ss_start=686767 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686998 sds=202 ss_start=686779 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686999 sds=404 ss_start=686578 valid=false
+[dwg-dbg]   brute-force candidate: endbit=687000 sds=808 ss_start=686175 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686982 sds=216 ss_start=686749 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686983 sds=432 ss_start=686534 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686969 sds=1568 ss_start=685384 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686966 sds=196 ss_start=686753 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686967 sds=392 ss_start=686558 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686950 sds=194 ss_start=686739 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686951 sds=388 ss_start=686546 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686934 sds=210 ss_start=686707 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686935 sds=420 ss_start=686498 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686921 sds=1568 ss_start=685336 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686918 sds=228 ss_start=686673 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686919 sds=456 ss_start=686446 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686902 sds=194 ss_start=686691 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686903 sds=388 ss_start=686498 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686904 sds=776 ss_start=686111 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686886 sds=172 ss_start=686697 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686887 sds=344 ss_start=686526 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686870 sds=228 ss_start=686625 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686872 sds=656 ss_start=686199 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686854 sds=202 ss_start=686635 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686855 sds=404 ss_start=686434 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686856 sds=808 ss_start=686031 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686838 sds=232 ss_start=686589 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686839 sds=464 ss_start=686358 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686822 sds=230 ss_start=686575 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686823 sds=460 ss_start=686346 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686824 sds=920 ss_start=685887 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686806 sds=194 ss_start=686595 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686807 sds=388 ss_start=686402 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686808 sds=776 ss_start=686015 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686790 sds=164 ss_start=686609 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686791 sds=328 ss_start=686446 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686774 sds=196 ss_start=686561 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686776 sds=528 ss_start=686231 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686758 sds=136 ss_start=686605 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686759 sds=272 ss_start=686470 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686742 sds=198 ss_start=686527 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686726 sds=130 ss_start=686579 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686727 sds=260 ss_start=686450 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686700 sds=154 ss_start=686529 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686684 sds=166 ss_start=686501 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686687 sds=1072 ss_start=685598 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686668 sds=146 ss_start=686505 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686670 sds=584 ss_start=686069 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686652 sds=1538 ss_start=685097 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686642 sds=142 ss_start=686483 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686626 sds=156 ss_start=686453 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686610 sds=146 ss_start=686447 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686613 sds=1168 ss_start=685428 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686594 sds=152 ss_start=686425 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686597 sds=1216 ss_start=685364 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686578 sds=138 ss_start=686423 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686581 sds=1104 ss_start=685460 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686562 sds=132 ss_start=686413 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686546 sds=130 ss_start=686399 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686530 sds=152 ss_start=686361 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686514 sds=190 ss_start=686307 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686517 sds=1264 ss_start=685236 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686498 sds=146 ss_start=686335 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686500 sds=584 ss_start=685899 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686501 sds=1424 ss_start=685060 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686482 sds=160 ss_start=686305 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686485 sds=1024 ss_start=685444 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686466 sds=190 ss_start=686259 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686468 sds=760 ss_start=685691 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686450 sds=168 ss_start=686265 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686452 sds=672 ss_start=685763 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686453 sds=1344 ss_start=685092 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686434 sds=156 ss_start=686261 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686436 sds=624 ss_start=685795 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686418 sds=138 ss_start=686263 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686421 sds=1104 ss_start=685300 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686402 sds=154 ss_start=686231 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686386 sds=156 ss_start=686213 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686389 sds=1248 ss_start=685124 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686370 sds=142 ss_start=686211 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686373 sds=1136 ss_start=685220 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686354 sds=146 ss_start=686191 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686338 sds=152 ss_start=686169 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686341 sds=1216 ss_start=685108 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686322 sds=130 ss_start=686175 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686325 sds=1040 ss_start=685268 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686306 sds=190 ss_start=686099 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686290 sds=160 ss_start=686113 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686292 sds=640 ss_start=685635 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686293 sds=1280 ss_start=684996 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686274 sds=138 ss_start=686119 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686276 sds=552 ss_start=685707 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686258 sds=164 ss_start=686077 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686242 sds=190 ss_start=686035 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686244 sds=760 ss_start=685467 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686226 sds=160 ss_start=686049 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686228 sds=640 ss_start=685571 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686229 sds=1280 ss_start=684932 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686210 sds=166 ss_start=686027 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686212 sds=664 ss_start=685531 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686194 sds=146 ss_start=686031 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686196 sds=584 ss_start=685595 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686178 sds=136 ss_start=686025 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686181 sds=1088 ss_start=685076 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686162 sds=190 ss_start=685955 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686146 sds=134 ss_start=685995 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686148 sds=536 ss_start=685595 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686149 sds=1328 ss_start=684804 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686130 sds=134 ss_start=685979 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686114 sds=138 ss_start=685959 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686098 sds=130 ss_start=685951 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686075 sds=1136 ss_start=684922 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686072 sds=206 ss_start=685849 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686057 sds=440 ss_start=685600 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686056 sds=220 ss_start=685819 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686041 sds=420 ss_start=685604 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686043 sds=1680 ss_start=684346 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686040 sds=210 ss_start=685813 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686025 sds=432 ss_start=685576 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686027 sds=1728 ss_start=684282 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686024 sds=216 ss_start=685791 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686009 sds=404 ss_start=685588 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686011 sds=1616 ss_start=684378 valid=false
+[dwg-dbg]   brute-force candidate: endbit=686008 sds=202 ss_start=685789 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685993 sds=392 ss_start=685584 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685992 sds=196 ss_start=685779 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685977 sds=388 ss_start=685572 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685976 sds=194 ss_start=685765 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685961 sds=304 ss_start=685640 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685960 sds=152 ss_start=685791 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685947 sds=1168 ss_start=684762 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685944 sds=146 ss_start=685781 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685931 sds=1024 ss_start=684890 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685928 sds=160 ss_start=685751 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685914 sds=672 ss_start=685225 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685912 sds=232 ss_start=685663 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685897 sds=440 ss_start=685440 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685898 sds=880 ss_start=685001 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685896 sds=220 ss_start=685659 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685881 sds=404 ss_start=685460 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685883 sds=1616 ss_start=684250 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685880 sds=202 ss_start=685661 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685865 sds=436 ss_start=685412 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685864 sds=218 ss_start=685629 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685849 sds=440 ss_start=685392 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685851 sds=1760 ss_start=684074 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685848 sds=220 ss_start=685611 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685833 sds=412 ss_start=685404 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685835 sds=1648 ss_start=684170 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685832 sds=206 ss_start=685609 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685817 sds=420 ss_start=685380 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685816 sds=210 ss_start=685589 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685801 sds=432 ss_start=685352 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685803 sds=1728 ss_start=684058 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685800 sds=216 ss_start=685567 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685785 sds=260 ss_start=685508 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685787 sds=1552 ss_start=684218 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685784 sds=130 ss_start=685637 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685768 sds=238 ss_start=685513 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685753 sds=404 ss_start=685332 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685754 sds=808 ss_start=684929 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685752 sds=202 ss_start=685533 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685737 sds=420 ss_start=685300 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685736 sds=210 ss_start=685509 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685721 sds=344 ss_start=685360 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685723 sds=1632 ss_start=684074 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685720 sds=172 ss_start=685531 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685706 sds=528 ss_start=685161 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685704 sds=196 ss_start=685491 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685689 sds=272 ss_start=685400 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685688 sds=136 ss_start=685535 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685672 sds=198 ss_start=685457 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685657 sds=396 ss_start=685244 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685656 sds=198 ss_start=685441 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685641 sds=404 ss_start=685220 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685640 sds=202 ss_start=685421 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685625 sds=260 ss_start=685348 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685624 sds=130 ss_start=685477 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685598 sds=96 ss_start=685485 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685583 sds=212 ss_start=685354 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685584 sds=424 ss_start=685143 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685570 sds=1664 ss_start=683889 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685567 sds=144 ss_start=685406 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685568 sds=288 ss_start=685263 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685550 sds=220 ss_start=685313 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685551 sds=440 ss_start=685094 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685537 sds=1552 ss_start=683968 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685534 sds=194 ss_start=685323 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685535 sds=388 ss_start=685130 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685518 sds=152 ss_start=685349 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685519 sds=304 ss_start=685198 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685505 sds=1072 ss_start=684416 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685502 sds=198 ss_start=685287 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685486 sds=198 ss_start=685271 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685487 sds=396 ss_start=685074 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685470 sds=202 ss_start=685251 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685471 sds=404 ss_start=685050 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685454 sds=130 ss_start=685307 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685455 sds=260 ss_start=685178 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685428 sds=130 ss_start=685281 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685412 sds=168 ss_start=685227 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685396 sds=130 ss_start=685249 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685398 sds=520 ss_start=684861 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685380 sds=136 ss_start=685227 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685364 sds=150 ss_start=685197 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685348 sds=130 ss_start=685201 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685351 sds=1040 ss_start=684294 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685332 sds=138 ss_start=685177 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685316 sds=164 ss_start=685135 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685300 sds=132 ss_start=685151 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685302 sds=528 ss_start=684757 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685274 sds=194 ss_start=685063 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685258 sds=232 ss_start=685009 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685259 sds=464 ss_start=684778 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685242 sds=194 ss_start=685031 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685243 sds=388 ss_start=684838 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685244 sds=776 ss_start=684451 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685226 sds=136 ss_start=685073 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685227 sds=272 ss_start=684938 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685210 sds=214 ss_start=684979 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685194 sds=194 ss_start=684983 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685195 sds=388 ss_start=684790 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685197 sds=1552 ss_start=683628 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685178 sds=202 ss_start=684959 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685179 sds=404 ss_start=684758 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685162 sds=228 ss_start=684917 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685163 sds=456 ss_start=684690 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685146 sds=132 ss_start=684997 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685147 sds=264 ss_start=684866 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685148 sds=784 ss_start=684347 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685130 sds=196 ss_start=684917 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685114 sds=136 ss_start=684961 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685115 sds=272 ss_start=684826 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685098 sds=198 ss_start=684883 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685082 sds=130 ss_start=684935 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685083 sds=260 ss_start=684806 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685056 sds=230 ss_start=684809 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685041 sds=404 ss_start=684620 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685042 sds=808 ss_start=684217 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685040 sds=202 ss_start=684821 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685025 sds=460 ss_start=684548 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685024 sds=230 ss_start=684777 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685009 sds=460 ss_start=684532 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685010 sds=920 ss_start=684073 valid=false
+[dwg-dbg]   brute-force candidate: endbit=685008 sds=230 ss_start=684761 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684993 sds=388 ss_start=684588 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684994 sds=776 ss_start=684201 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684992 sds=194 ss_start=684781 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684977 sds=432 ss_start=684528 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684976 sds=216 ss_start=684743 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684961 sds=268 ss_start=684676 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684963 sds=1584 ss_start=683362 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684960 sds=134 ss_start=684809 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684944 sds=64 ss_start=684863 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684929 sds=96 ss_start=684816 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684914 sds=528 ss_start=684369 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684915 sds=1312 ss_start=683586 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684912 sds=132 ss_start=684763 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684896 sds=136 ss_start=684743 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684880 sds=232 ss_start=684631 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684865 sds=396 ss_start=684452 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684866 sds=792 ss_start=684057 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684864 sds=198 ss_start=684649 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684849 sds=404 ss_start=684428 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684848 sds=202 ss_start=684629 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684833 sds=424 ss_start=684392 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684832 sds=212 ss_start=684603 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684817 sds=392 ss_start=684408 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684819 sds=1568 ss_start=683234 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684816 sds=196 ss_start=684603 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684801 sds=316 ss_start=684468 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684800 sds=158 ss_start=684625 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684774 sds=178 ss_start=684579 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684761 sds=1328 ss_start=683416 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684758 sds=134 ss_start=684607 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684760 sds=536 ss_start=684207 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684742 sds=156 ss_start=684569 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684729 sds=1104 ss_start=683608 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684726 sds=138 ss_start=684571 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684710 sds=136 ss_start=684557 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684694 sds=156 ss_start=684521 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684681 sds=1104 ss_start=683560 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684678 sds=138 ss_start=684523 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684662 sds=160 ss_start=684485 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684646 sds=138 ss_start=684491 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684648 sds=552 ss_start=684079 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684630 sds=136 ss_start=684477 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684614 sds=154 ss_start=684443 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684601 sds=1264 ss_start=683320 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684598 sds=158 ss_start=684423 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684585 sds=1104 ss_start=683464 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684582 sds=138 ss_start=684427 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684566 sds=142 ss_start=684407 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684550 sds=134 ss_start=684399 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684534 sds=158 ss_start=684359 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684521 sds=1072 ss_start=683432 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684518 sds=166 ss_start=684335 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684502 sds=166 ss_start=684319 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684504 sds=664 ss_start=683823 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684486 sds=130 ss_start=684339 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684488 sds=520 ss_start=683951 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684470 sds=132 ss_start=684321 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684454 sds=136 ss_start=684301 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684438 sds=134 ss_start=684287 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684422 sds=130 ss_start=684275 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684396 sds=242 ss_start=684137 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684380 sds=198 ss_start=684165 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684381 sds=396 ss_start=683968 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684382 sds=792 ss_start=683573 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684383 sds=1840 ss_start=682526 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684364 sds=220 ss_start=684127 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684365 sds=440 ss_start=683908 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684348 sds=202 ss_start=684129 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684349 sds=404 ss_start=683928 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684351 sds=1616 ss_start=682718 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684332 sds=200 ss_start=684115 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684333 sds=400 ss_start=683916 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684316 sds=220 ss_start=684079 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684317 sds=440 ss_start=683860 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684300 sds=202 ss_start=684081 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684301 sds=404 ss_start=683880 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684303 sds=1616 ss_start=682670 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684284 sds=224 ss_start=684043 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684285 sds=448 ss_start=683820 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684268 sds=202 ss_start=684049 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684269 sds=404 ss_start=683848 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684270 sds=808 ss_start=683445 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684252 sds=136 ss_start=684099 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684253 sds=272 ss_start=683964 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684236 sds=218 ss_start=684001 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684220 sds=222 ss_start=683981 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684221 sds=444 ss_start=683760 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684223 sds=1776 ss_start=682430 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684204 sds=202 ss_start=683985 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684205 sds=404 ss_start=683784 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684207 sds=1616 ss_start=682574 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684188 sds=142 ss_start=684029 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684189 sds=284 ss_start=683888 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684172 sds=198 ss_start=683957 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684156 sds=222 ss_start=683917 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684157 sds=444 ss_start=683696 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684140 sds=230 ss_start=683893 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684141 sds=460 ss_start=683664 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684143 sds=1584 ss_start=682542 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684124 sds=230 ss_start=683877 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684125 sds=460 ss_start=683648 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684126 sds=920 ss_start=683189 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684108 sds=130 ss_start=683961 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684109 sds=260 ss_start=683832 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684110 sds=776 ss_start=683317 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684092 sds=196 ss_start=683879 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684076 sds=136 ss_start=683923 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684077 sds=272 ss_start=683788 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684060 sds=198 ss_start=683845 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684044 sds=130 ss_start=683897 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684045 sds=260 ss_start=683768 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684018 sds=230 ss_start=683771 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684002 sds=202 ss_start=683783 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684003 sds=404 ss_start=683582 valid=false
+[dwg-dbg]   brute-force candidate: endbit=684004 sds=808 ss_start=683179 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683986 sds=230 ss_start=683739 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683987 sds=460 ss_start=683510 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683970 sds=230 ss_start=683723 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683971 sds=460 ss_start=683494 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683972 sds=920 ss_start=683035 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683954 sds=194 ss_start=683743 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683955 sds=388 ss_start=683550 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683956 sds=776 ss_start=683163 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683938 sds=216 ss_start=683705 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683939 sds=432 ss_start=683490 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683922 sds=134 ss_start=683771 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683923 sds=268 ss_start=683638 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683925 sds=1584 ss_start=682324 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683906 sds=64 ss_start=683825 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683891 sds=96 ss_start=683778 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683874 sds=132 ss_start=683725 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683876 sds=528 ss_start=683331 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683877 sds=1312 ss_start=682548 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683858 sds=136 ss_start=683705 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683842 sds=232 ss_start=683593 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683826 sds=198 ss_start=683611 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683827 sds=396 ss_start=683414 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683828 sds=792 ss_start=683019 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683810 sds=202 ss_start=683591 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683811 sds=404 ss_start=683390 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683794 sds=212 ss_start=683565 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683795 sds=424 ss_start=683354 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683778 sds=196 ss_start=683565 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683779 sds=392 ss_start=683370 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683781 sds=1568 ss_start=682196 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683762 sds=158 ss_start=683587 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683763 sds=316 ss_start=683430 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683736 sds=154 ss_start=683565 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683723 sds=1040 ss_start=682666 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683720 sds=130 ss_start=683573 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683704 sds=164 ss_start=683523 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683690 sds=520 ss_start=683153 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683688 sds=130 ss_start=683541 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683672 sds=160 ss_start=683495 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683658 sds=624 ss_start=683017 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683656 sds=156 ss_start=683483 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683643 sds=1264 ss_start=682362 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683640 sds=158 ss_start=683465 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683627 sds=1168 ss_start=682442 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683624 sds=146 ss_start=683461 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683611 sds=1088 ss_start=682506 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683608 sds=168 ss_start=683423 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683594 sds=536 ss_start=683041 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683592 sds=134 ss_start=683441 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683576 sds=130 ss_start=683429 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683560 sds=138 ss_start=683405 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683544 sds=142 ss_start=683385 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683528 sds=136 ss_start=683375 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683512 sds=138 ss_start=683357 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683496 sds=134 ss_start=683345 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683480 sds=158 ss_start=683305 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683467 sds=1072 ss_start=682378 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683464 sds=166 ss_start=683281 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683450 sds=664 ss_start=682769 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683448 sds=166 ss_start=683265 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683434 sds=520 ss_start=682897 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683432 sds=130 ss_start=683285 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683416 sds=132 ss_start=683267 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683400 sds=136 ss_start=683247 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683384 sds=134 ss_start=683233 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683368 sds=130 ss_start=683221 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683342 sds=218 ss_start=683107 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683329 sds=1552 ss_start=681760 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683326 sds=194 ss_start=683115 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683327 sds=388 ss_start=682922 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683310 sds=228 ss_start=683065 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683311 sds=456 ss_start=682838 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683294 sds=194 ss_start=683083 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683295 sds=388 ss_start=682890 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683296 sds=776 ss_start=682503 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683278 sds=160 ss_start=683101 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683279 sds=320 ss_start=682942 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683262 sds=220 ss_start=683025 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683264 sds=624 ss_start=682623 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683249 sds=1776 ss_start=681456 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683246 sds=222 ss_start=683007 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683247 sds=444 ss_start=682786 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683233 sds=1680 ss_start=681536 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683230 sds=210 ss_start=683003 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683231 sds=420 ss_start=682794 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683217 sds=1600 ss_start=681600 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683214 sds=232 ss_start=682965 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683215 sds=464 ss_start=682734 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683198 sds=198 ss_start=682983 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683199 sds=396 ss_start=682786 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683200 sds=792 ss_start=682391 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683182 sds=130 ss_start=683035 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683183 sds=260 ss_start=682906 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683166 sds=202 ss_start=682947 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683150 sds=206 ss_start=682927 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683151 sds=412 ss_start=682722 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683134 sds=200 ss_start=682917 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683135 sds=400 ss_start=682718 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683118 sds=138 ss_start=682963 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683119 sds=276 ss_start=682826 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683102 sds=198 ss_start=682887 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683086 sds=222 ss_start=682847 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683087 sds=444 ss_start=682626 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683073 sds=1584 ss_start=681472 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683070 sds=230 ss_start=682823 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683071 sds=460 ss_start=682594 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683054 sds=230 ss_start=682807 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683055 sds=460 ss_start=682578 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683056 sds=920 ss_start=682119 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683038 sds=130 ss_start=682891 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683039 sds=260 ss_start=682762 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683040 sds=776 ss_start=682247 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683022 sds=196 ss_start=682809 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683006 sds=136 ss_start=682853 valid=false
+[dwg-dbg]   brute-force candidate: endbit=683007 sds=272 ss_start=682718 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682990 sds=198 ss_start=682775 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682974 sds=130 ss_start=682827 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682975 sds=260 ss_start=682698 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682948 sds=230 ss_start=682701 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682932 sds=202 ss_start=682713 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682933 sds=404 ss_start=682512 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682934 sds=808 ss_start=682109 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682916 sds=230 ss_start=682669 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682917 sds=460 ss_start=682440 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682900 sds=230 ss_start=682653 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682901 sds=460 ss_start=682424 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682902 sds=920 ss_start=681965 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682884 sds=194 ss_start=682673 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682885 sds=388 ss_start=682480 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682886 sds=776 ss_start=682093 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682868 sds=216 ss_start=682635 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682869 sds=432 ss_start=682420 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682852 sds=134 ss_start=682701 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682853 sds=268 ss_start=682568 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682855 sds=1584 ss_start=681254 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682836 sds=64 ss_start=682755 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682821 sds=96 ss_start=682708 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682804 sds=132 ss_start=682655 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682806 sds=528 ss_start=682261 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682807 sds=1312 ss_start=681478 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682788 sds=136 ss_start=682635 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682772 sds=232 ss_start=682523 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682756 sds=198 ss_start=682541 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682757 sds=396 ss_start=682344 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682758 sds=792 ss_start=681949 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682740 sds=202 ss_start=682521 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682741 sds=404 ss_start=682320 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682724 sds=212 ss_start=682495 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682725 sds=424 ss_start=682284 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682708 sds=196 ss_start=682495 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682709 sds=392 ss_start=682300 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682711 sds=1568 ss_start=681126 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682692 sds=158 ss_start=682517 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682693 sds=316 ss_start=682360 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682666 sds=154 ss_start=682495 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682650 sds=130 ss_start=682503 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682653 sds=1040 ss_start=681596 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682634 sds=164 ss_start=682453 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682618 sds=130 ss_start=682471 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682620 sds=520 ss_start=682083 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682602 sds=160 ss_start=682425 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682586 sds=156 ss_start=682413 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682588 sds=624 ss_start=681947 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682570 sds=158 ss_start=682395 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682573 sds=1264 ss_start=681292 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682554 sds=146 ss_start=682391 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682557 sds=1168 ss_start=681372 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682538 sds=168 ss_start=682353 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682541 sds=1088 ss_start=681436 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682522 sds=134 ss_start=682371 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682524 sds=536 ss_start=681971 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682506 sds=130 ss_start=682359 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682490 sds=140 ss_start=682333 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682474 sds=138 ss_start=682319 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682458 sds=164 ss_start=682277 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682442 sds=168 ss_start=682257 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682444 sds=672 ss_start=681755 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682426 sds=156 ss_start=682253 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682428 sds=624 ss_start=681787 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682410 sds=146 ss_start=682247 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682413 sds=1168 ss_start=681228 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682394 sds=158 ss_start=682219 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682397 sds=1264 ss_start=681116 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682378 sds=160 ss_start=682201 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682381 sds=1024 ss_start=681340 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682362 sds=160 ss_start=682185 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682364 sds=640 ss_start=681707 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682346 sds=130 ss_start=682199 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682348 sds=520 ss_start=681811 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682330 sds=156 ss_start=682157 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682314 sds=166 ss_start=682131 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682317 sds=1072 ss_start=681228 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682298 sds=158 ss_start=682123 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682300 sds=632 ss_start=681651 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682282 sds=134 ss_start=682131 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682285 sds=1072 ss_start=681196 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682266 sds=158 ss_start=682091 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682250 sds=166 ss_start=682067 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682253 sds=1072 ss_start=681164 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682234 sds=166 ss_start=682051 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682236 sds=664 ss_start=681555 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682218 sds=130 ss_start=682071 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682220 sds=520 ss_start=681683 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682202 sds=132 ss_start=682053 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682186 sds=136 ss_start=682033 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682170 sds=134 ss_start=682019 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682154 sds=130 ss_start=682007 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682131 sds=1232 ss_start=680882 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682128 sds=218 ss_start=681893 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682113 sds=388 ss_start=681708 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682115 sds=1552 ss_start=680546 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682112 sds=194 ss_start=681901 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682097 sds=456 ss_start=681624 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682096 sds=228 ss_start=681851 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682081 sds=388 ss_start=681676 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682082 sds=776 ss_start=681289 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682080 sds=194 ss_start=681869 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682065 sds=320 ss_start=681728 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682064 sds=160 ss_start=681887 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682050 sds=624 ss_start=681409 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682048 sds=220 ss_start=681811 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682033 sds=444 ss_start=681572 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682035 sds=1776 ss_start=680242 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682032 sds=222 ss_start=681793 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682017 sds=420 ss_start=681580 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682019 sds=1680 ss_start=680322 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682016 sds=210 ss_start=681789 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682001 sds=464 ss_start=681520 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682003 sds=1600 ss_start=680386 valid=false
+[dwg-dbg]   brute-force candidate: endbit=682000 sds=232 ss_start=681751 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681985 sds=396 ss_start=681572 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681986 sds=792 ss_start=681177 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681984 sds=198 ss_start=681769 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681969 sds=260 ss_start=681692 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681968 sds=130 ss_start=681821 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681952 sds=204 ss_start=681731 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681937 sds=404 ss_start=681516 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681936 sds=202 ss_start=681717 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681921 sds=328 ss_start=681576 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681920 sds=164 ss_start=681739 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681906 sds=672 ss_start=681217 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681904 sds=232 ss_start=681655 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681889 sds=440 ss_start=681432 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681890 sds=880 ss_start=680993 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681888 sds=220 ss_start=681651 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681873 sds=420 ss_start=681436 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681875 sds=1680 ss_start=680178 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681872 sds=210 ss_start=681645 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681857 sds=444 ss_start=681396 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681859 sds=1776 ss_start=680066 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681856 sds=222 ss_start=681617 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681841 sds=320 ss_start=681504 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681843 sds=1536 ss_start=680290 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681840 sds=160 ss_start=681663 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681826 sds=640 ss_start=681169 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681824 sds=224 ss_start=681583 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681809 sds=388 ss_start=681404 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681810 sds=776 ss_start=681017 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681808 sds=194 ss_start=681597 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681793 sds=440 ss_start=681336 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681792 sds=220 ss_start=681555 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681777 sds=460 ss_start=681300 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681779 sds=1584 ss_start=680178 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681776 sds=230 ss_start=681529 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681761 sds=316 ss_start=681428 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681762 sds=888 ss_start=680857 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681760 sds=158 ss_start=681585 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681747 sds=1072 ss_start=680658 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681744 sds=198 ss_start=681529 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681729 sds=444 ss_start=681268 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681728 sds=222 ss_start=681489 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681713 sds=460 ss_start=681236 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681715 sds=1584 ss_start=680114 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681712 sds=230 ss_start=681465 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681697 sds=460 ss_start=681220 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681698 sds=920 ss_start=680761 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681696 sds=230 ss_start=681449 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681681 sds=260 ss_start=681404 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681682 sds=776 ss_start=680889 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681680 sds=130 ss_start=681533 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681664 sds=196 ss_start=681451 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681649 sds=272 ss_start=681360 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681648 sds=136 ss_start=681495 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681632 sds=198 ss_start=681417 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681617 sds=260 ss_start=681340 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681616 sds=130 ss_start=681469 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681593 sds=1072 ss_start=680504 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681590 sds=230 ss_start=681343 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681574 sds=202 ss_start=681355 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681575 sds=404 ss_start=681154 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681576 sds=808 ss_start=680751 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681558 sds=230 ss_start=681311 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681559 sds=460 ss_start=681082 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681542 sds=230 ss_start=681295 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681543 sds=460 ss_start=681066 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681544 sds=920 ss_start=680607 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681526 sds=194 ss_start=681315 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681527 sds=388 ss_start=681122 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681528 sds=776 ss_start=680735 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681510 sds=216 ss_start=681277 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681511 sds=432 ss_start=681062 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681497 sds=1584 ss_start=679896 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681494 sds=134 ss_start=681343 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681495 sds=268 ss_start=681210 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681478 sds=64 ss_start=681397 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681463 sds=96 ss_start=681350 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681449 sds=1312 ss_start=680120 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681446 sds=132 ss_start=681297 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681448 sds=528 ss_start=680903 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681430 sds=136 ss_start=681277 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681414 sds=232 ss_start=681165 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681398 sds=198 ss_start=681183 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681399 sds=396 ss_start=680986 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681400 sds=792 ss_start=680591 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681382 sds=202 ss_start=681163 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681383 sds=404 ss_start=680962 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681366 sds=212 ss_start=681137 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681367 sds=424 ss_start=680926 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681353 sds=1568 ss_start=679768 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681350 sds=196 ss_start=681137 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681351 sds=392 ss_start=680942 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681334 sds=158 ss_start=681159 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681335 sds=316 ss_start=681002 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681308 sds=178 ss_start=681113 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681292 sds=136 ss_start=681139 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681294 sds=544 ss_start=680733 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681295 sds=1344 ss_start=679934 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681276 sds=158 ss_start=681101 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681260 sds=132 ss_start=681111 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681263 sds=1056 ss_start=680190 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681244 sds=156 ss_start=681071 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681228 sds=158 ss_start=681053 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681231 sds=1264 ss_start=679950 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681212 sds=146 ss_start=681049 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681215 sds=1168 ss_start=680030 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681196 sds=168 ss_start=681011 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681199 sds=1088 ss_start=680094 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681180 sds=134 ss_start=681029 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681182 sds=536 ss_start=680629 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681164 sds=130 ss_start=681017 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681148 sds=154 ss_start=680977 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681132 sds=146 ss_start=680969 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681135 sds=1168 ss_start=679950 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681116 sds=136 ss_start=680963 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681119 sds=1088 ss_start=680014 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681100 sds=136 ss_start=680947 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681084 sds=138 ss_start=680929 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681068 sds=168 ss_start=680883 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681052 sds=130 ss_start=680905 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681054 sds=520 ss_start=680517 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681036 sds=168 ss_start=680851 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681020 sds=158 ss_start=680845 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681022 sds=632 ss_start=680373 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681004 sds=164 ss_start=680823 valid=false
+[dwg-dbg]   brute-force candidate: endbit=681007 sds=1056 ss_start=679934 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680988 sds=134 ss_start=680837 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680990 sds=536 ss_start=680437 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680972 sds=158 ss_start=680797 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680956 sds=166 ss_start=680773 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680959 sds=1072 ss_start=679870 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680940 sds=166 ss_start=680757 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680942 sds=664 ss_start=680261 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680924 sds=130 ss_start=680777 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680926 sds=520 ss_start=680389 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680908 sds=132 ss_start=680759 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680892 sds=136 ss_start=680739 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680876 sds=134 ss_start=680725 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680860 sds=130 ss_start=680713 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680834 sds=242 ss_start=680575 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680818 sds=200 ss_start=680601 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680819 sds=400 ss_start=680402 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680820 sds=800 ss_start=680003 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680821 sds=1856 ss_start=678948 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680802 sds=222 ss_start=680563 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680803 sds=444 ss_start=680342 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680786 sds=132 ss_start=680637 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680787 sds=264 ss_start=680506 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680789 sds=1568 ss_start=679204 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680770 sds=220 ss_start=680533 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680754 sds=222 ss_start=680515 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680755 sds=444 ss_start=680294 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680757 sds=1776 ss_start=678964 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680738 sds=210 ss_start=680511 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680739 sds=420 ss_start=680302 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680741 sds=1680 ss_start=679044 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680722 sds=232 ss_start=680473 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680723 sds=464 ss_start=680242 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680725 sds=1600 ss_start=679108 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680706 sds=198 ss_start=680491 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680707 sds=396 ss_start=680294 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680708 sds=792 ss_start=679899 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680690 sds=130 ss_start=680543 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680691 sds=260 ss_start=680414 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680674 sds=218 ss_start=680439 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680658 sds=210 ss_start=680431 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680659 sds=420 ss_start=680222 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680661 sds=1680 ss_start=678964 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680642 sds=136 ss_start=680489 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680643 sds=272 ss_start=680354 valid=false
+[dwg-dbg]   brute-force candidate: endbit=680645 sds=1600 ss_start=679028 valid=true
+[dwg-dbg]   class string stream: present, sds=1600 ss_start_bit=679028 endbit=680645
+[dwg-dbg]   1st class entry @bit 259: num=500 proxy_flags=0 has_ss=true data_end=85930
+[dwg-dbg]   tail bytes: [85914]=72 [85915]=5E [85916]=3B [85917]=47 [85918]=3B [85919]=56 [85920]=07 [85921]=3A [85922]=3F [85923]=23 [85924]=0B [85925]=A0 [85926]=18 [85927]=30 [85928]=49 [85929]=75
+[dwg-dbg]   class[0]: num=500 dxf='AcDbGroundPlaneBackground' cpp='SCENEOE' app='PLOTSETTINGS'
+[dwg-dbg]   class[1]: num=501 dxf='AcDbAssocRotatedDimActionBody' cpp='ObjectDBX Classes' app='GRADIENT_BACKGROUND'
+[dwg-dbg]   class[2]: num=502 dxf='AcDbAssocOsnapPointRefActionParam' cpp='ObjectDBX Classes' app='ACDBASSOCROTATEDDIMACTIONBODY'
+[dwg-dbg]   class[3]: num=503 dxf='AcDbAssocEdgeActionParam' cpp='ObjectDBX Classes' app='ACDBASSOCOSNAPPOINTREFACTIONPARAM'
+[dwg-dbg]   class[4]: num=504 dxf='AcDbAssocGeomDependency' cpp='ObjectDBX Classes' app='ACDBASSOCEDGEACTIONPARAM'
+[dwg-dbg]   class[5]: num=505 dxf='AcDbBreakData' cpp='ObjectDBX Classes' app='ACDBASSOCGEOMDEPENDENCY'
+[dwg-dbg]   class[6]: num=506 dxf='AeccDbViewAlignmentPILabeling' cpp='AeccLand50' app='BREAKDATA'
+[dwg-dbg]   class[7]: num=507 dxf='AcDbRasterVariables' cpp='ISM' app='AECC_DISP_REP_ALIGNMENT_PI_LABELING'
+[dwg-dbg]   class[8]: num=508 dxf='' cpp='ꙛꅫ干䜻嘻㨇⌿ꀋ〘畉' app='RASTERVARIABLES'
+[dwg-dbg]   class[9]: num=509 dxf='' cpp='' app=''
+[dwg-dbg]   class loop terminated at idx=9: num=509 names_empty=true (last good = 9 classes)
+[dwg-dbg] R2018: classes section 89088B, 9 classes
+[dwg-dbg] R2018: handles section has 85 page data_size entries
+[dwg-dbg] objmap_paged_r2018: 85 pages for sec=4
+[dwg-dbg] objmap_r2018: page 0 (pg4401) -> 4236 entries, valid_data=18215B, stop@pos=16271/18215
+[dwg-dbg] objmap_r2018: page 1 (pg4402) -> 348 entries, valid_data=16897B, stop@pos=739/16897
+[dwg-dbg] objmap_r2018: page 2 (pg4403) -> 88 entries, valid_data=21288B, stop@pos=443/21288
+[dwg-dbg] objmap_r2018: page 20 (pg4421) -> 0 entries, valid_data=19961B, stop@pos=0/19961
+[dwg-dbg] objmap_r2018: page 40 (pg4441) -> 891 entries, valid_data=4934B, stop@pos=2700/4934
+[dwg-dbg] objmap_r2018: page 60 (pg4461) -> 105 entries, valid_data=10040B, stop@pos=318/10040
+[dwg-dbg] objmap_r2018: page 80 (pg4481) -> 0 entries, valid_data=9258B, stop@pos=0/9258
+[dwg-dbg] objmap_paged_r2018: 85 pages, 14595 entries, 5216 unique handles
+[dwg-dbg] objmap_paged_r2018 offset range: 39410..864642631
+[dwg-dbg]   hdr-dec sec_num=4 type=0x4163043B comp=19931 decomp=19968 dw4=0x9F800 dw5=0x0 dw6=0x1E25AF15 dw7=0xAEADA8DA
+[dwg-dbg]   hdr-dec sec_num=4 type=0x4163043B comp=20000 decomp=20032 dw4=0x89C00 dw5=0x0 dw6=0xF2DAEFCB dw7=0x5224EAF2
+[dwg-dbg]   hdr-dec sec_num=4 type=0x4163043B comp=8134 decomp=8192 dw4=0x113800 dw5=0x0 dw6=0x4829DFB dw7=0x98B7996F
+[dwg-dbg] assemble sec=4: 85 pages, page_size=0x7400
+[dwg-dbg]   page[0]: start_off=0x0 dsize=0x4760 csize=0x4727 comp=true type=0x4163043B
+[dwg-dbg]   page[1]: start_off=0x7400 dsize=0x4240 csize=0x4201 comp=true type=0x4163043B
+[dwg-dbg]   page[2]: start_off=0xE800 dsize=0x5360 csize=0x5328 comp=true type=0x4163043B
+[dwg-dbg]   page[3]: start_off=0x15C00 dsize=0x5300 csize=0x52C6 comp=true type=0x4163043B
+[dwg-dbg]   page[4]: start_off=0x1D000 dsize=0x5340 csize=0x5314 comp=true type=0x4163043B
+[dwg-dbg]   page[5]: start_off=0x24400 dsize=0x53C0 csize=0x5383 comp=true type=0x4163043B
+[dwg-dbg]   page[6]: start_off=0x2B800 dsize=0x53C0 csize=0x5388 comp=true type=0x4163043B
+[dwg-dbg]   page[7]: start_off=0x32C00 dsize=0x53E0 csize=0x53A9 comp=true type=0x4163043B
+[dwg-dbg]   page[84]: start_off=0x261000 dsize=0x3A0 csize=0x372 comp=true type=0x4163043B
+[dwg-dbg] objmap data[..64]: 07 f0 01 80 88 84 38 01 d0 a1 02 01 81 8a a6 41 02 c5 9a 43 01 9c 80 a6 01 01 e2 d2 9f 4b 01 0b 01 0e 01 e0 ed fc 09 02 9d 8e a6 01 01 fd b5 a2 4b 01 fa 90 1a 01 98 d1 9a 05 01 d7 aa ea 05 01
+[dwg-dbg] objmap sec=1: pos=0 section_size=2032
+[dwg-dbg] objmap[0] sec=1 @pos=0: hdelta=1 ldelta=117507072 -> handle=0x1 loc=117507072
+[dwg-dbg] objmap[1] sec=1 @pos=0: hdelta=1 ldelta=37072 -> handle=0x2 loc=117544144
+[dwg-dbg] objmap[2] sec=1 @pos=0: hdelta=1 ldelta=-2721025 -> handle=0x3 loc=114823119
+[dwg-dbg] objmap[3] sec=1 @pos=0: hdelta=2 ldelta=-52549 -> handle=0x5 loc=114770570
+[dwg-dbg] objmap[4] sec=1 @pos=0: hdelta=1 ldelta=2719772 -> handle=0x6 loc=117490342
+[dwg-dbg] objmap sec=2: pos=2034 section_size=2033
+[dwg-dbg] objmap sec=3: pos=4069 section_size=2034
+[dwg-dbg] objmap sec=4: pos=6105 section_size=2030
+[dwg-dbg] objmap sec=5: pos=8137 section_size=2031
+[dwg-dbg] objmap sec=10: pos=18307 section_size=2034
+[dwg-dbg] objmap sec=20: pos=38663 section_size=2033
+[dwg-dbg] objmap sec=30: pos=59018 section_size=2034
+[dwg-dbg] objmap sec=40: pos=79378 section_size=2034
+[dwg-dbg] objmap sec=50: pos=99738 section_size=2034
+[dwg-dbg] objmap sec=60: pos=120098 section_size=2034
+[dwg-dbg] objmap sec=70: pos=140458 section_size=2034
+[dwg-dbg] objmap sec=80: pos=160818 section_size=2034
+[dwg-dbg] objmap sec=90: pos=181178 section_size=2034
+[dwg-dbg] objmap sec=100: pos=201538 section_size=2034
+[dwg-dbg] objmap[50000] sec=106 @pos=213754: hdelta=1 ldelta=-50257349 -> handle=0x17A13A loc=58308650
+[dwg-dbg] objmap sec=110: pos=221898 section_size=2034
+[dwg-dbg] objmap sec=120: pos=242258 section_size=2034
+[dwg-dbg] objmap sec=130: pos=262618 section_size=2034
+[dwg-dbg] objmap sec=140: pos=282978 section_size=2034
+[dwg-dbg] objmap sec=150: pos=303338 section_size=2034
+[dwg-dbg] objmap sec=160: pos=323698 section_size=2034
+[dwg-dbg] objmap sec=170: pos=344058 section_size=2034
+[dwg-dbg] objmap sec=180: pos=364418 section_size=2034
+[dwg-dbg] objmap sec=190: pos=384778 section_size=2034
+[dwg-dbg] objmap sec=200: pos=405138 section_size=2034
+[dwg-dbg] objmap sec=210: pos=425498 section_size=2034
+[dwg-dbg] objmap sec=220: pos=445858 section_size=2034
+[dwg-dbg] objmap[100000] sec=229 @pos=464182: hdelta=1 ldelta=5456338 -> handle=0x18648A loc=108899339
+[dwg-dbg] objmap sec=230: pos=466218 section_size=2034
+[dwg-dbg] objmap sec=240: pos=486578 section_size=2034
+[dwg-dbg] objmap sec=250: pos=506938 section_size=2034
+[dwg-dbg] objmap sec=260: pos=527298 section_size=2034
+[dwg-dbg] objmap sec=270: pos=547658 section_size=2034
+[dwg-dbg] objmap sec=280: pos=568018 section_size=2034
+[dwg-dbg] objmap sec=290: pos=588378 section_size=2034
+[dwg-dbg] objmap sec=300: pos=608738 section_size=2034
+[dwg-dbg] objmap sec=310: pos=629098 section_size=2034
+[dwg-dbg] objmap sec=320: pos=649458 section_size=2034
+[dwg-dbg] objmap sec=330: pos=669818 section_size=2034
+[dwg-dbg] objmap sec=340: pos=690178 section_size=2034
+[dwg-dbg] objmap sec=350: pos=710538 section_size=2034
+[dwg-dbg] objmap[150000] sec=352 @pos=714610: hdelta=1 ldelta=41074378 -> handle=0x1927DA loc=104326352
+[dwg-dbg] objmap sec=360: pos=730898 section_size=2034
+[dwg-dbg] objmap sec=370: pos=751258 section_size=2034
+[dwg-dbg] objmap sec=380: pos=771618 section_size=2034
+[dwg-dbg] objmap sec=390: pos=791978 section_size=2034
+[dwg-dbg] objmap sec=400: pos=812338 section_size=2034
+[dwg-dbg] objmap sec=410: pos=832698 section_size=2034
+[dwg-dbg] objmap sec=420: pos=853058 section_size=2034
+[dwg-dbg] objmap sec=430: pos=873418 section_size=2034
+[dwg-dbg] objmap sec=440: pos=893778 section_size=2034
+[dwg-dbg] objmap sec=450: pos=914138 section_size=2034
+[dwg-dbg] objmap sec=460: pos=934492 section_size=2032
+[dwg-dbg] objmap[200000] sec=468 @pos=950770: hdelta=1 ldelta=145 -> handle=0xFD14CD loc=2621540
+[dwg-dbg] objmap sec=470: pos=954840 section_size=2032
+[dwg-dbg] objmap sec=480: pos=975192 section_size=2032
+[dwg-dbg] objmap sec=490: pos=995538 section_size=2032
+[dwg-dbg] objmap sec=500: pos=1015885 section_size=2031
+[dwg-dbg] objmap sec=510: pos=1036230 section_size=2032
+[dwg-dbg] objmap sec=520: pos=1056578 section_size=2032
+[dwg-dbg] objmap sec=530: pos=1076923 section_size=2034
+[dwg-dbg] objmap sec=540: pos=1097273 section_size=2033
+[dwg-dbg] objmap[250000] sec=545 @pos=1107451: hdelta=1 ldelta=116 -> handle=0xFE0673 loc=10517734
+[dwg-dbg] objmap sec=550: pos=1117623 section_size=2034
+[dwg-dbg] objmap sec=560: pos=1137966 section_size=2032
+[dwg-dbg] objmap sec=570: pos=1158308 section_size=2032
+[dwg-dbg] objmap sec=580: pos=1178648 section_size=2032
+[dwg-dbg] objmap sec=590: pos=1198991 section_size=2032
+[dwg-dbg] objmap sec=600: pos=1219334 section_size=2034
+[dwg-dbg] objmap sec=610: pos=1239689 section_size=2033
+[dwg-dbg] objmap[300000] sec=614 @pos=1247831: hdelta=1 ldelta=40 -> handle=0xFF9234 loc=72723926
+[dwg-dbg] objmap sec=620: pos=1260044 section_size=2034
+[dwg-dbg] objmap sec=630: pos=1280401 section_size=2034
+[dwg-dbg] objmap sec=640: pos=1300757 section_size=2034
+[dwg-dbg] objmap sec=650: pos=1321109 section_size=2033
+[dwg-dbg] objmap sec=660: pos=1341461 section_size=2033
+[dwg-dbg] objmap sec=670: pos=1361809 section_size=2031
+[dwg-dbg] objmap[350000] sec=675 @pos=1371977: hdelta=1 ldelta=76 -> handle=0x106B85C loc=78478386
+[dwg-dbg] objmap sec=680: pos=1382151 section_size=2034
+[dwg-dbg] objmap sec=690: pos=1402493 section_size=2032
+[dwg-dbg] objmap sec=700: pos=1422833 section_size=2032
+[dwg-dbg] objmap sec=710: pos=1443173 section_size=2032
+[dwg-dbg] objmap sec=720: pos=1463513 section_size=2032
+[dwg-dbg] objmap sec=730: pos=1483853 section_size=2032
+[dwg-dbg] objmap sec=740: pos=1504193 section_size=2032
+[dwg-dbg] objmap[400000] sec=748 @pos=1520465: hdelta=1 ldelta=125 -> handle=0x1078BCB loc=84984479
+[dwg-dbg] objmap sec=750: pos=1524533 section_size=2032
+[dwg-dbg] objmap sec=760: pos=1544873 section_size=2032
+[dwg-dbg] objmap sec=770: pos=1565215 section_size=2032
+[dwg-dbg] objmap sec=780: pos=1585561 section_size=2033
+[dwg-dbg] objmap sec=790: pos=1605911 section_size=2032
+[dwg-dbg] objmap sec=800: pos=1626257 section_size=2034
+[dwg-dbg] objmap sec=810: pos=1646602 section_size=2033
+[dwg-dbg] objmap sec=820: pos=1666952 section_size=2033
+[dwg-dbg] objmap[450000] sec=824 @pos=1675094: hdelta=1 ldelta=28 -> handle=0x1086433 loc=18203646
+[dwg-dbg] objmap sec=830: pos=1687303 section_size=2031
+[dwg-dbg] objmap sec=840: pos=1707646 section_size=2032
+[dwg-dbg] objmap sec=850: pos=1727992 section_size=2033
+[dwg-dbg] objmap sec=860: pos=1748344 section_size=2032
+[dwg-dbg] objmap sec=870: pos=1768696 section_size=2034
+[dwg-dbg] objmap sec=880: pos=1789052 section_size=2033
+[dwg-dbg] objmap sec=890: pos=1809401 section_size=2033
+[dwg-dbg] objmap[500000] sec=893 @pos=1815505: hdelta=1 ldelta=71 -> handle=0x10A6147 loc=89746620
+[dwg-dbg] objmap sec=900: pos=1829748 section_size=2032
+[dwg-dbg] objmap sec=910: pos=1850098 section_size=2033
+[dwg-dbg] objmap sec=920: pos=1870449 section_size=2033
+[dwg-dbg] objmap sec=930: pos=1890800 section_size=2033
+[dwg-dbg] objmap sec=940: pos=1911147 section_size=2032
+[dwg-dbg] objmap sec=950: pos=1931496 section_size=2033
+[dwg-dbg] objmap[550000] sec=958 @pos=1947775: hdelta=1 ldelta=125 -> handle=0x10C7477 loc=99154236
+[dwg-dbg] objmap sec=960: pos=1951844 section_size=2034
+[dwg-dbg] objmap sec=970: pos=1972194 section_size=2032
+[dwg-dbg] objmap sec=980: pos=1992537 section_size=2034
+[dwg-dbg] objmap sec=990: pos=2012885 section_size=2034
+[dwg-dbg] objmap sec=1000: pos=2033233 section_size=2033
+[dwg-dbg] objmap sec=1010: pos=2053579 section_size=2030
+[dwg-dbg] objmap sec=1020: pos=2073922 section_size=2032
+[dwg-dbg] objmap sec=1030: pos=2094271 section_size=2032
+[dwg-dbg] objmap[600000] sec=1035 @pos=2104446: hdelta=1 ldelta=125 -> handle=0x10D37C7 loc=36689623
+[dwg-dbg] objmap sec=1040: pos=2114616 section_size=2034
+[dwg-dbg] objmap sec=1050: pos=2134963 section_size=2034
+[dwg-dbg] objmap sec=1060: pos=2155312 section_size=2032
+[dwg-dbg] objmap sec=1070: pos=2175656 section_size=2034
+[dwg-dbg] objmap sec=1080: pos=2196001 section_size=2032
+[dwg-dbg] objmap sec=1090: pos=2216351 section_size=2032
+[dwg-dbg] objmap sec=1100: pos=2236695 section_size=2032
+[dwg-dbg] objmap sec=1110: pos=2257045 section_size=2032
+[dwg-dbg] objmap[650000] sec=1111 @pos=2259079: hdelta=1 ldelta=122 -> handle=0x10DFF00 loc=44411955
+[dwg-dbg] objmap sec=1120: pos=2277392 section_size=2033
+[dwg-dbg] objmap sec=1130: pos=2297739 section_size=2032
+[dwg-dbg] objmap sec=1140: pos=2318090 section_size=2033
+[dwg-dbg] objmap sec=1150: pos=2338440 section_size=2032
+[dwg-dbg] objmap sec=1160: pos=2358785 section_size=2032
+[dwg-dbg] objmap sec=1170: pos=2379125 section_size=2032
+[dwg-dbg] objmap sec=1180: pos=2399466 section_size=2032
+[dwg-dbg] objmap[700000] sec=1189 @pos=2417760: hdelta=1 ldelta=101 -> handle=0x10F06D4 loc=48950827
+[dwg-dbg] objmap sec=1190: pos=2419792 section_size=2033
+[dwg-dbg] objmap sec=1200: pos=2440137 section_size=2032
+[dwg-dbg] objmap sec=1210: pos=2460483 section_size=2032
+[dwg-dbg] objmap sec=1220: pos=2480832 section_size=2032
+[dwg-dbg] objmap: 1227 sections, 725621 entries, data.len=2524160
+[dwg-dbg] objmap offset range: 39410..120674380
+[dwg-dbg] R2018: paged_map=5216 entries, padded_map=725621 entries
+[dwg-dbg]   hdr-dec sec_num=7 type=0x4163043B comp=20829 decomp=20864 dw4=0x4724000 dw5=0x0 dw6=0xBA85F20D dw7=0xE496EC44
+[dwg-dbg]   hdr-dec sec_num=7 type=0x4163043B comp=27665 decomp=27712 dw4=0x3D1D800 dw5=0x0 dw6=0x2289D374 dw7=0x30ACE6D
+[dwg-dbg]   hdr-dec sec_num=7 type=0x4163043B comp=13487 decomp=13536 dw4=0x2220400 dw5=0x0 dw6=0x3819FE35 dw7=0xDA8AF868
+[dwg-dbg] assemble sec=7: 4065 pages, page_size=0x7400
+[dwg-dbg]   page[0]: start_off=0x0 dsize=0x74A0 csize=0x7479 comp=true type=0x4163043B
+[dwg-dbg]   page[1]: start_off=0x7400 dsize=0x2680 csize=0x2653 comp=true type=0x4163043B
+[dwg-dbg]   page[2]: start_off=0xE800 dsize=0x3040 csize=0x301C comp=true type=0x4163043B
+[dwg-dbg]   page[3]: start_off=0x15C00 dsize=0x42E0 csize=0x42C0 comp=true type=0x4163043B
+[dwg-dbg]   page[4]: start_off=0x1D000 dsize=0x3580 csize=0x3556 comp=true type=0x4163043B
+[dwg-dbg]   page[5]: start_off=0x24400 dsize=0x32E0 csize=0x32A2 comp=true type=0x4163043B
+[dwg-dbg]   page[6]: start_off=0x2B800 dsize=0x3080 csize=0x3053 comp=true type=0x4163043B
+[dwg-dbg]   page[7]: start_off=0x32C00 dsize=0x3020 csize=0x2FED comp=true type=0x4163043B
+[dwg-dbg]   page[4064]: start_off=0x7310C00 dsize=0x2440 csize=0x241C comp=true type=0x4163043B
+[dwg-dbg] R2018: objects section 120684544B
+[dwg-dbg] parse_objects_r2000: 725621 handles, data.len=120684544
+[dwg-dbg]   handle 0x1 -> offset 117507072
+[dwg-dbg]   handle 0x2 -> offset 117544144
+[dwg-dbg]   handle 0x3 -> offset 114823119
+[dwg-dbg]   handle 0x5 -> offset 114770570
+[dwg-dbg]   handle 0x6 -> offset 117490342
+[dwg-dbg]   ...
+[dwg-dbg]   handle 0x10F9AD8 -> offset 120673501
+[dwg-dbg]   handle 0x10F9ADB -> offset 120673527
+[dwg-dbg]   handle 0x10F9ADD -> offset 120673553
+[dwg-dbg]   handle 0x10F9ADE -> offset 120674342
+[dwg-dbg]   handle 0x10F9ADF -> offset 120674380
+[dwg-dbg] obj h=0x1@117507072: obj_size=37063 hs_bits=296437 type_num=0x30 (BLOCK_CONTROL) bit_pos=940056642
+[dwg-dbg]   raw[117507072..]: c7 90 01 00 f5 8b 12 0c 00 40 6a 0f 07 80 00 08
+[dwg-dbg] obj h=0x2@117544144: obj_size=644 hs_bits=5109 type_num=0x32 (LAYER_CONTROL) bit_pos=940353194
+[dwg-dbg]   raw[117544144..]: 84 02 f5 27 0c 80 40 a8 65 48 06 41 17 24 22 04
+[dwg-dbg] obj h=0x3@114823119: obj_size=75 hs_bits=557 type_num=0x34 (STYLE_CONTROL) bit_pos=918584994
+[dwg-dbg]   raw[114823119..]: 4b 00 ad 04 0d 00 40 ea 44 c8 04 22 24 40 26 44
+[dwg-dbg] obj h=0x5@114770570: obj_size=94 hs_bits=709 type_num=0x38 (LTYPE_CONTROL) bit_pos=918164602
+[dwg-dbg]   raw[114770570..]: 5e 00 c5 05 0e 00 41 6a 45 48 04 22 c4 40 49 a4
+[dwg-dbg] obj h=0x6@117490342: obj_size=26 hs_bits=165 type_num=0x3C (VIEW_CONTROL) bit_pos=939922778
+[dwg-dbg]   raw[117490342..]: 1a 00 a5 01 0f 00 41 aa 44 08 04 63 39 70 e4 04
+[dwg-dbg] obj h=0x7@93903172: obj_size=6 hs_bits=13 type_num=0x3E (UCS_CONTROL) bit_pos=751225410
+[dwg-dbg]   raw[93903172..]: 06 00 0d 0f 80 41 ea 88 1f b5 84 09 00 1d 10 00
+[dwg-dbg] obj h=0x8@93903183: obj_size=9 hs_bits=29 type_num=0x40 (VPORT_CONTROL) bit_pos=751225498
+[dwg-dbg]   raw[93903183..]: 09 00 1d 10 00 42 2a 40 48 04 3d 5f 21 fa bc 00
+[dwg-dbg] obj h=0x9@93903197: obj_size=188 hs_bits=1461 type_num=0x42 (APPID_CONTROL) bit_pos=751225618
+[dwg-dbg]   raw[93903197..]: bc 00 b5 0b 10 80 42 6a 4d c8 04 22 44 33 c4 40
+[dwg-dbg] obj h=0xA@114823229: obj_size=89 hs_bits=661 type_num=0x44 (DIMSTYLE_CONTROL) bit_pos=918585874
+[dwg-dbg]   raw[114823229..]: 59 00 95 05 11 00 42 aa 43 c1 48 04 40 36 04 24
+[dwg-dbg] obj h=0xC@117544794: obj_size=3671 hs_bits=819 type_num=0x2A (DICTIONARY) bit_pos=940358394
+[dwg-dbg]   raw[117544794..]: 57 0e b3 06 0a 80 43 00 b0 95 25 8e 70 00 90 04
+[dwg-dbg] obj h=0xD@93912157: obj_size=480 hs_bits=1367 type_num=0x2A (DICTIONARY) bit_pos=751297298
+[dwg-dbg]   raw[93912157..]: e0 01 d7 0a 0a 80 43 64 06 48 90 10 04 0c a8 01
+[dwg-dbg] obj h=0xE@94340311: obj_size=32 hs_bits=65 type_num=0x1F4 (?) bit_pos=754722522
+[dwg-dbg]   raw[94340311..]: 20 00 41 41 00 43 a4 06 40 50 10 04 19 38 01 bc
+[dwg-dbg] obj h=0xF@105262447: obj_size=9 hs_bits=31 type_num=0x50 (PLACEHOLDER) bit_pos=842099610
+[dwg-dbg]   raw[105262447..]: 09 00 1f 14 00 43 e4 06 40 20 87 7f 0b 02 82 00
+[dwg-dbg] obj h=0x10@117490374: obj_size=33 hs_bits=125 type_num=0x33 (LAYER) bit_pos=939923026
+[dwg-dbg]   raw[117490374..]: 21 00 7d 0c c0 44 28 8f 40 38 07 00 00 c3 00 40

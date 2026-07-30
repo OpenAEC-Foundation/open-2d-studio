@@ -6396,6 +6396,19 @@ pub fn load_dwg(path: &str) -> anyhow::Result<Scene> {
     }
     eprintln!("[load_dwg] phase entity_loop+post: {:.3}s ({} segs, {} tris)",
         t_entity_loop.elapsed().as_secs_f64(), segments.len(), triangles.len());
+    // SOLID/HATCH-SOLID sanity counter: split triangles by kind so the user
+    // can verify at a glance that the loader actually produced filled
+    // geometry. If `solid_tris == 0` for a file that visibly has SOLID
+    // entities (renvooi symbols, paalsymbolen) the bug is upstream of the
+    // GPU; if > 0 but invisible on screen, the bug is downstream (render
+    // filter / show_paper / hidden_layers). Bound on tris.len() so this
+    // costs O(N) once at load — negligible vs the entity loop itself.
+    let solid_tris = triangles.iter().filter(|t| matches!(t.kind, TriKind::Solid)).count();
+    let text_tris = triangles.len() - solid_tris;
+    eprintln!(
+        "[load_dwg] tri kinds: {} solid (SOLID/HATCH-fill), {} text-fill",
+        solid_tris, text_tris,
+    );
     if profile_load && !top_emitters.is_empty() {
         top_emitters.sort_by(|a, b| b.0.cmp(&a.0));
         eprintln!("[load_dwg] top-10 segment emitters:");
@@ -6711,6 +6724,21 @@ fn tessellate_one(
             // Fill: ODA Z-pattern triangulation (p1-p2-p4) + (p1-p4-p3).
             // Skip the second triangle when p3 == p4 (degenerate triangle
             // SOLID where only three distinct corners were authored).
+            // Diagnostic trace: O2D_DWG_TRACE_SOLID=1 logs every accepted
+            // SOLID/TRACE plus its xform (so renvooi-inside-INSERT solids
+            // can be identified by xform.sx != 1.0 or xform.tx != 0.0).
+            // Pairs with the existing [SOLID skip] eprintln on the reject
+            // branch above — together they let the user verify whether a
+            // missing renvooi-solid was rejected (skip log) vs emitted-
+            // but-invisible (emit log with apparently-correct corners).
+            if std::env::var("O2D_DWG_TRACE_SOLID").ok().as_deref() == Some("1") {
+                eprintln!(
+                    "[SOLID emit] type={} xform=[sx={:.3} sy={:.3} tx={:.1} ty={:.1} rot_cos={:.3}] corners=[[{:.1},{:.1}],[{:.1},{:.1}],[{:.1},{:.1}],[{:.1},{:.1}]] color=0x{:08X}",
+                    type_name, xform.sx, xform.sy, xform.tx, xform.ty, xform.cos,
+                    p1[0], p1[1], p2[0], p2[1], p3[0], p3[1], p4[0], p4[1],
+                    color,
+                );
+            }
             triangles.push(Triangle { v: [p1, p2, p4], color, is_paper: false, kind: TriKind::Solid });
             if (p3[0] - p4[0]).abs() > 1e-9 || (p3[1] - p4[1]).abs() > 1e-9 {
                 triangles.push(Triangle { v: [p1, p4, p3], color, is_paper: false, kind: TriKind::Solid });
@@ -7608,6 +7636,28 @@ fn tessellate_one(
                         // TriKind::Solid for parity with DXF renderer so
                         // the same plot-style grey reads on both loaders.
                         if is_solid && verts.len() >= 3 {
+                            // Diagnostic trace (O2D_DWG_TRACE_SOLID=1):
+                            // log emit of HATCH-SOLID fill from the
+                            // boundary-vertices path so renvooi-inside-
+                            // INSERT solids can be located by xform.tx/ty
+                            // signature and ring extent.
+                            if std::env::var("O2D_DWG_TRACE_SOLID").ok().as_deref() == Some("1") {
+                                let mut xmin = f64::INFINITY; let mut xmax = f64::NEG_INFINITY;
+                                let mut ymin = f64::INFINITY; let mut ymax = f64::NEG_INFINITY;
+                                for v in &verts {
+                                    if v[0] < xmin { xmin = v[0]; }
+                                    if v[0] > xmax { xmax = v[0]; }
+                                    if v[1] < ymin { ymin = v[1]; }
+                                    if v[1] > ymax { ymax = v[1]; }
+                                }
+                                let tris_dbg = ear_clip(&verts);
+                                eprintln!(
+                                    "[HATCH-SOLID emit verts] xform=[sx={:.3} sy={:.3} tx={:.1} ty={:.1}] ring_size={} bbox=[{:.1},{:.1}..{:.1},{:.1}] tris={} color=0x{:08X}",
+                                    xform.sx, xform.sy, xform.tx, xform.ty,
+                                    verts.len(), xmin, ymin, xmax, ymax,
+                                    tris_dbg.len(), HATCH_SOLID_FILL_COLOR,
+                                );
+                            }
                             let tris = ear_clip(&verts);
                             for [a, b, c] in tris {
                                 triangles.push(Triangle {
@@ -7807,6 +7857,28 @@ fn tessellate_one(
                             }
                         }
                         if is_solid && edge_ring.len() >= 3 {
+                            // Diagnostic trace (O2D_DWG_TRACE_SOLID=1)
+                            // for the arc/line edge-chained boundary path.
+                            // Pairs with the verts-path trace above so we
+                            // see which renvooi-block HATCHes reach which
+                            // branch.
+                            if std::env::var("O2D_DWG_TRACE_SOLID").ok().as_deref() == Some("1") {
+                                let mut xmin = f64::INFINITY; let mut xmax = f64::NEG_INFINITY;
+                                let mut ymin = f64::INFINITY; let mut ymax = f64::NEG_INFINITY;
+                                for v in &edge_ring {
+                                    if v[0] < xmin { xmin = v[0]; }
+                                    if v[0] > xmax { xmax = v[0]; }
+                                    if v[1] < ymin { ymin = v[1]; }
+                                    if v[1] > ymax { ymax = v[1]; }
+                                }
+                                let tris_dbg = ear_clip(&edge_ring);
+                                eprintln!(
+                                    "[HATCH-SOLID emit edge-ring] xform=[sx={:.3} sy={:.3} tx={:.1} ty={:.1}] ring_size={} bbox=[{:.1},{:.1}..{:.1},{:.1}] tris={} color=0x{:08X}",
+                                    xform.sx, xform.sy, xform.tx, xform.ty,
+                                    edge_ring.len(), xmin, ymin, xmax, ymax,
+                                    tris_dbg.len(), HATCH_SOLID_FILL_COLOR,
+                                );
+                            }
                             let tris = ear_clip(&edge_ring);
                             for [a, b, c] in tris {
                                 triangles.push(Triangle {
